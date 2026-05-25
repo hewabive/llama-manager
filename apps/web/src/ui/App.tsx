@@ -5,6 +5,7 @@ import {
   InstanceEnvSchema,
   type Instance,
   type InstanceCreate,
+  type InstanceHealthSummary,
   type InstanceUpdate,
   type GgufModel,
   type LlamaArgumentOption,
@@ -57,6 +58,7 @@ import {
   getModelPreset,
   getModelPresetPreview,
   getModelScanSettings,
+  getInstanceHealthSummary,
   getInstanceLogs,
   getInstancePreflight,
   getInstanceStatusSummary,
@@ -106,6 +108,31 @@ function statusColor(status: Instance["status"]) {
   if (status === "stale") return "orange";
   if (status === "error") return "red";
   return "gray";
+}
+
+function healthStatusColor(status: InstanceHealthSummary["status"]) {
+  if (status === "ready") return "green";
+  if (status === "starting" || status === "stopping" || status === "loading") return "yellow";
+  if (status === "degraded" || status === "stale") return "orange";
+  if (status === "invalid" || status === "error") return "red";
+  return "gray";
+}
+
+function InstanceHealthBadge(props: { instance: Instance }) {
+  const healthQuery = useQuery({
+    queryKey: ["instance-health-summary", props.instance.id],
+    queryFn: () => getInstanceHealthSummary(props.instance.id),
+    refetchInterval: 3_000,
+  });
+  const health = healthQuery.data?.data;
+
+  return (
+    <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
+      <Badge color={health ? healthStatusColor(health.status) : statusColor(props.instance.status)} variant="light">
+        {health?.status ?? props.instance.status}
+      </Badge>
+    </Tooltip>
+  );
 }
 
 function createArgRow(): ArgRow {
@@ -1732,6 +1759,7 @@ function InstanceActions(props: { instance: Instance; onEdit: () => void }) {
     mutationFn: (action: "start" | "stop" | "restart") => instanceAction(props.instance.id, action),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary"] });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: "Action failed", message: (error as Error).message });
@@ -1742,6 +1770,7 @@ function InstanceActions(props: { instance: Instance; onEdit: () => void }) {
     mutationFn: () => deleteInstance(props.instance.id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary"] });
     },
   });
 
@@ -1842,6 +1871,13 @@ function InstanceDetails(props: { instance: Instance | null }) {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
   const id = props.instance?.id;
 
+  const healthQuery = useQuery({
+    queryKey: ["instance-health-summary", id],
+    queryFn: () => getInstanceHealthSummary(id!),
+    enabled: Boolean(id),
+    refetchInterval: 3_000,
+  });
+
   const runtimeQuery = useQuery({
     queryKey: ["instance-runtime", id],
     queryFn: () => getRuntime(id!),
@@ -1902,11 +1938,12 @@ function InstanceDetails(props: { instance: Instance | null }) {
     };
   }, [id]);
 
-  const runtime = runtimeQuery.data?.data;
-  const preflight = preflightQuery.data?.data;
-  const llama = llamaQuery.data?.data;
+  const health = healthQuery.data?.data;
+  const runtime = health?.runtime ?? runtimeQuery.data?.data;
+  const preflight = health?.preflight ?? preflightQuery.data?.data;
+  const llama = health?.llama ?? llamaQuery.data?.data;
   const logTail = logsQuery.data?.data;
-  const statusSummary = statusSummaryQuery.data?.data;
+  const statusSummary = health?.logSummary ?? statusSummaryQuery.data?.data;
   const summary = useMemo(() => propsSummary(llama), [llama]);
 
   if (!props.instance) {
@@ -1929,10 +1966,41 @@ function InstanceDetails(props: { instance: Instance | null }) {
               {props.instance.binaryPath}
             </Text>
           </div>
-          <Badge color={statusColor(runtime?.status ?? props.instance.status)} variant="light">
-            {runtime?.status ?? props.instance.status}
-          </Badge>
+          <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
+            <Badge color={health ? healthStatusColor(health.status) : statusColor(runtime?.status ?? props.instance.status)} variant="light">
+              {health?.status ?? runtime?.status ?? props.instance.status}
+            </Badge>
+          </Tooltip>
         </Group>
+
+        <Paper withBorder p="sm" radius="sm">
+          <Group justify="space-between" align="flex-start" gap="sm">
+            <Stack gap={4}>
+              <Text fw={600} size="sm">
+                Health
+              </Text>
+              <Text c={health?.status === "error" || health?.status === "invalid" ? "red" : "dimmed"} size="sm">
+                {health?.reason ?? "Checking process, preflight, logs and HTTP endpoints..."}
+              </Text>
+            </Stack>
+            <Group gap="xs">
+              <Badge color={health?.actions.canStart ? "green" : "gray"} variant="outline">
+                start
+              </Badge>
+              <Badge color={health?.actions.canStop ? "yellow" : "gray"} variant="outline">
+                stop
+              </Badge>
+              <Badge color={health?.actions.canRestart ? "blue" : "gray"} variant="outline">
+                restart
+              </Badge>
+            </Group>
+          </Group>
+          {health && (
+            <Text c="dimmed" size="xs" mt={6}>
+              Checked: {health.checkedAt}
+            </Text>
+          )}
+        </Paper>
 
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
           <ProbeCard title="health" probe={llama?.health} />
@@ -2178,9 +2246,7 @@ export function App() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={statusColor(instance.status)} variant="light">
-                        {instance.status}
-                      </Badge>
+                      <InstanceHealthBadge instance={instance} />
                     </Table.Td>
                     <Table.Td>{instance.pid ?? "-"}</Table.Td>
                     <Table.Td>

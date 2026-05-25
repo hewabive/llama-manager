@@ -98,6 +98,36 @@ export const InstanceLogSummarySchema = z.object({
   updatedAt: z.string(),
 });
 
+export const InstanceHealthSummaryStatusSchema = z.enum([
+  "stopped",
+  "invalid",
+  "starting",
+  "stopping",
+  "loading",
+  "ready",
+  "degraded",
+  "stale",
+  "error",
+]);
+
+export const InstanceHealthActionsSchema = z.object({
+  canStart: z.boolean(),
+  canStop: z.boolean(),
+  canRestart: z.boolean(),
+});
+
+export const InstanceHealthSummarySchema = z.object({
+  instanceId: z.string(),
+  status: InstanceHealthSummaryStatusSchema,
+  reason: z.string(),
+  actions: InstanceHealthActionsSchema,
+  runtime: RuntimeStateSchema,
+  preflight: ProcessPreflightResultSchema,
+  llama: LlamaProbeSchema,
+  logSummary: InstanceLogSummarySchema,
+  checkedAt: z.string(),
+});
+
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
@@ -299,6 +329,9 @@ export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;
+export type InstanceHealthSummaryStatus = z.infer<typeof InstanceHealthSummaryStatusSchema>;
+export type InstanceHealthActions = z.infer<typeof InstanceHealthActionsSchema>;
+export type InstanceHealthSummary = z.infer<typeof InstanceHealthSummarySchema>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;

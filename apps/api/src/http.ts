@@ -33,6 +33,7 @@ import { probeLlamaServer } from "./llama/probe.js";
 import { getModelScanSettings, saveModelScanSettings } from "./models/cache-repository.js";
 import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
 import { getModelPreset, previewModelPresetIni, saveModelPreset, writeModelPresetFile } from "./presets/repository.js";
+import { getInstanceHealthSummary } from "./process/health-summary.js";
 import { summarizeInstanceLog } from "./process/log-summary.js";
 import { tailInstanceLog } from "./process/logs.js";
 import { isPidAlive } from "./process/pid.js";
@@ -268,6 +269,15 @@ app.get("/api/instances/:id/preflight", (c) => {
   }
 
   return c.json({ data: validateInstancePreflight(instance) });
+});
+
+app.get("/api/instances/:id/health-summary", async (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  return c.json({ data: await getInstanceHealthSummary(instance) });
 });
 
 app.get("/api/instances/:id/logs", (c) => {

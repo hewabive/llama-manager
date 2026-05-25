@@ -5,6 +5,7 @@ import type {
   BuildSettings,
   Instance,
   InstanceCreate,
+  InstanceHealthSummary,
   InstanceUpdate,
   InstanceLogSummary,
   LlamaArgumentCatalog,
@@ -194,6 +195,10 @@ export async function getRuntime(id: string) {
 
 export async function getInstancePreflight(id: string) {
   return request<{ data: ProcessPreflightResult }>(`/api/instances/${id}/preflight`);
+}
+
+export async function getInstanceHealthSummary(id: string) {
+  return request<{ data: InstanceHealthSummary }>(`/api/instances/${id}/health-summary`);
 }
 
 export async function getLlamaProbe(id: string) {
