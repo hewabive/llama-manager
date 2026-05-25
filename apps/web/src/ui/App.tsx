@@ -48,12 +48,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   cancelBuildJob,
   createInstance,
+  createRouterInstance,
   deleteLlamaArgumentOverride,
   deleteInstance,
   getBuildJobLogs,
   getBuildSettings,
   getLlamaArguments,
   getModelPreset,
+  getModelPresetPreview,
   getModelScanSettings,
   getInstanceLogs,
   getInstanceStatusSummary,
@@ -1075,16 +1077,30 @@ function ModelsPanel(props: {
 
 function PresetBuilderPanel() {
   const queryClient = useQueryClient();
+  const [routerName, setRouterName] = useState("llama-router");
+  const [routerBinaryPath, setRouterBinaryPath] = useState(defaultBinaryPath);
+  const [routerCwd, setRouterCwd] = useState("/home/maxim/llama");
+  const [routerHost, setRouterHost] = useState("127.0.0.1");
+  const [routerPort, setRouterPort] = useState(8080);
+  const [routerModelsMax, setRouterModelsMax] = useState<number | "">(4);
+  const [routerModelsAutoload, setRouterModelsAutoload] = useState(true);
+  const [routerWritePreset, setRouterWritePreset] = useState(true);
   const presetQuery = useQuery({
     queryKey: ["model-preset"],
     queryFn: getModelPreset,
   });
+  const previewQuery = useQuery({
+    queryKey: ["model-preset-preview"],
+    queryFn: getModelPresetPreview,
+  });
   const preset = presetQuery.data?.data;
+  const preview = previewQuery.data?.data;
 
   const saveMutation = useMutation({
     mutationFn: updateModelPreset,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
+      await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
       notifications.show({ title: "Preset saved", message: "Configuration stored" });
     },
     onError: (error) => {
@@ -1095,10 +1111,33 @@ function PresetBuilderPanel() {
     mutationFn: writeModelPreset,
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
+      await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
       notifications.show({ title: "Preset file written", message: result.data.path });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: "Preset write failed", message: (error as Error).message });
+    },
+  });
+  const routerMutation = useMutation({
+    mutationFn: () =>
+      createRouterInstance({
+        name: routerName,
+        binaryPath: routerBinaryPath,
+        cwd: routerCwd || undefined,
+        host: routerHost,
+        port: routerPort,
+        modelsMax: typeof routerModelsMax === "number" ? routerModelsMax : null,
+        modelsAutoload: routerModelsAutoload,
+        writePreset: routerWritePreset,
+      }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
+      await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
+      notifications.show({ title: "Router instance created", message: result.data.name });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: "Router create failed", message: (error as Error).message });
     },
   });
 
@@ -1144,6 +1183,74 @@ function PresetBuilderPanel() {
             }
           }}
         />
+
+        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+          <Box>
+            <Group justify="space-between" mb="xs">
+              <Text fw={600} size="sm">
+                INI preview
+              </Text>
+              <Badge variant="light">{preview?.entries ?? 0} models</Badge>
+            </Group>
+            <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
+              {preview?.path ?? preset?.path ?? "-"}
+            </Text>
+            <ScrollArea h={260} type="auto" offsetScrollbars>
+              <Code block>{preview?.content ?? "; no preset loaded\n"}</Code>
+            </ScrollArea>
+          </Box>
+
+          <Box>
+            <Group justify="space-between" mb="xs">
+              <Text fw={600} size="sm">
+                Router instance
+              </Text>
+              <Switch
+                label="Write INI"
+                checked={routerWritePreset}
+                onChange={(event) => setRouterWritePreset(event.currentTarget.checked)}
+              />
+            </Group>
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+              <TextInput label="Name" value={routerName} onChange={(event) => setRouterName(event.currentTarget.value)} />
+              <TextInput
+                label="Binary"
+                value={routerBinaryPath}
+                onChange={(event) => setRouterBinaryPath(event.currentTarget.value)}
+              />
+              <TextInput label="Working dir" value={routerCwd} onChange={(event) => setRouterCwd(event.currentTarget.value)} />
+              <TextInput label="Host" value={routerHost} onChange={(event) => setRouterHost(event.currentTarget.value)} />
+              <NumberInput
+                label="Port"
+                min={1}
+                max={65535}
+                value={routerPort}
+                onChange={(value) => setRouterPort(typeof value === "number" ? value : 8080)}
+              />
+              <NumberInput
+                label="Models max"
+                min={0}
+                value={routerModelsMax}
+                onChange={(value) => setRouterModelsMax(typeof value === "number" ? value : "")}
+              />
+            </SimpleGrid>
+            <Group justify="space-between" mt="sm">
+              <Switch
+                label="Models autoload"
+                checked={routerModelsAutoload}
+                onChange={(event) => setRouterModelsAutoload(event.currentTarget.checked)}
+              />
+              <Button
+                leftSection={<Plus size={16} />}
+                loading={routerMutation.isPending}
+                disabled={!preset || !routerName.trim() || !routerBinaryPath.trim()}
+                onClick={() => routerMutation.mutate()}
+              >
+                Create router
+              </Button>
+            </Group>
+          </Box>
+        </SimpleGrid>
 
         <Table.ScrollContainer minWidth={980}>
           <Table striped highlightOnHover verticalSpacing="sm">

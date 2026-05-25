@@ -254,6 +254,24 @@ export const ModelPresetUpdateSchema = z.object({
   path: z.string().min(1).optional(),
 });
 
+export const ModelPresetPreviewSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+  entries: z.number().int().min(0),
+  updatedAt: z.string().nullable(),
+});
+
+export const RouterInstanceCreateSchema = z.object({
+  name: z.string().min(1).max(80),
+  binaryPath: z.string().min(1),
+  cwd: z.string().min(1).optional(),
+  host: z.string().min(1).default("127.0.0.1"),
+  port: z.number().int().positive().max(65535).default(8080),
+  modelsMax: z.number().int().min(0).nullable().default(4),
+  modelsAutoload: z.boolean().default(true),
+  writePreset: z.boolean().default(true),
+});
+
 export type InstanceArgValue = z.infer<typeof InstanceArgValueSchema>;
 export type InstanceArgs = z.infer<typeof InstanceArgsSchema>;
 export type InstanceEnv = z.infer<typeof InstanceEnvSchema>;
@@ -286,3 +304,5 @@ export type ModelScanSettings = z.infer<typeof ModelScanSettingsSchema>;
 export type ModelPresetEntry = z.infer<typeof ModelPresetEntrySchema>;
 export type ModelPreset = z.infer<typeof ModelPresetSchema>;
 export type ModelPresetUpdate = z.infer<typeof ModelPresetUpdateSchema>;
+export type ModelPresetPreview = z.infer<typeof ModelPresetPreviewSchema>;
+export type RouterInstanceCreate = z.infer<typeof RouterInstanceCreateSchema>;

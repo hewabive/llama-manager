@@ -13,9 +13,11 @@ import type {
   LlamaProbe,
   LogTail,
   ModelPreset,
+  ModelPresetPreview,
   ModelPresetUpdate,
   ModelScanSettings,
   ModelScanResult,
+  RouterInstanceCreate,
   RuntimeState,
 } from "@llama-manager/core";
 
@@ -125,6 +127,10 @@ export async function getModelPreset() {
   return request<{ data: ModelPreset }>("/api/model-preset");
 }
 
+export async function getModelPresetPreview() {
+  return request<{ data: ModelPresetPreview }>("/api/model-preset/preview");
+}
+
 export async function updateModelPreset(input: ModelPresetUpdate) {
   return request<{ data: ModelPreset }>("/api/model-preset", {
     method: "PUT",
@@ -135,6 +141,13 @@ export async function updateModelPreset(input: ModelPresetUpdate) {
 export async function writeModelPreset() {
   return request<{ data: ModelPreset }>("/api/model-preset/write", {
     method: "POST",
+  });
+}
+
+export async function createRouterInstance(input: RouterInstanceCreate) {
+  return request<{ data: Instance }>("/api/model-preset/router-instance", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

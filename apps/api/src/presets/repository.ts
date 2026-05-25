@@ -1,4 +1,4 @@
-import type { ModelPreset, ModelPresetEntry, ModelPresetUpdate } from "@llama-manager/core";
+import type { ModelPreset, ModelPresetEntry, ModelPresetPreview, ModelPresetUpdate } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -90,4 +90,14 @@ export function writeModelPresetFile(): ModelPreset {
   mkdirSync(dirname(preset.path), { recursive: true });
   writeFileSync(preset.path, renderModelPresetIni(preset.entries), "utf8");
   return preset;
+}
+
+export function previewModelPresetIni(): ModelPresetPreview {
+  const preset = getModelPreset();
+  return {
+    path: preset.path,
+    content: renderModelPresetIni(preset.entries),
+    entries: preset.entries.length,
+    updatedAt: preset.updatedAt,
+  };
 }
