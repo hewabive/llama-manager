@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 
+import { getLlamaArgumentCatalog } from "./arguments/catalog.js";
 import { tailBuildLog } from "./build/logs.js";
 import { getBuildJob, getBuildSettings, listBuildJobs, saveBuildSettings } from "./build/repository.js";
 import { buildRunner } from "./build/runner.js";
@@ -44,6 +45,14 @@ app.get("/api/health", (c) => {
 
 app.get("/api/instances", (c) => {
   return c.json({ data: listInstances() });
+});
+
+app.get("/api/llama-args", (c) => {
+  try {
+    return c.json({ data: getLlamaArgumentCatalog(c.req.query("binaryPath")) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.get("/api/build/settings", (c) => {

@@ -7,6 +7,7 @@ import {
   type InstanceCreate,
   type InstanceUpdate,
   type GgufModel,
+  type LlamaArgumentOption,
   type LlamaEndpointProbe,
   type LlamaProbe,
   type ModelPreset,
@@ -50,6 +51,7 @@ import {
   deleteInstance,
   getBuildJobLogs,
   getBuildSettings,
+  getLlamaArguments,
   getModelPreset,
   getModelScanSettings,
   getInstanceLogs,
@@ -137,6 +139,24 @@ function rowsToArgs(rows: ArgRow[]) {
     }
   }
   return args;
+}
+
+function valueTypeFromArgument(option: LlamaArgumentOption): ArgRow["valueType"] {
+  if (option.valueType === "flag") return "flag";
+  if (option.valueType === "boolean") return option.valueHint ? "boolean" : "flag";
+  if (option.valueType === "number") return "number";
+  if (option.valueType === "list") return "list";
+  return "string";
+}
+
+function rowFromArgument(option: LlamaArgumentOption): ArgRow {
+  const valueType = valueTypeFromArgument(option);
+  return {
+    id: crypto.randomUUID(),
+    key: option.primaryName,
+    value: valueType === "boolean" ? "true" : "",
+    valueType,
+  };
 }
 
 function argsToRows(args: Instance["args"]): ArgRow[] {
@@ -925,6 +945,7 @@ function InstanceFormModal(props: {
 }) {
   const queryClient = useQueryClient();
   const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
+  const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -934,6 +955,27 @@ function InstanceFormModal(props: {
     },
   });
   const isEdit = Boolean(props.instance);
+  const argsCatalogQuery = useQuery({
+    queryKey: ["llama-args", form.values.binaryPath],
+    queryFn: () => getLlamaArguments(form.values.binaryPath),
+    enabled: props.opened && Boolean(form.values.binaryPath),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const argsCatalog = argsCatalogQuery.data?.data;
+  const knownArgs = argsCatalog?.options ?? [];
+  const knownArgByName = useMemo(() => {
+    const map = new Map<string, LlamaArgumentOption>();
+    for (const option of knownArgs) {
+      map.set(option.primaryName, option);
+      for (const name of option.names) {
+        map.set(name, option);
+      }
+    }
+    return map;
+  }, [knownArgs]);
+  const selectedKnownOption = selectedKnownArg ? knownArgByName.get(selectedKnownArg) : null;
 
   useEffect(() => {
     if (!props.opened) {
@@ -957,6 +999,7 @@ function InstanceFormModal(props: {
       });
       setArgRows(defaultRows(props.initialModelPath ?? undefined));
     }
+    setSelectedKnownArg(null);
   }, [props.opened, props.instance?.id, props.initialModelPath]);
 
   const mutation = useMutation({
@@ -1027,6 +1070,73 @@ function InstanceFormModal(props: {
                 Add
               </Button>
             </Group>
+            <Group align="flex-end" gap="xs" wrap="nowrap">
+              <Select
+                label="Known argument"
+                placeholder={argsCatalogQuery.isError ? "Unable to read --help from this binary" : "Search llama-server args"}
+                searchable
+                clearable
+                value={selectedKnownArg}
+                onChange={setSelectedKnownArg}
+                data={knownArgs.map((option) => ({
+                  value: option.primaryName,
+                  label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
+                }))}
+                nothingFoundMessage={argsCatalogQuery.isFetching ? "Loading..." : "No arguments found"}
+                disabled={argsCatalogQuery.isError}
+                style={{ flex: 1 }}
+              />
+              <Button
+                variant="light"
+                disabled={!selectedKnownOption}
+                onClick={() => {
+                  if (!selectedKnownOption) {
+                    return;
+                  }
+                  setArgRows((rows) => [...rows, rowFromArgument(selectedKnownOption)]);
+                }}
+              >
+                Add known
+              </Button>
+              <Tooltip label="Reload from binary --help">
+                <ActionIcon
+                  variant="subtle"
+                  loading={argsCatalogQuery.isFetching}
+                  onClick={() => void argsCatalogQuery.refetch()}
+                >
+                  <RefreshCw size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            {argsCatalogQuery.isError && (
+              <Text c="red" size="xs">
+                {(argsCatalogQuery.error as Error).message}
+              </Text>
+            )}
+            {selectedKnownOption && (
+              <Paper withBorder p="xs" radius="sm">
+                <Stack gap={4}>
+                  <Group gap="xs">
+                    <Badge variant="light">{selectedKnownOption.category}</Badge>
+                    <Badge variant="outline">{selectedKnownOption.valueType}</Badge>
+                    {selectedKnownOption.env.map((env) => (
+                      <Badge key={env} variant="outline" color="gray">
+                        {env}
+                      </Badge>
+                    ))}
+                  </Group>
+                  <Text size="sm">{selectedKnownOption.helpRu}</Text>
+                  {selectedKnownOption.allowedValues.length > 0 && (
+                    <Text c="dimmed" size="xs">
+                      Values: {selectedKnownOption.allowedValues.join(", ")}
+                    </Text>
+                  )}
+                  <Text c="dimmed" size="xs">
+                    {selectedKnownOption.names.join(", ")}
+                  </Text>
+                </Stack>
+              </Paper>
+            )}
             {argRows.map((row, index) => (
               <Group key={row.id} gap="xs" align="flex-end" wrap="nowrap">
                 <TextInput

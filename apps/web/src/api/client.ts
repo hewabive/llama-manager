@@ -6,6 +6,7 @@ import type {
   Instance,
   InstanceCreate,
   InstanceUpdate,
+  LlamaArgumentCatalog,
   LlamaProbe,
   LogTail,
   ModelPreset,
@@ -36,6 +37,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function listInstances() {
   return request<{ data: Instance[] }>("/api/instances");
+}
+
+export async function getLlamaArguments(binaryPath?: string) {
+  const params = binaryPath ? `?${new URLSearchParams({ binaryPath }).toString()}` : "";
+  return request<{ data: LlamaArgumentCatalog }>(`/api/llama-args${params}`);
 }
 
 export async function getBuildSettings() {

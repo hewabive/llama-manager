@@ -121,6 +121,41 @@ export const BuildLogTailSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const LlamaArgumentValueTypeSchema = z.enum([
+  "flag",
+  "boolean",
+  "number",
+  "string",
+  "path",
+  "json",
+  "enum",
+  "list",
+]);
+
+export const LlamaArgumentOptionSchema = z.object({
+  primaryName: z.string(),
+  names: z.array(z.string()),
+  category: z.string(),
+  valueHint: z.string().nullable(),
+  valueType: LlamaArgumentValueTypeSchema,
+  env: z.array(z.string()),
+  allowedValues: z.array(z.string()),
+  help: z.string(),
+  helpRu: z.string(),
+  deprecated: z.boolean(),
+});
+
+export const LlamaArgumentCatalogSchema = z.object({
+  binaryPath: z.string(),
+  generatedAt: z.string(),
+  source: z.object({
+    kind: z.literal("help"),
+    command: z.array(z.string()),
+    hash: z.string(),
+  }),
+  options: z.array(LlamaArgumentOptionSchema),
+});
+
 export const GgufMetadataSchema = z.object({
   name: z.string().nullable(),
   architecture: z.string().nullable(),
@@ -200,6 +235,9 @@ export type BuildJobStep = z.infer<typeof BuildJobStepSchema>;
 export type BuildJob = z.infer<typeof BuildJobSchema>;
 export type BuildJobStart = z.infer<typeof BuildJobStartSchema>;
 export type BuildLogTail = z.infer<typeof BuildLogTailSchema>;
+export type LlamaArgumentValueType = z.infer<typeof LlamaArgumentValueTypeSchema>;
+export type LlamaArgumentOption = z.infer<typeof LlamaArgumentOptionSchema>;
+export type LlamaArgumentCatalog = z.infer<typeof LlamaArgumentCatalogSchema>;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;
