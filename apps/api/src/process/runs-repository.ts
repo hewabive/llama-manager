@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "../db/index.js";
@@ -59,4 +59,13 @@ export function latestProcessRun(instanceId: string): ProcessRun | null {
       .limit(1)
       .get() ?? null
   );
+}
+
+export function listOpenProcessRuns(): ProcessRun[] {
+  return db
+    .select()
+    .from(processRuns)
+    .where(sql`${processRuns.stoppedAt} IS NULL AND ${processRuns.status} IN ('starting', 'running', 'stopping', 'stale')`)
+    .orderBy(desc(processRuns.startedAt))
+    .all();
 }

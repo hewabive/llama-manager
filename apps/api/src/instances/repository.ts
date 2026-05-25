@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { db } from "../db/index.js";
 import { instances } from "../db/schema.js";
+import { latestProcessRun } from "../process/runs-repository.js";
 import { supervisor } from "../process/supervisor.js";
 
 type InstanceRow = typeof instances.$inferSelect;
@@ -12,8 +13,20 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function latestStatus(id: string): Pick<Instance, "status" | "pid"> {
+  const latestRun = latestProcessRun(id);
+  const knownStatuses = new Set<Instance["status"]>(["stopped", "starting", "running", "stopping", "exited", "stale", "error"]);
+  const status = latestRun && knownStatuses.has(latestRun.status as Instance["status"]) ? (latestRun.status as Instance["status"]) : "stopped";
+  const pid = latestRun?.pid ? Number(latestRun.pid) : null;
+  return {
+    status,
+    pid: pid && Number.isFinite(pid) ? pid : null,
+  };
+}
+
 function toInstance(row: InstanceRow): Instance {
   const processState = supervisor.getState(row.id);
+  const durableState = latestStatus(row.id);
 
   return {
     id: row.id,
@@ -22,8 +35,8 @@ function toInstance(row: InstanceRow): Instance {
     cwd: row.cwd ?? undefined,
     args: JSON.parse(row.argsJson) as Instance["args"],
     env: JSON.parse(row.envJson) as Instance["env"],
-    status: processState?.status ?? "stopped",
-    pid: processState?.pid ?? null,
+    status: processState?.status ?? durableState.status,
+    pid: processState?.pid ?? durableState.pid,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

@@ -23,7 +23,7 @@ export const InstanceUpdateSchema = InstanceCreateSchema.partial();
 
 export const InstanceSchema = InstanceCreateSchema.extend({
   id: z.string(),
-  status: z.enum(["stopped", "starting", "running", "stopping", "exited", "error"]),
+  status: z.enum(["stopped", "starting", "running", "stopping", "exited", "stale", "error"]),
   pid: z.number().int().positive().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -44,6 +44,19 @@ export const RuntimeStateSchema = z.object({
   stoppedAt: z.string().nullable(),
   exitCode: z.number().int().nullable(),
   logPath: z.string().nullable(),
+});
+
+export const ProcessPreflightIssueSchema = z.object({
+  level: z.enum(["error", "warning"]),
+  field: z.string(),
+  message: z.string(),
+});
+
+export const ProcessPreflightResultSchema = z.object({
+  instanceId: z.string(),
+  ok: z.boolean(),
+  issues: z.array(ProcessPreflightIssueSchema),
+  checkedAt: z.string(),
 });
 
 export const LlamaEndpointProbeSchema = z.object({
@@ -280,6 +293,8 @@ export type InstanceUpdate = z.infer<typeof InstanceUpdateSchema>;
 export type Instance = z.infer<typeof InstanceSchema>;
 export type ProcessEvent = z.infer<typeof ProcessEventSchema>;
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
+export type ProcessPreflightIssue = z.infer<typeof ProcessPreflightIssueSchema>;
+export type ProcessPreflightResult = z.infer<typeof ProcessPreflightResultSchema>;
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;

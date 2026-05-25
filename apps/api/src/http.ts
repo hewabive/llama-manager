@@ -35,7 +35,9 @@ import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
 import { getModelPreset, previewModelPresetIni, saveModelPreset, writeModelPresetFile } from "./presets/repository.js";
 import { summarizeInstanceLog } from "./process/log-summary.js";
 import { tailInstanceLog } from "./process/logs.js";
-import { latestProcessRun } from "./process/runs-repository.js";
+import { isPidAlive } from "./process/pid.js";
+import { ProcessPreflightError, validateInstancePreflight } from "./process/preflight.js";
+import { latestProcessRun, updateProcessRun } from "./process/runs-repository.js";
 import { supervisor } from "./process/supervisor.js";
 
 export const app = new Hono();
@@ -244,11 +246,12 @@ app.get("/api/instances/:id/runtime", (c) => {
   }
 
   const latestRun = latestProcessRun(instance.id);
+  const fallbackPid = latestRun?.pid ? Number(latestRun.pid) : null;
   return c.json({
     data:
       supervisor.getState(instance.id) ?? {
         instanceId: instance.id,
-        pid: null,
+        pid: fallbackPid && Number.isFinite(fallbackPid) ? fallbackPid : null,
         status: latestRun?.status ?? instance.status,
         startedAt: latestRun?.startedAt ?? null,
         stoppedAt: latestRun?.stoppedAt ?? null,
@@ -256,6 +259,15 @@ app.get("/api/instances/:id/runtime", (c) => {
         logPath: latestRun?.logPath ?? null,
       },
   });
+});
+
+app.get("/api/instances/:id/preflight", (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  return c.json({ data: validateInstancePreflight(instance) });
 });
 
 app.get("/api/instances/:id/logs", (c) => {
@@ -321,12 +333,63 @@ app.post("/api/instances/:id/start", (c) => {
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
-  return c.json({ data: supervisor.start(instance) });
+  const latestRun = latestProcessRun(instance.id);
+  const stalePid = latestRun?.status === "stale" && latestRun.pid ? Number(latestRun.pid) : null;
+  if (stalePid && Number.isFinite(stalePid) && isPidAlive(stalePid)) {
+    return c.json({ error: `instance has unmanaged stale process pid=${stalePid}; stop it before starting another` }, 409);
+  }
+  try {
+    return c.json({ data: supervisor.start(instance) });
+  } catch (error) {
+    if (error instanceof ProcessPreflightError) {
+      return c.json({ error: error.message || "preflight failed", issues: error.result.issues }, 400);
+    }
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.post("/api/instances/:id/stop", (c) => {
-  const state = supervisor.stop(c.req.param("id"));
+  const instanceId = c.req.param("id");
+  const state = supervisor.stop(instanceId);
   if (!state) {
+    const latestRun = latestProcessRun(instanceId);
+    const pid = latestRun?.pid ? Number(latestRun.pid) : null;
+    if (latestRun?.status === "stale" && pid && Number.isFinite(pid) && isPidAlive(pid)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch (error) {
+        return c.json({ error: (error as Error).message }, 400);
+      }
+
+      updateProcessRun(latestRun.id, { status: "stopping" });
+      setTimeout(() => {
+        if (isPidAlive(pid)) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // The process may have exited between the liveness check and SIGKILL.
+          }
+        }
+        updateProcessRun(latestRun.id, {
+          pid: null,
+          status: "exited",
+          stoppedAt: new Date().toISOString(),
+          exitCode: null,
+        });
+      }, 5_000).unref();
+
+      return c.json({
+        data: {
+          instanceId,
+          pid,
+          status: "stopping",
+          startedAt: latestRun.startedAt,
+          stoppedAt: null,
+          exitCode: null,
+          logPath: latestRun.logPath,
+        },
+      });
+    }
     return c.json({ error: "instance is not running" }, 404);
   }
   return c.json({ data: state });
@@ -337,7 +400,14 @@ app.post("/api/instances/:id/restart", async (c) => {
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
-  return c.json({ data: await supervisor.restart(instance) });
+  try {
+    return c.json({ data: await supervisor.restart(instance) });
+  } catch (error) {
+    if (error instanceof ProcessPreflightError) {
+      return c.json({ error: error.message || "preflight failed", issues: error.result.issues }, 400);
+    }
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.get("/api/instances/:id/events", (c) => {

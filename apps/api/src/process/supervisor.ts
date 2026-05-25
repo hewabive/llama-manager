@@ -7,6 +7,7 @@ import type { Readable } from "node:stream";
 
 import { config } from "../config.js";
 import { argsToCli } from "./args.js";
+import { ProcessPreflightError, validateInstancePreflight } from "./preflight.js";
 import { createProcessRun, updateProcessRun } from "./runs-repository.js";
 
 type RuntimeStatus = Instance["status"];
@@ -54,6 +55,11 @@ export class ProcessSupervisor extends EventEmitter {
     const current = this.processes.get(instance.id);
     if (current && ["starting", "running", "stopping"].includes(current.status)) {
       return this.getState(instance.id)!;
+    }
+
+    const preflight = validateInstancePreflight(instance);
+    if (!preflight.ok) {
+      throw new ProcessPreflightError(preflight);
     }
 
     const startedAt = new Date().toISOString();

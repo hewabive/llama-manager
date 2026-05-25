@@ -17,6 +17,7 @@ import type {
   ModelPresetUpdate,
   ModelScanSettings,
   ModelScanResult,
+  ProcessPreflightResult,
   RouterInstanceCreate,
   RuntimeState,
 } from "@llama-manager/core";
@@ -34,6 +35,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.text();
+    let parsed: { error?: string; issues?: Array<{ message: string }> } | null = null;
+    try {
+      parsed = JSON.parse(error) as { error?: string; issues?: Array<{ message: string }> };
+    } catch {
+      parsed = null;
+    }
+    if (parsed) {
+      const issueText = parsed.issues?.map((issue) => issue.message).join("; ");
+      throw new Error(issueText || parsed.error || response.statusText);
+    }
     throw new Error(error || response.statusText);
   }
 
@@ -179,6 +190,10 @@ export async function deleteInstance(id: string) {
 
 export async function getRuntime(id: string) {
   return request<{ data: RuntimeState }>(`/api/instances/${id}/runtime`);
+}
+
+export async function getInstancePreflight(id: string) {
+  return request<{ data: ProcessPreflightResult }>(`/api/instances/${id}/preflight`);
 }
 
 export async function getLlamaProbe(id: string) {

@@ -58,6 +58,7 @@ import {
   getModelPresetPreview,
   getModelScanSettings,
   getInstanceLogs,
+  getInstancePreflight,
   getInstanceStatusSummary,
   getLlamaProbe,
   getRuntime,
@@ -102,6 +103,7 @@ function defaultRows(modelPath?: string): ArgRow[] {
 function statusColor(status: Instance["status"]) {
   if (status === "running") return "green";
   if (status === "starting" || status === "stopping") return "yellow";
+  if (status === "stale") return "orange";
   if (status === "error") return "red";
   return "gray";
 }
@@ -1847,6 +1849,13 @@ function InstanceDetails(props: { instance: Instance | null }) {
     refetchInterval: 2_500,
   });
 
+  const preflightQuery = useQuery({
+    queryKey: ["instance-preflight", id],
+    queryFn: () => getInstancePreflight(id!),
+    enabled: Boolean(id),
+    refetchInterval: 5_000,
+  });
+
   const llamaQuery = useQuery({
     queryKey: ["instance-llama", id],
     queryFn: () => getLlamaProbe(id!),
@@ -1894,6 +1903,7 @@ function InstanceDetails(props: { instance: Instance | null }) {
   }, [id]);
 
   const runtime = runtimeQuery.data?.data;
+  const preflight = preflightQuery.data?.data;
   const llama = llamaQuery.data?.data;
   const logTail = logsQuery.data?.data;
   const statusSummary = statusSummaryQuery.data?.data;
@@ -1954,6 +1964,29 @@ function InstanceDetails(props: { instance: Instance | null }) {
             ))}
           </Stack>
         </SimpleGrid>
+
+        <Paper withBorder p="sm" radius="sm">
+          <Group justify="space-between" mb="xs">
+            <Text fw={600} size="sm">
+              Preflight
+            </Text>
+            <Badge color={preflight ? (preflight.ok ? "green" : "red") : "gray"} variant="light">
+              {preflight ? (preflight.ok ? "ok" : "needs attention") : "checking"}
+            </Badge>
+          </Group>
+          <Stack gap={4}>
+            {(preflight?.issues ?? []).map((issue, index) => (
+              <Text key={`${issue.field}-${index}`} c={issue.level === "error" ? "red" : "yellow"} size="xs">
+                {issue.field}: {issue.message}
+              </Text>
+            ))}
+            {preflight && preflight.issues.length === 0 && (
+              <Text c="dimmed" size="xs">
+                Binary, working directory and known path arguments look valid.
+              </Text>
+            )}
+          </Stack>
+        </Paper>
 
         <Paper withBorder p="sm" radius="sm">
           <Group justify="space-between" mb="xs">
