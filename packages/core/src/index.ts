@@ -69,6 +69,22 @@ export const LogTailSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const InstanceLogSummarySchema = z.object({
+  instanceId: z.string(),
+  logPath: z.string().nullable(),
+  listeningUrl: z.string().nullable(),
+  modelPath: z.string().nullable(),
+  modelAlias: z.string().nullable(),
+  contextSize: z.number().int().positive().nullable(),
+  gpuLayers: z.string().nullable(),
+  slots: z.number().int().positive().nullable(),
+  ready: z.boolean(),
+  warnings: z.array(z.string()),
+  errors: z.array(z.string()),
+  notices: z.array(z.string()),
+  updatedAt: z.string(),
+});
+
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
@@ -227,6 +243,7 @@ export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
+export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;

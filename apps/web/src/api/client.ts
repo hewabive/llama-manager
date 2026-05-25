@@ -6,6 +6,7 @@ import type {
   Instance,
   InstanceCreate,
   InstanceUpdate,
+  InstanceLogSummary,
   LlamaArgumentCatalog,
   LlamaProbe,
   LogTail,
@@ -149,6 +150,10 @@ export async function getLlamaProbe(id: string) {
 
 export async function getInstanceLogs(id: string, lines = 200) {
   return request<{ data: LogTail }>(`/api/instances/${id}/logs?lines=${lines}`);
+}
+
+export async function getInstanceStatusSummary(id: string) {
+  return request<{ data: InstanceLogSummary }>(`/api/instances/${id}/status-summary`);
 }
 
 export function instanceEventsUrl(id: string) {

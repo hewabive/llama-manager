@@ -55,6 +55,7 @@ import {
   getModelPreset,
   getModelScanSettings,
   getInstanceLogs,
+  getInstanceStatusSummary,
   getLlamaProbe,
   getRuntime,
   instanceAction,
@@ -1375,6 +1376,13 @@ function InstanceDetails(props: { instance: Instance | null }) {
     refetchInterval: 3_000,
   });
 
+  const statusSummaryQuery = useQuery({
+    queryKey: ["instance-status-summary", id],
+    queryFn: () => getInstanceStatusSummary(id!),
+    enabled: Boolean(id),
+    refetchInterval: 3_000,
+  });
+
   useEffect(() => {
     setEvents([]);
     if (!id) {
@@ -1403,6 +1411,7 @@ function InstanceDetails(props: { instance: Instance | null }) {
   const runtime = runtimeQuery.data?.data;
   const llama = llamaQuery.data?.data;
   const logTail = logsQuery.data?.data;
+  const statusSummary = statusSummaryQuery.data?.data;
   const summary = useMemo(() => propsSummary(llama), [llama]);
 
   if (!props.instance) {
@@ -1460,6 +1469,45 @@ function InstanceDetails(props: { instance: Instance | null }) {
             ))}
           </Stack>
         </SimpleGrid>
+
+        <Paper withBorder p="sm" radius="sm">
+          <Group justify="space-between" mb="xs">
+            <Text fw={600} size="sm">
+              Parsed status
+            </Text>
+            <Badge color={statusSummary?.ready ? "green" : "gray"} variant="light">
+              {statusSummary?.ready ? "ready" : "not ready"}
+            </Badge>
+          </Group>
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+            <Text size="sm" lineClamp={1}>
+              URL: {statusSummary?.listeningUrl ?? llama?.baseUrl ?? "-"}
+            </Text>
+            <Text size="sm" lineClamp={1}>
+              Model: {statusSummary?.modelAlias ?? statusSummary?.modelPath ?? "-"}
+            </Text>
+            <Text size="sm">Context: {statusSummary?.contextSize ?? "-"}</Text>
+            <Text size="sm">Slots: {statusSummary?.slots ?? "-"}</Text>
+            <Text size="sm" lineClamp={1}>
+              GPU/offload: {statusSummary?.gpuLayers ?? "-"}
+            </Text>
+            <Text size="sm">Warnings: {statusSummary?.warnings.length ?? 0}</Text>
+          </SimpleGrid>
+          {Boolean((statusSummary?.errors.length ?? 0) + (statusSummary?.notices.length ?? 0)) && (
+            <Stack gap={4} mt="xs">
+              {(statusSummary?.errors ?? []).slice(-3).map((line, index) => (
+                <Text key={`error-${index}`} c="red" size="xs" lineClamp={2}>
+                  {line}
+                </Text>
+              ))}
+              {(statusSummary?.notices ?? []).slice(-4).map((line, index) => (
+                <Text key={`notice-${index}`} c="dimmed" size="xs" lineClamp={2}>
+                  {line}
+                </Text>
+              ))}
+            </Stack>
+          )}
+        </Paper>
 
         <Divider />
 
