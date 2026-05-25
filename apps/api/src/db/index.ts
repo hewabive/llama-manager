@@ -102,4 +102,25 @@ export function migrate() {
       error TEXT
     )
   `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS llama_argument_catalogs (
+      binary_path TEXT PRIMARY KEY NOT NULL,
+      binary_size TEXT NOT NULL,
+      binary_mtime_ms TEXT NOT NULL,
+      binary_modified_at TEXT NOT NULL,
+      help_hash TEXT NOT NULL,
+      options_json TEXT NOT NULL,
+      generated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS llama_argument_help_overrides (
+      primary_name TEXT PRIMARY KEY NOT NULL,
+      help_ru TEXT NOT NULL,
+      notes TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }

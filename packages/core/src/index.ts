@@ -158,6 +158,8 @@ export const LlamaArgumentOptionSchema = z.object({
   allowedValues: z.array(z.string()),
   help: z.string(),
   helpRu: z.string(),
+  helpRuSource: z.enum(["builtin", "override", "fallback"]),
+  notes: z.string().nullable(),
   deprecated: z.boolean(),
 });
 
@@ -168,8 +170,28 @@ export const LlamaArgumentCatalogSchema = z.object({
     kind: z.literal("help"),
     command: z.array(z.string()),
     hash: z.string(),
+    binarySize: z.number(),
+    binaryModifiedAt: z.string(),
+  }),
+  cache: z.object({
+    hit: z.boolean(),
+    refreshed: z.boolean(),
+    stale: z.boolean(),
   }),
   options: z.array(LlamaArgumentOptionSchema),
+});
+
+export const LlamaArgumentHelpOverrideSchema = z.object({
+  primaryName: z.string().min(1),
+  helpRu: z.string().min(1),
+  notes: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+});
+
+export const LlamaArgumentHelpOverrideUpdateSchema = z.object({
+  primaryName: z.string().min(1),
+  helpRu: z.string().min(1),
+  notes: z.string().nullable().optional(),
 });
 
 export const GgufMetadataSchema = z.object({
@@ -255,6 +277,8 @@ export type BuildLogTail = z.infer<typeof BuildLogTailSchema>;
 export type LlamaArgumentValueType = z.infer<typeof LlamaArgumentValueTypeSchema>;
 export type LlamaArgumentOption = z.infer<typeof LlamaArgumentOptionSchema>;
 export type LlamaArgumentCatalog = z.infer<typeof LlamaArgumentCatalogSchema>;
+export type LlamaArgumentHelpOverride = z.infer<typeof LlamaArgumentHelpOverrideSchema>;
+export type LlamaArgumentHelpOverrideUpdate = z.infer<typeof LlamaArgumentHelpOverrideUpdateSchema>;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;

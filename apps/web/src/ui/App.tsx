@@ -48,6 +48,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   cancelBuildJob,
   createInstance,
+  deleteLlamaArgumentOverride,
   deleteInstance,
   getBuildJobLogs,
   getBuildSettings,
@@ -65,6 +66,7 @@ import {
   scanModels,
   startBuildJob,
   updateBuildSettings,
+  updateLlamaArgumentOverride,
   updateModelPreset,
   updateModelScanSettings,
   writeModelPreset,
@@ -947,6 +949,8 @@ function InstanceFormModal(props: {
   const queryClient = useQueryClient();
   const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
   const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
+  const [helpRuDraft, setHelpRuDraft] = useState("");
+  const [notesDraft, setNotesDraft] = useState("");
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -1003,6 +1007,11 @@ function InstanceFormModal(props: {
     setSelectedKnownArg(null);
   }, [props.opened, props.instance?.id, props.initialModelPath]);
 
+  useEffect(() => {
+    setHelpRuDraft(selectedKnownOption?.helpRu ?? "");
+    setNotesDraft(selectedKnownOption?.notes ?? "");
+  }, [selectedKnownOption?.primaryName, selectedKnownOption?.helpRu, selectedKnownOption?.notes]);
+
   const mutation = useMutation({
     mutationFn: (input: InstanceCreate | InstanceUpdate) => {
       if (props.instance) {
@@ -1028,6 +1037,42 @@ function InstanceFormModal(props: {
         title: isEdit ? "Update failed" : "Create failed",
         message: (error as Error).message,
       });
+    },
+  });
+
+  const refreshArgsMutation = useMutation({
+    mutationFn: () => getLlamaArguments(form.values.binaryPath, true),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["llama-args", form.values.binaryPath], result);
+      notifications.show({
+        title: "Argument catalog refreshed",
+        message: `${result.data.options.length} options`,
+      });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: "Argument refresh failed", message: (error as Error).message });
+    },
+  });
+
+  const helpOverrideMutation = useMutation({
+    mutationFn: updateLlamaArgumentOverride,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["llama-args", form.values.binaryPath] });
+      notifications.show({ title: "Argument help saved", message: selectedKnownOption?.primaryName ?? "" });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: "Help save failed", message: (error as Error).message });
+    },
+  });
+
+  const deleteHelpOverrideMutation = useMutation({
+    mutationFn: deleteLlamaArgumentOverride,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["llama-args", form.values.binaryPath] });
+      notifications.show({ title: "Argument help reset", message: selectedKnownOption?.primaryName ?? "" });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: "Help reset failed", message: (error as Error).message });
     },
   });
 
@@ -1102,13 +1147,24 @@ function InstanceFormModal(props: {
               <Tooltip label="Reload from binary --help">
                 <ActionIcon
                   variant="subtle"
-                  loading={argsCatalogQuery.isFetching}
-                  onClick={() => void argsCatalogQuery.refetch()}
+                  loading={argsCatalogQuery.isFetching || refreshArgsMutation.isPending}
+                  onClick={() => refreshArgsMutation.mutate()}
                 >
                   <RefreshCw size={16} />
                 </ActionIcon>
               </Tooltip>
             </Group>
+            {argsCatalog && (
+              <Group gap="xs">
+                <Badge variant="light">{argsCatalog.options.length} args</Badge>
+                <Badge color={argsCatalog.cache.hit ? "green" : "yellow"} variant="outline">
+                  {argsCatalog.cache.hit ? "cache hit" : "refreshed"}
+                </Badge>
+                <Text c="dimmed" size="xs" lineClamp={1}>
+                  {argsCatalog.binaryPath}
+                </Text>
+              </Group>
+            )}
             {argsCatalogQuery.isError && (
               <Text c="red" size="xs">
                 {(argsCatalogQuery.error as Error).message}
@@ -1120,6 +1176,9 @@ function InstanceFormModal(props: {
                   <Group gap="xs">
                     <Badge variant="light">{selectedKnownOption.category}</Badge>
                     <Badge variant="outline">{selectedKnownOption.valueType}</Badge>
+                    <Badge color={selectedKnownOption.helpRuSource === "override" ? "green" : "gray"} variant="outline">
+                      {selectedKnownOption.helpRuSource}
+                    </Badge>
                     {selectedKnownOption.env.map((env) => (
                       <Badge key={env} variant="outline" color="gray">
                         {env}
@@ -1127,9 +1186,52 @@ function InstanceFormModal(props: {
                     ))}
                   </Group>
                   <Text size="sm">{selectedKnownOption.helpRu}</Text>
+                  <Textarea
+                    label="Russian help overlay"
+                    minRows={2}
+                    value={helpRuDraft}
+                    onChange={(event) => setHelpRuDraft(event.currentTarget.value)}
+                  />
+                  <TextInput
+                    label="Notes"
+                    value={notesDraft}
+                    onChange={(event) => setNotesDraft(event.currentTarget.value)}
+                  />
+                  <Group justify="flex-end" gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      loading={helpOverrideMutation.isPending}
+                      disabled={!helpRuDraft.trim()}
+                      onClick={() =>
+                        helpOverrideMutation.mutate({
+                          primaryName: selectedKnownOption.primaryName,
+                          helpRu: helpRuDraft.trim(),
+                          notes: notesDraft.trim() || null,
+                        })
+                      }
+                    >
+                      Save help
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="red"
+                      loading={deleteHelpOverrideMutation.isPending}
+                      disabled={selectedKnownOption.helpRuSource !== "override"}
+                      onClick={() => deleteHelpOverrideMutation.mutate(selectedKnownOption.primaryName)}
+                    >
+                      Reset
+                    </Button>
+                  </Group>
                   {selectedKnownOption.allowedValues.length > 0 && (
                     <Text c="dimmed" size="xs">
                       Values: {selectedKnownOption.allowedValues.join(", ")}
+                    </Text>
+                  )}
+                  {selectedKnownOption.notes && (
+                    <Text c="dimmed" size="xs">
+                      Notes: {selectedKnownOption.notes}
                     </Text>
                   )}
                   <Text c="dimmed" size="xs">

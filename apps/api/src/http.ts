@@ -3,6 +3,7 @@ import {
   BuildSettingsSchema,
   InstanceCreateSchema,
   InstanceUpdateSchema,
+  LlamaArgumentHelpOverrideUpdateSchema,
   ModelPresetUpdateSchema,
   ModelScanSettingsSchema,
   type ProcessEvent,
@@ -12,6 +13,11 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 
 import { getLlamaArgumentCatalog } from "./arguments/catalog.js";
+import {
+  deleteArgumentHelpOverride,
+  listArgumentHelpOverrides,
+  saveArgumentHelpOverride,
+} from "./arguments/repository.js";
 import { tailBuildLog } from "./build/logs.js";
 import { getBuildJob, getBuildSettings, listBuildJobs, saveBuildSettings } from "./build/repository.js";
 import { buildRunner } from "./build/runner.js";
@@ -50,10 +56,31 @@ app.get("/api/instances", (c) => {
 
 app.get("/api/llama-args", (c) => {
   try {
-    return c.json({ data: getLlamaArgumentCatalog(c.req.query("binaryPath")) });
+    return c.json({
+      data: getLlamaArgumentCatalog(c.req.query("binaryPath"), {
+        refresh: c.req.query("refresh") === "true",
+      }),
+    });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
+});
+
+app.get("/api/llama-args/overrides", (c) => {
+  return c.json({ data: listArgumentHelpOverrides() });
+});
+
+app.put("/api/llama-args/overrides", async (c) => {
+  const parsed = LlamaArgumentHelpOverrideUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  return c.json({ data: saveArgumentHelpOverride(parsed.data) });
+});
+
+app.delete("/api/llama-args/overrides/:primaryName", (c) => {
+  const deleted = deleteArgumentHelpOverride(decodeURIComponent(c.req.param("primaryName")));
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.get("/api/build/settings", (c) => {

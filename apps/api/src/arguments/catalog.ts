@@ -6,6 +6,12 @@ import { spawnSync } from "node:child_process";
 
 import { config } from "../config.js";
 import { getBuildSettings, listBuildJobs } from "../build/repository.js";
+import {
+  getCachedArgumentCatalog,
+  listArgumentHelpOverrides,
+  saveArgumentCatalog,
+  type CachedArgumentCatalog,
+} from "./repository.js";
 
 type ParsedHelpOption = {
   category: string;
@@ -289,28 +295,121 @@ function toOption(parsed: ParsedHelpOption): LlamaArgumentOption | null {
     allowedValues: values,
     help,
     helpRu: helpRuOverlay[name] ?? `Оригинальная справка llama.cpp: ${help || parsed.optionText}`,
+    helpRuSource: helpRuOverlay[name] ? "builtin" : "fallback",
+    notes: null,
     deprecated: /\bdeprecated\b/i.test(parsed.help) || /\bdeprecated\b/i.test(parsed.optionText),
   };
 }
 
-export function getLlamaArgumentCatalog(binaryPathInput?: string): LlamaArgumentCatalog {
-  const binaryPath = resolve(binaryPathInput || defaultBinaryPath());
-  const helpOutput = runHelp(binaryPath);
-  const hash = createHash("sha256").update(helpOutput).digest("hex");
+function binaryStat(binaryPath: string) {
   const stat = statSync(binaryPath);
+  return {
+    binarySize: stat.size,
+    binaryMtimeMs: String(stat.mtimeMs),
+    binaryModifiedAt: stat.mtime.toISOString(),
+  };
+}
+
+function isCacheCurrent(cached: CachedArgumentCatalog, stat: ReturnType<typeof binaryStat>) {
+  return cached.binarySize === stat.binarySize && cached.binaryMtimeMs === stat.binaryMtimeMs;
+}
+
+function optionFallbackHelpRu(option: LlamaArgumentOption) {
+  return `Оригинальная справка llama.cpp: ${option.help || option.names.join(", ")}`;
+}
+
+function applyHelpOverrides(options: LlamaArgumentOption[]) {
+  const overrides = new Map(listArgumentHelpOverrides().map((override) => [override.primaryName, override]));
+  return options.map((option) => {
+    const override = overrides.get(option.primaryName);
+    if (override) {
+      return {
+        ...option,
+        helpRu: override.helpRu,
+        helpRuSource: "override" as const,
+        notes: override.notes,
+      };
+    }
+
+    const builtinHelp = helpRuOverlay[option.primaryName];
+    if (builtinHelp) {
+      return {
+        ...option,
+        helpRu: builtinHelp,
+        helpRuSource: "builtin" as const,
+        notes: null,
+      };
+    }
+
+    return {
+      ...option,
+      helpRu: optionFallbackHelpRu(option),
+      helpRuSource: "fallback" as const,
+      notes: null,
+    };
+  });
+}
+
+function toCatalog(input: {
+  binaryPath: string;
+  cached: CachedArgumentCatalog;
+  cache: LlamaArgumentCatalog["cache"];
+}): LlamaArgumentCatalog {
+  return {
+    binaryPath: input.binaryPath,
+    generatedAt: input.cached.generatedAt,
+    source: {
+      kind: "help",
+      command: [input.binaryPath, "--help"],
+      hash: input.cached.helpHash,
+      binarySize: input.cached.binarySize,
+      binaryModifiedAt: input.cached.binaryModifiedAt,
+    },
+    cache: input.cache,
+    options: applyHelpOverrides(input.cached.options),
+  };
+}
+
+function generateCatalog(binaryPath: string, stat: ReturnType<typeof binaryStat>) {
+  const helpOutput = runHelp(binaryPath);
+  const helpHash = createHash("sha256").update(helpOutput).digest("hex");
   const options = parseHelpOutput(helpOutput)
     .map(toOption)
     .filter((option): option is LlamaArgumentOption => Boolean(option))
     .sort((left, right) => left.category.localeCompare(right.category) || left.primaryName.localeCompare(right.primaryName));
 
-  return {
+  return saveArgumentCatalog({
     binaryPath,
-    generatedAt: nowIso(),
-    source: {
-      kind: "help",
-      command: [binaryPath, "--help"],
-      hash: `${hash}:${stat.size}:${stat.mtimeMs}`,
-    },
+    binarySize: stat.binarySize,
+    binaryMtimeMs: stat.binaryMtimeMs,
+    binaryModifiedAt: stat.binaryModifiedAt,
+    helpHash,
     options,
-  };
+    generatedAt: nowIso(),
+  });
+}
+
+export function getLlamaArgumentCatalog(binaryPathInput?: string, input?: { refresh?: boolean }): LlamaArgumentCatalog {
+  const binaryPath = resolve(binaryPathInput || defaultBinaryPath());
+  if (!existsSync(binaryPath)) {
+    throw new Error(`llama-server binary not found: ${binaryPath}`);
+  }
+
+  const stat = binaryStat(binaryPath);
+  const cached = getCachedArgumentCatalog(binaryPath);
+  const stale = cached ? !isCacheCurrent(cached, stat) : false;
+
+  if (cached && !stale && !input?.refresh) {
+    return toCatalog({
+      binaryPath,
+      cached,
+      cache: { hit: true, refreshed: false, stale: false },
+    });
+  }
+
+  return toCatalog({
+    binaryPath,
+    cached: generateCatalog(binaryPath, stat),
+    cache: { hit: false, refreshed: true, stale },
+  });
 }

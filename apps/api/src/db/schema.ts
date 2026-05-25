@@ -77,3 +77,20 @@ export const llamaBuildJobs = sqliteTable("llama_build_jobs", {
   binaryPath: text("binary_path"),
   error: text("error"),
 });
+
+export const llamaArgumentCatalogs = sqliteTable("llama_argument_catalogs", {
+  binaryPath: text("binary_path").primaryKey(),
+  binarySize: text("binary_size").notNull(),
+  binaryMtimeMs: text("binary_mtime_ms").notNull(),
+  binaryModifiedAt: text("binary_modified_at").notNull(),
+  helpHash: text("help_hash").notNull(),
+  optionsJson: text("options_json").notNull(),
+  generatedAt: text("generated_at").notNull(),
+});
+
+export const llamaArgumentHelpOverrides = sqliteTable("llama_argument_help_overrides", {
+  primaryName: text("primary_name").primaryKey(),
+  helpRu: text("help_ru").notNull(),
+  notes: text("notes"),
+  updatedAt: text("updated_at").notNull(),
+});

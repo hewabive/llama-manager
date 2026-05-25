@@ -8,6 +8,8 @@ import type {
   InstanceUpdate,
   InstanceLogSummary,
   LlamaArgumentCatalog,
+  LlamaArgumentHelpOverride,
+  LlamaArgumentHelpOverrideUpdate,
   LlamaProbe,
   LogTail,
   ModelPreset,
@@ -40,9 +42,31 @@ export async function listInstances() {
   return request<{ data: Instance[] }>("/api/instances");
 }
 
-export async function getLlamaArguments(binaryPath?: string) {
-  const params = binaryPath ? `?${new URLSearchParams({ binaryPath }).toString()}` : "";
-  return request<{ data: LlamaArgumentCatalog }>(`/api/llama-args${params}`);
+export async function getLlamaArguments(binaryPath?: string, refresh = false) {
+  const params = new URLSearchParams({
+    ...(binaryPath ? { binaryPath } : {}),
+    ...(refresh ? { refresh: "true" } : {}),
+  });
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return request<{ data: LlamaArgumentCatalog }>(`/api/llama-args${query}`);
+}
+
+export async function listLlamaArgumentOverrides() {
+  return request<{ data: LlamaArgumentHelpOverride[] }>("/api/llama-args/overrides");
+}
+
+export async function updateLlamaArgumentOverride(input: LlamaArgumentHelpOverrideUpdate) {
+  return request<{ data: LlamaArgumentHelpOverride }>("/api/llama-args/overrides", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteLlamaArgumentOverride(primaryName: string) {
+  const name = encodeURIComponent(primaryName);
+  return request<{ data: { deleted: boolean } }>(`/api/llama-args/overrides/${name}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getBuildSettings() {
