@@ -66,6 +66,7 @@ import {
   getRuntime,
   instanceAction,
   instanceEventsUrl,
+  listInstanceHealthSummaries,
   listBuildJobs,
   listInstances,
   scanModels,
@@ -118,14 +119,8 @@ function healthStatusColor(status: InstanceHealthSummary["status"]) {
   return "gray";
 }
 
-function InstanceHealthBadge(props: { instance: Instance }) {
-  const healthQuery = useQuery({
-    queryKey: ["instance-health-summary", props.instance.id],
-    queryFn: () => getInstanceHealthSummary(props.instance.id),
-    refetchInterval: 3_000,
-  });
-  const health = healthQuery.data?.data;
-
+function InstanceHealthBadge(props: { instance: Instance; health: InstanceHealthSummary | undefined }) {
+  const health = props.health;
   return (
     <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
       <Badge color={health ? healthStatusColor(health.status) : statusColor(props.instance.status)} variant="light">
@@ -1161,6 +1156,8 @@ function PresetBuilderPanel() {
       }),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      await queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary", result.data.id] });
       await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
       await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
       notifications.show({ title: "Router instance created", message: result.data.name });
@@ -1472,13 +1469,15 @@ function InstanceFormModal(props: {
       }
       return createInstance(input as InstanceCreate);
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       props.onClose();
       form.reset();
       setArgRows(defaultRows());
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-runtime", props.instance?.id] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-llama", props.instance?.id] });
+      await queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary", result.data.id] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-runtime", result.data.id] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-llama", result.data.id] });
       notifications.show({
         title: isEdit ? "Instance updated" : "Instance created",
         message: "Configuration saved",
@@ -1752,14 +1751,51 @@ function InstanceFormModal(props: {
   );
 }
 
-function InstanceActions(props: { instance: Instance; onEdit: () => void }) {
+type InstanceActionName = "start" | "stop" | "restart";
+
+function actionAllowed(action: InstanceActionName, health: InstanceHealthSummary | undefined) {
+  if (!health) return false;
+  if (action === "start") return health.actions.canStart;
+  if (action === "stop") return health.actions.canStop;
+  return health.actions.canRestart;
+}
+
+function actionTooltip(action: InstanceActionName, health: InstanceHealthSummary | undefined, pending: boolean) {
+  if (pending) return "Action is in progress";
+  if (!health) return "Health summary is loading";
+  if (actionAllowed(action, health)) {
+    if (action === "start") return "Start";
+    if (action === "stop") return "Stop";
+    return "Restart";
+  }
+  if ((action === "start" || action === "restart") && !health.preflight.ok) {
+    const error = health.preflight.issues.find((issue) => issue.level === "error");
+    return error?.message ?? "Preflight must pass before starting";
+  }
+  if (health.status === "stale") {
+    return action === "stop" ? "Stop unmanaged stale process" : "Stop the stale process before starting another";
+  }
+  if (action === "stop") return "No running process to stop";
+  if (action === "restart") return "No valid running process to restart";
+  return health.reason;
+}
+
+function InstanceActions(props: { instance: Instance; health: InstanceHealthSummary | undefined; onEdit: () => void }) {
   const queryClient = useQueryClient();
+  const health = props.health;
 
   const actionMutation = useMutation({
-    mutationFn: (action: "start" | "stop" | "restart") => instanceAction(props.instance.id, action),
+    mutationFn: (action: InstanceActionName) => instanceAction(props.instance.id, action),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+        queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-health-summary", props.instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-runtime", props.instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-llama", props.instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-status-summary", props.instance.id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-logs", props.instance.id] }),
+      ]);
     },
     onError: (error) => {
       notifications.show({ color: "red", title: "Action failed", message: (error as Error).message });
@@ -1769,10 +1805,16 @@ function InstanceActions(props: { instance: Instance; onEdit: () => void }) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteInstance(props.instance.id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+        queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-health-summary", props.instance.id] }),
+      ]);
     },
   });
+  const startDisabled = actionMutation.isPending || !actionAllowed("start", health);
+  const stopDisabled = actionMutation.isPending || !actionAllowed("stop", health);
+  const restartDisabled = actionMutation.isPending || !actionAllowed("restart", health);
 
   return (
     <Group gap={4} justify="flex-end" wrap="nowrap" onClick={(event) => event.stopPropagation()}>
@@ -1781,29 +1823,32 @@ function InstanceActions(props: { instance: Instance; onEdit: () => void }) {
           <Pencil size={16} />
         </ActionIcon>
       </Tooltip>
-      <Tooltip label="Start">
+      <Tooltip label={actionTooltip("start", health, actionMutation.isPending)}>
         <ActionIcon
           variant="subtle"
           color="green"
+          disabled={startDisabled}
           onClick={() => actionMutation.mutate("start")}
           loading={actionMutation.isPending}
         >
           <Triangle size={16} fill="currentColor" />
         </ActionIcon>
       </Tooltip>
-      <Tooltip label="Stop">
+      <Tooltip label={actionTooltip("stop", health, actionMutation.isPending)}>
         <ActionIcon
           variant="subtle"
           color="yellow"
+          disabled={stopDisabled}
           onClick={() => actionMutation.mutate("stop")}
           loading={actionMutation.isPending}
         >
           <Square size={16} />
         </ActionIcon>
       </Tooltip>
-      <Tooltip label="Restart">
+      <Tooltip label={actionTooltip("restart", health, actionMutation.isPending)}>
         <ActionIcon
           variant="subtle"
+          disabled={restartDisabled}
           onClick={() => actionMutation.mutate("restart")}
           loading={actionMutation.isPending}
         >
@@ -1867,14 +1912,14 @@ function propsSummary(probe: LlamaProbe | undefined): Array<[string, unknown]> {
   return entries.filter(([, value]) => value !== undefined && value !== null);
 }
 
-function InstanceDetails(props: { instance: Instance | null }) {
+function InstanceDetails(props: { instance: Instance | null; health: InstanceHealthSummary | null | undefined }) {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
   const id = props.instance?.id;
 
   const healthQuery = useQuery({
     queryKey: ["instance-health-summary", id],
     queryFn: () => getInstanceHealthSummary(id!),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && !props.health,
     refetchInterval: 3_000,
   });
 
@@ -1938,7 +1983,7 @@ function InstanceDetails(props: { instance: Instance | null }) {
     };
   }, [id]);
 
-  const health = healthQuery.data?.data;
+  const health = props.health ?? healthQuery.data?.data;
   const runtime = health?.runtime ?? runtimeQuery.data?.data;
   const preflight = health?.preflight ?? preflightQuery.data?.data;
   const llama = health?.llama ?? llamaQuery.data?.data;
@@ -2163,9 +2208,19 @@ export function App() {
     queryFn: listInstances,
     refetchInterval: 2_500,
   });
+  const healthSummariesQuery = useQuery({
+    queryKey: ["instances-health-summary"],
+    queryFn: listInstanceHealthSummaries,
+    refetchInterval: 3_000,
+  });
 
   const instances = instancesQuery.data?.data ?? [];
+  const healthByInstanceId = useMemo(
+    () => new Map((healthSummariesQuery.data?.data ?? []).map((health) => [health.instanceId, health])),
+    [healthSummariesQuery.data?.data],
+  );
   const selectedInstance = instances.find((instance) => instance.id === selectedId) ?? instances[0] ?? null;
+  const selectedHealth = selectedInstance ? healthByInstanceId.get(selectedInstance.id) : null;
 
   const useModelMutation = useMutation({
     mutationFn: ({ instance, model }: { instance: Instance; model: GgufModel }) =>
@@ -2173,6 +2228,8 @@ export function App() {
     onSuccess: async (result) => {
       setSelectedId(result.data.id);
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
+      await queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] });
+      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary", result.data.id] });
       notifications.show({
         title: "Model applied",
         message: `Updated ${result.data.name}`,
@@ -2197,7 +2254,13 @@ export function App() {
           </Group>
           <Group gap="xs">
             <Tooltip label="Refresh">
-              <ActionIcon variant="subtle" onClick={() => void instancesQuery.refetch()}>
+              <ActionIcon
+                variant="subtle"
+                onClick={() => {
+                  void instancesQuery.refetch();
+                  void healthSummariesQuery.refetch();
+                }}
+              >
                 <RefreshCw size={18} />
               </ActionIcon>
             </Tooltip>
@@ -2246,7 +2309,7 @@ export function App() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <InstanceHealthBadge instance={instance} />
+                      <InstanceHealthBadge instance={instance} health={healthByInstanceId.get(instance.id)} />
                     </Table.Td>
                     <Table.Td>{instance.pid ?? "-"}</Table.Td>
                     <Table.Td>
@@ -2256,7 +2319,7 @@ export function App() {
                       <Code>{JSON.stringify(instance.args)}</Code>
                     </Table.Td>
                     <Table.Td>
-                      <InstanceActions instance={instance} onEdit={() => setEditingInstance(instance)} />
+                      <InstanceActions instance={instance} health={healthByInstanceId.get(instance.id)} onEdit={() => setEditingInstance(instance)} />
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -2298,7 +2361,7 @@ export function App() {
 
           <PresetBuilderPanel />
 
-          <InstanceDetails instance={selectedInstance} />
+          <InstanceDetails instance={selectedInstance} health={selectedHealth} />
         </Stack>
       </AppShell.Main>
 

@@ -58,6 +58,10 @@ app.get("/api/instances", (c) => {
   return c.json({ data: listInstances() });
 });
 
+app.get("/api/instances/health-summary", async (c) => {
+  return c.json({ data: await Promise.all(listInstances().map((instance) => getInstanceHealthSummary(instance))) });
+});
+
 app.get("/api/llama-args", (c) => {
   try {
     return c.json({
@@ -338,15 +342,23 @@ app.delete("/api/instances/:id", (c) => {
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
+function staleProcessConflict(instanceId: string) {
+  const latestRun = latestProcessRun(instanceId);
+  const stalePid = latestRun?.status === "stale" && latestRun.pid ? Number(latestRun.pid) : null;
+  if (stalePid && Number.isFinite(stalePid) && isPidAlive(stalePid)) {
+    return `instance has unmanaged stale process pid=${stalePid}; stop it before starting another`;
+  }
+  return null;
+}
+
 app.post("/api/instances/:id/start", (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
-  const latestRun = latestProcessRun(instance.id);
-  const stalePid = latestRun?.status === "stale" && latestRun.pid ? Number(latestRun.pid) : null;
-  if (stalePid && Number.isFinite(stalePid) && isPidAlive(stalePid)) {
-    return c.json({ error: `instance has unmanaged stale process pid=${stalePid}; stop it before starting another` }, 409);
+  const staleConflict = staleProcessConflict(instance.id);
+  if (staleConflict) {
+    return c.json({ error: staleConflict }, 409);
   }
   try {
     return c.json({ data: supervisor.start(instance) });
@@ -409,6 +421,10 @@ app.post("/api/instances/:id/restart", async (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
+  }
+  const staleConflict = staleProcessConflict(instance.id);
+  if (staleConflict) {
+    return c.json({ error: staleConflict }, 409);
   }
   try {
     return c.json({ data: await supervisor.restart(instance) });

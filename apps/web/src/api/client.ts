@@ -56,6 +56,10 @@ export async function listInstances() {
   return request<{ data: Instance[] }>("/api/instances");
 }
 
+export async function listInstanceHealthSummaries() {
+  return request<{ data: InstanceHealthSummary[] }>("/api/instances/health-summary");
+}
+
 export async function getLlamaArguments(binaryPath?: string, refresh = false) {
   const params = new URLSearchParams({
     ...(binaryPath ? { binaryPath } : {}),

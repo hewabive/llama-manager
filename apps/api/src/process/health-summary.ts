@@ -43,8 +43,8 @@ function durableRuntime(instance: Instance): RuntimeState {
 
 function actionsFor(runtime: RuntimeState, preflightOk: boolean): InstanceHealthActions {
   const canStart = preflightOk && ["stopped", "exited", "error"].includes(runtime.status);
-  const canStop = ["starting", "running", "stopping", "stale"].includes(runtime.status);
-  const canRestart = preflightOk && ["starting", "running", "stale", "error"].includes(runtime.status);
+  const canStop = ["starting", "running", "stale"].includes(runtime.status);
+  const canRestart = preflightOk && ["starting", "running", "error"].includes(runtime.status);
 
   return {
     canStart,
