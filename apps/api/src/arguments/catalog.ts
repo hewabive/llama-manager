@@ -163,11 +163,24 @@ function parseHelpOutput(helpOutput: string): ParsedHelpOption[] {
     const startsOption = line.trimStart().startsWith("-") && line.search(/\S/) < 10;
 
     if (fixedOptionPart.startsWith("-")) {
+      let optionText = fixedOptionPart;
+      let help = fixedHelpPart;
+      const optionHasOpenHint =
+        (optionText.includes("{") && !optionText.includes("}")) ||
+        (optionText.includes("[") && !optionText.includes("]")) ||
+        (optionText.includes("<") && !optionText.includes(">"));
+
+      if (optionHasOpenHint && help) {
+        const [firstHelpToken, ...restHelp] = help.split(/\s+/);
+        optionText = `${optionText}${firstHelpToken ?? ""}`;
+        help = restHelp.join(" ");
+      }
+
       flush();
       current = {
         category,
-        optionText: fixedOptionPart,
-        help: fixedHelpPart,
+        optionText,
+        help,
       };
       continue;
     }
@@ -201,7 +214,7 @@ function valueHintFromOptionText(optionText: string, names: string[]) {
   for (const name of names) {
     rest = rest.replace(name, " ");
   }
-  rest = rest.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+  rest = rest.replace(/(^|\s),+\s*/g, " ").replace(/\s+/g, " ").trim();
   return rest || null;
 }
 
