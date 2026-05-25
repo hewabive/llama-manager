@@ -1,0 +1,20 @@
+{
+  "name": "llama-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @llama-manager/core build && pnpm --parallel --filter @llama-manager/api --filter @llama-manager/web dev",
+    "build": "pnpm -r build",
+    "check": "pnpm --filter @llama-manager/core build && pnpm -r check",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.9.3"
+  }
+}

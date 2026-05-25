@@ -1,0 +1,30 @@
+{
+  "name": "@llama-manager/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -p tsconfig.json && vite build",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@llama-manager/core": "workspace:*",
+    "@mantine/core": "^8.3.9",
+    "@mantine/form": "^8.3.9",
+    "@mantine/hooks": "^8.3.9",
+    "@mantine/notifications": "^8.3.9",
+    "@tanstack/react-query": "^5.90.12",
+    "lucide-react": "^0.555.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4"
+  }
+}

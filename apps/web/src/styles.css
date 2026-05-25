@@ -1,0 +1,18 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--mantine-color-body);
+}
+
+code {
+  white-space: nowrap;
+}
+
+.selected-row td {
+  background: var(--mantine-color-dark-5);
+}

@@ -1,0 +1,79 @@
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const instances = sqliteTable("instances", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  binaryPath: text("binary_path").notNull(),
+  cwd: text("cwd"),
+  argsJson: text("args_json").notNull(),
+  envJson: text("env_json").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const processRuns = sqliteTable("process_runs", {
+  id: text("id").primaryKey(),
+  instanceId: text("instance_id")
+    .notNull()
+    .references(() => instances.id, { onDelete: "cascade" }),
+  pid: text("pid"),
+  status: text("status").notNull(),
+  startedAt: text("started_at").notNull(),
+  stoppedAt: text("stopped_at"),
+  exitCode: text("exit_code"),
+  logPath: text("log_path").notNull(),
+});
+
+export const modelCache = sqliteTable("model_cache", {
+  path: text("path").primaryKey(),
+  name: text("name").notNull(),
+  directory: text("directory").notNull(),
+  sizeBytes: text("size_bytes").notNull(),
+  modifiedAt: text("modified_at").notNull(),
+  isMmproj: text("is_mmproj").notNull(),
+  mmprojPathsJson: text("mmproj_paths_json").notNull(),
+  metadataJson: text("metadata_json").notNull(),
+  error: text("error"),
+  scannedAt: text("scanned_at").notNull(),
+});
+
+export const modelScanSettings = sqliteTable("model_scan_settings", {
+  id: text("id").primaryKey(),
+  directory: text("directory").notNull(),
+  maxDepth: text("max_depth").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const modelPresets = sqliteTable("model_presets", {
+  id: text("id").primaryKey(),
+  path: text("path").notNull(),
+  entriesJson: text("entries_json").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const llamaBuildSettings = sqliteTable("llama_build_settings", {
+  id: text("id").primaryKey(),
+  repoPath: text("repo_path").notNull(),
+  buildDir: text("build_dir").notNull(),
+  buildType: text("build_type").notNull(),
+  cuda: text("cuda").notNull(),
+  native: text("native").notNull(),
+  extraCmakeArgsJson: text("extra_cmake_args_json").notNull(),
+  target: text("target").notNull(),
+  parallelJobs: text("parallel_jobs"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const llamaBuildJobs = sqliteTable("llama_build_jobs", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  settingsJson: text("settings_json").notNull(),
+  stepsJson: text("steps_json").notNull(),
+  currentStep: text("current_step"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+  exitCode: text("exit_code"),
+  logPath: text("log_path").notNull(),
+  binaryPath: text("binary_path"),
+  error: text("error"),
+});
