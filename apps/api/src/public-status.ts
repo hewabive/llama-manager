@@ -7,6 +7,7 @@ import type {
 import { config } from "./config.js";
 import { listInstances } from "./instances/repository.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
+import { getSystemResources } from "./system/resources.js";
 
 function publicSummary(health: InstanceHealthSummary) {
   switch (health.status) {
@@ -70,6 +71,7 @@ export async function getPublicStatus(): Promise<PublicStatus> {
       authRequired: Boolean(config.auth.password || config.auth.passwordHash),
       checkedAt: new Date().toISOString(),
     },
+    resources: getSystemResources(),
     instances: {
       total: items.length,
       running: items.filter((item) => isRunning(item.status)).length,

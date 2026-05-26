@@ -286,6 +286,33 @@ export const NetworkInterfacesResultSchema = z.object({
   interfaces: z.array(NetworkInterfaceAddressSchema),
 });
 
+export const SystemMemorySchema = z.object({
+  totalBytes: z.number().int().nonnegative(),
+  availableBytes: z.number().int().nonnegative(),
+  usedBytes: z.number().int().nonnegative(),
+  usedRatio: z.number().min(0).max(1),
+  source: z.enum(["proc-meminfo", "node-os"]),
+});
+
+export const SystemAcceleratorSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  vendor: z.string().nullable(),
+  kind: z.enum(["gpu", "accelerator"]),
+  totalMemoryBytes: z.number().int().nonnegative().nullable(),
+  availableMemoryBytes: z.number().int().nonnegative().nullable(),
+  memoryUsedRatio: z.number().min(0).max(1).nullable(),
+  utilizationPercent: z.number().min(0).max(100).nullable(),
+  temperatureC: z.number().nullable(),
+  source: z.string(),
+});
+
+export const SystemResourcesSchema = z.object({
+  checkedAt: z.string(),
+  memory: SystemMemorySchema,
+  accelerators: z.array(SystemAcceleratorSchema),
+});
+
 export const AuthStateSchema = z.object({
   enabled: z.boolean(),
   authenticated: z.boolean(),
@@ -309,6 +336,7 @@ export const PublicStatusSchema = z.object({
     authRequired: z.boolean(),
     checkedAt: z.string(),
   }),
+  resources: SystemResourcesSchema,
   instances: z.object({
     total: z.number().int().nonnegative(),
     running: z.number().int().nonnegative(),
@@ -475,6 +503,9 @@ export type NetworkInterfaceAddress = z.infer<
 export type NetworkInterfacesResult = z.infer<
   typeof NetworkInterfacesResultSchema
 >;
+export type SystemMemory = z.infer<typeof SystemMemorySchema>;
+export type SystemAccelerator = z.infer<typeof SystemAcceleratorSchema>;
+export type SystemResources = z.infer<typeof SystemResourcesSchema>;
 export type AuthState = z.infer<typeof AuthStateSchema>;
 export type AdminLogin = z.infer<typeof AdminLoginSchema>;
 export type PublicInstanceStatus = z.infer<typeof PublicInstanceStatusSchema>;

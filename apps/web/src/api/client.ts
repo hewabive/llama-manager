@@ -28,6 +28,7 @@ import type {
   PublicStatus,
   RouterInstanceCreate,
   RuntimeState,
+  SystemResources,
 } from "@llama-manager/core";
 
 const apiBase = import.meta.env.VITE_API_URL ?? "";
@@ -142,6 +143,10 @@ export async function listInstanceHealthSummaries() {
 
 export async function listNetworkInterfaces() {
   return request<{ data: NetworkInterfacesResult }>("/api/network/interfaces");
+}
+
+export async function getSystemResources() {
+  return request<{ data: SystemResources }>("/api/system/resources");
 }
 
 export async function listExternalLlamaProcesses() {

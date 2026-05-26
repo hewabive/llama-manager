@@ -17,8 +17,8 @@ Default services:
 ## Public/admin mode
 
 The default route is `/#/status`: a public, redacted diagnostics page. It shows
-aggregate instance state and sanitized instance names/statuses, but not paths,
-arguments, logs, PIDs or process details.
+aggregate instance state, RAM usage and sanitized instance names/statuses, but
+not paths, arguments, logs, PIDs or process details.
 
 Admin routes remain open for local development unless a password is configured:
 

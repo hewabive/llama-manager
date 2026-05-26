@@ -28,6 +28,8 @@
   `LLAMA_MANAGER_ADMIN_PASSWORD_HASH` is configured.
 - The public status route exposes only redacted diagnostics; admin routes expose
   process control, paths, arguments and logs after login.
+- System resources are modeled as a shared contract with RAM data now and an
+  accelerator list reserved for GPU/VRAM inventory later.
 - `systemd` is not the source of truth; it can be added later as an optional Linux adapter.
 - Instances are managed directly as child processes.
 - SQLite stores durable configuration; running process state is in memory and reconstructed from health checks later.

@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 
 import { getPublicStatus } from "../../api/client";
+import { SystemResourcesPanel } from "../components/SystemResourcesPanel";
 
 function statusColor(status: PublicInstanceStatus["status"]) {
   if (status === "ready") return "green";
@@ -59,6 +60,11 @@ export function PublicStatusView() {
         <StatCard label="Errors" value={status?.instances.error ?? 0} />
         <StatCard label="Stopped" value={status?.instances.stopped ?? 0} />
       </SimpleGrid>
+
+      <SystemResourcesPanel
+        resources={status?.resources}
+        fetching={statusQuery.isFetching}
+      />
 
       <Paper withBorder p="md" radius="sm">
         <Stack gap="sm">

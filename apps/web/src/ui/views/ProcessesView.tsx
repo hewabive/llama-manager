@@ -19,9 +19,11 @@ import { AlertTriangle, Power, RefreshCw, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 
 import {
+  getSystemResources,
   killExternalLlamaProcess,
   listExternalLlamaProcesses,
 } from "../../api/client";
+import { SystemResourcesPanel } from "../components/SystemResourcesPanel";
 
 type KillIntent = {
   process: ExternalLlamaProcess;
@@ -100,6 +102,11 @@ export function ProcessesView() {
     queryFn: listExternalLlamaProcesses,
     refetchInterval: 4_000,
   });
+  const resourcesQuery = useQuery({
+    queryKey: ["system-resources"],
+    queryFn: getSystemResources,
+    refetchInterval: 5_000,
+  });
 
   const result = processesQuery.data?.data;
   const processes = result?.processes ?? [];
@@ -131,6 +138,11 @@ export function ProcessesView() {
 
   return (
     <>
+      <SystemResourcesPanel
+        resources={resourcesQuery.data?.data}
+        fetching={resourcesQuery.isFetching}
+      />
+
       <Paper withBorder p="md" radius="sm">
         <Stack gap="md">
           <Group justify="space-between" align="flex-start">

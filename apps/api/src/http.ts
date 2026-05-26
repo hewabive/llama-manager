@@ -75,6 +75,7 @@ import { latestProcessRun } from "./process/runs-repository.js";
 import { stopStaleProcess } from "./process/stale.js";
 import { supervisor } from "./process/supervisor.js";
 import { listNetworkInterfaceAddresses } from "./system/network.js";
+import { getSystemResources } from "./system/resources.js";
 
 export const app = new Hono();
 
@@ -134,6 +135,10 @@ app.post("/api/auth/logout", (c) => {
 
 app.get("/api/network/interfaces", (c) => {
   return c.json({ data: { interfaces: listNetworkInterfaceAddresses() } });
+});
+
+app.get("/api/system/resources", (c) => {
+  return c.json({ data: getSystemResources() });
 });
 
 app.get("/api/system/llama-processes", async (c) => {
