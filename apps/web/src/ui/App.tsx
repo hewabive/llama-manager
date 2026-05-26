@@ -46,7 +46,7 @@ import {
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Hammer, Pencil, Plus, RefreshCw, RotateCcw, Save, Square, Trash2, Triangle, X } from "lucide-react";
+import { ExternalLink, Hammer, Pencil, Plus, RefreshCw, RotateCcw, Save, Square, Trash2, Triangle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -745,6 +745,64 @@ function argString(args: Instance["args"], key: string) {
     return "";
   }
   return String(value);
+}
+
+function apiPrefixFromArgs(args: Instance["args"]) {
+  const raw = argString(args, "--api-prefix").trim();
+  if (!raw) {
+    return "";
+  }
+  const normalized = raw.startsWith("/") ? raw : `/${raw}`;
+  return normalized.replace(/\/$/, "");
+}
+
+function browserReachableHost(host: string) {
+  if (host === "0.0.0.0" || host === "::") {
+    const pageHost = typeof window === "undefined" ? "" : window.location.hostname;
+    return pageHost && pageHost !== "0.0.0.0" && pageHost !== "::" ? pageHost : "127.0.0.1";
+  }
+  return host;
+}
+
+function urlHost(host: string) {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+}
+
+function llamaServerWebUrl(instance: Instance) {
+  const rawHost = argString(instance.args, "--host") || "127.0.0.1";
+  if (rawHost.endsWith(".sock")) {
+    return null;
+  }
+
+  const port = instancePort(instance) ?? 8080;
+  return `http://${urlHost(browserReachableHost(rawHost))}:${port}${apiPrefixFromArgs(instance.args)}`;
+}
+
+function canOpenLlamaWebUi(health: InstanceHealthSummary | undefined, url: string | null) {
+  if (!health || !url) {
+    return false;
+  }
+  return ["starting", "loading", "ready", "degraded", "stale"].includes(health.status);
+}
+
+function llamaWebUiTooltip(health: InstanceHealthSummary | undefined, url: string | null) {
+  if (!url) {
+    return "HTTP URL is unavailable for this instance";
+  }
+  if (!health) {
+    return "Health summary is loading";
+  }
+  if (canOpenLlamaWebUi(health, url)) {
+    return `Open ${url}`;
+  }
+  if (health.status === "stopped") {
+    return "Start the instance before opening Web UI";
+  }
+  return health.reason;
+}
+
+function openUrlInNewTab(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function instancePort(instance: Instance) {
@@ -2219,9 +2277,25 @@ function InstanceActions(props: {
   const startDisabled = actionMutation.isPending || !actionAllowed("start", health);
   const stopDisabled = actionMutation.isPending || !actionAllowed("stop", health);
   const restartDisabled = actionMutation.isPending || !actionAllowed("restart", health);
+  const webUiUrl = llamaServerWebUrl(props.instance);
+  const webUiDisabled = !canOpenLlamaWebUi(health, webUiUrl);
 
   return (
     <Group gap={4} justify="flex-end" wrap="nowrap" onClick={(event) => event.stopPropagation()}>
+      <Tooltip label={llamaWebUiTooltip(health, webUiUrl)}>
+        <ActionIcon
+          variant="subtle"
+          color="blue"
+          disabled={webUiDisabled}
+          onClick={() => {
+            if (webUiUrl) {
+              openUrlInNewTab(webUiUrl);
+            }
+          }}
+        >
+          <ExternalLink size={16} />
+        </ActionIcon>
+      </Tooltip>
       <Tooltip label="Edit">
         <ActionIcon variant="subtle" onClick={props.onEdit}>
           <Pencil size={16} />
@@ -2562,6 +2636,9 @@ function InstanceDetails(props: {
     );
   }
 
+  const webUiUrl = llamaServerWebUrl(props.instance);
+  const webUiDisabled = !canOpenLlamaWebUi(health, webUiUrl);
+
   return (
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
@@ -2572,11 +2649,28 @@ function InstanceDetails(props: {
               {props.instance.binaryPath}
             </Text>
           </div>
-          <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
-            <Badge color={health ? healthStatusColor(health.status) : statusColor(runtime?.status ?? props.instance.status)} variant="light">
-              {health?.status ?? runtime?.status ?? props.instance.status}
-            </Badge>
-          </Tooltip>
+          <Group gap="xs">
+            <Tooltip label={llamaWebUiTooltip(health, webUiUrl)}>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<ExternalLink size={14} />}
+                disabled={webUiDisabled}
+                onClick={() => {
+                  if (webUiUrl) {
+                    openUrlInNewTab(webUiUrl);
+                  }
+                }}
+              >
+                Web UI
+              </Button>
+            </Tooltip>
+            <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
+              <Badge color={health ? healthStatusColor(health.status) : statusColor(runtime?.status ?? props.instance.status)} variant="light">
+                {health?.status ?? runtime?.status ?? props.instance.status}
+              </Badge>
+            </Tooltip>
+          </Group>
         </Group>
 
         <Paper withBorder p="sm" radius="sm">
