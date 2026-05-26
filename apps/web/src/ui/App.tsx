@@ -12,6 +12,7 @@ import {
   type LlamaArgumentOption,
   type LlamaEndpointProbe,
   type LlamaProbe,
+  type LogTail,
   type ModelPreset,
   type ModelPresetEntry,
   type ProcessEvent,
@@ -1456,6 +1457,7 @@ function InstanceFormModal(props: {
   opened: boolean;
   onClose: () => void;
   instances: Instance[];
+  onSaved?: (instance: Instance) => void;
   instance?: Instance | null;
   initialModelPath?: string | null;
 }) {
@@ -1467,6 +1469,7 @@ function InstanceFormModal(props: {
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
   const [showRawArgs, setShowRawArgs] = useState(false);
   const [selectedModelPath, setSelectedModelPath] = useState<string | null>(null);
+  const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -1530,6 +1533,7 @@ function InstanceFormModal(props: {
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
       setSelectedModelPath(modelPath);
+      setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args));
     } else {
       const modelPath = props.initialModelPath ?? null;
@@ -1541,6 +1545,7 @@ function InstanceFormModal(props: {
         envJson: JSON.stringify({}, null, 2),
       });
       setSelectedModelPath(modelPath);
+      setStartAfterCreate(Boolean(modelPath));
       setArgRows(defaultRows(modelPath ?? undefined, port));
     }
     setSelectedKnownArg(null);
@@ -1580,9 +1585,24 @@ function InstanceFormModal(props: {
   function applyModelSelection(modelPath: string | null) {
     setSelectedModelPath(modelPath);
     setArgRows((rows) => (modelPath ? upsertArgRow(rows, "--model", modelPath, "string") : removeArgRow(rows, "--model")));
+    if (!isEdit && modelPath) {
+      setStartAfterCreate(true);
+    }
     if (!isEdit && modelPath && (!form.values.name || form.values.name === "local-server" || form.values.name === "local-router")) {
       form.setFieldValue("name", instanceNameFromModelPath(modelPath));
     }
+  }
+
+  async function invalidateSavedInstance(id: string) {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-health-summary", id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-status-summary", id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
+    ]);
   }
 
   const mutation = useMutation({
@@ -1593,18 +1613,44 @@ function InstanceFormModal(props: {
       return createInstance(input as InstanceCreate);
     },
     onSuccess: async (result) => {
+      const created = result.data;
+      props.onSaved?.(created);
+      let notification: { title: string; message: string; color?: "yellow" | "red" } = {
+        title: isEdit ? "Instance updated" : "Instance created",
+        message: "Configuration saved",
+      };
+
+      if (!isEdit && startAfterCreate) {
+        const preview = preflightPreviewQuery.data?.data;
+        if (preview && !preview.ok) {
+          notification = {
+            title: "Instance created",
+            message: "Start skipped because preflight has blocking issues",
+            color: "yellow",
+          };
+        } else {
+          try {
+            await instanceAction(created.id, "start");
+            notification = {
+              title: "Instance created and started",
+              message: created.name,
+            };
+          } catch (error) {
+            notification = {
+              title: "Instance created, start failed",
+              message: (error as Error).message,
+              color: "red",
+            };
+          }
+        }
+      }
+
+      await invalidateSavedInstance(created.id);
       props.onClose();
       form.reset();
       setArgRows(defaultRows());
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary", result.data.id] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-runtime", result.data.id] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-llama", result.data.id] });
-      notifications.show({
-        title: isEdit ? "Instance updated" : "Instance created",
-        message: "Configuration saved",
-      });
+      setStartAfterCreate(false);
+      notifications.show(notification);
     },
     onError: (error) => {
       notifications.show({
@@ -1950,13 +1996,25 @@ function InstanceFormModal(props: {
             </Stack>
           </Paper>
           <JsonInput label="Environment" minRows={4} formatOnBlur {...form.getInputProps("envJson")} />
-          <Group justify="flex-end" mt="sm">
-            <Button variant="subtle" onClick={props.onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={mutation.isPending}>
-              {isEdit ? "Save" : "Create"}
-            </Button>
+          <Group justify="space-between" mt="sm">
+            <Box>
+              {!isEdit && (
+                <Switch
+                  label="Start after create"
+                  checked={startAfterCreate}
+                  disabled={mutation.isPending}
+                  onChange={(event) => setStartAfterCreate(event.currentTarget.checked)}
+                />
+              )}
+            </Box>
+            <Group gap="xs">
+              <Button variant="subtle" onClick={props.onClose} disabled={mutation.isPending}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={mutation.isPending} leftSection={!isEdit && startAfterCreate ? <Triangle size={16} fill="currentColor" /> : undefined}>
+                {isEdit ? "Save" : startAfterCreate ? "Create & Start" : "Create"}
+              </Button>
+            </Group>
           </Group>
         </Stack>
       </form>
@@ -2125,6 +2183,44 @@ function propsSummary(probe: LlamaProbe | undefined): Array<[string, unknown]> {
   return entries.filter(([, value]) => value !== undefined && value !== null);
 }
 
+function startupStage(health: InstanceHealthSummary | undefined) {
+  if (!health) {
+    return { label: "checking", color: "gray", text: "Collecting runtime state." };
+  }
+  if (health.status === "ready") {
+    return { label: "ready", color: "green", text: "llama-server is ready to accept requests." };
+  }
+  if (health.status === "starting" || health.status === "loading") {
+    return { label: health.status, color: "yellow", text: "Model process is starting and readiness is still pending." };
+  }
+  if (health.status === "degraded") {
+    return { label: "degraded", color: "orange", text: "Server is reachable, but warnings or non-blocking issues were detected." };
+  }
+  if (health.status === "invalid") {
+    return { label: "invalid", color: "red", text: "Configuration has blocking preflight issues." };
+  }
+  if (health.status === "error") {
+    return { label: "error", color: "red", text: "Startup or runtime failed." };
+  }
+  if (health.status === "stale") {
+    return { label: "stale", color: "orange", text: "A process exists outside the current supervisor." };
+  }
+  return { label: health.status, color: "gray", text: "Instance is not running." };
+}
+
+function importantStartupLines(logTail: LogTail | undefined, statusSummary: InstanceHealthSummary["logSummary"] | undefined) {
+  const interesting = /\b(error|fatal|failed|exception|server is listening|http server listening|listening on|starting the main loop|model loaded|loading model|llama_model_loader|offload|warming up|ready)\b/i;
+  const lines = [
+    ...(statusSummary?.errors ?? []),
+    ...(statusSummary?.notices ?? []),
+    ...(logTail?.lines.filter((line) => interesting.test(line)) ?? []),
+  ]
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return [...new Set(lines)].slice(-8);
+}
+
 function InstanceDetails(props: { instance: Instance | null; health: InstanceHealthSummary | null | undefined }) {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
   const id = props.instance?.id;
@@ -2203,6 +2299,8 @@ function InstanceDetails(props: { instance: Instance | null; health: InstanceHea
   const logTail = logsQuery.data?.data;
   const statusSummary = health?.logSummary ?? statusSummaryQuery.data?.data;
   const summary = useMemo(() => propsSummary(llama), [llama]);
+  const startup = startupStage(health);
+  const startupLines = useMemo(() => importantStartupLines(logTail, statusSummary), [logTail, statusSummary]);
 
   if (!props.instance) {
     return (
@@ -2265,6 +2363,32 @@ function InstanceDetails(props: { instance: Instance | null; health: InstanceHea
           <ProbeCard title="props" probe={llama?.props} />
           <ProbeCard title="slots" probe={llama?.slots} />
         </SimpleGrid>
+
+        <Paper withBorder p="sm" radius="sm">
+          <Group justify="space-between" mb="xs">
+            <Text fw={600} size="sm">
+              Startup progress
+            </Text>
+            <Badge color={startup.color} variant="light">
+              {startup.label}
+            </Badge>
+          </Group>
+          <Text c={health?.status === "error" || health?.status === "invalid" ? "red" : "dimmed"} size="sm">
+            {startup.text}
+          </Text>
+          <Stack gap={4} mt="xs">
+            {startupLines.map((line, index) => (
+              <Code key={`${index}-${line}`} block>
+                {line}
+              </Code>
+            ))}
+            {startupLines.length === 0 && (
+              <Text c="dimmed" size="xs">
+                No startup milestones in logs yet.
+              </Text>
+            )}
+          </Stack>
+        </Paper>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
           <Stack gap={4}>
@@ -2582,6 +2706,7 @@ export function App() {
         opened={createOpened}
         instances={instances}
         initialModelPath={initialModelPath}
+        onSaved={(instance) => setSelectedId(instance.id)}
         onClose={() => {
           setCreateOpened(false);
           setInitialModelPath(null);
@@ -2591,6 +2716,7 @@ export function App() {
         opened={Boolean(editingInstance)}
         instances={instances}
         instance={editingInstance}
+        onSaved={(instance) => setSelectedId(instance.id)}
         onClose={() => setEditingInstance(null)}
       />
     </AppShell>
