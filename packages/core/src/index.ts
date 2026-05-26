@@ -241,6 +241,19 @@ export const LlamaArgumentHelpOverrideUpdateSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+export const NetworkInterfaceAddressSchema = z.object({
+  name: z.string(),
+  address: z.string(),
+  family: z.enum(["IPv4", "IPv6"]),
+  internal: z.boolean(),
+  cidr: z.string().nullable(),
+  mac: z.string().nullable(),
+});
+
+export const NetworkInterfacesResultSchema = z.object({
+  interfaces: z.array(NetworkInterfaceAddressSchema),
+});
+
 export const GgufMetadataSchema = z.object({
   name: z.string().nullable(),
   architecture: z.string().nullable(),
@@ -350,6 +363,8 @@ export type LlamaArgumentOption = z.infer<typeof LlamaArgumentOptionSchema>;
 export type LlamaArgumentCatalog = z.infer<typeof LlamaArgumentCatalogSchema>;
 export type LlamaArgumentHelpOverride = z.infer<typeof LlamaArgumentHelpOverrideSchema>;
 export type LlamaArgumentHelpOverrideUpdate = z.infer<typeof LlamaArgumentHelpOverrideUpdateSchema>;
+export type NetworkInterfaceAddress = z.infer<typeof NetworkInterfaceAddressSchema>;
+export type NetworkInterfacesResult = z.infer<typeof NetworkInterfacesResultSchema>;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;

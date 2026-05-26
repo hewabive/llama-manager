@@ -41,6 +41,7 @@ import { isPidAlive } from "./process/pid.js";
 import { ProcessPreflightError, validateInstancePreflight } from "./process/preflight.js";
 import { latestProcessRun, updateProcessRun } from "./process/runs-repository.js";
 import { supervisor } from "./process/supervisor.js";
+import { listNetworkInterfaceAddresses } from "./system/network.js";
 
 export const app = new Hono();
 
@@ -53,6 +54,10 @@ app.use(
 
 app.get("/api/health", (c) => {
   return c.json({ ok: true, service: "llama-manager-api" });
+});
+
+app.get("/api/network/interfaces", (c) => {
+  return c.json({ data: { interfaces: listNetworkInterfaceAddresses() } });
 });
 
 app.get("/api/instances", (c) => {

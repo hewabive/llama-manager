@@ -19,6 +19,7 @@ import type {
   ModelPresetUpdate,
   ModelScanSettings,
   ModelScanResult,
+  NetworkInterfacesResult,
   ProcessPreflightResult,
   RouterInstanceCreate,
   RuntimeState,
@@ -59,6 +60,10 @@ export async function listInstances() {
 
 export async function listInstanceHealthSummaries() {
   return request<{ data: InstanceHealthSummary[] }>("/api/instances/health-summary");
+}
+
+export async function listNetworkInterfaces() {
+  return request<{ data: NetworkInterfacesResult }>("/api/network/interfaces");
 }
 
 export async function getLlamaArguments(binaryPath?: string, refresh = false) {
