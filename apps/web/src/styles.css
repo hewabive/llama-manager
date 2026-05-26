@@ -13,8 +13,140 @@ code {
   white-space: nowrap;
 }
 
+.code-wrap {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.text-wrap {
+  overflow-wrap: anywhere;
+}
+
+.app-header__inner {
+  justify-content: space-between;
+  gap: var(--mantine-spacing-sm);
+}
+
+.app-header__brand,
+.app-header__actions {
+  flex: 0 0 auto;
+}
+
+.app-header__nav {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
+}
+
+.section-heading {
+  min-width: 0;
+}
+
+.model-scan-controls {
+  flex: 1 1 620px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.model-directory-input {
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.search-input {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.instances-mobile-list,
+.models-mobile-list,
+.preset-models-mobile-list,
+.preset-entries-mobile-list,
+.build-jobs-mobile-list {
+  display: none;
+}
+
+.instance-card,
+.mobile-card {
+  cursor: pointer;
+}
+
+.instance-card--selected {
+  background: var(--mantine-color-dark-5);
+}
+
+.instance-card__title {
+  min-width: 0;
+}
+
+.mobile-card__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .selected-row td {
   background: var(--mantine-color-dark-5);
+}
+
+@media (max-width: 48em) {
+  .app-header__inner {
+    align-content: center;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .app-header__brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .app-header__title {
+    font-size: 18px;
+  }
+
+  .app-header__actions {
+    margin-left: auto;
+  }
+
+  .app-header__actions .mantine-Button-root {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .app-header__nav {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .instances-mobile-list,
+  .models-mobile-list,
+  .preset-models-mobile-list,
+  .preset-entries-mobile-list,
+  .build-jobs-mobile-list {
+    display: flex;
+  }
+
+  .instances-table,
+  .models-table,
+  .preset-models-table,
+  .preset-entries-table,
+  .build-jobs-table {
+    display: none;
+  }
+
+  .model-scan-controls {
+    justify-content: flex-start;
+  }
+
+  .model-directory-input {
+    max-width: none;
+  }
 }
 
 .root-error {

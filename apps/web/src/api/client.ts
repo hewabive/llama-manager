@@ -27,6 +27,44 @@ import type {
 
 const apiBase = import.meta.env.VITE_API_URL ?? "";
 
+function formatApiErrorValue(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map(formatApiErrorValue).filter(Boolean).join("; ");
+  }
+  if (typeof value !== "object") return String(value);
+
+  const record = value as Record<string, unknown>;
+  const formErrors = formatApiErrorValue(record.formErrors);
+  const fieldErrors =
+    record.fieldErrors && typeof record.fieldErrors === "object"
+      ? Object.entries(record.fieldErrors as Record<string, unknown>)
+          .map(([field, messages]) => {
+            const text = formatApiErrorValue(messages);
+            return text ? `${field}: ${text}` : null;
+          })
+          .filter(Boolean)
+          .join("; ")
+      : null;
+  if (formErrors || fieldErrors) {
+    return [formErrors, fieldErrors].filter(Boolean).join("; ");
+  }
+  if (typeof record.message === "string") {
+    return record.message;
+  }
+
+  return (
+    Object.entries(record)
+      .map(([key, nested]) => {
+        const text = formatApiErrorValue(nested);
+        return text ? `${key}: ${text}` : null;
+      })
+      .filter(Boolean)
+      .join("; ") || null
+  );
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
@@ -38,15 +76,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.text();
-    let parsed: { error?: string; issues?: Array<{ message: string }> } | null = null;
+    let parsed: {
+      error?: unknown;
+      issues?: Array<{ message?: unknown }>;
+    } | null = null;
     try {
-      parsed = JSON.parse(error) as { error?: string; issues?: Array<{ message: string }> };
+      parsed = JSON.parse(error) as {
+        error?: unknown;
+        issues?: Array<{ message?: unknown }>;
+      };
     } catch {
       parsed = null;
     }
     if (parsed) {
-      const issueText = parsed.issues?.map((issue) => issue.message).join("; ");
-      throw new Error(issueText || parsed.error || response.statusText);
+      const issueText = parsed.issues
+        ?.map((issue) => formatApiErrorValue(issue.message))
+        .filter(Boolean)
+        .join("; ");
+      throw new Error(
+        issueText || formatApiErrorValue(parsed.error) || response.statusText,
+      );
     }
     throw new Error(error || response.statusText);
   }
@@ -59,7 +108,9 @@ export async function listInstances() {
 }
 
 export async function listInstanceHealthSummaries() {
-  return request<{ data: InstanceHealthSummary[] }>("/api/instances/health-summary");
+  return request<{ data: InstanceHealthSummary[] }>(
+    "/api/instances/health-summary",
+  );
 }
 
 export async function listNetworkInterfaces() {
@@ -76,21 +127,31 @@ export async function getLlamaArguments(binaryPath?: string, refresh = false) {
 }
 
 export async function listLlamaArgumentOverrides() {
-  return request<{ data: LlamaArgumentHelpOverride[] }>("/api/llama-args/overrides");
+  return request<{ data: LlamaArgumentHelpOverride[] }>(
+    "/api/llama-args/overrides",
+  );
 }
 
-export async function updateLlamaArgumentOverride(input: LlamaArgumentHelpOverrideUpdate) {
-  return request<{ data: LlamaArgumentHelpOverride }>("/api/llama-args/overrides", {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });
+export async function updateLlamaArgumentOverride(
+  input: LlamaArgumentHelpOverrideUpdate,
+) {
+  return request<{ data: LlamaArgumentHelpOverride }>(
+    "/api/llama-args/overrides",
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function deleteLlamaArgumentOverride(primaryName: string) {
   const name = encodeURIComponent(primaryName);
-  return request<{ data: { deleted: boolean } }>(`/api/llama-args/overrides/${name}`, {
-    method: "DELETE",
-  });
+  return request<{ data: { deleted: boolean } }>(
+    `/api/llama-args/overrides/${name}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export async function getBuildSettings() {
@@ -122,10 +183,14 @@ export async function cancelBuildJob(id: string) {
 }
 
 export async function getBuildJobLogs(id: string, lines = 200) {
-  return request<{ data: BuildLogTail }>(`/api/build/jobs/${id}/logs?lines=${lines}`);
+  return request<{ data: BuildLogTail }>(
+    `/api/build/jobs/${id}/logs?lines=${lines}`,
+  );
 }
 
-export async function scanModels(input: ModelScanSettings & { refresh?: boolean }) {
+export async function scanModels(
+  input: ModelScanSettings & { refresh?: boolean },
+) {
   const params = new URLSearchParams({
     dir: input.directory,
     maxDepth: String(input.maxDepth),
@@ -180,7 +245,9 @@ export async function createInstance(input: InstanceCreate) {
   });
 }
 
-export async function previewInstancePreflight(input: InstancePreflightPreview) {
+export async function previewInstancePreflight(
+  input: InstancePreflightPreview,
+) {
   return request<{ data: ProcessPreflightResult }>("/api/instances/preflight", {
     method: "POST",
     body: JSON.stringify(input),
@@ -194,7 +261,10 @@ export async function updateInstance(id: string, input: InstanceUpdate) {
   });
 }
 
-export async function instanceAction(id: string, action: "start" | "stop" | "restart") {
+export async function instanceAction(
+  id: string,
+  action: "start" | "stop" | "restart",
+) {
   return request<{ data: unknown }>(`/api/instances/${id}/${action}`, {
     method: "POST",
   });
@@ -211,11 +281,15 @@ export async function getRuntime(id: string) {
 }
 
 export async function getInstancePreflight(id: string) {
-  return request<{ data: ProcessPreflightResult }>(`/api/instances/${id}/preflight`);
+  return request<{ data: ProcessPreflightResult }>(
+    `/api/instances/${id}/preflight`,
+  );
 }
 
 export async function getInstanceHealthSummary(id: string) {
-  return request<{ data: InstanceHealthSummary }>(`/api/instances/${id}/health-summary`);
+  return request<{ data: InstanceHealthSummary }>(
+    `/api/instances/${id}/health-summary`,
+  );
 }
 
 export async function getLlamaProbe(id: string) {
@@ -227,7 +301,9 @@ export async function getInstanceLogs(id: string, lines = 200) {
 }
 
 export async function getInstanceStatusSummary(id: string) {
-  return request<{ data: InstanceLogSummary }>(`/api/instances/${id}/status-summary`);
+  return request<{ data: InstanceLogSummary }>(
+    `/api/instances/${id}/status-summary`,
+  );
 }
 
 export function instanceEventsUrl(id: string) {

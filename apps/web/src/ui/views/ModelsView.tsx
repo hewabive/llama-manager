@@ -65,6 +65,7 @@ export function ModelsView(props: {
       return scanModels(scanParams);
     },
     enabled: scanParams !== null,
+    retry: false,
   });
   const refreshModelsMutation = useMutation({
     mutationFn: (params: ModelScanParams) =>
@@ -128,6 +129,34 @@ export function ModelsView(props: {
     setScanParams(params);
   }
 
+  function addModelToPreset(model: GgufModel) {
+    const current = queryClient.getQueryData<{
+      data: ModelPreset;
+    }>(["model-preset"]);
+    const existingEntries = current?.data.entries ?? [];
+    if (existingEntries.some((entry) => entry.modelPath === model.path)) {
+      notifications.show({
+        title: "Preset already contains model",
+        message: modelTitle(model),
+      });
+      return;
+    }
+    const entries = [...existingEntries, presetEntryFromModel(model)];
+    updateModelPreset({
+      entries,
+      path: current?.data.path,
+    }).then(async (result) => {
+      queryClient.setQueryData(["model-preset"], result);
+      await queryClient.invalidateQueries({
+        queryKey: ["model-preset-preview"],
+      });
+      notifications.show({
+        title: "Added to preset",
+        message: modelTitle(model),
+      });
+    });
+  }
+
   const models = modelsQuery.data?.data.models ?? [];
   const filteredModels = models.filter((model) => {
     if (hideVocab && isVocabModel(model)) {
@@ -142,21 +171,23 @@ export function ModelsView(props: {
   return (
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
-        <Group justify="space-between" align="flex-end">
-          <div>
+        <Group justify="space-between" align="flex-end" wrap="wrap">
+          <div className="section-heading">
             <Title order={3}>Models</Title>
             <Text c="dimmed" size="sm">
               GGUF discovery and basic metadata
             </Text>
           </div>
-          <Group gap="xs" align="flex-end">
+          <Group className="model-scan-controls" gap="xs" align="flex-end">
             <TextInput
+              aria-label="Directory"
               label="Directory"
               value={directory}
               onChange={(event) => setDirectory(event.currentTarget.value)}
-              w={420}
+              className="model-directory-input"
             />
             <NumberInput
+              aria-label="Depth"
               label="Depth"
               value={maxDepth}
               min={0}
@@ -168,6 +199,7 @@ export function ModelsView(props: {
               w={92}
             />
             <Button
+              aria-label="Save model scanner settings"
               variant="light"
               onClick={() => settingsMutation.mutate({ directory, maxDepth })}
               loading={settingsMutation.isPending}
@@ -175,12 +207,14 @@ export function ModelsView(props: {
               Save
             </Button>
             <Button
+              aria-label="Scan model directory"
               onClick={() => requestScan({ directory, maxDepth })}
               loading={modelsQuery.isFetching}
             >
               Scan
             </Button>
             <Button
+              aria-label="Refresh model metadata"
               variant="subtle"
               onClick={() =>
                 refreshModelsMutation.mutate({ directory, maxDepth })
@@ -200,15 +234,16 @@ export function ModelsView(props: {
           </Text>
         )}
 
-        <Group justify="space-between" align="flex-end">
+        <Group justify="space-between" align="flex-end" wrap="wrap">
           <TextInput
+            aria-label="Search models"
             label="Search"
             placeholder="name, path, architecture, quant"
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
-            style={{ flex: 1 }}
+            className="search-input"
           />
-          <Group gap="lg" pb={4}>
+          <Group gap="lg" pb={4} wrap="wrap">
             <Switch
               label="Hide vocab/test files"
               checked={hideVocab}
@@ -231,7 +266,80 @@ export function ModelsView(props: {
           </Group>
         </Group>
 
-        <Table.ScrollContainer minWidth={980}>
+        <Stack className="models-mobile-list" gap="xs">
+          {filteredModels.map((model) => (
+            <Paper key={model.path} withBorder p="sm" radius="sm">
+              <Stack gap="xs">
+                <div>
+                  <Text fw={600} size="sm">
+                    {modelTitle(model)}
+                  </Text>
+                  <Text c="dimmed" size="xs" className="text-wrap">
+                    {model.path}
+                  </Text>
+                  {model.error && (
+                    <Text c="red" size="xs">
+                      {model.error}
+                    </Text>
+                  )}
+                </div>
+                <Group gap="xs">
+                  <Badge variant="light">
+                    {model.metadata.architecture ?? "unknown arch"}
+                  </Badge>
+                  <Badge variant="outline">
+                    {model.metadata.quantization ?? "unknown quant"}
+                  </Badge>
+                  <Badge variant="outline">
+                    {formatBytes(model.sizeBytes)}
+                  </Badge>
+                  <Badge variant="outline">
+                    ctx {model.metadata.contextLength ?? "-"}
+                  </Badge>
+                </Group>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    disabled={model.isMmproj}
+                    onClick={() => props.onUseModel(model)}
+                  >
+                    Use in new
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    disabled={model.isMmproj || !props.selectedInstance}
+                    onClick={() => props.onUseInSelected(model)}
+                  >
+                    Use selected
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    disabled={model.isMmproj}
+                    onClick={() => addModelToPreset(model)}
+                  >
+                    Add preset
+                  </Button>
+                </Group>
+              </Stack>
+            </Paper>
+          ))}
+          {filteredModels.length === 0 && (
+            <Paper withBorder p="md" radius="sm">
+              <Text c="dimmed" ta="center">
+                {modelsQuery.isFetching || settingsQuery.isFetching
+                  ? "Scanning models..."
+                  : modelsQuery.isFetched
+                    ? "No matching GGUF files found"
+                    : "Run scan to list models"}
+              </Text>
+            </Paper>
+          )}
+        </Stack>
+
+        <Table.ScrollContainer className="models-table" minWidth={980}>
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
@@ -291,40 +399,7 @@ export function ModelsView(props: {
                         size="xs"
                         variant="subtle"
                         disabled={model.isMmproj}
-                        onClick={() => {
-                          const current = queryClient.getQueryData<{
-                            data: ModelPreset;
-                          }>(["model-preset"]);
-                          const existingEntries = current?.data.entries ?? [];
-                          if (
-                            existingEntries.some(
-                              (entry) => entry.modelPath === model.path,
-                            )
-                          ) {
-                            notifications.show({
-                              title: "Preset already contains model",
-                              message: modelTitle(model),
-                            });
-                            return;
-                          }
-                          const entries = [
-                            ...existingEntries,
-                            presetEntryFromModel(model),
-                          ];
-                          updateModelPreset({
-                            entries,
-                            path: current?.data.path,
-                          }).then(async (result) => {
-                            queryClient.setQueryData(["model-preset"], result);
-                            await queryClient.invalidateQueries({
-                              queryKey: ["model-preset-preview"],
-                            });
-                            notifications.show({
-                              title: "Added to preset",
-                              message: modelTitle(model),
-                            });
-                          });
-                        }}
+                        onClick={() => addModelToPreset(model)}
                       >
                         Add preset
                       </Button>

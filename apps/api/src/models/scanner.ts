@@ -1,4 +1,8 @@
-import type { GgufMetadata, GgufModel, ModelScanResult } from "@llama-manager/core";
+import type {
+  GgufMetadata,
+  GgufModel,
+  ModelScanResult,
+} from "@llama-manager/core";
 import { lstat, opendir, stat } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
@@ -31,7 +35,12 @@ type FoundFile = {
 
 export const defaultModelsDirectory = resolve(config.rootDir, "..");
 
-async function walk(dir: string, maxDepth: number, depth = 0, out: FoundFile[] = []) {
+async function walk(
+  dir: string,
+  maxDepth: number,
+  depth = 0,
+  out: FoundFile[] = [],
+) {
   if (out.length >= MAX_FILES) {
     return out;
   }
@@ -39,7 +48,10 @@ async function walk(dir: string, maxDepth: number, depth = 0, out: FoundFile[] =
   let handle;
   try {
     handle = await opendir(dir);
-  } catch {
+  } catch (error) {
+    if (depth === 0) {
+      throw new Error(readDirectoryErrorMessage(dir, error));
+    }
     return out;
   }
 
@@ -81,12 +93,35 @@ function emptyMetadata(): GgufMetadata {
   };
 }
 
-export async function scanModels(input: { directory?: string; maxDepth?: number; refresh?: boolean }): Promise<ModelScanResult> {
+function readDirectoryErrorMessage(directory: string, error: unknown) {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === "ENOENT") {
+    return `Directory does not exist: ${directory}`;
+  }
+  if (code === "EACCES" || code === "EPERM") {
+    return `Permission denied while reading directory: ${directory}`;
+  }
+  return `Cannot read model directory ${directory}: ${(error as Error).message}`;
+}
+
+export async function scanModels(input: {
+  directory?: string;
+  maxDepth?: number;
+  refresh?: boolean;
+}): Promise<ModelScanResult> {
   const directory = resolve(input.directory || defaultModelsDirectory);
-  const maxDepth = Math.max(0, Math.min(input.maxDepth ?? DEFAULT_MAX_DEPTH, 16));
-  const targetStat = await lstat(directory);
+  const maxDepth = Math.max(
+    0,
+    Math.min(input.maxDepth ?? DEFAULT_MAX_DEPTH, 16),
+  );
+  let targetStat;
+  try {
+    targetStat = await lstat(directory);
+  } catch (error) {
+    throw new Error(readDirectoryErrorMessage(directory, error));
+  }
   if (!targetStat.isDirectory()) {
-    throw new Error("model scan target is not a directory");
+    throw new Error(`Model scan target is not a directory: ${directory}`);
   }
 
   const files = await walk(directory, maxDepth);
@@ -102,12 +137,18 @@ export async function scanModels(input: { directory?: string; maxDepth?: number;
   const models: GgufModel[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
-  for (const file of files.sort((left, right) => left.path.localeCompare(right.path))) {
+  for (const file of files.sort((left, right) =>
+    left.path.localeCompare(right.path),
+  )) {
     const fileStat = await stat(file.path);
     const isMmproj = file.name.toLowerCase().includes("mmproj");
     const mmprojPaths = isMmproj ? [] : (mmprojByDir.get(file.directory) ?? []);
     const cached = input.refresh ? null : getCachedModel(file.path);
-    if (cached && cached.sizeBytes === fileStat.size && cached.modifiedAt === fileStat.mtime.toISOString()) {
+    if (
+      cached &&
+      cached.sizeBytes === fileStat.size &&
+      cached.modifiedAt === fileStat.mtime.toISOString()
+    ) {
       cacheHits += 1;
       models.push({
         ...cached,

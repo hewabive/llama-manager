@@ -184,6 +184,7 @@ export function InstanceFormModal(props: {
     queryFn: () =>
       scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
     enabled: props.opened,
+    retry: false,
     staleTime: 60_000,
   });
   const modelPresetQuery = useQuery({

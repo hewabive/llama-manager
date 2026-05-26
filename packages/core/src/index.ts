@@ -11,10 +11,13 @@ export const InstanceArgValueSchema = z.union([
 export const InstanceArgsSchema = z.record(z.string(), InstanceArgValueSchema);
 export const InstanceEnvSchema = z.record(z.string(), z.string());
 
+const InstanceNameSchema = z.string().min(1).max(80);
+const InstancePathSchema = z.string().min(1);
+
 export const InstanceCreateSchema = z.object({
-  name: z.string().min(1).max(80),
-  binaryPath: z.string().min(1),
-  cwd: z.string().min(1).optional(),
+  name: InstanceNameSchema,
+  binaryPath: InstancePathSchema,
+  cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
 });
@@ -23,7 +26,13 @@ export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
   id: z.string().optional(),
 });
 
-export const InstanceUpdateSchema = InstanceCreateSchema.partial();
+export const InstanceUpdateSchema = z.object({
+  name: InstanceNameSchema.optional(),
+  binaryPath: InstancePathSchema.optional(),
+  cwd: InstancePathSchema.optional(),
+  args: InstanceArgsSchema.optional(),
+  env: InstanceEnvSchema.optional(),
+});
 
 export const InstanceSchema = InstanceCreateSchema.extend({
   id: z.string(),

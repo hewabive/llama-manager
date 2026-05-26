@@ -150,14 +150,16 @@ export function App() {
   });
 
   return (
-    <AppShell header={{ height: 58 }} padding="md">
+    <AppShell header={{ height: { base: 104, sm: 58 } }} padding="md">
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Group gap="sm">
-            <Title order={3}>llama-manager</Title>
+        <Group className="app-header__inner" h="100%" px="md">
+          <Group className="app-header__brand" gap="sm">
+            <Title className="app-header__title" order={3}>
+              llama-manager
+            </Title>
             <Badge variant="light">local</Badge>
           </Group>
-          <Group gap={4}>
+          <Group className="app-header__nav" gap={4}>
             {appRoutes.map((item) => (
               <Button
                 key={item.id}
@@ -169,7 +171,7 @@ export function App() {
               </Button>
             ))}
           </Group>
-          <Group gap="xs">
+          <Group className="app-header__actions" gap="xs">
             <Tooltip label="Refresh">
               <ActionIcon
                 aria-label="Refresh instances"

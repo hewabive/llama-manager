@@ -5,6 +5,7 @@ import {
   Button,
   Code,
   Group,
+  Modal,
   NumberInput,
   Paper,
   ScrollArea,
@@ -20,7 +21,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Hammer, Save, X } from "lucide-react";
+import { AlertTriangle, Hammer, Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -70,6 +71,7 @@ export function BuildView() {
   const [runPull, setRunPull] = useState(true);
   const [runConfigure, setRunConfigure] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
+  const [startConfirmOpened, setStartConfirmOpened] = useState(false);
 
   const settingsQuery = useQuery({
     queryKey: ["build-settings"],
@@ -84,6 +86,12 @@ export function BuildView() {
   const jobs = jobsQuery.data?.data ?? [];
   const runningJob = jobs.find((job) => job.status === "running") ?? null;
   const selectedJob = runningJob ?? jobs[0] ?? null;
+  const selectedSteps = [
+    ...(runPull ? ["git pull --ff-only"] : []),
+    ...(runConfigure ? ["Configure CMake"] : []),
+    ...(runBuild ? [`Build ${target || "target"}`] : []),
+  ];
+  const canStartJob = selectedSteps.length > 0 && !runningJob;
 
   const logsQuery = useQuery({
     queryKey: ["build-job-logs", selectedJob?.id],
@@ -144,6 +152,7 @@ export function BuildView() {
         build: runBuild,
       }),
     onSuccess: async (result) => {
+      setStartConfirmOpened(false);
       await queryClient.invalidateQueries({ queryKey: ["build-settings"] });
       await queryClient.invalidateQueries({ queryKey: ["build-jobs"] });
       notifications.show({
@@ -181,15 +190,16 @@ export function BuildView() {
   return (
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
-        <Group justify="space-between" align="flex-start">
-          <div>
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <div className="section-heading">
             <Title order={3}>Build</Title>
             <Text c="dimmed" size="sm">
               Update llama.cpp and build llama-server with CMake
             </Text>
           </div>
-          <Group gap="xs">
+          <Group gap="xs" wrap="wrap">
             <Button
+              aria-label="Save build settings"
               variant="light"
               leftSection={<Save size={16} />}
               loading={saveMutation.isPending}
@@ -198,14 +208,16 @@ export function BuildView() {
               Save
             </Button>
             <Button
+              aria-label="Open build start confirmation"
               leftSection={<Hammer size={16} />}
               loading={startMutation.isPending}
-              disabled={Boolean(runningJob)}
-              onClick={() => startMutation.mutate()}
+              disabled={!canStartJob}
+              onClick={() => setStartConfirmOpened(true)}
             >
               Start job
             </Button>
             <Button
+              aria-label="Cancel running build job"
               variant="subtle"
               color="red"
               leftSection={<X size={16} />}
@@ -217,6 +229,12 @@ export function BuildView() {
             </Button>
           </Group>
         </Group>
+
+        {!selectedSteps.length && (
+          <Text c="red" size="sm">
+            Enable at least one build step before starting a job.
+          </Text>
+        )}
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
           <TextInput
@@ -261,7 +279,7 @@ export function BuildView() {
           />
         </SimpleGrid>
 
-        <Group gap="lg">
+        <Group gap="lg" wrap="wrap">
           <Switch
             label="git pull --ff-only"
             checked={runPull}
@@ -297,7 +315,53 @@ export function BuildView() {
               </Text>
               <Badge variant="light">{jobs.length}</Badge>
             </Group>
-            <Table.ScrollContainer minWidth={720}>
+            <Stack className="build-jobs-mobile-list" gap="xs">
+              {jobs.map((job) => (
+                <Paper key={job.id} withBorder p="sm" radius="sm">
+                  <Stack gap="xs">
+                    <Group justify="space-between" align="flex-start">
+                      <Badge
+                        color={buildStatusColor(job.status)}
+                        variant="light"
+                      >
+                        {job.status}
+                      </Badge>
+                      <Text c="dimmed" size="xs">
+                        {job.startedAt}
+                      </Text>
+                    </Group>
+                    {job.error && (
+                      <Text c="red" size="xs">
+                        {job.error}
+                      </Text>
+                    )}
+                    <Group gap={4}>
+                      {job.steps.map((item) => (
+                        <Badge
+                          key={item.name}
+                          color={buildStepColor(item.status)}
+                          variant="outline"
+                        >
+                          {item.name}
+                        </Badge>
+                      ))}
+                    </Group>
+                    <Text c="dimmed" size="xs" className="text-wrap">
+                      {job.binaryPath ?? "-"}
+                    </Text>
+                  </Stack>
+                </Paper>
+              ))}
+              {jobs.length === 0 && (
+                <Paper withBorder p="md" radius="sm">
+                  <Text c="dimmed" ta="center">
+                    No build jobs yet
+                  </Text>
+                </Paper>
+              )}
+            </Stack>
+
+            <Table.ScrollContainer className="build-jobs-table" minWidth={720}>
               <Table striped highlightOnHover verticalSpacing="sm">
                 <Table.Thead>
                   <Table.Tr>
@@ -397,6 +461,47 @@ export function BuildView() {
           </Box>
         </SimpleGrid>
       </Stack>
+
+      <Modal
+        opened={startConfirmOpened}
+        onClose={() => setStartConfirmOpened(false)}
+        title="Start build job"
+        centered
+      >
+        <Stack gap="sm">
+          <Group gap="xs" align="flex-start" wrap="nowrap">
+            <AlertTriangle size={18} />
+            <Text size="sm">
+              This can run git, CMake and compiler processes for a long time and
+              may modify the llama.cpp checkout and build directory.
+            </Text>
+          </Group>
+          <Stack gap={4}>
+            {selectedSteps.map((step) => (
+              <Badge key={step} variant="outline">
+                {step}
+              </Badge>
+            ))}
+          </Stack>
+          <Code className="code-wrap">{repoPath}</Code>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="default"
+              onClick={() => setStartConfirmOpened(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              leftSection={<Hammer size={16} />}
+              loading={startMutation.isPending}
+              disabled={!canStartJob}
+              onClick={() => startMutation.mutate()}
+            >
+              Start job
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Paper>
   );
 }

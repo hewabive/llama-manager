@@ -298,6 +298,7 @@ export function PresetsView() {
     queryKey: ["models", modelDirectory, modelMaxDepth],
     queryFn: () =>
       scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
+    retry: false,
     staleTime: 60_000,
   });
   const preset = presetQuery.data?.data;
@@ -419,6 +420,24 @@ export function PresetsView() {
     );
   }
 
+  function patchEntry(entryId: string, patch: Partial<ModelPresetEntry>) {
+    if (!preset) {
+      return;
+    }
+    updateEntries(
+      preset.entries.map((item) =>
+        item.id === entryId ? { ...item, ...patch } : item,
+      ),
+    );
+  }
+
+  function removeEntry(entryId: string) {
+    if (!preset) {
+      return;
+    }
+    updateEntries(preset.entries.filter((item) => item.id !== entryId));
+  }
+
   function togglePresetModel(model: GgufModel, checked: boolean) {
     if (!preset) {
       return;
@@ -519,11 +538,86 @@ export function PresetsView() {
                 {(presetModelsQuery.error as Error).message}
               </Text>
             )}
-            <Table.ScrollContainer minWidth={980}>
+            <Stack className="preset-models-mobile-list" gap="xs">
+              {presetModels.slice(0, 12).map((model) => {
+                const entry = presetEntryByModelPath.get(model.path);
+                return (
+                  <Paper key={model.path} withBorder p="sm" radius="sm">
+                    <Stack gap="xs">
+                      <Group
+                        justify="space-between"
+                        align="flex-start"
+                        wrap="nowrap"
+                      >
+                        <Checkbox
+                          aria-label={`Use ${modelTitle(model)} in preset`}
+                          checked={Boolean(entry)}
+                          disabled={!preset}
+                          onChange={(event) =>
+                            togglePresetModel(
+                              model,
+                              event.currentTarget.checked,
+                            )
+                          }
+                        />
+                        <div className="mobile-card__title">
+                          <Text fw={600} size="sm">
+                            {modelTitle(model)}
+                          </Text>
+                          <Text c="dimmed" size="xs" className="text-wrap">
+                            {model.path}
+                          </Text>
+                        </div>
+                        <Tooltip label="Details">
+                          <ActionIcon
+                            aria-label="Edit preset model details"
+                            variant="subtle"
+                            disabled={!entry}
+                            onClick={() =>
+                              entry && setSelectedPresetEntryId(entry.id)
+                            }
+                          >
+                            <Pencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                      <Group gap="xs">
+                        <Badge variant="light">
+                          {model.metadata.architecture ?? "unknown arch"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {model.metadata.quantization ?? "unknown quant"}
+                        </Badge>
+                        <Badge variant="outline">
+                          ctx {model.metadata.contextLength ?? "-"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {formatBytes(model.sizeBytes)}
+                        </Badge>
+                      </Group>
+                    </Stack>
+                  </Paper>
+                );
+              })}
+              {presetModels.length === 0 && (
+                <Paper withBorder p="md" radius="sm">
+                  <Text c="dimmed" ta="center">
+                    {presetModelsQuery.isFetching
+                      ? "Loading models..."
+                      : "No matching GGUF files found"}
+                  </Text>
+                </Paper>
+              )}
+            </Stack>
+
+            <Table.ScrollContainer
+              className="preset-models-table"
+              minWidth={980}
+            >
               <Table striped highlightOnHover verticalSpacing="xs">
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th w={52}></Table.Th>
+                    <Table.Th aria-label="Selected" w={52}></Table.Th>
                     <Table.Th>Model</Table.Th>
                     <Table.Th>Arch</Table.Th>
                     <Table.Th>Quant</Table.Th>
@@ -539,6 +633,7 @@ export function PresetsView() {
                       <Table.Tr key={model.path}>
                         <Table.Td>
                           <Checkbox
+                            aria-label={`Use ${modelTitle(model)} in preset`}
                             checked={Boolean(entry)}
                             disabled={!preset}
                             onChange={(event) =>
@@ -614,7 +709,9 @@ export function PresetsView() {
                 {preview?.path ?? preset?.path ?? "-"}
               </Text>
               <ScrollArea h={260} type="auto" offsetScrollbars>
-                <Code block>{preview?.content ?? "; no preset loaded\n"}</Code>
+                <Code block className="code-wrap">
+                  {preview?.content ?? "; no preset loaded\n"}
+                </Code>
               </ScrollArea>
             </Box>
 
@@ -694,7 +791,115 @@ export function PresetsView() {
             </Box>
           </SimpleGrid>
 
-          <Table.ScrollContainer minWidth={980}>
+          <Stack className="preset-entries-mobile-list" gap="xs">
+            {(preset?.entries ?? []).map((entry) => (
+              <Paper key={entry.id} withBorder p="sm" radius="sm">
+                <Stack gap="xs">
+                  <Group
+                    justify="space-between"
+                    align="flex-start"
+                    wrap="nowrap"
+                  >
+                    <div className="mobile-card__title">
+                      <Text fw={600} size="sm">
+                        {entry.name}
+                      </Text>
+                      <Text c="dimmed" size="xs" className="text-wrap">
+                        {entry.modelPath}
+                      </Text>
+                      {entry.mmprojPath && (
+                        <Text c="dimmed" size="xs" className="text-wrap">
+                          mmproj: {entry.mmprojPath}
+                        </Text>
+                      )}
+                    </div>
+                    <Group gap="xs" wrap="nowrap">
+                      <Tooltip label="Details">
+                        <ActionIcon
+                          aria-label="Edit preset entry"
+                          variant="subtle"
+                          onClick={() => setSelectedPresetEntryId(entry.id)}
+                        >
+                          <Pencil size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Remove">
+                        <ActionIcon
+                          aria-label="Remove preset entry"
+                          variant="subtle"
+                          color="red"
+                          onClick={() => removeEntry(entry.id)}
+                        >
+                          <Trash2 size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+                  </Group>
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                    <TextInput
+                      label="Name"
+                      value={entry.name}
+                      onChange={(event) =>
+                        patchEntry(entry.id, {
+                          name: event.currentTarget.value,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      label="Context"
+                      value={entry.ctxSize ?? ""}
+                      min={1}
+                      onChange={(value) =>
+                        patchEntry(entry.id, {
+                          ctxSize: typeof value === "number" ? value : null,
+                        })
+                      }
+                    />
+                    <TextInput
+                      label="GPU layers"
+                      value={
+                        entry.nGpuLayers === null
+                          ? ""
+                          : String(entry.nGpuLayers)
+                      }
+                      placeholder="auto/all/N"
+                      onChange={(event) =>
+                        patchEntry(entry.id, {
+                          nGpuLayers: parseGpuLayersInput(
+                            event.currentTarget.value,
+                          ),
+                        })
+                      }
+                    />
+                    <Switch
+                      label="Load on startup"
+                      checked={entry.loadOnStartup}
+                      onChange={(event) =>
+                        patchEntry(entry.id, {
+                          loadOnStartup: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                  </SimpleGrid>
+                  <Badge variant="outline">
+                    {Object.keys(entry.extraArgs ?? {}).length} args
+                  </Badge>
+                </Stack>
+              </Paper>
+            ))}
+            {(!preset || preset.entries.length === 0) && (
+              <Paper withBorder p="md" radius="sm">
+                <Text c="dimmed" ta="center">
+                  Select models above
+                </Text>
+              </Paper>
+            )}
+          </Stack>
+
+          <Table.ScrollContainer
+            className="preset-entries-table"
+            minWidth={980}
+          >
             <Table striped highlightOnHover verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
@@ -711,15 +916,12 @@ export function PresetsView() {
                   <Table.Tr key={entry.id}>
                     <Table.Td>
                       <TextInput
+                        aria-label={`Name for preset entry ${entry.name}`}
                         value={entry.name}
                         onChange={(event) =>
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? { ...item, name: event.currentTarget.value }
-                                : item,
-                            ),
-                          )
+                          patchEntry(entry.id, {
+                            name: event.currentTarget.value,
+                          })
                         }
                       />
                     </Table.Td>
@@ -735,26 +937,20 @@ export function PresetsView() {
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
+                        aria-label={`Context size for ${entry.name}`}
                         value={entry.ctxSize ?? ""}
                         min={1}
                         onChange={(value) =>
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? {
-                                    ...item,
-                                    ctxSize:
-                                      typeof value === "number" ? value : null,
-                                  }
-                                : item,
-                            ),
-                          )
+                          patchEntry(entry.id, {
+                            ctxSize: typeof value === "number" ? value : null,
+                          })
                         }
                         w={120}
                       />
                     </Table.Td>
                     <Table.Td>
                       <TextInput
+                        aria-label={`GPU layers for ${entry.name}`}
                         value={
                           entry.nGpuLayers === null
                             ? ""
@@ -762,36 +958,23 @@ export function PresetsView() {
                         }
                         placeholder="auto/all/N"
                         onChange={(event) => {
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? {
-                                    ...item,
-                                    nGpuLayers: parseGpuLayersInput(
-                                      event.currentTarget.value,
-                                    ),
-                                  }
-                                : item,
+                          patchEntry(entry.id, {
+                            nGpuLayers: parseGpuLayersInput(
+                              event.currentTarget.value,
                             ),
-                          );
+                          });
                         }}
                         w={120}
                       />
                     </Table.Td>
                     <Table.Td>
                       <Switch
+                        aria-label={`Load ${entry.name} on startup`}
                         checked={entry.loadOnStartup}
                         onChange={(event) =>
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? {
-                                    ...item,
-                                    loadOnStartup: event.currentTarget.checked,
-                                  }
-                                : item,
-                            ),
-                          )
+                          patchEntry(entry.id, {
+                            loadOnStartup: event.currentTarget.checked,
+                          })
                         }
                       />
                     </Table.Td>
@@ -809,20 +992,16 @@ export function PresetsView() {
                         <Badge variant="outline">
                           {Object.keys(entry.extraArgs ?? {}).length} args
                         </Badge>
-                        <ActionIcon
-                          aria-label="Remove preset entry"
-                          variant="subtle"
-                          color="red"
-                          onClick={() =>
-                            updateEntries(
-                              preset!.entries.filter(
-                                (item) => item.id !== entry.id,
-                              ),
-                            )
-                          }
-                        >
-                          <Trash2 size={16} />
-                        </ActionIcon>
+                        <Tooltip label="Remove">
+                          <ActionIcon
+                            aria-label="Remove preset entry"
+                            variant="subtle"
+                            color="red"
+                            onClick={() => removeEntry(entry.id)}
+                          >
+                            <Trash2 size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                       </Group>
                     </Table.Td>
                   </Table.Tr>
