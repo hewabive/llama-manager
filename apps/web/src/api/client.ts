@@ -6,6 +6,7 @@ import type {
   Instance,
   InstanceCreate,
   InstanceHealthSummary,
+  InstancePreflightPreview,
   InstanceUpdate,
   InstanceLogSummary,
   LlamaArgumentCatalog,
@@ -169,6 +170,13 @@ export async function createRouterInstance(input: RouterInstanceCreate) {
 
 export async function createInstance(input: InstanceCreate) {
   return request<{ data: Instance }>("/api/instances", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function previewInstancePreflight(input: InstancePreflightPreview) {
+  return request<{ data: ProcessPreflightResult }>("/api/instances/preflight", {
     method: "POST",
     body: JSON.stringify(input),
   });

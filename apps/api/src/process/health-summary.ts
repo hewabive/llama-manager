@@ -14,6 +14,10 @@ import { validateInstancePreflight } from "./preflight.js";
 import { latestProcessRun } from "./runs-repository.js";
 import { supervisor } from "./supervisor.js";
 
+type HealthSummaryOptions = {
+  peers?: Instance[] | undefined;
+};
+
 const runtimeStatuses = new Set<Instance["status"]>(["stopped", "starting", "running", "stopping", "exited", "stale", "error"]);
 const probeableStatuses = new Set<Instance["status"]>(["starting", "running"]);
 
@@ -176,9 +180,9 @@ function deriveStatus(input: {
   };
 }
 
-export async function getInstanceHealthSummary(instance: Instance): Promise<InstanceHealthSummary> {
+export async function getInstanceHealthSummary(instance: Instance, options: HealthSummaryOptions = {}): Promise<InstanceHealthSummary> {
   const runtime = supervisor.getState(instance.id) ?? durableRuntime(instance);
-  const preflight = validateInstancePreflight(instance);
+  const preflight = validateInstancePreflight(instance, { peers: options.peers });
   const shouldProbe = probeableStatuses.has(runtime.status);
   const [llama, logSummary] = await Promise.all([
     shouldProbe ? probeLlamaServer(instance) : Promise.resolve(offlineProbe(instance, "Instance is not running.")),

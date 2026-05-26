@@ -19,6 +19,10 @@ export const InstanceCreateSchema = z.object({
   env: InstanceEnvSchema.default({}),
 });
 
+export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
+  id: z.string().optional(),
+});
+
 export const InstanceUpdateSchema = InstanceCreateSchema.partial();
 
 export const InstanceSchema = InstanceCreateSchema.extend({
@@ -319,6 +323,7 @@ export type InstanceArgValue = z.infer<typeof InstanceArgValueSchema>;
 export type InstanceArgs = z.infer<typeof InstanceArgsSchema>;
 export type InstanceEnv = z.infer<typeof InstanceEnvSchema>;
 export type InstanceCreate = z.infer<typeof InstanceCreateSchema>;
+export type InstancePreflightPreview = z.infer<typeof InstancePreflightPreviewSchema>;
 export type InstanceUpdate = z.infer<typeof InstanceUpdateSchema>;
 export type Instance = z.infer<typeof InstanceSchema>;
 export type ProcessEvent = z.infer<typeof ProcessEventSchema>;

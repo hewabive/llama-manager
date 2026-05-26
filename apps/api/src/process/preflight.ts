@@ -2,6 +2,10 @@ import type { Instance, ProcessPreflightIssue, ProcessPreflightResult } from "@l
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
+type PreflightOptions = {
+  peers?: Instance[] | undefined;
+};
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -86,6 +90,56 @@ function validatePort(instance: Instance, issues: ProcessPreflightIssue[]) {
   }
 }
 
+function argString(instance: Instance, key: string, fallback: string) {
+  const value = instance.args[key];
+  if (value === undefined || value === null || Array.isArray(value)) {
+    return fallback;
+  }
+  return String(value);
+}
+
+function normalizedHost(instance: Instance) {
+  const host = argString(instance, "--host", "127.0.0.1").trim() || "127.0.0.1";
+  if (host === "localhost") {
+    return "127.0.0.1";
+  }
+  return host;
+}
+
+function parsedPort(instance: Instance) {
+  const port = Number(instance.args["--port"] ?? 8080);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+}
+
+function hostsOverlap(left: string, right: string) {
+  return left === right || left === "0.0.0.0" || right === "0.0.0.0" || left === "::" || right === "::";
+}
+
+function validatePortConflicts(instance: Instance, issues: ProcessPreflightIssue[], peers: Instance[]) {
+  const port = parsedPort(instance);
+  if (!port) {
+    return;
+  }
+
+  const host = normalizedHost(instance);
+  for (const peer of peers) {
+    if (peer.id === instance.id) {
+      continue;
+    }
+    const peerPort = parsedPort(peer);
+    if (peerPort !== port || !hostsOverlap(host, normalizedHost(peer))) {
+      continue;
+    }
+
+    const active = ["starting", "running", "stopping", "stale"].includes(peer.status);
+    issues.push({
+      level: active ? "error" : "warning",
+      field: "args.--port",
+      message: `Port ${port} conflicts with ${peer.name} (${peer.status})`,
+    });
+  }
+}
+
 function validateKnownPathArgs(instance: Instance, issues: ProcessPreflightIssue[]) {
   pushFileIssue(issues, "args.--model", instance.args["--model"], "Model file not found");
   pushFileIssue(issues, "args.--models-preset", instance.args["--models-preset"], "Models preset file not found");
@@ -100,7 +154,7 @@ function validateKnownPathArgs(instance: Instance, issues: ProcessPreflightIssue
   }
 }
 
-export function validateInstancePreflight(instance: Instance): ProcessPreflightResult {
+export function validateInstancePreflight(instance: Instance, options: PreflightOptions = {}): ProcessPreflightResult {
   const issues: ProcessPreflightIssue[] = [];
 
   try {
@@ -116,6 +170,7 @@ export function validateInstancePreflight(instance: Instance): ProcessPreflightR
   }
 
   validatePort(instance, issues);
+  validatePortConflicts(instance, issues, options.peers ?? []);
   validateKnownPathArgs(instance, issues);
 
   return {

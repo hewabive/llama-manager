@@ -2,6 +2,7 @@ import {
   BuildJobStartSchema,
   BuildSettingsSchema,
   InstanceCreateSchema,
+  InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
   LlamaArgumentHelpOverrideUpdateSchema,
   ModelPresetUpdateSchema,
@@ -59,7 +60,8 @@ app.get("/api/instances", (c) => {
 });
 
 app.get("/api/instances/health-summary", async (c) => {
-  return c.json({ data: await Promise.all(listInstances().map((instance) => getInstanceHealthSummary(instance))) });
+  const instances = listInstances();
+  return c.json({ data: await Promise.all(instances.map((instance) => getInstanceHealthSummary(instance, { peers: instances }))) });
 });
 
 app.get("/api/llama-args", (c) => {
@@ -236,6 +238,33 @@ app.post("/api/instances", async (c) => {
   return c.json({ data: createInstance(parsed.data) }, 201);
 });
 
+app.post("/api/instances/preflight", async (c) => {
+  const parsed = InstancePreflightPreviewSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const timestamp = new Date().toISOString();
+  const preview = parsed.data;
+  return c.json({
+    data: validateInstancePreflight(
+      {
+        id: preview.id ?? "preview",
+        name: preview.name,
+        binaryPath: preview.binaryPath,
+        cwd: preview.cwd,
+        args: preview.args,
+        env: preview.env,
+        status: "stopped",
+        pid: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      { peers: listInstances() },
+    ),
+  });
+});
+
 app.get("/api/instances/:id", (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
@@ -281,7 +310,7 @@ app.get("/api/instances/:id/health-summary", async (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  return c.json({ data: await getInstanceHealthSummary(instance) });
+  return c.json({ data: await getInstanceHealthSummary(instance, { peers: listInstances() }) });
 });
 
 app.get("/api/instances/:id/logs", (c) => {
@@ -360,6 +389,10 @@ app.post("/api/instances/:id/start", (c) => {
   if (staleConflict) {
     return c.json({ error: staleConflict }, 409);
   }
+  const preflight = validateInstancePreflight(instance, { peers: listInstances() });
+  if (!preflight.ok) {
+    return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
+  }
   try {
     return c.json({ data: supervisor.start(instance) });
   } catch (error) {
@@ -425,6 +458,10 @@ app.post("/api/instances/:id/restart", async (c) => {
   const staleConflict = staleProcessConflict(instance.id);
   if (staleConflict) {
     return c.json({ error: staleConflict }, 409);
+  }
+  const preflight = validateInstancePreflight(instance, { peers: listInstances() });
+  if (!preflight.ok) {
+    return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
   }
   try {
     return c.json({ data: await supervisor.restart(instance) });

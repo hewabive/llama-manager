@@ -6,6 +6,7 @@ import {
   type Instance,
   type InstanceCreate,
   type InstanceHealthSummary,
+  type InstancePreflightPreview,
   type InstanceUpdate,
   type GgufModel,
   type LlamaArgumentOption,
@@ -69,6 +70,7 @@ import {
   listInstanceHealthSummaries,
   listBuildJobs,
   listInstances,
+  previewInstancePreflight,
   scanModels,
   startBuildJob,
   updateBuildSettings,
@@ -94,13 +96,14 @@ const defaultArgRows: ArgRow[] = [
   { id: "port", key: "--port", value: "8080", valueType: "number" },
 ];
 
-function defaultRows(modelPath?: string): ArgRow[] {
+function defaultRows(modelPath?: string, port = 8080): ArgRow[] {
+  const defaults = defaultArgRows.map((row) => (row.key === "--port" ? { ...row, value: String(port) } : { ...row }));
   return modelPath
     ? [
-        ...defaultArgRows.map((row) => ({ ...row })),
+        ...defaults,
         { id: "model", key: "--model", value: modelPath, valueType: "string" },
       ]
-    : defaultArgRows.map((row) => ({ ...row }));
+    : defaults;
 }
 
 function statusColor(status: Instance["status"]) {
@@ -234,6 +237,27 @@ function rowsToArgsWithCatalog(rows: ArgRow[], knownArgByName: Map<string, Llama
   }
 
   return args;
+}
+
+function upsertArgRow(rows: ArgRow[], key: string, value: string, valueType: ArgRow["valueType"]): ArgRow[] {
+  let replaced = false;
+  const next = rows.map((row) => {
+    if (row.key !== key) {
+      return row;
+    }
+    replaced = true;
+    return { ...row, value, valueType };
+  });
+  return replaced ? next : [...next, { id: crypto.randomUUID(), key, value, valueType }];
+}
+
+function removeArgRow(rows: ArgRow[], key: string): ArgRow[] {
+  const next = rows.filter((row) => row.key !== key);
+  return next.length > 0 ? next : [createArgRow()];
+}
+
+function rowValue(rows: ArgRow[], key: string) {
+  return rows.find((row) => row.key === key)?.value ?? "";
 }
 
 function valueTypeFromArgument(option: LlamaArgumentOption): ArgRow["valueType"] {
@@ -553,6 +577,18 @@ function modelTitle(model: GgufModel) {
   return model.metadata.name || model.name;
 }
 
+function pathBaseName(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function instanceNameFromModelPath(path: string) {
+  return pathBaseName(path)
+    .replace(/\.gguf$/i, "")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "local-server";
+}
+
 function isVocabModel(model: GgufModel) {
   const haystack = `${model.name} ${model.path} ${model.metadata.name ?? ""}`.toLowerCase();
   return haystack.includes("ggml-vocab") || haystack.includes("/models/ggml-vocab");
@@ -580,6 +616,35 @@ function argsWithModel(instance: Instance, model: GgufModel) {
     ...instance.args,
     "--model": model.path,
   };
+}
+
+function argString(args: Instance["args"], key: string) {
+  const value = args[key];
+  if (value === undefined || value === null || Array.isArray(value)) {
+    return "";
+  }
+  return String(value);
+}
+
+function instancePort(instance: Instance) {
+  const port = Number(instance.args["--port"] ?? 8080);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+}
+
+function nextAvailablePort(instances: Instance[], currentId?: string) {
+  const used = new Set(
+    instances
+      .filter((instance) => instance.id !== currentId)
+      .map((instance) => instancePort(instance))
+      .filter((port): port is number => port !== null),
+  );
+
+  for (let port = 8080; port <= 65535; port += 1) {
+    if (!used.has(port)) {
+      return port;
+    }
+  }
+  return 8080;
 }
 
 function presetEntryFromModel(model: GgufModel): ModelPresetEntry {
@@ -1390,6 +1455,7 @@ function PresetBuilderPanel() {
 function InstanceFormModal(props: {
   opened: boolean;
   onClose: () => void;
+  instances: Instance[];
   instance?: Instance | null;
   initialModelPath?: string | null;
 }) {
@@ -1400,6 +1466,7 @@ function InstanceFormModal(props: {
   const [notesDraft, setNotesDraft] = useState("");
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
   const [showRawArgs, setShowRawArgs] = useState(false);
+  const [selectedModelPath, setSelectedModelPath] = useState<string | null>(null);
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -1409,6 +1476,19 @@ function InstanceFormModal(props: {
     },
   });
   const isEdit = Boolean(props.instance);
+  const modelSettingsQuery = useQuery({
+    queryKey: ["model-scan-settings"],
+    queryFn: getModelScanSettings,
+    enabled: props.opened,
+  });
+  const modelDirectory = modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
+  const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
+  const formModelsQuery = useQuery({
+    queryKey: ["models", modelDirectory, modelMaxDepth],
+    queryFn: () => scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
   const argsCatalogQuery = useQuery({
     queryKey: ["llama-args", form.values.binaryPath],
     queryFn: () => getLlamaArguments(form.values.binaryPath),
@@ -1431,6 +1511,10 @@ function InstanceFormModal(props: {
   }, [knownArgs]);
   const selectedKnownOption = selectedKnownArg ? knownArgByName.get(selectedKnownArg) : null;
   const visibleKnownArgs = showDeprecatedArgs ? knownArgs : knownArgs.filter((option) => !option.deprecated);
+  const selectableModels = (formModelsQuery.data?.data.models ?? []).filter((model) => !model.isMmproj && !isVocabModel(model));
+  const selectedModel = selectableModels.find((model) => model.path === selectedModelPath) ?? null;
+  const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
+  const portValue = Number(rowValue(argRows, "--port") || 8080);
 
   useEffect(() => {
     if (!props.opened) {
@@ -1438,21 +1522,26 @@ function InstanceFormModal(props: {
     }
 
     if (props.instance) {
+      const modelPath = argString(props.instance.args, "--model") || null;
       form.setValues({
         name: props.instance.name,
         binaryPath: props.instance.binaryPath,
         cwd: props.instance.cwd ?? "",
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
+      setSelectedModelPath(modelPath);
       setArgRows(argsToRows(props.instance.args));
     } else {
+      const modelPath = props.initialModelPath ?? null;
+      const port = nextAvailablePort(props.instances);
       form.setValues({
-        name: "local-router",
+        name: modelPath ? instanceNameFromModelPath(modelPath) : "local-server",
         binaryPath: defaultBinaryPath,
         cwd: "/home/maxim/llama",
         envJson: JSON.stringify({}, null, 2),
       });
-      setArgRows(defaultRows(props.initialModelPath ?? undefined));
+      setSelectedModelPath(modelPath);
+      setArgRows(defaultRows(modelPath ?? undefined, port));
     }
     setSelectedKnownArg(null);
   }, [props.opened, props.instance?.id, props.initialModelPath]);
@@ -1461,6 +1550,40 @@ function InstanceFormModal(props: {
     setHelpRuDraft(selectedKnownOption?.helpRu ?? "");
     setNotesDraft(selectedKnownOption?.notes ?? "");
   }, [selectedKnownOption?.primaryName, selectedKnownOption?.helpRu, selectedKnownOption?.notes]);
+
+  const draftPreview = useMemo(() => {
+    try {
+      const args = InstanceArgsSchema.parse(rowsToArgsWithCatalog(argRows, knownArgByName));
+      const env = InstanceEnvSchema.parse(parseJsonObject(form.values.envJson, "env"));
+      const input: InstancePreflightPreview = {
+        ...(props.instance?.id ? { id: props.instance.id } : {}),
+        name: form.values.name,
+        binaryPath: form.values.binaryPath,
+        ...(form.values.cwd ? { cwd: form.values.cwd } : {}),
+        args,
+        env,
+      };
+      return { input, error: null };
+    } catch (error) {
+      return { input: null, error: (error as Error).message };
+    }
+  }, [argRows, form.values.binaryPath, form.values.cwd, form.values.envJson, form.values.name, knownArgByName, props.instance?.id]);
+
+  const preflightPreviewQuery = useQuery({
+    queryKey: ["instance-preflight-preview", draftPreview.input],
+    queryFn: () => previewInstancePreflight(draftPreview.input!),
+    enabled: props.opened && Boolean(draftPreview.input),
+    staleTime: 1_000,
+    retry: false,
+  });
+
+  function applyModelSelection(modelPath: string | null) {
+    setSelectedModelPath(modelPath);
+    setArgRows((rows) => (modelPath ? upsertArgRow(rows, "--model", modelPath, "string") : removeArgRow(rows, "--model")));
+    if (!isEdit && modelPath && (!form.values.name || form.values.name === "local-server" || form.values.name === "local-router")) {
+      form.setFieldValue("name", instanceNameFromModelPath(modelPath));
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: (input: InstanceCreate | InstanceUpdate) => {
@@ -1533,9 +1656,9 @@ function InstanceFormModal(props: {
       const input: InstanceCreate = {
         name: values.name,
         binaryPath: values.binaryPath,
-        cwd: values.cwd || undefined,
         args: InstanceArgsSchema.parse(rowsToArgsWithCatalog(argRows, knownArgByName)),
         env: InstanceEnvSchema.parse(parseJsonObject(values.envJson, "env")),
+        ...(values.cwd ? { cwd: values.cwd } : {}),
       };
       mutation.mutate(input);
     } catch (error) {
@@ -1559,6 +1682,47 @@ function InstanceFormModal(props: {
           <TextInput label="Name" required {...form.getInputProps("name")} />
           <TextInput label="Binary path" required {...form.getInputProps("binaryPath")} />
           <TextInput label="Working directory" {...form.getInputProps("cwd")} />
+          <Paper withBorder p="sm" radius="sm">
+            <Stack gap="xs">
+              <Select
+                label="Model"
+                placeholder={formModelsQuery.isFetching ? "Loading models..." : "Select GGUF model"}
+                searchable
+                clearable
+                value={selectedModelPath}
+                onChange={applyModelSelection}
+                data={selectableModels.map((model) => ({
+                  value: model.path,
+                  label: `${modelTitle(model)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+                }))}
+                nothingFoundMessage={formModelsQuery.isError ? (formModelsQuery.error as Error).message : "No models found"}
+              />
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                <TextInput
+                  label="Host"
+                  value={hostValue}
+                  onChange={(event) => setArgRows((rows) => upsertArgRow(rows, "--host", event.currentTarget.value, "string"))}
+                />
+                <NumberInput
+                  label="Port"
+                  min={1}
+                  max={65535}
+                  value={Number.isFinite(portValue) ? portValue : ""}
+                  onChange={(value) =>
+                    setArgRows((rows) => upsertArgRow(rows, "--port", typeof value === "number" ? String(value) : "", "number"))
+                  }
+                />
+              </SimpleGrid>
+              {selectedModel && (
+                <Group gap="xs">
+                  <Badge variant="light">{selectedModel.metadata.architecture ?? "unknown arch"}</Badge>
+                  <Badge variant="outline">{selectedModel.metadata.quantization ?? "unknown quant"}</Badge>
+                  <Badge variant="outline">{formatBytes(selectedModel.sizeBytes)}</Badge>
+                  {selectedModel.mmprojPaths.length > 0 && <Badge variant="outline">{selectedModel.mmprojPaths.length} mmproj</Badge>}
+                </Group>
+              )}
+            </Stack>
+          </Paper>
           <Stack gap="xs">
             <Group justify="space-between">
               <Text fw={600} size="sm">
@@ -1736,6 +1900,55 @@ function InstanceFormModal(props: {
               );
             })}
           </Stack>
+          <Paper withBorder p="sm" radius="sm">
+            <Group justify="space-between" mb="xs">
+              <Text fw={600} size="sm">
+                Preflight preview
+              </Text>
+              <Badge
+                color={
+                  draftPreview.error
+                    ? "red"
+                    : preflightPreviewQuery.data?.data
+                      ? preflightPreviewQuery.data.data.ok
+                        ? "green"
+                        : "red"
+                      : "gray"
+                }
+                variant="light"
+              >
+                {draftPreview.error
+                  ? "invalid"
+                  : preflightPreviewQuery.data?.data
+                    ? preflightPreviewQuery.data.data.ok
+                      ? "can start"
+                      : "needs attention"
+                    : "checking"}
+              </Badge>
+            </Group>
+            <Stack gap={4}>
+              {draftPreview.error && (
+                <Text c="red" size="xs">
+                  {draftPreview.error}
+                </Text>
+              )}
+              {(preflightPreviewQuery.data?.data.issues ?? []).map((issue, index) => (
+                <Text key={`${issue.field}-${index}`} c={issue.level === "error" ? "red" : "yellow"} size="xs">
+                  {issue.field}: {issue.message}
+                </Text>
+              ))}
+              {!draftPreview.error && preflightPreviewQuery.data?.data.issues.length === 0 && (
+                <Text c="dimmed" size="xs">
+                  Binary, model, working directory and port look valid.
+                </Text>
+              )}
+              {preflightPreviewQuery.isError && (
+                <Text c="red" size="xs">
+                  {(preflightPreviewQuery.error as Error).message}
+                </Text>
+              )}
+            </Stack>
+          </Paper>
           <JsonInput label="Environment" minRows={4} formatOnBlur {...form.getInputProps("envJson")} />
           <Group justify="flex-end" mt="sm">
             <Button variant="subtle" onClick={props.onClose}>
@@ -2367,6 +2580,7 @@ export function App() {
 
       <InstanceFormModal
         opened={createOpened}
+        instances={instances}
         initialModelPath={initialModelPath}
         onClose={() => {
           setCreateOpened(false);
@@ -2375,6 +2589,7 @@ export function App() {
       />
       <InstanceFormModal
         opened={Boolean(editingInstance)}
+        instances={instances}
         instance={editingInstance}
         onClose={() => setEditingInstance(null)}
       />
