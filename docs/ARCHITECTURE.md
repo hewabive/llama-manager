@@ -24,7 +24,10 @@
 
 - Single local user.
 - API binds to `127.0.0.1` by default.
-- No auth in MVP.
+- Admin auth is optional and disabled until `LLAMA_MANAGER_ADMIN_PASSWORD` or
+  `LLAMA_MANAGER_ADMIN_PASSWORD_HASH` is configured.
+- The public status route exposes only redacted diagnostics; admin routes expose
+  process control, paths, arguments and logs after login.
 - `systemd` is not the source of truth; it can be added later as an optional Linux adapter.
 - Instances are managed directly as child processes.
 - SQLite stores durable configuration; running process state is in memory and reconstructed from health checks later.

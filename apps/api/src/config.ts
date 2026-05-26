@@ -13,6 +13,19 @@ export const config = {
   dataDir: resolve(rootDir, "data"),
   runtimeDir: resolve(rootDir, "runtime"),
   logsDir: resolve(rootDir, "runtime", "logs"),
+  auth: {
+    password: process.env.LLAMA_MANAGER_ADMIN_PASSWORD ?? null,
+    passwordHash: process.env.LLAMA_MANAGER_ADMIN_PASSWORD_HASH ?? null,
+    secret:
+      process.env.LLAMA_MANAGER_AUTH_SECRET ??
+      process.env.LLAMA_MANAGER_ADMIN_PASSWORD_HASH ??
+      process.env.LLAMA_MANAGER_ADMIN_PASSWORD ??
+      null,
+    secureCookie: process.env.LLAMA_MANAGER_SECURE_COOKIE === "true",
+    sessionTtlSeconds: Number(
+      process.env.LLAMA_MANAGER_SESSION_TTL_SECONDS ?? 12 * 60 * 60,
+    ),
+  },
 };
 
 mkdirSync(config.dataDir, { recursive: true });

@@ -286,6 +286,39 @@ export const NetworkInterfacesResultSchema = z.object({
   interfaces: z.array(NetworkInterfaceAddressSchema),
 });
 
+export const AuthStateSchema = z.object({
+  enabled: z.boolean(),
+  authenticated: z.boolean(),
+});
+
+export const AdminLoginSchema = z.object({
+  password: z.string().min(1),
+});
+
+export const PublicInstanceStatusSchema = z.object({
+  name: z.string(),
+  status: InstanceHealthSummaryStatusSchema,
+  healthOk: z.boolean(),
+  checkedAt: z.string(),
+  summary: z.string(),
+});
+
+export const PublicStatusSchema = z.object({
+  service: z.object({
+    ok: z.boolean(),
+    authRequired: z.boolean(),
+    checkedAt: z.string(),
+  }),
+  instances: z.object({
+    total: z.number().int().nonnegative(),
+    running: z.number().int().nonnegative(),
+    stale: z.number().int().nonnegative(),
+    error: z.number().int().nonnegative(),
+    stopped: z.number().int().nonnegative(),
+    items: z.array(PublicInstanceStatusSchema),
+  }),
+});
+
 export const ExternalLlamaProcessSchema = z.object({
   pid: z.number().int().positive(),
   ppid: z.number().int().nonnegative().nullable(),
@@ -442,6 +475,10 @@ export type NetworkInterfaceAddress = z.infer<
 export type NetworkInterfacesResult = z.infer<
   typeof NetworkInterfacesResultSchema
 >;
+export type AuthState = z.infer<typeof AuthStateSchema>;
+export type AdminLogin = z.infer<typeof AdminLoginSchema>;
+export type PublicInstanceStatus = z.infer<typeof PublicInstanceStatusSchema>;
+export type PublicStatus = z.infer<typeof PublicStatusSchema>;
 export type ExternalLlamaProcess = z.infer<typeof ExternalLlamaProcessSchema>;
 export type ExternalLlamaProcessesResult = z.infer<
   typeof ExternalLlamaProcessesResultSchema

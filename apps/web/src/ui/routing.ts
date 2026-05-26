@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 export type AppRoute =
+  | "status"
   | "instances"
   | "models"
   | "presets"
@@ -13,6 +14,12 @@ export const appRoutes: {
   title: string;
   description: string;
 }[] = [
+  {
+    id: "status",
+    label: "Status",
+    title: "Public Status",
+    description: "Redacted diagnostics for this llama-manager node",
+  },
   {
     id: "instances",
     label: "Instances",
@@ -49,7 +56,7 @@ const routeIds = new Set(appRoutes.map((route) => route.id));
 
 function routeFromHash(): AppRoute {
   const raw = window.location.hash.replace(/^#\/?/, "").split("/")[0];
-  return routeIds.has(raw as AppRoute) ? (raw as AppRoute) : "instances";
+  return routeIds.has(raw as AppRoute) ? (raw as AppRoute) : "status";
 }
 
 export function useHashRoute() {

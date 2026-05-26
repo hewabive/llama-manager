@@ -1,4 +1,5 @@
 import {
+  AdminLoginSchema,
   BuildJobStartSchema,
   BuildSettingsSchema,
   ExternalProcessKillSchema,
@@ -15,6 +16,14 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 
+import {
+  clearSessionCookie,
+  isAuthEnabled,
+  isRequestAuthenticated,
+  requireAdmin,
+  setSessionCookie,
+  verifyAdminPassword,
+} from "./auth.js";
 import { getLlamaArgumentCatalog } from "./arguments/catalog.js";
 import {
   deleteArgumentHelpOverride,
@@ -48,6 +57,7 @@ import {
   saveModelPreset,
   writeModelPresetFile,
 } from "./presets/repository.js";
+import { getPublicStatus } from "./public-status.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
 import {
   killExternalLlamaProcess,
@@ -72,11 +82,54 @@ app.use(
   "*",
   cors({
     origin: ["http://127.0.0.1:5173", "http://localhost:5173"],
+    credentials: true,
   }),
 );
 
+app.use("/api/*", requireAdmin);
+
 app.get("/api/health", (c) => {
   return c.json({ ok: true, service: "llama-manager-api" });
+});
+
+app.get("/api/public/status", async (c) => {
+  return c.json({ data: await getPublicStatus() });
+});
+
+app.get("/api/auth/state", (c) => {
+  return c.json({
+    data: {
+      enabled: isAuthEnabled(),
+      authenticated: isRequestAuthenticated(c),
+    },
+  });
+});
+
+app.post("/api/auth/login", async (c) => {
+  const parsed = AdminLoginSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  if (!verifyAdminPassword(parsed.data.password)) {
+    return c.json({ error: "invalid password" }, 401);
+  }
+  setSessionCookie(c);
+  return c.json({
+    data: {
+      enabled: isAuthEnabled(),
+      authenticated: true,
+    },
+  });
+});
+
+app.post("/api/auth/logout", (c) => {
+  clearSessionCookie(c);
+  return c.json({
+    data: {
+      enabled: isAuthEnabled(),
+      authenticated: false,
+    },
+  });
 });
 
 app.get("/api/network/interfaces", (c) => {

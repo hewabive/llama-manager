@@ -12,12 +12,14 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw } from "lucide-react";
+import { LogOut, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  getAuthState,
   listInstanceHealthSummaries,
   listInstances,
+  logoutAdmin,
   updateInstance,
 } from "../api/client";
 import { InstanceDetails } from "./components/InstanceDetails";
@@ -27,9 +29,11 @@ import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { argsWithModel } from "./utils/models";
 import { BuildView } from "./views/BuildView";
 import { InstancesView } from "./views/InstancesView";
+import { LoginView } from "./views/LoginView";
 import { ModelsView } from "./views/ModelsView";
 import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
+import { PublicStatusView } from "./views/PublicStatusView";
 
 export function App() {
   const [route, setRoute] = useHashRoute();
@@ -42,15 +46,25 @@ export function App() {
   );
   const [monitorNowMs, setMonitorNowMs] = useState(Date.now());
   const queryClient = useQueryClient();
+  const authQuery = useQuery({
+    queryKey: ["auth-state"],
+    queryFn: getAuthState,
+    refetchInterval: 30_000,
+  });
+  const authState = authQuery.data?.data;
+  const canUseAdmin = authState?.authenticated ?? false;
+  const isPublicRoute = route === "status";
   const instancesQuery = useQuery({
     queryKey: ["instances"],
     queryFn: listInstances,
     refetchInterval: 2_500,
+    enabled: canUseAdmin,
   });
   const healthSummariesQuery = useQuery({
     queryKey: ["instances-health-summary"],
     queryFn: listInstanceHealthSummaries,
     refetchInterval: 3_000,
+    enabled: canUseAdmin,
   });
 
   const instances = instancesQuery.data?.data ?? [];
@@ -150,8 +164,26 @@ export function App() {
     },
   });
 
+  const logoutMutation = useMutation({
+    mutationFn: logoutAdmin,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["auth-state"] });
+      queryClient.removeQueries({ queryKey: ["instances"] });
+      queryClient.removeQueries({ queryKey: ["instances-health-summary"] });
+      setSelectedId(null);
+      setLaunchMonitor(null);
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Logout failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
   return (
-    <AppShell header={{ height: { base: 104, sm: 58 } }} padding="md">
+    <AppShell header={{ height: { base: 132, sm: 58 } }} padding="md">
       <AppShell.Header>
         <Group className="app-header__inner" h="100%" px="md">
           <Group className="app-header__brand" gap="sm">
@@ -172,26 +204,41 @@ export function App() {
               </Button>
             ))}
           </Group>
-          <Group className="app-header__actions" gap="xs">
-            <Tooltip label="Refresh">
-              <ActionIcon
-                aria-label="Refresh instances"
-                variant="subtle"
-                onClick={() => {
-                  void instancesQuery.refetch();
-                  void healthSummariesQuery.refetch();
-                }}
+          {canUseAdmin && !isPublicRoute && (
+            <Group className="app-header__actions" gap="xs">
+              <Tooltip label="Refresh">
+                <ActionIcon
+                  aria-label="Refresh instances"
+                  variant="subtle"
+                  onClick={() => {
+                    void instancesQuery.refetch();
+                    void healthSummariesQuery.refetch();
+                  }}
+                >
+                  <RefreshCw size={18} />
+                </ActionIcon>
+              </Tooltip>
+              <Button
+                leftSection={<Plus size={16} />}
+                onClick={() => setCreateOpened(true)}
               >
-                <RefreshCw size={18} />
-              </ActionIcon>
-            </Tooltip>
-            <Button
-              leftSection={<Plus size={16} />}
-              onClick={() => setCreateOpened(true)}
-            >
-              New instance
-            </Button>
-          </Group>
+                New instance
+              </Button>
+              {authState?.enabled && (
+                <Tooltip label="Sign out">
+                  <ActionIcon
+                    aria-label="Sign out"
+                    variant="subtle"
+                    color="gray"
+                    loading={logoutMutation.isPending}
+                    onClick={() => logoutMutation.mutate()}
+                  >
+                    <LogOut size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
+          )}
         </Group>
       </AppShell.Header>
 
@@ -206,7 +253,19 @@ export function App() {
             </div>
           </Group>
 
-          {route === "instances" && (
+          {isPublicRoute && <PublicStatusView />}
+
+          {!isPublicRoute && !canUseAdmin && (
+            <>
+              {authQuery.isLoading ? (
+                <Text c="dimmed">Checking admin session...</Text>
+              ) : (
+                <LoginView />
+              )}
+            </>
+          )}
+
+          {canUseAdmin && route === "instances" && (
             <InstancesView
               instances={instances}
               selectedInstance={selectedInstance}
@@ -218,9 +277,9 @@ export function App() {
             />
           )}
 
-          {route === "build" && <BuildView />}
+          {canUseAdmin && route === "build" && <BuildView />}
 
-          {route === "models" && (
+          {canUseAdmin && route === "models" && (
             <ModelsView
               selectedInstance={selectedInstance}
               onUseModel={(model) => {
@@ -238,11 +297,11 @@ export function App() {
             />
           )}
 
-          {route === "presets" && <PresetsView />}
+          {canUseAdmin && route === "presets" && <PresetsView />}
 
-          {route === "processes" && <ProcessesView />}
+          {canUseAdmin && route === "processes" && <ProcessesView />}
 
-          {route === "instances" && (
+          {canUseAdmin && route === "instances" && (
             <InstanceDetails
               instance={selectedInstance}
               health={selectedHealth}
@@ -255,7 +314,7 @@ export function App() {
       </AppShell.Main>
 
       <InstanceFormModal
-        opened={createOpened}
+        opened={canUseAdmin && createOpened}
         instances={instances}
         initialModelPath={initialModelPath}
         onSaved={(instance) => setSelectedId(instance.id)}
@@ -266,7 +325,7 @@ export function App() {
         }}
       />
       <InstanceFormModal
-        opened={Boolean(editingInstance)}
+        opened={canUseAdmin && Boolean(editingInstance)}
         instances={instances}
         instance={editingInstance}
         onSaved={(instance) => setSelectedId(instance.id)}
