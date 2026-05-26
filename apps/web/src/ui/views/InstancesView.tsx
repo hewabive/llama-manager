@@ -4,6 +4,63 @@ import { Code, Group, Paper, Stack, Table, Text } from "@mantine/core";
 import { InstanceActions } from "../components/InstanceActions";
 import { InstanceHealthBadge } from "../components/InstanceHealthBadge";
 import type { LaunchMonitor } from "../utils/launch";
+import { pathBaseName } from "../utils/models";
+
+function argValueText(value: Instance["args"][string]) {
+  if (value === true) return "enabled";
+  if (value === false) return "disabled";
+  if (value === null) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "string" && value.includes("/") && value.length > 32) {
+    return pathBaseName(value);
+  }
+  return String(value);
+}
+
+function fullArgValueText(value: Instance["args"][string]) {
+  if (value === null) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
+}
+
+function InstanceArgsList(props: { args: Instance["args"] }) {
+  const entries = Object.entries(props.args);
+  if (entries.length === 0) {
+    return (
+      <Text c="dimmed" size="sm">
+        No args
+      </Text>
+    );
+  }
+
+  return (
+    <Stack className="instance-args" gap={4}>
+      {entries.map(([key, value]) => {
+        const text = argValueText(value);
+        const fullText = fullArgValueText(value);
+        return (
+          <Group key={key} className="instance-arg-row" gap={6} wrap="nowrap">
+            <Code className="instance-arg-key">{key}</Code>
+            {text ? (
+              <Text
+                className="instance-arg-value"
+                c="dimmed"
+                size="sm"
+                title={fullText}
+              >
+                {text}
+              </Text>
+            ) : (
+              <Text c="dimmed" size="sm" fs="italic">
+                empty
+              </Text>
+            )}
+          </Group>
+        );
+      })}
+    </Stack>
+  );
+}
 
 export function InstancesView(props: {
   instances: Instance[];
@@ -68,9 +125,7 @@ export function InstancesView(props: {
                 <Text c="dimmed" size="xs">
                   Args
                 </Text>
-                <Code className="code-wrap">
-                  {JSON.stringify(instance.args)}
-                </Code>
+                <InstanceArgsList args={instance.args} />
               </div>
             </Stack>
           </Paper>
@@ -123,7 +178,7 @@ export function InstancesView(props: {
                   <Code>{instance.binaryPath}</Code>
                 </Table.Td>
                 <Table.Td>
-                  <Code>{JSON.stringify(instance.args)}</Code>
+                  <InstanceArgsList args={instance.args} />
                 </Table.Td>
                 <Table.Td>
                   <InstanceActions

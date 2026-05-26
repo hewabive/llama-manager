@@ -82,6 +82,24 @@ code {
   min-width: 0;
 }
 
+.instance-args {
+  min-width: 220px;
+  max-width: 440px;
+}
+
+.instance-arg-row {
+  align-items: flex-start;
+}
+
+.instance-arg-key {
+  flex: 0 0 auto;
+}
+
+.instance-arg-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .mobile-card__title {
   flex: 1 1 auto;
   min-width: 0;

@@ -29,6 +29,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Triangle } from "lucide-react";
@@ -161,6 +162,7 @@ export function InstanceFormModal(props: {
   const [selectedPresetPath, setSelectedPresetPath] = useState<string | null>(
     null,
   );
+  const isMobile = useMediaQuery("(max-width: 48em)");
   const [writePresetOnSave, setWritePresetOnSave] = useState(true);
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
@@ -246,7 +248,8 @@ export function InstanceFormModal(props: {
     return options;
   }, [modelPreset, selectedPresetPath]);
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
-  const portValue = Number(rowValue(argRows, "--port") || 8080);
+  const portRawValue = rowValue(argRows, "--port");
+  const portValue = portRawValue === "" ? "" : Number(portRawValue);
 
   useEffect(() => {
     if (!props.opened) {
@@ -649,7 +652,7 @@ export function InstanceFormModal(props: {
                       ? "Loading models..."
                       : "Select GGUF model"
                   }
-                  searchable
+                  searchable={!isMobile}
                   clearable
                   value={selectedModelPath}
                   onChange={applyModelSelection}
@@ -727,7 +730,11 @@ export function InstanceFormModal(props: {
                   label="Port"
                   min={1}
                   max={65535}
-                  value={Number.isFinite(portValue) ? portValue : ""}
+                  value={
+                    typeof portValue === "number" && Number.isFinite(portValue)
+                      ? portValue
+                      : ""
+                  }
                   onChange={(value) =>
                     setArgRows((rows) =>
                       upsertArgRow(
