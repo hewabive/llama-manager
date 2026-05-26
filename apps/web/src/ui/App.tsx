@@ -84,12 +84,19 @@ import {
 
 const defaultBinaryPath = "/home/maxim/llama/llama-b8779/llama-server";
 const defaultModelsDirectory = "/home/maxim/llama";
+const launchMonitorTimeoutMs = 5 * 60 * 1000;
 
 type ArgRow = {
   id: string;
   key: string;
   value: string;
   valueType: "string" | "number" | "boolean" | "flag" | "list" | "null";
+};
+
+type LaunchMonitor = {
+  instanceId: string;
+  startedAt: string;
+  source: "create" | "start" | "restart";
 };
 
 const defaultArgRows: ArgRow[] = [
@@ -1458,6 +1465,7 @@ function InstanceFormModal(props: {
   onClose: () => void;
   instances: Instance[];
   onSaved?: (instance: Instance) => void;
+  onLaunchStarted?: (instance: Instance, source: "create") => void;
   instance?: Instance | null;
   initialModelPath?: string | null;
 }) {
@@ -1631,6 +1639,7 @@ function InstanceFormModal(props: {
         } else {
           try {
             await instanceAction(created.id, "start");
+            props.onLaunchStarted?.(created, "create");
             notification = {
               title: "Instance created and started",
               message: created.name,
@@ -2051,13 +2060,24 @@ function actionTooltip(action: InstanceActionName, health: InstanceHealthSummary
   return health.reason;
 }
 
-function InstanceActions(props: { instance: Instance; health: InstanceHealthSummary | undefined; onEdit: () => void }) {
+function InstanceActions(props: {
+  instance: Instance;
+  health: InstanceHealthSummary | undefined;
+  onEdit: () => void;
+  onLaunchStarted: (instance: Instance, source: "start" | "restart") => void;
+  onLaunchStopped: (instance: Instance) => void;
+}) {
   const queryClient = useQueryClient();
   const health = props.health;
 
   const actionMutation = useMutation({
     mutationFn: (action: InstanceActionName) => instanceAction(props.instance.id, action),
-    onSuccess: async () => {
+    onSuccess: async (_result, action) => {
+      if (action === "start" || action === "restart") {
+        props.onLaunchStarted(props.instance, action);
+      } else {
+        props.onLaunchStopped(props.instance);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["instances"] }),
         queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
@@ -2221,8 +2241,105 @@ function importantStartupLines(logTail: LogTail | undefined, statusSummary: Inst
   return [...new Set(lines)].slice(-8);
 }
 
-function InstanceDetails(props: { instance: Instance | null; health: InstanceHealthSummary | null | undefined }) {
+function formatElapsed(ms: number | null) {
+  if (ms === null || !Number.isFinite(ms) || ms < 0) {
+    return "-";
+  }
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function isStartupStatus(status: InstanceHealthSummary["status"] | undefined) {
+  return status === "starting" || status === "loading";
+}
+
+function isLaunchTerminalStatus(status: InstanceHealthSummary["status"] | undefined) {
+  return status === "ready" || status === "error" || status === "invalid" || status === "stale" || status === "stopped";
+}
+
+function LaunchMonitorPanel(props: {
+  health: InstanceHealthSummary | undefined;
+  runtime: InstanceHealthSummary["runtime"] | undefined;
+  logTail: LogTail | undefined;
+  statusSummary: InstanceHealthSummary["logSummary"] | undefined;
+  monitor: LaunchMonitor | null;
+  nowMs: number;
+  onStop: () => void;
+  stopping: boolean;
+}) {
+  const healthIsFresh = !props.monitor || !props.health || Date.parse(props.health.checkedAt) >= Date.parse(props.monitor.startedAt);
+  const effectiveHealth = healthIsFresh ? props.health : undefined;
+  const startup =
+    props.monitor && !effectiveHealth
+      ? { label: "starting", color: "yellow", text: "Start command was accepted; waiting for the first health update." }
+      : startupStage(effectiveHealth);
+  const startupLines = importantStartupLines(props.logTail, props.statusSummary).slice(-5);
+  const startedAt = props.monitor?.startedAt ?? props.runtime?.startedAt ?? null;
+  const elapsedMs = startedAt ? props.nowMs - Date.parse(startedAt) : null;
+  const timedOut = Boolean(
+    props.monitor && (!effectiveHealth || isStartupStatus(effectiveHealth.status)) && elapsedMs !== null && elapsedMs > launchMonitorTimeoutMs,
+  );
+
+  return (
+    <Paper withBorder p="sm" radius="sm">
+      <Group justify="space-between" align="flex-start" mb="xs">
+        <Stack gap={2}>
+          <Group gap="xs">
+            <Text fw={600} size="sm">
+              Launch monitor
+            </Text>
+            <Badge color={timedOut ? "orange" : startup.color} variant="light">
+              {timedOut ? "loading too long" : startup.label}
+            </Badge>
+          </Group>
+          <Text c={effectiveHealth?.status === "error" || effectiveHealth?.status === "invalid" ? "red" : "dimmed"} size="sm">
+            {timedOut ? "Startup is still pending after 5 minutes; the process was not stopped." : startup.text}
+          </Text>
+        </Stack>
+        <Button
+          size="xs"
+          variant="light"
+          color="yellow"
+          leftSection={<Square size={14} />}
+          loading={props.stopping}
+          disabled={props.stopping || (!props.monitor && !effectiveHealth?.actions.canStop)}
+          onClick={props.onStop}
+        >
+          Stop
+        </Button>
+      </Group>
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
+        <Text size="sm">PID: {props.runtime?.pid ?? "-"}</Text>
+        <Text size="sm">Elapsed: {formatElapsed(elapsedMs)}</Text>
+        <Text size="sm">Started: {startedAt ?? "-"}</Text>
+      </SimpleGrid>
+      <Stack gap={4} mt="xs">
+        {startupLines.map((line, index) => (
+          <Code key={`${index}-${line}`} block>
+            {line}
+          </Code>
+        ))}
+        {startupLines.length === 0 && (
+          <Text c="dimmed" size="xs">
+            No startup milestones in logs yet.
+          </Text>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
+function InstanceDetails(props: {
+  instance: Instance | null;
+  health: InstanceHealthSummary | null | undefined;
+  launchMonitor: LaunchMonitor | null;
+  monitorNowMs: number;
+  onLaunchStopped: (instance: Instance) => void;
+}) {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
+  const queryClient = useQueryClient();
   const id = props.instance?.id;
 
   const healthQuery = useQuery({
@@ -2299,8 +2416,28 @@ function InstanceDetails(props: { instance: Instance | null; health: InstanceHea
   const logTail = logsQuery.data?.data;
   const statusSummary = health?.logSummary ?? statusSummaryQuery.data?.data;
   const summary = useMemo(() => propsSummary(llama), [llama]);
-  const startup = startupStage(health);
-  const startupLines = useMemo(() => importantStartupLines(logTail, statusSummary), [logTail, statusSummary]);
+  const showLaunchMonitor = Boolean(props.launchMonitor || isStartupStatus(health?.status));
+
+  const monitorStopMutation = useMutation({
+    mutationFn: () => instanceAction(id!, "stop"),
+    onSuccess: async () => {
+      if (props.instance) {
+        props.onLaunchStopped(props.instance);
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+        queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-health-summary", id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-status-summary", id] }),
+        queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
+      ]);
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: "Stop failed", message: (error as Error).message });
+    },
+  });
 
   if (!props.instance) {
     return (
@@ -2364,31 +2501,18 @@ function InstanceDetails(props: { instance: Instance | null; health: InstanceHea
           <ProbeCard title="slots" probe={llama?.slots} />
         </SimpleGrid>
 
-        <Paper withBorder p="sm" radius="sm">
-          <Group justify="space-between" mb="xs">
-            <Text fw={600} size="sm">
-              Startup progress
-            </Text>
-            <Badge color={startup.color} variant="light">
-              {startup.label}
-            </Badge>
-          </Group>
-          <Text c={health?.status === "error" || health?.status === "invalid" ? "red" : "dimmed"} size="sm">
-            {startup.text}
-          </Text>
-          <Stack gap={4} mt="xs">
-            {startupLines.map((line, index) => (
-              <Code key={`${index}-${line}`} block>
-                {line}
-              </Code>
-            ))}
-            {startupLines.length === 0 && (
-              <Text c="dimmed" size="xs">
-                No startup milestones in logs yet.
-              </Text>
-            )}
-          </Stack>
-        </Paper>
+        {showLaunchMonitor && (
+          <LaunchMonitorPanel
+            health={health}
+            runtime={runtime}
+            logTail={logTail}
+            statusSummary={statusSummary}
+            monitor={props.launchMonitor}
+            nowMs={props.monitorNowMs}
+            onStop={() => monitorStopMutation.mutate()}
+            stopping={monitorStopMutation.isPending}
+          />
+        )}
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
           <Stack gap={4}>
@@ -2539,6 +2663,8 @@ export function App() {
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [initialModelPath, setInitialModelPath] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [launchMonitor, setLaunchMonitor] = useState<LaunchMonitor | null>(null);
+  const [monitorNowMs, setMonitorNowMs] = useState(Date.now());
   const queryClient = useQueryClient();
   const instancesQuery = useQuery({
     queryKey: ["instances"],
@@ -2558,6 +2684,42 @@ export function App() {
   );
   const selectedInstance = instances.find((instance) => instance.id === selectedId) ?? instances[0] ?? null;
   const selectedHealth = selectedInstance ? healthByInstanceId.get(selectedInstance.id) : null;
+  const selectedLaunchMonitor = selectedInstance?.id === launchMonitor?.instanceId ? launchMonitor : null;
+
+  useEffect(() => {
+    if (!launchMonitor) {
+      return undefined;
+    }
+    setMonitorNowMs(Date.now());
+    const timer = window.setInterval(() => setMonitorNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [launchMonitor?.instanceId]);
+
+  useEffect(() => {
+    if (!launchMonitor) {
+      return;
+    }
+    const health = healthByInstanceId.get(launchMonitor.instanceId);
+    if (!health || Date.parse(health.checkedAt) < Date.parse(launchMonitor.startedAt)) {
+      return;
+    }
+    if (isLaunchTerminalStatus(health.status)) {
+      setLaunchMonitor(null);
+    }
+  }, [healthByInstanceId, launchMonitor]);
+
+  function startLaunchMonitor(instance: Instance, source: LaunchMonitor["source"]) {
+    setSelectedId(instance.id);
+    setLaunchMonitor({
+      instanceId: instance.id,
+      source,
+      startedAt: new Date().toISOString(),
+    });
+  }
+
+  function clearLaunchMonitor(instance: Instance) {
+    setLaunchMonitor((monitor) => (monitor?.instanceId === instance.id ? null : monitor));
+  }
 
   const useModelMutation = useMutation({
     mutationFn: ({ instance, model }: { instance: Instance; model: GgufModel }) =>
@@ -2656,7 +2818,13 @@ export function App() {
                       <Code>{JSON.stringify(instance.args)}</Code>
                     </Table.Td>
                     <Table.Td>
-                      <InstanceActions instance={instance} health={healthByInstanceId.get(instance.id)} onEdit={() => setEditingInstance(instance)} />
+                      <InstanceActions
+                        instance={instance}
+                        health={healthByInstanceId.get(instance.id)}
+                        onEdit={() => setEditingInstance(instance)}
+                        onLaunchStarted={startLaunchMonitor}
+                        onLaunchStopped={clearLaunchMonitor}
+                      />
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -2698,7 +2866,13 @@ export function App() {
 
           <PresetBuilderPanel />
 
-          <InstanceDetails instance={selectedInstance} health={selectedHealth} />
+          <InstanceDetails
+            instance={selectedInstance}
+            health={selectedHealth}
+            launchMonitor={selectedLaunchMonitor}
+            monitorNowMs={monitorNowMs}
+            onLaunchStopped={clearLaunchMonitor}
+          />
         </Stack>
       </AppShell.Main>
 
@@ -2707,6 +2881,7 @@ export function App() {
         instances={instances}
         initialModelPath={initialModelPath}
         onSaved={(instance) => setSelectedId(instance.id)}
+        onLaunchStarted={startLaunchMonitor}
         onClose={() => {
           setCreateOpened(false);
           setInitialModelPath(null);
@@ -2717,6 +2892,7 @@ export function App() {
         instances={instances}
         instance={editingInstance}
         onSaved={(instance) => setSelectedId(instance.id)}
+        onLaunchStarted={startLaunchMonitor}
         onClose={() => setEditingInstance(null)}
       />
     </AppShell>
