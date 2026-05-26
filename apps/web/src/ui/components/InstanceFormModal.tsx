@@ -17,6 +17,7 @@ import {
   Modal,
   NumberInput,
   Paper,
+  ScrollArea,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -618,6 +619,7 @@ export function InstanceFormModal(props: {
         isEdit ? "Edit llama-server instance" : "New llama-server instance"
       }
       size="lg"
+      scrollAreaComponent={ScrollArea.Autosize}
     >
       <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="sm">

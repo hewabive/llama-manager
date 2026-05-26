@@ -94,6 +94,7 @@ function PresetEntryDetailModal(props: {
       onClose={props.onClose}
       title="Model preset details"
       size="xl"
+      scrollAreaComponent={ScrollArea.Autosize}
     >
       {draft && (
         <Stack gap="sm">
