@@ -805,6 +805,7 @@ export function InstanceFormModal(props: {
               </Button>
               <Tooltip label="Reload from binary --help">
                 <ActionIcon
+                  aria-label="Reload arguments from binary help"
                   variant="subtle"
                   loading={
                     argsCatalogQuery.isFetching || refreshArgsMutation.isPending

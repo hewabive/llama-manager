@@ -172,6 +172,7 @@ export function App() {
           <Group gap="xs">
             <Tooltip label="Refresh">
               <ActionIcon
+                aria-label="Refresh instances"
                 variant="subtle"
                 onClick={() => {
                   void instancesQuery.refetch();

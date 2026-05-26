@@ -141,6 +141,7 @@ export function InstanceActions(props: {
     >
       <Tooltip label={llamaWebUiTooltip(health, webUiUrl)}>
         <ActionIcon
+          aria-label="Open llama-server Web UI"
           variant="subtle"
           color="blue"
           disabled={webUiDisabled}
@@ -154,12 +155,17 @@ export function InstanceActions(props: {
         </ActionIcon>
       </Tooltip>
       <Tooltip label="Edit">
-        <ActionIcon variant="subtle" onClick={props.onEdit}>
+        <ActionIcon
+          aria-label="Edit instance"
+          variant="subtle"
+          onClick={props.onEdit}
+        >
           <Pencil size={16} />
         </ActionIcon>
       </Tooltip>
       <Tooltip label={actionTooltip("start", health, actionMutation.isPending)}>
         <ActionIcon
+          aria-label="Start instance"
           variant="subtle"
           color="green"
           disabled={startDisabled}
@@ -171,6 +177,7 @@ export function InstanceActions(props: {
       </Tooltip>
       <Tooltip label={actionTooltip("stop", health, actionMutation.isPending)}>
         <ActionIcon
+          aria-label="Stop instance"
           variant="subtle"
           color="yellow"
           disabled={stopDisabled}
@@ -184,6 +191,7 @@ export function InstanceActions(props: {
         label={actionTooltip("restart", health, actionMutation.isPending)}
       >
         <ActionIcon
+          aria-label="Restart instance"
           variant="subtle"
           disabled={restartDisabled}
           onClick={() => actionMutation.mutate("restart")}
@@ -194,6 +202,7 @@ export function InstanceActions(props: {
       </Tooltip>
       <Tooltip label="Delete">
         <ActionIcon
+          aria-label="Delete instance"
           variant="subtle"
           color="red"
           onClick={() => deleteMutation.mutate()}

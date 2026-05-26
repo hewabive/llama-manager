@@ -35,7 +35,10 @@ function parseListeningUrl(lines: string[]) {
     return explicitUrl[1]!.replace(/[.)\]]+$/, "");
   }
 
-  const hostPort = lastMatch(lines, /(?:hostname|host|address):\s*([^,\s]+).*port:\s*(\d+)/i);
+  const hostPort = lastMatch(
+    lines,
+    /(?:hostname|host|address):\s*([^,\s]+).*port:\s*(\d+)/i,
+  );
   if (hostPort) {
     const host = hostPort[1] === "0.0.0.0" ? "127.0.0.1" : hostPort[1];
     return `http://${host}:${hostPort[2]}`;
@@ -45,20 +48,30 @@ function parseListeningUrl(lines: string[]) {
 }
 
 function parseModelPath(lines: string[]) {
-  const match = lastMatch(lines, /(?:model(?: path)?|loading model|llama_model_loader):\s*'?([^'\n]+?\.gguf)'?/i);
+  const match =
+    lastMatch(lines, /\bload_model:\s+loading model\s+'([^'\n]+?\.gguf)'/i) ??
+    lastMatch(
+      lines,
+      /llama_model_loader:\s+loaded meta data .* from\s+([^\s]+?\.gguf)\b/i,
+    ) ??
+    lastMatch(lines, /\bmodel(?: path)?\s*[:=]\s*'?([^'\n]+?\.gguf)'?/i);
   return match?.[1]?.trim() ?? null;
 }
 
 function parseContextSize(lines: string[]) {
   const match =
-    lastMatch(lines, /\bn_ctx(?:_train)?\s*=\s*(\d+)/i) ??
+    lastMatch(lines, /\bn_ctx(?:_slot|_train)?\s*=\s*(\d+)/i) ??
     lastMatch(lines, /context(?: size)?[^0-9]+(\d+)/i) ??
     lastMatch(lines, /ctx(?:-size| size)?[^0-9]+(\d+)/i);
   return match ? Number(match[1]) : null;
 }
 
 function parseSlots(lines: string[]) {
-  const match = lastMatch(lines, /(?:slots|parallel)[^0-9]+(\d+)/i);
+  const match =
+    lastMatch(lines, /\bn_slots\s*=\s*(\d+)/i) ??
+    lastMatch(lines, /\bn_parallel\s*=\s*(\d+)/i) ??
+    lastMatch(lines, /\bn_seq_max\s*=\s*(\d+)/i) ??
+    lastMatch(lines, /(?:slots|parallel)\s*[:=]\s*(\d+)/i);
   return match ? Number(match[1]) : null;
 }
 
@@ -68,7 +81,10 @@ function parseGpuLayers(lines: string[]) {
     return offload[1]!.trim();
   }
 
-  const gpuLayers = lastMatch(lines, /(?:n_gpu_layers|gpu layers?)\s*[:=]\s*([^\s,]+)/i);
+  const gpuLayers = lastMatch(
+    lines,
+    /(?:n_gpu_layers|gpu layers?)\s*[:=]\s*([^\s,]+)/i,
+  );
   return gpuLayers?.[1]?.trim() ?? null;
 }
 
@@ -79,7 +95,9 @@ function parseModelAlias(lines: string[]) {
 
 function isReady(lines: string[]) {
   return lines.some((line) =>
-    /(?:server is listening|http server listening|listening on|starting the main loop|model loaded|warming up.*done)/i.test(line),
+    /(?:server is listening|http server listening|listening on|starting the main loop|model loaded|warming up.*done)/i.test(
+      line,
+    ),
   );
 }
 
@@ -87,7 +105,10 @@ export function summarizeInstanceLog(input: {
   instanceId: string;
   runtime: RuntimeState | undefined;
 }): InstanceLogSummary {
-  const logPath = input.runtime?.logPath ?? latestProcessRun(input.instanceId)?.logPath ?? null;
+  const logPath =
+    input.runtime?.logPath ??
+    latestProcessRun(input.instanceId)?.logPath ??
+    null;
 
   if (!logPath) {
     return {
@@ -121,7 +142,11 @@ export function summarizeInstanceLog(input: {
       ready: isReady(lines),
       warnings: interestingLines(lines, /\b(warn|warning)\b/i, 8),
       errors: interestingLines(lines, /\b(error|fatal|failed|exception)\b/i, 8),
-      notices: interestingLines(lines, /\b(server is listening|http server listening|offload|loaded|warming up|cache|slot|ready)\b/i, 10),
+      notices: interestingLines(
+        lines,
+        /\b(server is listening|http server listening|offload|loaded|warming up|cache|slot|ready)\b/i,
+        10,
+      ),
       updatedAt: nowIso(),
     };
   } catch (error) {

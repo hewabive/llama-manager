@@ -231,6 +231,7 @@ function PresetEntryDetailModal(props: {
                 />
                 <Tooltip label="Remove">
                   <ActionIcon
+                    aria-label="Remove extra argument"
                     variant="subtle"
                     color="red"
                     disabled={extraRows.length <= 1}
@@ -570,6 +571,7 @@ export function PresetsView() {
                           <Group justify="flex-end">
                             <Tooltip label="Details">
                               <ActionIcon
+                                aria-label="Edit preset model details"
                                 variant="subtle"
                                 disabled={!entry}
                                 onClick={() =>
@@ -797,6 +799,7 @@ export function PresetsView() {
                       <Group justify="flex-end" gap="xs">
                         <Tooltip label="Details">
                           <ActionIcon
+                            aria-label="Edit preset entry"
                             variant="subtle"
                             onClick={() => setSelectedPresetEntryId(entry.id)}
                           >
@@ -807,6 +810,7 @@ export function PresetsView() {
                           {Object.keys(entry.extraArgs ?? {}).length} args
                         </Badge>
                         <ActionIcon
+                          aria-label="Remove preset entry"
                           variant="subtle"
                           color="red"
                           onClick={() =>

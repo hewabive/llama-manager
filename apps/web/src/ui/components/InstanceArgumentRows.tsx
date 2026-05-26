@@ -406,6 +406,7 @@ export function SmartArgRow(props: {
             />
             <Tooltip label="Remove">
               <ActionIcon
+                aria-label="Remove argument"
                 variant="subtle"
                 color="red"
                 disabled={!props.canRemove}
@@ -505,6 +506,7 @@ export function RawArgRow(props: {
       )}
       <Tooltip label="Remove">
         <ActionIcon
+          aria-label="Remove raw argument"
           variant="subtle"
           color="red"
           disabled={!props.canRemove}

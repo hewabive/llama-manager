@@ -31,6 +31,11 @@ import {
   presetEntryFromModel,
 } from "../utils/models";
 
+type ModelScanParams = {
+  directory: string;
+  maxDepth: number;
+};
+
 export function ModelsView(props: {
   selectedInstance: Instance | null;
   onUseModel: (model: GgufModel) => void;
@@ -42,14 +47,42 @@ export function ModelsView(props: {
   const [search, setSearch] = useState("");
   const [hideVocab, setHideVocab] = useState(true);
   const [hideMmproj, setHideMmproj] = useState(true);
+  const [scanParams, setScanParams] = useState<ModelScanParams | null>(null);
   const settingsQuery = useQuery({
     queryKey: ["model-scan-settings"],
     queryFn: getModelScanSettings,
   });
   const modelsQuery = useQuery({
-    queryKey: ["models", directory, maxDepth],
-    queryFn: () => scanModels({ directory, maxDepth }),
-    enabled: false,
+    queryKey: [
+      "models",
+      scanParams?.directory ?? "",
+      scanParams?.maxDepth ?? 0,
+    ],
+    queryFn: () => {
+      if (!scanParams) {
+        throw new Error("Model scan is not configured");
+      }
+      return scanModels(scanParams);
+    },
+    enabled: scanParams !== null,
+  });
+  const refreshModelsMutation = useMutation({
+    mutationFn: (params: ModelScanParams) =>
+      scanModels({ ...params, refresh: true }),
+    onSuccess: (result, params) => {
+      setScanParams(params);
+      queryClient.setQueryData(
+        ["models", params.directory, params.maxDepth],
+        result,
+      );
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Metadata refresh failed",
+        message: (error as Error).message,
+      });
+    },
   });
   const settingsMutation = useMutation({
     mutationFn: updateModelScanSettings,
@@ -70,13 +103,30 @@ export function ModelsView(props: {
       });
     },
   });
+  const settingsDirectory = settingsQuery.data?.data.directory;
+  const settingsMaxDepth = settingsQuery.data?.data.maxDepth;
 
   useEffect(() => {
-    if (settingsQuery.data?.data) {
-      setDirectory(settingsQuery.data.data.directory);
-      setMaxDepth(settingsQuery.data.data.maxDepth);
+    if (settingsDirectory && settingsMaxDepth !== undefined) {
+      setDirectory(settingsDirectory);
+      setMaxDepth(settingsMaxDepth);
+      setScanParams({
+        directory: settingsDirectory,
+        maxDepth: settingsMaxDepth,
+      });
     }
-  }, [settingsQuery.data?.data.directory, settingsQuery.data?.data.maxDepth]);
+  }, [settingsDirectory, settingsMaxDepth]);
+
+  function requestScan(params: ModelScanParams) {
+    if (
+      scanParams?.directory === params.directory &&
+      scanParams.maxDepth === params.maxDepth
+    ) {
+      void modelsQuery.refetch();
+      return;
+    }
+    setScanParams(params);
+  }
 
   const models = modelsQuery.data?.data.models ?? [];
   const filteredModels = models.filter((model) => {
@@ -125,7 +175,7 @@ export function ModelsView(props: {
               Save
             </Button>
             <Button
-              onClick={() => void modelsQuery.refetch()}
+              onClick={() => requestScan({ directory, maxDepth })}
               loading={modelsQuery.isFetching}
             >
               Scan
@@ -133,20 +183,11 @@ export function ModelsView(props: {
             <Button
               variant="subtle"
               onClick={() =>
-                queryClient
-                  .fetchQuery({
-                    queryKey: ["models", directory, maxDepth, "refresh"],
-                    queryFn: () =>
-                      scanModels({ directory, maxDepth, refresh: true }),
-                  })
-                  .then((result) => {
-                    queryClient.setQueryData(
-                      ["models", directory, maxDepth],
-                      result,
-                    );
-                  })
+                refreshModelsMutation.mutate({ directory, maxDepth })
               }
-              loading={modelsQuery.isFetching}
+              loading={
+                modelsQuery.isFetching || refreshModelsMutation.isPending
+              }
             >
               Refresh metadata
             </Button>
@@ -295,9 +336,11 @@ export function ModelsView(props: {
                 <Table.Tr>
                   <Table.Td colSpan={7}>
                     <Text c="dimmed" ta="center" py="lg">
-                      {modelsQuery.isFetched
-                        ? "No matching GGUF files found"
-                        : "Run scan to list models"}
+                      {modelsQuery.isFetching || settingsQuery.isFetching
+                        ? "Scanning models..."
+                        : modelsQuery.isFetched
+                          ? "No matching GGUF files found"
+                          : "Run scan to list models"}
                     </Text>
                   </Table.Td>
                 </Table.Tr>
