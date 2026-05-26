@@ -47,6 +47,20 @@ function pushFileIssue(issues: ProcessPreflightIssue[], field: string, value: un
   }
 }
 
+function hasConfiguredArg(instance: Instance, key: string) {
+  const value = instance.args[key];
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return Boolean(value.trim());
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return true;
+}
+
 function validateBinary(instance: Instance, issues: ProcessPreflightIssue[]) {
   if (!existsSync(instance.binaryPath)) {
     issues.push({ level: "error", field: "binaryPath", message: `Binary not found: ${instance.binaryPath}` });
@@ -144,6 +158,18 @@ function validateKnownPathArgs(instance: Instance, issues: ProcessPreflightIssue
   pushFileIssue(issues, "args.--model", instance.args["--model"], "Model file not found");
   pushFileIssue(issues, "args.--models-preset", instance.args["--models-preset"], "Models preset file not found");
   pushFileIssue(issues, "args.--mmproj", instance.args["--mmproj"], "Multimodal projector file not found");
+
+  if (
+    hasConfiguredArg(instance, "--model") &&
+    hasConfiguredArg(instance, "--models-preset")
+  ) {
+    issues.push({
+      level: "warning",
+      field: "args.--models-preset",
+      message:
+        "llama-server enters router mode only when no --model is configured; with --model set, --models-preset is ignored.",
+    });
+  }
 
   if (!instance.args["--model"] && !instance.args["--models-preset"] && !instance.args["--hf-repo"] && !instance.args["--model-url"]) {
     issues.push({
