@@ -33,6 +33,7 @@ import {
   NumberInput,
   Paper,
   ScrollArea,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -113,6 +114,8 @@ type PresetExtraArgRow = {
   key: string;
   value: string;
 };
+
+type LaunchMode = "model" | "router";
 
 type LaunchMonitor = {
   instanceId: string;
@@ -436,6 +439,12 @@ function upsertArgRow(
 
 function removeArgRow(rows: ArgRow[], key: string): ArgRow[] {
   const next = rows.filter((row) => row.key !== key);
+  return next.length > 0 ? next : [createArgRow()];
+}
+
+function removeArgRows(rows: ArgRow[], keys: string[]): ArgRow[] {
+  const keySet = new Set(keys);
+  const next = rows.filter((row) => !keySet.has(row.key));
   return next.length > 0 ? next : [createArgRow()];
 }
 
@@ -861,10 +870,13 @@ function modelMatchesSearch(model: GgufModel, query: string) {
 }
 
 function argsWithModel(instance: Instance, model: GgufModel) {
-  return {
-    ...instance.args,
-    "--model": model.path,
-  };
+  const args = { ...instance.args };
+  delete args["--models-preset"];
+  delete args["--models-max"];
+  delete args["--models-autoload"];
+  delete args["--no-models-autoload"];
+  args["--model"] = model.path;
+  return args;
 }
 
 function argString(args: Instance["args"], key: string) {
@@ -2456,6 +2468,11 @@ function InstanceFormModal(props: {
   const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
     null,
   );
+  const [launchMode, setLaunchMode] = useState<LaunchMode>("model");
+  const [selectedPresetPath, setSelectedPresetPath] = useState<string | null>(
+    null,
+  );
+  const [writePresetOnSave, setWritePresetOnSave] = useState(true);
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
     initialValues: {
@@ -2480,6 +2497,11 @@ function InstanceFormModal(props: {
       scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
     enabled: props.opened,
     staleTime: 60_000,
+  });
+  const modelPresetQuery = useQuery({
+    queryKey: ["model-preset"],
+    queryFn: getModelPreset,
+    enabled: props.opened,
   });
   const argsCatalogQuery = useQuery({
     queryKey: ["llama-args", form.values.binaryPath],
@@ -2512,6 +2534,27 @@ function InstanceFormModal(props: {
   );
   const selectedModel =
     selectableModels.find((model) => model.path === selectedModelPath) ?? null;
+  const modelPreset = modelPresetQuery.data?.data;
+  const effectivePresetPath = selectedPresetPath ?? modelPreset?.path ?? null;
+  const presetOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    if (modelPreset) {
+      options.push({
+        value: modelPreset.path,
+        label: `${pathBaseName(modelPreset.path)} · ${modelPreset.entries.length} models`,
+      });
+    }
+    if (
+      selectedPresetPath &&
+      !options.some((option) => option.value === selectedPresetPath)
+    ) {
+      options.push({
+        value: selectedPresetPath,
+        label: `${pathBaseName(selectedPresetPath)} · custom path`,
+      });
+    }
+    return options;
+  }, [modelPreset, selectedPresetPath]);
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
   const portValue = Number(rowValue(argRows, "--port") || 8080);
 
@@ -2522,6 +2565,8 @@ function InstanceFormModal(props: {
 
     if (props.instance) {
       const modelPath = argString(props.instance.args, "--model") || null;
+      const presetPath =
+        argString(props.instance.args, "--models-preset") || null;
       form.setValues({
         name: props.instance.name,
         binaryPath: props.instance.binaryPath,
@@ -2529,6 +2574,9 @@ function InstanceFormModal(props: {
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
       setSelectedModelPath(modelPath);
+      setSelectedPresetPath(presetPath);
+      setLaunchMode(presetPath && !modelPath ? "router" : "model");
+      setWritePresetOnSave(false);
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args));
     } else {
@@ -2541,6 +2589,9 @@ function InstanceFormModal(props: {
         envJson: JSON.stringify({}, null, 2),
       });
       setSelectedModelPath(modelPath);
+      setSelectedPresetPath(null);
+      setLaunchMode("model");
+      setWritePresetOnSave(true);
       setStartAfterCreate(Boolean(modelPath));
       setArgRows(defaultRows(modelPath ?? undefined, port));
     }
@@ -2555,6 +2606,18 @@ function InstanceFormModal(props: {
     selectedKnownOption?.helpRu,
     selectedKnownOption?.notes,
   ]);
+
+  useEffect(() => {
+    if (
+      !props.opened ||
+      launchMode !== "router" ||
+      selectedPresetPath ||
+      !modelPreset?.path
+    ) {
+      return;
+    }
+    applyPresetSelection(modelPreset.path);
+  }, [props.opened, launchMode, modelPreset?.path, selectedPresetPath]);
 
   const draftPreview = useMemo(() => {
     try {
@@ -2594,13 +2657,75 @@ function InstanceFormModal(props: {
     retry: false,
   });
 
+  function applyLaunchMode(mode: LaunchMode) {
+    setLaunchMode(mode);
+    if (mode === "model") {
+      setSelectedPresetPath(null);
+      setArgRows((rows) =>
+        removeArgRows(rows, [
+          "--models-preset",
+          "--models-max",
+          "--models-autoload",
+          "--no-models-autoload",
+        ]),
+      );
+      return;
+    }
+
+    applyPresetSelection(effectivePresetPath);
+  }
+
+  function applyPresetSelection(presetPath: string | null) {
+    setLaunchMode("router");
+    setSelectedPresetPath(presetPath);
+    setSelectedModelPath(null);
+    setArgRows((rows) => {
+      let next = removeArgRows(rows, ["--model"]);
+      next = presetPath
+        ? upsertArgRow(next, "--models-preset", presetPath, "string")
+        : removeArgRow(next, "--models-preset");
+      if (presetPath && !rowValue(next, "--models-max")) {
+        next = upsertArgRow(next, "--models-max", "4", "number");
+      }
+      if (
+        presetPath &&
+        !rowValue(next, "--models-autoload") &&
+        !rowValue(next, "--no-models-autoload")
+      ) {
+        next = upsertArgRow(next, "--models-autoload", "", "flag");
+      }
+      return next;
+    });
+    if (!isEdit && presetPath) {
+      setStartAfterCreate(true);
+    }
+    if (
+      !isEdit &&
+      presetPath &&
+      (!form.values.name ||
+        form.values.name === "local-server" ||
+        form.values.name === "local-router")
+    ) {
+      form.setFieldValue("name", "local-router");
+    }
+  }
+
   function applyModelSelection(modelPath: string | null) {
+    setLaunchMode("model");
     setSelectedModelPath(modelPath);
-    setArgRows((rows) =>
-      modelPath
+    setSelectedPresetPath(null);
+    setArgRows((rows) => {
+      let next = modelPath
         ? upsertArgRow(rows, "--model", modelPath, "string")
-        : removeArgRow(rows, "--model"),
-    );
+        : removeArgRow(rows, "--model");
+      next = removeArgRows(next, [
+        "--models-preset",
+        "--models-max",
+        "--models-autoload",
+        "--no-models-autoload",
+      ]);
+      return next;
+    });
     if (!isEdit && modelPath) {
       setStartAfterCreate(true);
     }
@@ -2632,7 +2757,15 @@ function InstanceFormModal(props: {
   }
 
   const mutation = useMutation({
-    mutationFn: (input: InstanceCreate | InstanceUpdate) => {
+    mutationFn: async (input: InstanceCreate | InstanceUpdate) => {
+      if (
+        launchMode === "router" &&
+        writePresetOnSave &&
+        effectivePresetPath &&
+        effectivePresetPath === modelPreset?.path
+      ) {
+        await writeModelPreset();
+      }
       if (props.instance) {
         return updateInstance(props.instance.id, input);
       }
@@ -2752,12 +2885,27 @@ function InstanceFormModal(props: {
 
   function submit(values: typeof form.values) {
     try {
+      if (launchMode === "router" && !effectivePresetPath) {
+        throw new Error("Router preset is not selected");
+      }
+      const rows =
+        launchMode === "router" && effectivePresetPath
+          ? upsertArgRow(
+              removeArgRows(argRows, ["--model"]),
+              "--models-preset",
+              effectivePresetPath,
+              "string",
+            )
+          : removeArgRows(argRows, [
+              "--models-preset",
+              "--models-max",
+              "--models-autoload",
+              "--no-models-autoload",
+            ]);
       const input: InstanceCreate = {
         name: values.name,
         binaryPath: values.binaryPath,
-        args: InstanceArgsSchema.parse(
-          rowsToArgsWithCatalog(argRows, knownArgByName),
-        ),
+        args: InstanceArgsSchema.parse(rowsToArgsWithCatalog(rows, knownArgByName)),
         env: InstanceEnvSchema.parse(parseJsonObject(values.envJson, "env")),
         ...(values.cwd ? { cwd: values.cwd } : {}),
       };
@@ -2791,27 +2939,87 @@ function InstanceFormModal(props: {
           <TextInput label="Working directory" {...form.getInputProps("cwd")} />
           <Paper withBorder p="sm" radius="sm">
             <Stack gap="xs">
-              <Select
-                label="Model"
-                placeholder={
-                  formModelsQuery.isFetching
-                    ? "Loading models..."
-                    : "Select GGUF model"
-                }
-                searchable
-                clearable
-                value={selectedModelPath}
-                onChange={applyModelSelection}
-                data={selectableModels.map((model) => ({
-                  value: model.path,
-                  label: `${modelTitle(model)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
-                }))}
-                nothingFoundMessage={
-                  formModelsQuery.isError
-                    ? (formModelsQuery.error as Error).message
-                    : "No models found"
-                }
+              <SegmentedControl
+                value={launchMode}
+                onChange={(value) => applyLaunchMode(value as LaunchMode)}
+                data={[
+                  { value: "model", label: "Single model" },
+                  { value: "router", label: "Router preset" },
+                ]}
+                fullWidth
               />
+              {launchMode === "model" ? (
+                <Select
+                  label="Model"
+                  placeholder={
+                    formModelsQuery.isFetching
+                      ? "Loading models..."
+                      : "Select GGUF model"
+                  }
+                  searchable
+                  clearable
+                  value={selectedModelPath}
+                  onChange={applyModelSelection}
+                  data={selectableModels.map((model) => ({
+                    value: model.path,
+                    label: `${modelTitle(model)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+                  }))}
+                  nothingFoundMessage={
+                    formModelsQuery.isError
+                      ? (formModelsQuery.error as Error).message
+                      : "No models found"
+                  }
+                />
+              ) : (
+                <Stack gap={6}>
+                  <Select
+                    label="Router preset"
+                    placeholder={
+                      modelPresetQuery.isFetching
+                        ? "Loading preset..."
+                        : "Select INI preset"
+                    }
+                    searchable
+                    clearable
+                    value={effectivePresetPath}
+                    onChange={applyPresetSelection}
+                    data={presetOptions}
+                    nothingFoundMessage={
+                      modelPresetQuery.isError
+                        ? (modelPresetQuery.error as Error).message
+                        : "No presets found"
+                    }
+                  />
+                  <Group justify="space-between" align="center" gap="xs">
+                    <Group gap="xs">
+                      <Badge variant="light">
+                        {modelPreset?.entries.length ?? 0} models
+                      </Badge>
+                      {effectivePresetPath && (
+                        <Badge variant="outline">
+                          {pathBaseName(effectivePresetPath)}
+                        </Badge>
+                      )}
+                    </Group>
+                    <Switch
+                      label="Write INI"
+                      checked={writePresetOnSave}
+                      disabled={
+                        !effectivePresetPath ||
+                        effectivePresetPath !== modelPreset?.path
+                      }
+                      onChange={(event) =>
+                        setWritePresetOnSave(event.currentTarget.checked)
+                      }
+                    />
+                  </Group>
+                  {effectivePresetPath && (
+                    <Text c="dimmed" size="xs" lineClamp={1}>
+                      {effectivePresetPath}
+                    </Text>
+                  )}
+                </Stack>
+              )}
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
                 <HostPicker
                   label="Host"
@@ -2839,7 +3047,7 @@ function InstanceFormModal(props: {
                   }
                 />
               </SimpleGrid>
-              {selectedModel && (
+              {launchMode === "model" && selectedModel && (
                 <Group gap="xs">
                   <Badge variant="light">
                     {selectedModel.metadata.architecture ?? "unknown arch"}
