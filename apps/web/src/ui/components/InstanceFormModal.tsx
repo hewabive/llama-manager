@@ -93,6 +93,29 @@ function argString(args: Instance["args"], key: string) {
   return String(value);
 }
 
+function hasConfiguredArg(args: Instance["args"], key: string) {
+  const value = args[key];
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return Boolean(value.trim());
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return true;
+}
+
+function hasModelSource(args: Instance["args"]) {
+  return (
+    hasConfiguredArg(args, "--model") ||
+    hasConfiguredArg(args, "--models-preset") ||
+    hasConfiguredArg(args, "--hf-repo") ||
+    hasConfiguredArg(args, "--model-url")
+  );
+}
+
 function instancePort(instance: Instance) {
   const port = Number(instance.args["--port"] ?? 8080);
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
@@ -257,7 +280,7 @@ export function InstanceFormModal(props: {
       setSelectedPresetPath(null);
       setLaunchMode("model");
       setWritePresetOnSave(true);
-      setStartAfterCreate(Boolean(modelPath));
+      setStartAfterCreate(false);
       setArgRows(defaultRows(modelPath ?? undefined, port));
     }
     setSelectedKnownArg(null);
@@ -361,9 +384,6 @@ export function InstanceFormModal(props: {
       }
       return next;
     });
-    if (!isEdit && presetPath) {
-      setStartAfterCreate(true);
-    }
     if (
       !isEdit &&
       presetPath &&
@@ -391,9 +411,6 @@ export function InstanceFormModal(props: {
       ]);
       return next;
     });
-    if (!isEdit && modelPath) {
-      setStartAfterCreate(true);
-    }
     if (
       !isEdit &&
       modelPath &&
@@ -567,12 +584,18 @@ export function InstanceFormModal(props: {
               "--models-autoload",
               "--no-models-autoload",
             ]);
+      const args = InstanceArgsSchema.parse(
+        rowsToArgsWithCatalog(rows, knownArgByName),
+      );
+      if (launchMode === "model" && !hasModelSource(args)) {
+        throw new Error(
+          "Select a model or configure --hf-repo/--model-url before creating a single-model instance",
+        );
+      }
       const input: InstanceCreate = {
         name: values.name,
         binaryPath: values.binaryPath,
-        args: InstanceArgsSchema.parse(
-          rowsToArgsWithCatalog(rows, knownArgByName),
-        ),
+        args,
         env: InstanceEnvSchema.parse(parseJsonObject(values.envJson, "env")),
         ...(values.cwd ? { cwd: values.cwd } : {}),
       };
@@ -629,7 +652,7 @@ export function InstanceFormModal(props: {
                   onChange={applyModelSelection}
                   data={selectableModels.map((model) => ({
                     value: model.path,
-                    label: `${modelTitle(model)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+                    label: `${modelTitle(model)} · ${pathBaseName(model.path)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
                   }))}
                   nothingFoundMessage={
                     formModelsQuery.isError

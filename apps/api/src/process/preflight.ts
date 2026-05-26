@@ -1,4 +1,8 @@
-import type { Instance, ProcessPreflightIssue, ProcessPreflightResult } from "@llama-manager/core";
+import type {
+  Instance,
+  ProcessPreflightIssue,
+  ProcessPreflightResult,
+} from "@llama-manager/core";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -12,7 +16,12 @@ function nowIso() {
 
 export class ProcessPreflightError extends Error {
   constructor(readonly result: ProcessPreflightResult) {
-    super(result.issues.filter((issue) => issue.level === "error").map((issue) => issue.message).join("; "));
+    super(
+      result.issues
+        .filter((issue) => issue.level === "error")
+        .map((issue) => issue.message)
+        .join("; "),
+    );
     this.name = "ProcessPreflightError";
   }
 }
@@ -27,7 +36,12 @@ function localPathCandidate(value: unknown) {
   return value;
 }
 
-function pushFileIssue(issues: ProcessPreflightIssue[], field: string, value: unknown, message: string) {
+function pushFileIssue(
+  issues: ProcessPreflightIssue[],
+  field: string,
+  value: unknown,
+  message: string,
+) {
   const path = localPathCandidate(value);
   if (!path) {
     return;
@@ -43,7 +57,11 @@ function pushFileIssue(issues: ProcessPreflightIssue[], field: string, value: un
       issues.push({ level: "error", field, message: `Expected file: ${path}` });
     }
   } catch (error) {
-    issues.push({ level: "error", field, message: `Unable to inspect ${path}: ${(error as Error).message}` });
+    issues.push({
+      level: "error",
+      field,
+      message: `Unable to inspect ${path}: ${(error as Error).message}`,
+    });
   }
 }
 
@@ -63,13 +81,21 @@ function hasConfiguredArg(instance: Instance, key: string) {
 
 function validateBinary(instance: Instance, issues: ProcessPreflightIssue[]) {
   if (!existsSync(instance.binaryPath)) {
-    issues.push({ level: "error", field: "binaryPath", message: `Binary not found: ${instance.binaryPath}` });
+    issues.push({
+      level: "error",
+      field: "binaryPath",
+      message: `Binary not found: ${instance.binaryPath}`,
+    });
     return;
   }
 
   const stat = statSync(instance.binaryPath);
   if (!stat.isFile()) {
-    issues.push({ level: "error", field: "binaryPath", message: `Binary path is not a file: ${instance.binaryPath}` });
+    issues.push({
+      level: "error",
+      field: "binaryPath",
+      message: `Binary path is not a file: ${instance.binaryPath}`,
+    });
     return;
   }
 
@@ -77,19 +103,34 @@ function validateBinary(instance: Instance, issues: ProcessPreflightIssue[]) {
     try {
       accessSync(instance.binaryPath, constants.X_OK);
     } catch {
-      issues.push({ level: "error", field: "binaryPath", message: `Binary is not executable: ${instance.binaryPath}` });
+      issues.push({
+        level: "error",
+        field: "binaryPath",
+        message: `Binary is not executable: ${instance.binaryPath}`,
+      });
     }
   }
 }
 
-function validateWorkingDirectory(instance: Instance, issues: ProcessPreflightIssue[]) {
+function validateWorkingDirectory(
+  instance: Instance,
+  issues: ProcessPreflightIssue[],
+) {
   const cwd = instance.cwd ?? dirname(instance.binaryPath);
   if (!existsSync(cwd)) {
-    issues.push({ level: "error", field: "cwd", message: `Working directory not found: ${cwd}` });
+    issues.push({
+      level: "error",
+      field: "cwd",
+      message: `Working directory not found: ${cwd}`,
+    });
     return;
   }
   if (!statSync(cwd).isDirectory()) {
-    issues.push({ level: "error", field: "cwd", message: `Working directory is not a directory: ${cwd}` });
+    issues.push({
+      level: "error",
+      field: "cwd",
+      message: `Working directory is not a directory: ${cwd}`,
+    });
   }
 }
 
@@ -100,7 +141,11 @@ function validatePort(instance: Instance, issues: ProcessPreflightIssue[]) {
   }
   const port = Number(rawPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    issues.push({ level: "error", field: "args.--port", message: `Invalid port: ${String(rawPort)}` });
+    issues.push({
+      level: "error",
+      field: "args.--port",
+      message: `Invalid port: ${String(rawPort)}`,
+    });
   }
 }
 
@@ -126,10 +171,20 @@ function parsedPort(instance: Instance) {
 }
 
 function hostsOverlap(left: string, right: string) {
-  return left === right || left === "0.0.0.0" || right === "0.0.0.0" || left === "::" || right === "::";
+  return (
+    left === right ||
+    left === "0.0.0.0" ||
+    right === "0.0.0.0" ||
+    left === "::" ||
+    right === "::"
+  );
 }
 
-function validatePortConflicts(instance: Instance, issues: ProcessPreflightIssue[], peers: Instance[]) {
+function validatePortConflicts(
+  instance: Instance,
+  issues: ProcessPreflightIssue[],
+  peers: Instance[],
+) {
   const port = parsedPort(instance);
   if (!port) {
     return;
@@ -145,7 +200,9 @@ function validatePortConflicts(instance: Instance, issues: ProcessPreflightIssue
       continue;
     }
 
-    const active = ["starting", "running", "stopping", "stale"].includes(peer.status);
+    const active = ["starting", "running", "stopping", "stale"].includes(
+      peer.status,
+    );
     issues.push({
       level: active ? "error" : "warning",
       field: "args.--port",
@@ -154,10 +211,28 @@ function validatePortConflicts(instance: Instance, issues: ProcessPreflightIssue
   }
 }
 
-function validateKnownPathArgs(instance: Instance, issues: ProcessPreflightIssue[]) {
-  pushFileIssue(issues, "args.--model", instance.args["--model"], "Model file not found");
-  pushFileIssue(issues, "args.--models-preset", instance.args["--models-preset"], "Models preset file not found");
-  pushFileIssue(issues, "args.--mmproj", instance.args["--mmproj"], "Multimodal projector file not found");
+function validateKnownPathArgs(
+  instance: Instance,
+  issues: ProcessPreflightIssue[],
+) {
+  pushFileIssue(
+    issues,
+    "args.--model",
+    instance.args["--model"],
+    "Model file not found",
+  );
+  pushFileIssue(
+    issues,
+    "args.--models-preset",
+    instance.args["--models-preset"],
+    "Models preset file not found",
+  );
+  pushFileIssue(
+    issues,
+    "args.--mmproj",
+    instance.args["--mmproj"],
+    "Multimodal projector file not found",
+  );
 
   if (
     hasConfiguredArg(instance, "--model") &&
@@ -171,28 +246,45 @@ function validateKnownPathArgs(instance: Instance, issues: ProcessPreflightIssue
     });
   }
 
-  if (!instance.args["--model"] && !instance.args["--models-preset"] && !instance.args["--hf-repo"] && !instance.args["--model-url"]) {
+  if (
+    !hasConfiguredArg(instance, "--model") &&
+    !hasConfiguredArg(instance, "--models-preset") &&
+    !hasConfiguredArg(instance, "--hf-repo") &&
+    !hasConfiguredArg(instance, "--model-url")
+  ) {
     issues.push({
-      level: "warning",
+      level: "error",
       field: "args",
-      message: "No --model, --models-preset, --hf-repo or --model-url is configured",
+      message:
+        "No --model, --models-preset, --hf-repo or --model-url is configured",
     });
   }
 }
 
-export function validateInstancePreflight(instance: Instance, options: PreflightOptions = {}): ProcessPreflightResult {
+export function validateInstancePreflight(
+  instance: Instance,
+  options: PreflightOptions = {},
+): ProcessPreflightResult {
   const issues: ProcessPreflightIssue[] = [];
 
   try {
     validateBinary(instance, issues);
   } catch (error) {
-    issues.push({ level: "error", field: "binaryPath", message: (error as Error).message });
+    issues.push({
+      level: "error",
+      field: "binaryPath",
+      message: (error as Error).message,
+    });
   }
 
   try {
     validateWorkingDirectory(instance, issues);
   } catch (error) {
-    issues.push({ level: "error", field: "cwd", message: (error as Error).message });
+    issues.push({
+      level: "error",
+      field: "cwd",
+      message: (error as Error).message,
+    });
   }
 
   validatePort(instance, issues);

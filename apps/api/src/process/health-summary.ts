@@ -18,26 +18,45 @@ type HealthSummaryOptions = {
   peers?: Instance[] | undefined;
 };
 
-const runtimeStatuses = new Set<Instance["status"]>(["stopped", "starting", "running", "stopping", "exited", "stale", "error"]);
-const probeableStatuses = new Set<Instance["status"]>(["starting", "running"]);
+const runtimeStatuses = new Set<Instance["status"]>([
+  "stopped",
+  "starting",
+  "running",
+  "stopping",
+  "exited",
+  "stale",
+  "error",
+]);
+const probeableStatuses = new Set<Instance["status"]>([
+  "starting",
+  "running",
+  "stale",
+]);
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function isRuntimeStatus(value: string | null | undefined): value is Instance["status"] {
+function isRuntimeStatus(
+  value: string | null | undefined,
+): value is Instance["status"] {
   return Boolean(value && runtimeStatuses.has(value as Instance["status"]));
 }
 
 function durableRuntime(instance: Instance): RuntimeState {
   const latestRun = latestProcessRun(instance.id);
   const pid = latestRun?.pid ? Number(latestRun.pid) : null;
-  const exitCode = latestRun?.exitCode === null || latestRun?.exitCode === undefined ? null : Number(latestRun.exitCode);
+  const exitCode =
+    latestRun?.exitCode === null || latestRun?.exitCode === undefined
+      ? null
+      : Number(latestRun.exitCode);
 
   return {
     instanceId: instance.id,
     pid: pid && Number.isFinite(pid) ? pid : null,
-    status: isRuntimeStatus(latestRun?.status) ? latestRun.status : instance.status,
+    status: isRuntimeStatus(latestRun?.status)
+      ? latestRun.status
+      : instance.status,
     startedAt: latestRun?.startedAt ?? null,
     stoppedAt: latestRun?.stoppedAt ?? null,
     exitCode: exitCode === null || Number.isFinite(exitCode) ? exitCode : null,
@@ -45,10 +64,15 @@ function durableRuntime(instance: Instance): RuntimeState {
   };
 }
 
-function actionsFor(runtime: RuntimeState, preflightOk: boolean): InstanceHealthActions {
-  const canStart = preflightOk && ["stopped", "exited", "error"].includes(runtime.status);
+function actionsFor(
+  runtime: RuntimeState,
+  preflightOk: boolean,
+): InstanceHealthActions {
+  const canStart =
+    preflightOk && ["stopped", "exited", "error"].includes(runtime.status);
   const canStop = ["starting", "running", "stale"].includes(runtime.status);
-  const canRestart = preflightOk && ["starting", "running", "error"].includes(runtime.status);
+  const canRestart =
+    preflightOk && ["starting", "running", "error"].includes(runtime.status);
 
   return {
     canStart,
@@ -89,6 +113,14 @@ function deriveStatus(input: {
   logWarnings: number;
 }): { status: InstanceHealthSummaryStatus; reason: string } {
   if (input.runtime.status === "stale") {
+    if (input.healthOk) {
+      return {
+        status: "stale",
+        reason: input.runtime.pid
+          ? `Process pid=${input.runtime.pid} is unmanaged, but llama-server health is OK.`
+          : "Last run is unmanaged, but llama-server health is OK.",
+      };
+    }
     return {
       status: "stale",
       reason: input.runtime.pid
@@ -107,11 +139,17 @@ function deriveStatus(input: {
   if (input.runtime.status === "error") {
     return {
       status: "error",
-      reason: input.logErrors > 0 ? "Runtime is in error state and recent logs contain errors." : "Runtime is in error state.",
+      reason:
+        input.logErrors > 0
+          ? "Runtime is in error state and recent logs contain errors."
+          : "Runtime is in error state.",
     };
   }
 
-  if (!input.preflightOk && ["stopped", "exited"].includes(input.runtime.status)) {
+  if (
+    !input.preflightOk &&
+    ["stopped", "exited"].includes(input.runtime.status)
+  ) {
     return {
       status: "invalid",
       reason: `${input.preflightErrors} blocking preflight issue${input.preflightErrors === 1 ? "" : "s"} must be fixed before start.`,
@@ -135,7 +173,8 @@ function deriveStatus(input: {
   if (input.runtime.status === "starting") {
     return {
       status: "starting",
-      reason: "Process was started and the API is waiting for llama-server readiness.",
+      reason:
+        "Process was started and the API is waiting for llama-server readiness.",
     };
   }
 
@@ -147,7 +186,11 @@ function deriveStatus(input: {
   }
 
   if (input.healthOk) {
-    if (input.logErrors > 0 || input.logWarnings > 0 || input.preflightWarnings > 0) {
+    if (
+      input.logErrors > 0 ||
+      input.logWarnings > 0 ||
+      input.preflightWarnings > 0
+    ) {
       return {
         status: "degraded",
         reason: `HTTP health is OK, with ${input.logErrors} log error(s), ${input.logWarnings} log warning(s), and ${input.preflightWarnings} preflight warning(s).`,
@@ -163,7 +206,10 @@ function deriveStatus(input: {
   if (input.healthStatus === 503 || input.logReady) {
     return {
       status: "loading",
-      reason: input.healthStatus === 503 ? "llama-server is reachable but still loading." : "Logs look ready, but HTTP health is not OK yet.",
+      reason:
+        input.healthStatus === 503
+          ? "llama-server is reachable but still loading."
+          : "Logs look ready, but HTTP health is not OK yet.",
     };
   }
 
@@ -176,19 +222,29 @@ function deriveStatus(input: {
 
   return {
     status: "loading",
-    reason: "Process is running, but llama-server health endpoint is not ready yet.",
+    reason:
+      "Process is running, but llama-server health endpoint is not ready yet.",
   };
 }
 
-export async function getInstanceHealthSummary(instance: Instance, options: HealthSummaryOptions = {}): Promise<InstanceHealthSummary> {
+export async function getInstanceHealthSummary(
+  instance: Instance,
+  options: HealthSummaryOptions = {},
+): Promise<InstanceHealthSummary> {
   const runtime = supervisor.getState(instance.id) ?? durableRuntime(instance);
-  const preflight = validateInstancePreflight(instance, { peers: options.peers });
+  const preflight = validateInstancePreflight(instance, {
+    peers: options.peers,
+  });
   const shouldProbe = probeableStatuses.has(runtime.status);
   const [llama, logSummary] = await Promise.all([
-    shouldProbe ? probeLlamaServer(instance) : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
+    shouldProbe
+      ? probeLlamaServer(instance)
+      : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
     Promise.resolve(summarizeInstanceLog({ instanceId: instance.id, runtime })),
   ]);
-  const preflightErrors = preflight.issues.filter((issue) => issue.level === "error").length;
+  const preflightErrors = preflight.issues.filter(
+    (issue) => issue.level === "error",
+  ).length;
   const preflightWarnings = preflight.issues.length - preflightErrors;
   const derived = deriveStatus({
     runtime,
