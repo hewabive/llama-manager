@@ -64,7 +64,8 @@ code {
 .models-mobile-list,
 .preset-models-mobile-list,
 .preset-entries-mobile-list,
-.build-jobs-mobile-list {
+.build-jobs-mobile-list,
+.processes-mobile-list {
   display: none;
 }
 
@@ -120,15 +121,24 @@ code {
     order: 3;
     flex: 1 0 100%;
     justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 2px;
     overflow-x: auto;
     padding-bottom: 2px;
+  }
+
+  .app-header__nav .mantine-Button-root {
+    min-width: auto;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   .instances-mobile-list,
   .models-mobile-list,
   .preset-models-mobile-list,
   .preset-entries-mobile-list,
-  .build-jobs-mobile-list {
+  .build-jobs-mobile-list,
+  .processes-mobile-list {
     display: flex;
   }
 
@@ -136,7 +146,8 @@ code {
   .models-table,
   .preset-models-table,
   .preset-entries-table,
-  .build-jobs-table {
+  .build-jobs-table,
+  .processes-table {
     display: none;
   }
 

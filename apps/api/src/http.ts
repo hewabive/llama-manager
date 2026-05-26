@@ -1,6 +1,7 @@
 import {
   BuildJobStartSchema,
   BuildSettingsSchema,
+  ExternalProcessKillSchema,
   InstanceCreateSchema,
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
@@ -48,6 +49,10 @@ import {
   writeModelPresetFile,
 } from "./presets/repository.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
+import {
+  killExternalLlamaProcess,
+  listExternalLlamaProcesses,
+} from "./process/external.js";
 import { summarizeInstanceLog } from "./process/log-summary.js";
 import { tailInstanceLog } from "./process/logs.js";
 import { isPidAlive } from "./process/pid.js";
@@ -56,10 +61,8 @@ import {
   validateInstancePreflight,
   validateInstanceStartPreflight,
 } from "./process/preflight.js";
-import {
-  latestProcessRun,
-  updateProcessRun,
-} from "./process/runs-repository.js";
+import { latestProcessRun } from "./process/runs-repository.js";
+import { stopStaleProcess } from "./process/stale.js";
 import { supervisor } from "./process/supervisor.js";
 import { listNetworkInterfaceAddresses } from "./system/network.js";
 
@@ -78,6 +81,30 @@ app.get("/api/health", (c) => {
 
 app.get("/api/network/interfaces", (c) => {
   return c.json({ data: { interfaces: listNetworkInterfaceAddresses() } });
+});
+
+app.get("/api/system/llama-processes", async (c) => {
+  return c.json({ data: await listExternalLlamaProcesses() });
+});
+
+app.post("/api/system/llama-processes/:pid/kill", async (c) => {
+  const pid = Number(c.req.param("pid"));
+  if (!Number.isInteger(pid) || pid < 1) {
+    return c.json({ error: "invalid pid" }, 400);
+  }
+
+  const parsed = ExternalProcessKillSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  try {
+    return c.json({
+      data: await killExternalLlamaProcess(pid, parsed.data.force),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.get("/api/instances", (c) => {
@@ -408,9 +435,14 @@ app.patch("/api/instances/:id", async (c) => {
   return c.json({ data: instance });
 });
 
-app.delete("/api/instances/:id", (c) => {
+app.delete("/api/instances/:id", async (c) => {
   const id = c.req.param("id");
   supervisor.stop(id, 2_000);
+  try {
+    await stopStaleProcess(id, 2_000);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
   const deleted = deleteInstance(id);
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
@@ -458,52 +490,17 @@ app.post("/api/instances/:id/start", async (c) => {
   }
 });
 
-app.post("/api/instances/:id/stop", (c) => {
+app.post("/api/instances/:id/stop", async (c) => {
   const instanceId = c.req.param("id");
   const state = supervisor.stop(instanceId);
   if (!state) {
-    const latestRun = latestProcessRun(instanceId);
-    const pid = latestRun?.pid ? Number(latestRun.pid) : null;
-    if (
-      latestRun?.status === "stale" &&
-      pid &&
-      Number.isFinite(pid) &&
-      isPidAlive(pid)
-    ) {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch (error) {
-        return c.json({ error: (error as Error).message }, 400);
+    try {
+      const staleState = await stopStaleProcess(instanceId);
+      if (staleState) {
+        return c.json({ data: staleState });
       }
-
-      updateProcessRun(latestRun.id, { status: "stopping" });
-      setTimeout(() => {
-        if (isPidAlive(pid)) {
-          try {
-            process.kill(pid, "SIGKILL");
-          } catch {
-            // The process may have exited between the liveness check and SIGKILL.
-          }
-        }
-        updateProcessRun(latestRun.id, {
-          pid: null,
-          status: "exited",
-          stoppedAt: new Date().toISOString(),
-          exitCode: null,
-        });
-      }, 5_000).unref();
-
-      return c.json({
-        data: {
-          instanceId,
-          pid,
-          status: "stopping",
-          startedAt: latestRun.startedAt,
-          stoppedAt: null,
-          exitCode: null,
-          logPath: latestRun.logPath,
-        },
-      });
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
     }
     return c.json({ error: "instance is not running" }, 404);
   }
@@ -515,10 +512,6 @@ app.post("/api/instances/:id/restart", async (c) => {
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
-  const staleConflict = staleProcessConflict(instance.id);
-  if (staleConflict) {
-    return c.json({ error: staleConflict }, 409);
-  }
   const preflight = validateInstancePreflight(instance, {
     peers: listInstances(),
   });
@@ -526,6 +519,19 @@ app.post("/api/instances/:id/restart", async (c) => {
     return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
   }
   try {
+    const staleState = await stopStaleProcess(instance.id);
+    if (staleState) {
+      const startPreflight = await validateInstanceStartPreflight(instance, {
+        peers: listInstances(),
+      });
+      if (!startPreflight.ok) {
+        return c.json(
+          { error: "preflight failed", issues: startPreflight.issues },
+          400,
+        );
+      }
+      return c.json({ data: supervisor.start(instance) });
+    }
     return c.json({ data: await supervisor.restart(instance) });
   } catch (error) {
     if (error instanceof ProcessPreflightError) {

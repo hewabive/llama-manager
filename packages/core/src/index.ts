@@ -286,6 +286,32 @@ export const NetworkInterfacesResultSchema = z.object({
   interfaces: z.array(NetworkInterfaceAddressSchema),
 });
 
+export const ExternalLlamaProcessSchema = z.object({
+  pid: z.number().int().positive(),
+  ppid: z.number().int().nonnegative().nullable(),
+  command: z.string(),
+  args: z.string(),
+  managedInstanceId: z.string().nullable(),
+  managedRunStatus: z.string().nullable(),
+});
+
+export const ExternalLlamaProcessesResultSchema = z.object({
+  processes: z.array(ExternalLlamaProcessSchema),
+  scannedAt: z.string(),
+  unsupported: z.boolean(),
+  error: z.string().nullable(),
+});
+
+export const ExternalProcessKillSchema = z.object({
+  force: z.boolean().default(false),
+});
+
+export const ExternalProcessKillResultSchema = z.object({
+  pid: z.number().int().positive(),
+  signal: z.enum(["SIGTERM", "SIGKILL"]),
+  killed: z.boolean(),
+});
+
 export const GgufMetadataSchema = z.object({
   name: z.string().nullable(),
   architecture: z.string().nullable(),
@@ -415,6 +441,14 @@ export type NetworkInterfaceAddress = z.infer<
 >;
 export type NetworkInterfacesResult = z.infer<
   typeof NetworkInterfacesResultSchema
+>;
+export type ExternalLlamaProcess = z.infer<typeof ExternalLlamaProcessSchema>;
+export type ExternalLlamaProcessesResult = z.infer<
+  typeof ExternalLlamaProcessesResultSchema
+>;
+export type ExternalProcessKill = z.infer<typeof ExternalProcessKillSchema>;
+export type ExternalProcessKillResult = z.infer<
+  typeof ExternalProcessKillResultSchema
 >;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;

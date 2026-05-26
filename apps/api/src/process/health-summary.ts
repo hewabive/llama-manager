@@ -75,7 +75,8 @@ function actionsFor(
     preflightOk && ["stopped", "exited", "error"].includes(runtime.status);
   const canStop = ["starting", "running", "stale"].includes(runtime.status);
   const canRestart =
-    preflightOk && ["starting", "running", "error"].includes(runtime.status);
+    preflightOk &&
+    ["starting", "running", "stale", "error"].includes(runtime.status);
 
   return {
     canStart,

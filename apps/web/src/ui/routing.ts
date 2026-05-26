@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 
-export type AppRoute = "instances" | "models" | "presets" | "build";
+export type AppRoute =
+  | "instances"
+  | "models"
+  | "presets"
+  | "build"
+  | "processes";
 
 export const appRoutes: {
   id: AppRoute;
@@ -31,6 +36,12 @@ export const appRoutes: {
     label: "Build",
     title: "Build",
     description: "Update llama.cpp and build llama-server with CMake",
+  },
+  {
+    id: "processes",
+    label: "System",
+    title: "Processes",
+    description: "Inspect unmanaged llama-server processes",
   },
 ];
 

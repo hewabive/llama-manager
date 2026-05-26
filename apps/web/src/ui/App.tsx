@@ -29,6 +29,7 @@ import { BuildView } from "./views/BuildView";
 import { InstancesView } from "./views/InstancesView";
 import { ModelsView } from "./views/ModelsView";
 import { PresetsView } from "./views/PresetsView";
+import { ProcessesView } from "./views/ProcessesView";
 
 export function App() {
   const [route, setRoute] = useHashRoute();
@@ -238,6 +239,8 @@ export function App() {
           )}
 
           {route === "presets" && <PresetsView />}
+
+          {route === "processes" && <ProcessesView />}
 
           {route === "instances" && (
             <InstanceDetails

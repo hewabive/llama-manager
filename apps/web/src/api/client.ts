@@ -3,6 +3,8 @@ import type {
   BuildJobStart,
   BuildLogTail,
   BuildSettings,
+  ExternalLlamaProcessesResult,
+  ExternalProcessKillResult,
   Instance,
   InstanceCreate,
   InstanceHealthSummary,
@@ -115,6 +117,22 @@ export async function listInstanceHealthSummaries() {
 
 export async function listNetworkInterfaces() {
   return request<{ data: NetworkInterfacesResult }>("/api/network/interfaces");
+}
+
+export async function listExternalLlamaProcesses() {
+  return request<{ data: ExternalLlamaProcessesResult }>(
+    "/api/system/llama-processes",
+  );
+}
+
+export async function killExternalLlamaProcess(pid: number, force = false) {
+  return request<{ data: ExternalProcessKillResult }>(
+    `/api/system/llama-processes/${pid}/kill`,
+    {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    },
+  );
 }
 
 export async function getLlamaArguments(binaryPath?: string, refresh = false) {
