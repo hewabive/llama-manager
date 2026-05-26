@@ -13,6 +13,7 @@ type PreflightOptions = {
 
 type StartPreflightOptions = PreflightOptions & {
   checkPortAvailability?: boolean | undefined;
+  allowActiveSelfPort?: boolean | undefined;
 };
 
 function nowIso() {
@@ -231,6 +232,17 @@ function hostsOverlap(left: string, right: string) {
   );
 }
 
+const activePortStatuses = new Set<Instance["status"]>([
+  "starting",
+  "running",
+  "stopping",
+  "stale",
+]);
+
+function isActivePortOwner(instance: Instance) {
+  return activePortStatuses.has(instance.status);
+}
+
 function validatePortConflicts(
   instance: Instance,
   issues: ProcessPreflightIssue[],
@@ -251,23 +263,44 @@ function validatePortConflicts(
       continue;
     }
 
-    const active = ["starting", "running", "stopping", "stale"].includes(
-      peer.status,
-    );
     issues.push({
-      level: active ? "error" : "warning",
+      level: isActivePortOwner(peer) ? "error" : "warning",
       field: "args.--port",
       message: `Port ${port} conflicts with ${peer.name} (${peer.status})`,
     });
   }
 }
 
+function hasActiveSelfPort(instance: Instance, peers: Instance[]) {
+  const port = parsedPort(instance);
+  if (!port) {
+    return false;
+  }
+
+  const host = normalizedHost(instance);
+  return peers.some(
+    (peer) =>
+      peer.id === instance.id &&
+      isActivePortOwner(peer) &&
+      parsedPort(peer) === port &&
+      hostsOverlap(host, normalizedHost(peer)),
+  );
+}
+
 async function validatePortAvailability(
   instance: Instance,
   issues: ProcessPreflightIssue[],
+  options: StartPreflightOptions,
 ) {
   const port = parsedPort(instance);
   if (!port) {
+    return;
+  }
+
+  if (
+    options.allowActiveSelfPort &&
+    hasActiveSelfPort(instance, options.peers ?? [])
+  ) {
     return;
   }
 
@@ -379,7 +412,7 @@ export async function validateInstanceStartPreflight(
     return result;
   }
 
-  await validatePortAvailability(instance, result.issues);
+  await validatePortAvailability(instance, result.issues, options);
   return {
     ...result,
     ok: !result.issues.some((issue) => issue.level === "error"),

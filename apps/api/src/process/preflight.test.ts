@@ -20,8 +20,8 @@ function instance(input: Partial<Instance>): Instance {
     cwd: input.cwd ?? tmpdir(),
     args: input.args ?? {},
     env: {},
-    status: "stopped",
-    pid: null,
+    status: input.status ?? "stopped",
+    pid: input.pid ?? null,
     createdAt: "2026-05-26T00:00:00.000Z",
     updatedAt: "2026-05-26T00:00:00.000Z",
   };
@@ -56,6 +56,59 @@ test("validateInstancePreflight blocks configs without a model source", () => {
       },
     );
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateInstanceStartPreflight allows an edited instance to keep its active port", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  const listener = createServer();
+
+  try {
+    writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(binaryPath, 0o755);
+    writeFileSync(modelPath, "");
+
+    await new Promise<void>((resolve) => {
+      listener.listen({ host: "127.0.0.1", port: 0 }, resolve);
+    });
+    const port = (listener.address() as AddressInfo).port;
+    const edited = instance({
+      binaryPath,
+      cwd: dir,
+      args: {
+        "--host": "127.0.0.1",
+        "--port": port,
+        "--model": modelPath,
+      },
+    });
+
+    const result = await validateInstanceStartPreflight(edited, {
+      peers: [
+        instance({
+          ...edited,
+          status: "running",
+          pid: 12345,
+        }),
+      ],
+      allowActiveSelfPort: true,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(
+      result.issues.some((issue) => issue.field === "args.--port"),
+      false,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      if (!listener.listening) {
+        resolve();
+        return;
+      }
+      listener.close((error) => (error ? reject(error) : resolve()));
+    });
     rmSync(dir, { recursive: true, force: true });
   }
 });

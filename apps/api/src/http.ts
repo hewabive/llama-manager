@@ -385,7 +385,7 @@ app.post("/api/instances/preflight", async (c) => {
         createdAt: timestamp,
         updatedAt: timestamp,
       },
-      { peers: listInstances() },
+      { peers: listInstances(), allowActiveSelfPort: Boolean(preview.id) },
     ),
   });
 });
@@ -428,7 +428,12 @@ app.get("/api/instances/:id/preflight", async (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  return c.json({ data: await validateInstanceStartPreflight(instance) });
+  return c.json({
+    data: await validateInstanceStartPreflight(instance, {
+      peers: listInstances(),
+      allowActiveSelfPort: true,
+    }),
+  });
 });
 
 app.get("/api/instances/:id/health-summary", async (c) => {
