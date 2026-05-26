@@ -11,9 +11,6 @@ import {
   type LlamaEndpointProbe,
   type LlamaProbe,
   type LogTail,
-  type ModelPreset,
-  type ModelPresetEntry,
-  type NetworkInterfaceAddress,
   type ProcessEvent,
 } from "@llama-manager/core";
 import {
@@ -22,7 +19,6 @@ import {
   Badge,
   Box,
   Button,
-  Checkbox,
   Code,
   Divider,
   Group,
@@ -60,12 +56,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createInstance,
-  createRouterInstance,
   deleteLlamaArgumentOverride,
   deleteInstance,
   getLlamaArguments,
   getModelPreset,
-  getModelPresetPreview,
   getModelScanSettings,
   getInstanceHealthSummary,
   getInstanceLogs,
@@ -77,20 +71,28 @@ import {
   instanceEventsUrl,
   listInstanceHealthSummaries,
   listInstances,
-  listNetworkInterfaces,
   previewInstancePreflight,
   scanModels,
   updateLlamaArgumentOverride,
-  updateModelPreset,
-  updateModelScanSettings,
   writeModelPreset,
   updateInstance,
 } from "../api/client";
+import { HostPicker } from "./components/HostPicker";
+import { defaultBinaryPath, defaultModelsDirectory } from "./constants";
 import { appRoutes, useHashRoute } from "./routing";
+import { createUiId } from "./utils/id";
+import {
+  argsWithModel,
+  formatBytes,
+  instanceNameFromModelPath,
+  isVocabModel,
+  modelTitle,
+  pathBaseName,
+} from "./utils/models";
 import { BuildView } from "./views/BuildView";
+import { ModelsView } from "./views/ModelsView";
+import { PresetsView } from "./views/PresetsView";
 
-const defaultBinaryPath = "/home/maxim/llama/llama-b8779/llama-server";
-const defaultModelsDirectory = "/home/maxim/llama";
 const launchMonitorTimeoutMs = 5 * 60 * 1000;
 
 type ArgRow = {
@@ -100,12 +102,6 @@ type ArgRow = {
   valueType: "string" | "number" | "boolean" | "flag" | "list" | "null";
 };
 
-type PresetExtraArgRow = {
-  id: string;
-  key: string;
-  value: string;
-};
-
 type LaunchMode = "model" | "router";
 
 type LaunchMonitor = {
@@ -113,56 +109,6 @@ type LaunchMonitor = {
   startedAt: string;
   source: "create" | "start" | "restart";
 };
-
-let uiIdCounter = 0;
-const customHostSelectValue = "__custom_host__";
-
-function createUiId(prefix = "row") {
-  const uuid = globalThis.crypto?.randomUUID?.();
-  if (uuid) {
-    return uuid;
-  }
-
-  uiIdCounter += 1;
-  return `${prefix}-${Date.now().toString(36)}-${uiIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function hostOptionLabel(item: NetworkInterfaceAddress) {
-  const parts = [item.address, item.name];
-  if (item.cidr) {
-    parts.push(item.cidr);
-  }
-  if (item.internal) {
-    parts.push("internal");
-  }
-  return parts.join(" - ");
-}
-
-function hostOptionsFromInterfaces(
-  interfaces: NetworkInterfaceAddress[] | undefined,
-) {
-  const seen = new Set<string>();
-  const options: Array<{ value: string; label: string }> = [];
-  const add = (value: string, label: string) => {
-    if (seen.has(value)) {
-      return;
-    }
-    seen.add(value);
-    options.push({ value, label });
-  };
-
-  add("127.0.0.1", "127.0.0.1 - local machine only");
-  add("0.0.0.0", "0.0.0.0 - all IPv4 interfaces");
-
-  for (const item of interfaces ?? []) {
-    if (item.address === "127.0.0.1" || item.address === "0.0.0.0") {
-      continue;
-    }
-    add(item.address, hostOptionLabel(item));
-  }
-
-  return options;
-}
 
 const defaultArgRows: ArgRow[] = [
   { id: "host", key: "--host", value: "127.0.0.1", valueType: "string" },
@@ -216,85 +162,6 @@ function InstanceHealthBadge(props: {
         {health?.status ?? props.instance.status}
       </Badge>
     </Tooltip>
-  );
-}
-
-function HostPicker(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const [customMode, setCustomMode] = useState(false);
-  const interfacesQuery = useQuery({
-    queryKey: ["network-interfaces"],
-    queryFn: listNetworkInterfaces,
-    staleTime: 30_000,
-    retry: false,
-  });
-  const options = useMemo(
-    () => hostOptionsFromInterfaces(interfacesQuery.data?.data.interfaces),
-    [interfacesQuery.data?.data.interfaces],
-  );
-  const knownValues = useMemo(
-    () => new Set(options.map((option) => option.value)),
-    [options],
-  );
-  const isKnownValue = knownValues.has(props.value);
-  const selectValue =
-    customMode || !isKnownValue ? customHostSelectValue : props.value;
-
-  useEffect(() => {
-    if (props.value && knownValues.has(props.value)) {
-      setCustomMode(false);
-    }
-  }, [knownValues, props.value]);
-
-  return (
-    <Stack gap={4}>
-      <Select
-        label={props.label}
-        searchable
-        allowDeselect={false}
-        value={selectValue}
-        data={[
-          ...options,
-          { value: customHostSelectValue, label: "Custom host" },
-        ]}
-        onChange={(value) => {
-          if (!value) {
-            return;
-          }
-          if (value === customHostSelectValue) {
-            setCustomMode(true);
-            if (isKnownValue) {
-              props.onChange("");
-            }
-            return;
-          }
-
-          setCustomMode(false);
-          props.onChange(value);
-        }}
-        nothingFoundMessage={
-          interfacesQuery.isFetching
-            ? "Loading interfaces..."
-            : "No hosts found"
-        }
-      />
-      {selectValue === customHostSelectValue && (
-        <TextInput
-          placeholder="192.168.1.10 or host name"
-          value={props.value}
-          onChange={(event) => props.onChange(event.currentTarget.value)}
-        />
-      )}
-      {interfacesQuery.isError && (
-        <Text c="yellow" size="xs">
-          Network interfaces unavailable:{" "}
-          {(interfacesQuery.error as Error).message}
-        </Text>
-      )}
-    </Stack>
   );
 }
 
@@ -806,70 +673,6 @@ function parseJsonObject(value: string, field: string) {
   }
 }
 
-function formatBytes(bytes: number) {
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function modelTitle(model: GgufModel) {
-  return model.metadata.name || model.name;
-}
-
-function pathBaseName(path: string) {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-}
-
-function instanceNameFromModelPath(path: string) {
-  return (
-    pathBaseName(path)
-      .replace(/\.gguf$/i, "")
-      .replace(/[^\w.-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || "local-server"
-  );
-}
-
-function isVocabModel(model: GgufModel) {
-  const haystack =
-    `${model.name} ${model.path} ${model.metadata.name ?? ""}`.toLowerCase();
-  return (
-    haystack.includes("ggml-vocab") || haystack.includes("/models/ggml-vocab")
-  );
-}
-
-function modelMatchesSearch(model: GgufModel, query: string) {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return true;
-  }
-
-  return [
-    model.name,
-    model.path,
-    model.metadata.name,
-    model.metadata.architecture,
-    model.metadata.quantization,
-  ]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(normalized));
-}
-
-function argsWithModel(instance: Instance, model: GgufModel) {
-  const args = { ...instance.args };
-  delete args["--models-preset"];
-  delete args["--models-max"];
-  delete args["--models-autoload"];
-  delete args["--no-models-autoload"];
-  args["--model"] = model.path;
-  return args;
-}
-
 function argString(args: Instance["args"], key: string) {
   const value = args[key];
   if (value === undefined || value === null || Array.isArray(value)) {
@@ -966,1109 +769,6 @@ function nextAvailablePort(instances: Instance[], currentId?: string) {
     }
   }
   return 8080;
-}
-
-function presetEntryNameFromModel(model: GgufModel) {
-  const baseName = model.metadata.name || model.name.replace(/\.gguf$/i, "");
-  return baseName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "model";
-}
-
-function presetEntryFromModel(model: GgufModel): ModelPresetEntry {
-  return {
-    id: createUiId("preset"),
-    name: presetEntryNameFromModel(model),
-    modelPath: model.path,
-    ctxSize: model.metadata.contextLength,
-    nGpuLayers: "auto",
-    mmprojPath: model.mmprojPaths[0] ?? null,
-    loadOnStartup: false,
-    stopTimeout: 10,
-    extraArgs: {},
-  };
-}
-
-function normalizePresetArgKey(key: string) {
-  return key.trim().replace(/^-+/, "");
-}
-
-function extraArgsToRows(
-  args: ModelPresetEntry["extraArgs"] | undefined,
-): PresetExtraArgRow[] {
-  const rows = Object.entries(args ?? {}).map(([key, value]) => ({
-    id: createUiId("preset-arg"),
-    key,
-    value,
-  }));
-  return rows.length > 0
-    ? rows
-    : [{ id: createUiId("preset-arg"), key: "", value: "" }];
-}
-
-function rowsToExtraArgs(rows: PresetExtraArgRow[]) {
-  const result: Record<string, string> = {};
-  for (const row of rows) {
-    const key = normalizePresetArgKey(row.key);
-    const value = row.value.trim();
-    if (key && value) {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
-function parseGpuLayersInput(value: string): ModelPresetEntry["nGpuLayers"] {
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized === "auto" || normalized === "all") {
-    return normalized;
-  }
-  const parsed = Number(normalized);
-  return Number.isInteger(parsed) ? parsed : null;
-}
-
-function ModelsPanel(props: {
-  selectedInstance: Instance | null;
-  onUseModel: (model: GgufModel) => void;
-  onUseInSelected: (model: GgufModel) => void;
-  onAddToPreset: (model: GgufModel) => void;
-}) {
-  const queryClient = useQueryClient();
-  const [directory, setDirectory] = useState(defaultModelsDirectory);
-  const [maxDepth, setMaxDepth] = useState(8);
-  const [search, setSearch] = useState("");
-  const [hideVocab, setHideVocab] = useState(true);
-  const [hideMmproj, setHideMmproj] = useState(true);
-  const settingsQuery = useQuery({
-    queryKey: ["model-scan-settings"],
-    queryFn: getModelScanSettings,
-  });
-  const modelsQuery = useQuery({
-    queryKey: ["models", directory, maxDepth],
-    queryFn: () => scanModels({ directory, maxDepth }),
-    enabled: false,
-  });
-  const settingsMutation = useMutation({
-    mutationFn: updateModelScanSettings,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["model-scan-settings"],
-      });
-      notifications.show({
-        title: "Scanner settings saved",
-        message: directory,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Settings save failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  useEffect(() => {
-    if (settingsQuery.data?.data) {
-      setDirectory(settingsQuery.data.data.directory);
-      setMaxDepth(settingsQuery.data.data.maxDepth);
-    }
-  }, [settingsQuery.data?.data.directory, settingsQuery.data?.data.maxDepth]);
-
-  const models = modelsQuery.data?.data.models ?? [];
-  const filteredModels = models.filter((model) => {
-    if (hideVocab && isVocabModel(model)) {
-      return false;
-    }
-    if (hideMmproj && model.isMmproj) {
-      return false;
-    }
-    return modelMatchesSearch(model, search);
-  });
-
-  return (
-    <Paper withBorder p="md" radius="sm">
-      <Stack gap="sm">
-        <Group justify="space-between" align="flex-end">
-          <div>
-            <Title order={3}>Models</Title>
-            <Text c="dimmed" size="sm">
-              GGUF discovery and basic metadata
-            </Text>
-          </div>
-          <Group gap="xs" align="flex-end">
-            <TextInput
-              label="Directory"
-              value={directory}
-              onChange={(event) => setDirectory(event.currentTarget.value)}
-              w={420}
-            />
-            <NumberInput
-              label="Depth"
-              value={maxDepth}
-              min={0}
-              max={16}
-              clampBehavior="strict"
-              onChange={(value) =>
-                setMaxDepth(typeof value === "number" ? value : 8)
-              }
-              w={92}
-            />
-            <Button
-              variant="light"
-              onClick={() => settingsMutation.mutate({ directory, maxDepth })}
-              loading={settingsMutation.isPending}
-            >
-              Save
-            </Button>
-            <Button
-              onClick={() => void modelsQuery.refetch()}
-              loading={modelsQuery.isFetching}
-            >
-              Scan
-            </Button>
-            <Button
-              variant="subtle"
-              onClick={() =>
-                queryClient
-                  .fetchQuery({
-                    queryKey: ["models", directory, maxDepth, "refresh"],
-                    queryFn: () =>
-                      scanModels({ directory, maxDepth, refresh: true }),
-                  })
-                  .then((result) => {
-                    queryClient.setQueryData(
-                      ["models", directory, maxDepth],
-                      result,
-                    );
-                  })
-              }
-              loading={modelsQuery.isFetching}
-            >
-              Refresh metadata
-            </Button>
-          </Group>
-        </Group>
-
-        {modelsQuery.error && (
-          <Text c="red" size="sm">
-            {(modelsQuery.error as Error).message}
-          </Text>
-        )}
-
-        <Group justify="space-between" align="flex-end">
-          <TextInput
-            label="Search"
-            placeholder="name, path, architecture, quant"
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            style={{ flex: 1 }}
-          />
-          <Group gap="lg" pb={4}>
-            <Switch
-              label="Hide vocab/test files"
-              checked={hideVocab}
-              onChange={(event) => setHideVocab(event.currentTarget.checked)}
-            />
-            <Switch
-              label="Hide mmproj"
-              checked={hideMmproj}
-              onChange={(event) => setHideMmproj(event.currentTarget.checked)}
-            />
-            <Badge variant="light">
-              {filteredModels.length}/{models.length}
-            </Badge>
-            {modelsQuery.data?.data.cache && (
-              <Badge variant="outline">
-                cache {modelsQuery.data.data.cache.hits}/
-                {modelsQuery.data.data.cache.misses}
-              </Badge>
-            )}
-          </Group>
-        </Group>
-
-        <Table.ScrollContainer minWidth={980}>
-          <Table striped highlightOnHover verticalSpacing="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Model</Table.Th>
-                <Table.Th>Arch</Table.Th>
-                <Table.Th>Quant</Table.Th>
-                <Table.Th>Ctx</Table.Th>
-                <Table.Th>Size</Table.Th>
-                <Table.Th>mmproj</Table.Th>
-                <Table.Th ta="right">Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {filteredModels.map((model) => (
-                <Table.Tr key={model.path}>
-                  <Table.Td>
-                    <Text fw={600} size="sm" lineClamp={1}>
-                      {modelTitle(model)}
-                    </Text>
-                    <Text c="dimmed" size="xs" lineClamp={1}>
-                      {model.path}
-                    </Text>
-                    {model.error && (
-                      <Text c="red" size="xs" lineClamp={1}>
-                        {model.error}
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>{model.metadata.architecture ?? "-"}</Table.Td>
-                  <Table.Td>{model.metadata.quantization ?? "-"}</Table.Td>
-                  <Table.Td>{model.metadata.contextLength ?? "-"}</Table.Td>
-                  <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
-                  <Table.Td>
-                    {model.isMmproj
-                      ? "projector"
-                      : model.mmprojPaths.length || "-"}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group justify="flex-end" gap="xs">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        disabled={model.isMmproj}
-                        onClick={() => props.onUseModel(model)}
-                      >
-                        Use in new
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        disabled={model.isMmproj || !props.selectedInstance}
-                        onClick={() => props.onUseInSelected(model)}
-                      >
-                        Use selected
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        disabled={model.isMmproj}
-                        onClick={() => props.onAddToPreset(model)}
-                      >
-                        Add preset
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {filteredModels.length === 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={7}>
-                    <Text c="dimmed" ta="center" py="lg">
-                      {modelsQuery.isFetched
-                        ? "No matching GGUF files found"
-                        : "Run scan to list models"}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Stack>
-    </Paper>
-  );
-}
-
-function PresetEntryDetailModal(props: {
-  opened: boolean;
-  entry: ModelPresetEntry | null;
-  model: GgufModel | null;
-  onClose: () => void;
-  onSave: (entry: ModelPresetEntry) => void;
-}) {
-  const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
-  const [extraRows, setExtraRows] = useState<PresetExtraArgRow[]>([]);
-
-  useEffect(() => {
-    if (!props.opened || !props.entry) {
-      return;
-    }
-    setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
-    setExtraRows(extraArgsToRows(props.entry.extraArgs));
-  }, [props.entry, props.opened]);
-
-  function updateDraft(update: Partial<ModelPresetEntry>) {
-    setDraft((current) => (current ? { ...current, ...update } : current));
-  }
-
-  function save() {
-    if (!draft) {
-      return;
-    }
-    props.onSave({
-      ...draft,
-      name: draft.name.trim() || "model",
-      modelPath: draft.modelPath.trim(),
-      mmprojPath: draft.mmprojPath?.trim() || null,
-      extraArgs: rowsToExtraArgs(extraRows),
-    });
-    props.onClose();
-  }
-
-  return (
-    <Modal
-      opened={props.opened}
-      onClose={props.onClose}
-      title="Model preset details"
-      size="xl"
-    >
-      {draft && (
-        <Stack gap="sm">
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-            <TextInput
-              label="Preset name"
-              value={draft.name}
-              onChange={(event) =>
-                updateDraft({ name: event.currentTarget.value })
-              }
-            />
-            <TextInput
-              label="Model path"
-              value={draft.modelPath}
-              onChange={(event) =>
-                updateDraft({ modelPath: event.currentTarget.value })
-              }
-            />
-            <NumberInput
-              label="Context size"
-              min={1}
-              value={draft.ctxSize ?? ""}
-              onChange={(value) =>
-                updateDraft({
-                  ctxSize: typeof value === "number" ? value : null,
-                })
-              }
-            />
-            <TextInput
-              label="GPU layers"
-              placeholder="auto, all, 35"
-              value={draft.nGpuLayers === null ? "" : String(draft.nGpuLayers)}
-              onChange={(event) =>
-                updateDraft({
-                  nGpuLayers: parseGpuLayersInput(event.currentTarget.value),
-                })
-              }
-            />
-            <TextInput
-              label="mmproj"
-              value={draft.mmprojPath ?? ""}
-              onChange={(event) =>
-                updateDraft({ mmprojPath: event.currentTarget.value || null })
-              }
-            />
-            <NumberInput
-              label="Stop timeout"
-              min={1}
-              value={draft.stopTimeout ?? ""}
-              onChange={(value) =>
-                updateDraft({
-                  stopTimeout: typeof value === "number" ? value : null,
-                })
-              }
-            />
-          </SimpleGrid>
-
-          <Group gap="lg">
-            <Switch
-              label="Load on startup"
-              checked={draft.loadOnStartup}
-              onChange={(event) =>
-                updateDraft({ loadOnStartup: event.currentTarget.checked })
-              }
-            />
-            {props.model && (
-              <Group gap="xs">
-                <Badge variant="light">
-                  {props.model.metadata.architecture ?? "unknown arch"}
-                </Badge>
-                <Badge variant="outline">
-                  {props.model.metadata.quantization ?? "unknown quant"}
-                </Badge>
-                <Badge variant="outline">
-                  {formatBytes(props.model.sizeBytes)}
-                </Badge>
-              </Group>
-            )}
-          </Group>
-
-          <Stack gap="xs">
-            <Group justify="space-between">
-              <Text fw={600} size="sm">
-                Extra INI args
-              </Text>
-              <Button
-                size="xs"
-                variant="light"
-                onClick={() =>
-                  setExtraRows((rows) => [
-                    ...rows,
-                    { id: createUiId("preset-arg"), key: "", value: "" },
-                  ])
-                }
-              >
-                Add arg
-              </Button>
-            </Group>
-            {extraRows.map((row) => (
-              <Group key={row.id} gap="xs" align="flex-end" wrap="nowrap">
-                <TextInput
-                  label="Key"
-                  placeholder="chat-template"
-                  value={row.key}
-                  onChange={(event) =>
-                    setExtraRows((rows) =>
-                      rows.map((item) =>
-                        item.id === row.id
-                          ? {
-                              ...item,
-                              key: normalizePresetArgKey(
-                                event.currentTarget.value,
-                              ),
-                            }
-                          : item,
-                      ),
-                    )
-                  }
-                  style={{ flex: 1 }}
-                />
-                <TextInput
-                  label="Value"
-                  placeholder="chatml"
-                  value={row.value}
-                  onChange={(event) =>
-                    setExtraRows((rows) =>
-                      rows.map((item) =>
-                        item.id === row.id
-                          ? { ...item, value: event.currentTarget.value }
-                          : item,
-                      ),
-                    )
-                  }
-                  style={{ flex: 1.4 }}
-                />
-                <Tooltip label="Remove">
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    disabled={extraRows.length <= 1}
-                    onClick={() =>
-                      setExtraRows((rows) =>
-                        rows.filter((item) => item.id !== row.id),
-                      )
-                    }
-                  >
-                    <Trash2 size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-            ))}
-          </Stack>
-
-          <Group justify="flex-end">
-            <Button variant="subtle" onClick={props.onClose}>
-              Cancel
-            </Button>
-            <Button
-              onClick={save}
-              disabled={!draft.name.trim() || !draft.modelPath.trim()}
-            >
-              Save details
-            </Button>
-          </Group>
-        </Stack>
-      )}
-    </Modal>
-  );
-}
-
-function PresetBuilderPanel() {
-  const queryClient = useQueryClient();
-  const [routerName, setRouterName] = useState("llama-router");
-  const [routerBinaryPath, setRouterBinaryPath] = useState(defaultBinaryPath);
-  const [routerCwd, setRouterCwd] = useState("/home/maxim/llama");
-  const [routerHost, setRouterHost] = useState("127.0.0.1");
-  const [routerPort, setRouterPort] = useState(8080);
-  const [routerModelsMax, setRouterModelsMax] = useState<number | "">(4);
-  const [routerModelsAutoload, setRouterModelsAutoload] = useState(true);
-  const [routerWritePreset, setRouterWritePreset] = useState(true);
-  const [presetModelSearch, setPresetModelSearch] = useState("");
-  const [selectedPresetEntryId, setSelectedPresetEntryId] = useState<
-    string | null
-  >(null);
-  const presetQuery = useQuery({
-    queryKey: ["model-preset"],
-    queryFn: getModelPreset,
-  });
-  const previewQuery = useQuery({
-    queryKey: ["model-preset-preview"],
-    queryFn: getModelPresetPreview,
-  });
-  const modelSettingsQuery = useQuery({
-    queryKey: ["model-scan-settings"],
-    queryFn: getModelScanSettings,
-  });
-  const modelDirectory =
-    modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
-  const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
-  const presetModelsQuery = useQuery({
-    queryKey: ["models", modelDirectory, modelMaxDepth],
-    queryFn: () =>
-      scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
-    staleTime: 60_000,
-  });
-  const preset = presetQuery.data?.data;
-  const preview = previewQuery.data?.data;
-  const scannedModels = (presetModelsQuery.data?.data.models ?? []).filter(
-    (model) => !model.isMmproj && !isVocabModel(model),
-  );
-  const presetModels = scannedModels.filter((model) =>
-    modelMatchesSearch(model, presetModelSearch),
-  );
-  const presetEntryByModelPath = useMemo(
-    () =>
-      new Map((preset?.entries ?? []).map((entry) => [entry.modelPath, entry])),
-    [preset?.entries],
-  );
-  const presetModelByPath = useMemo(
-    () => new Map(scannedModels.map((model) => [model.path, model])),
-    [scannedModels],
-  );
-  const selectedPresetEntry =
-    (preset?.entries ?? []).find(
-      (entry) => entry.id === selectedPresetEntryId,
-    ) ?? null;
-  const selectedPresetModel = selectedPresetEntry
-    ? (presetModelByPath.get(selectedPresetEntry.modelPath) ?? null)
-    : null;
-
-  const saveMutation = useMutation({
-    mutationFn: updateModelPreset,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Preset saved",
-        message: "Configuration stored",
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Preset save failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-  const writeMutation = useMutation({
-    mutationFn: writeModelPreset,
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Preset file written",
-        message: result.data.path,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Preset write failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-  const routerMutation = useMutation({
-    mutationFn: () =>
-      createRouterInstance({
-        name: routerName,
-        binaryPath: routerBinaryPath,
-        cwd: routerCwd || undefined,
-        host: routerHost,
-        port: routerPort,
-        modelsMax: typeof routerModelsMax === "number" ? routerModelsMax : null,
-        modelsAutoload: routerModelsAutoload,
-        writePreset: routerWritePreset,
-      }),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["instances-health-summary"],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["instance-health-summary", result.data.id],
-      });
-      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Router instance created",
-        message: result.data.name,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Router create failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  function updateEntries(entries: ModelPresetEntry[]) {
-    if (!preset) {
-      return;
-    }
-    saveMutation.mutate({ entries, path: preset.path });
-  }
-
-  function updateEntry(entry: ModelPresetEntry) {
-    if (!preset) {
-      return;
-    }
-    updateEntries(
-      preset.entries.map((item) => (item.id === entry.id ? entry : item)),
-    );
-  }
-
-  function togglePresetModel(model: GgufModel, checked: boolean) {
-    if (!preset) {
-      return;
-    }
-    if (checked) {
-      if (preset.entries.some((entry) => entry.modelPath === model.path)) {
-        return;
-      }
-      const entry = presetEntryFromModel(model);
-      updateEntries([...preset.entries, entry]);
-      setSelectedPresetEntryId(entry.id);
-      return;
-    }
-    const entry = preset.entries.find((item) => item.modelPath === model.path);
-    updateEntries(
-      preset.entries.filter((item) => item.modelPath !== model.path),
-    );
-    if (entry?.id === selectedPresetEntryId) {
-      setSelectedPresetEntryId(null);
-    }
-  }
-
-  return (
-    <>
-      <Paper withBorder p="md" radius="sm">
-        <Stack gap="sm">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Title order={3}>Router preset</Title>
-              <Text c="dimmed" size="sm">
-                Generated llama-server --models-preset INI
-              </Text>
-            </div>
-            <Group gap="xs">
-              <Button
-                variant="light"
-                loading={saveMutation.isPending}
-                disabled={!preset}
-                onClick={() =>
-                  preset &&
-                  saveMutation.mutate({
-                    entries: preset.entries,
-                    path: preset.path,
-                  })
-                }
-              >
-                Save
-              </Button>
-              <Button
-                loading={writeMutation.isPending}
-                disabled={!preset}
-                onClick={() => writeMutation.mutate()}
-              >
-                Write INI
-              </Button>
-            </Group>
-          </Group>
-
-          <TextInput
-            label="Preset path"
-            value={preset?.path ?? ""}
-            disabled={!preset}
-            onChange={(event) => {
-              if (preset) {
-                saveMutation.mutate({
-                  entries: preset.entries,
-                  path: event.currentTarget.value,
-                });
-              }
-            }}
-          />
-
-          <Stack gap="xs">
-            <Group justify="space-between" align="flex-end">
-              <TextInput
-                label="Models"
-                placeholder="name, path, architecture, quant"
-                value={presetModelSearch}
-                onChange={(event) =>
-                  setPresetModelSearch(event.currentTarget.value)
-                }
-                style={{ flex: 1 }}
-              />
-              <Group gap="xs" pb={4}>
-                <Badge variant="light">
-                  {preset?.entries.length ?? 0}/{scannedModels.length}
-                </Badge>
-                {presetModelsQuery.data?.data.cache && (
-                  <Badge variant="outline">
-                    cache {presetModelsQuery.data.data.cache.hits}/
-                    {presetModelsQuery.data.data.cache.misses}
-                  </Badge>
-                )}
-              </Group>
-            </Group>
-            {presetModelsQuery.isError && (
-              <Text c="red" size="sm">
-                {(presetModelsQuery.error as Error).message}
-              </Text>
-            )}
-            <Table.ScrollContainer minWidth={980}>
-              <Table striped highlightOnHover verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th w={52}></Table.Th>
-                    <Table.Th>Model</Table.Th>
-                    <Table.Th>Arch</Table.Th>
-                    <Table.Th>Quant</Table.Th>
-                    <Table.Th>Ctx</Table.Th>
-                    <Table.Th>Size</Table.Th>
-                    <Table.Th ta="right">Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {presetModels.slice(0, 12).map((model) => {
-                    const entry = presetEntryByModelPath.get(model.path);
-                    return (
-                      <Table.Tr key={model.path}>
-                        <Table.Td>
-                          <Checkbox
-                            checked={Boolean(entry)}
-                            disabled={!preset}
-                            onChange={(event) =>
-                              togglePresetModel(
-                                model,
-                                event.currentTarget.checked,
-                              )
-                            }
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fw={600} size="sm" lineClamp={1}>
-                            {modelTitle(model)}
-                          </Text>
-                          <Text c="dimmed" size="xs" lineClamp={1}>
-                            {model.path}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          {model.metadata.architecture ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {model.metadata.quantization ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {model.metadata.contextLength ?? "-"}
-                        </Table.Td>
-                        <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
-                        <Table.Td>
-                          <Group justify="flex-end">
-                            <Tooltip label="Details">
-                              <ActionIcon
-                                variant="subtle"
-                                disabled={!entry}
-                                onClick={() =>
-                                  entry && setSelectedPresetEntryId(entry.id)
-                                }
-                              >
-                                <Pencil size={16} />
-                              </ActionIcon>
-                            </Tooltip>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                  {presetModels.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={7}>
-                        <Text c="dimmed" ta="center" py="lg">
-                          {presetModelsQuery.isFetching
-                            ? "Loading models..."
-                            : "No matching GGUF files found"}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          </Stack>
-
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-            <Box>
-              <Group justify="space-between" mb="xs">
-                <Text fw={600} size="sm">
-                  INI preview
-                </Text>
-                <Badge variant="light">{preview?.entries ?? 0} models</Badge>
-              </Group>
-              <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
-                {preview?.path ?? preset?.path ?? "-"}
-              </Text>
-              <ScrollArea h={260} type="auto" offsetScrollbars>
-                <Code block>{preview?.content ?? "; no preset loaded\n"}</Code>
-              </ScrollArea>
-            </Box>
-
-            <Box>
-              <Group justify="space-between" mb="xs">
-                <Text fw={600} size="sm">
-                  Router instance
-                </Text>
-                <Switch
-                  label="Write INI"
-                  checked={routerWritePreset}
-                  onChange={(event) =>
-                    setRouterWritePreset(event.currentTarget.checked)
-                  }
-                />
-              </Group>
-              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
-                <TextInput
-                  label="Name"
-                  value={routerName}
-                  onChange={(event) => setRouterName(event.currentTarget.value)}
-                />
-                <TextInput
-                  label="Binary"
-                  value={routerBinaryPath}
-                  onChange={(event) =>
-                    setRouterBinaryPath(event.currentTarget.value)
-                  }
-                />
-                <TextInput
-                  label="Working dir"
-                  value={routerCwd}
-                  onChange={(event) => setRouterCwd(event.currentTarget.value)}
-                />
-                <HostPicker
-                  label="Host"
-                  value={routerHost}
-                  onChange={setRouterHost}
-                />
-                <NumberInput
-                  label="Port"
-                  min={1}
-                  max={65535}
-                  value={routerPort}
-                  onChange={(value) =>
-                    setRouterPort(typeof value === "number" ? value : 8080)
-                  }
-                />
-                <NumberInput
-                  label="Models max"
-                  min={0}
-                  value={routerModelsMax}
-                  onChange={(value) =>
-                    setRouterModelsMax(typeof value === "number" ? value : "")
-                  }
-                />
-              </SimpleGrid>
-              <Group justify="space-between" mt="sm">
-                <Switch
-                  label="Models autoload"
-                  checked={routerModelsAutoload}
-                  onChange={(event) =>
-                    setRouterModelsAutoload(event.currentTarget.checked)
-                  }
-                />
-                <Button
-                  leftSection={<Plus size={16} />}
-                  loading={routerMutation.isPending}
-                  disabled={
-                    !preset || !routerName.trim() || !routerBinaryPath.trim()
-                  }
-                  onClick={() => routerMutation.mutate()}
-                >
-                  Create router
-                </Button>
-              </Group>
-            </Box>
-          </SimpleGrid>
-
-          <Table.ScrollContainer minWidth={980}>
-            <Table striped highlightOnHover verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Model</Table.Th>
-                  <Table.Th>Ctx</Table.Th>
-                  <Table.Th>GPU layers</Table.Th>
-                  <Table.Th>Startup</Table.Th>
-                  <Table.Th ta="right">Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {(preset?.entries ?? []).map((entry) => (
-                  <Table.Tr key={entry.id}>
-                    <Table.Td>
-                      <TextInput
-                        value={entry.name}
-                        onChange={(event) =>
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? { ...item, name: event.currentTarget.value }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" lineClamp={1}>
-                        {entry.modelPath}
-                      </Text>
-                      {entry.mmprojPath && (
-                        <Text c="dimmed" size="xs" lineClamp={1}>
-                          mmproj: {entry.mmprojPath}
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <NumberInput
-                        value={entry.ctxSize ?? ""}
-                        min={1}
-                        onChange={(value) =>
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? {
-                                    ...item,
-                                    ctxSize:
-                                      typeof value === "number" ? value : null,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                        w={120}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <TextInput
-                        value={
-                          entry.nGpuLayers === null
-                            ? ""
-                            : String(entry.nGpuLayers)
-                        }
-                        placeholder="auto/all/N"
-                        onChange={(event) => {
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? {
-                                    ...item,
-                                    nGpuLayers: parseGpuLayersInput(
-                                      event.currentTarget.value,
-                                    ),
-                                  }
-                                : item,
-                            ),
-                          );
-                        }}
-                        w={120}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Switch
-                        checked={entry.loadOnStartup}
-                        onChange={(event) =>
-                          updateEntries(
-                            preset!.entries.map((item) =>
-                              item.id === entry.id
-                                ? {
-                                    ...item,
-                                    loadOnStartup: event.currentTarget.checked,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Group justify="flex-end" gap="xs">
-                        <Tooltip label="Details">
-                          <ActionIcon
-                            variant="subtle"
-                            onClick={() => setSelectedPresetEntryId(entry.id)}
-                          >
-                            <Pencil size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Badge variant="outline">
-                          {Object.keys(entry.extraArgs ?? {}).length} args
-                        </Badge>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() =>
-                            updateEntries(
-                              preset!.entries.filter(
-                                (item) => item.id !== entry.id,
-                              ),
-                            )
-                          }
-                        >
-                          <Trash2 size={16} />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-                {(!preset || preset.entries.length === 0) && (
-                  <Table.Tr>
-                    <Table.Td colSpan={6}>
-                      <Text c="dimmed" ta="center" py="lg">
-                        Select models above
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
-      </Paper>
-      <PresetEntryDetailModal
-        opened={Boolean(selectedPresetEntry)}
-        entry={selectedPresetEntry}
-        model={selectedPresetModel}
-        onClose={() => setSelectedPresetEntryId(null)}
-        onSave={updateEntry}
-      />
-    </>
-  );
 }
 
 function InstanceFormModal(props: {
@@ -2527,7 +1227,9 @@ function InstanceFormModal(props: {
       const input: InstanceCreate = {
         name: values.name,
         binaryPath: values.binaryPath,
-        args: InstanceArgsSchema.parse(rowsToArgsWithCatalog(rows, knownArgByName)),
+        args: InstanceArgsSchema.parse(
+          rowsToArgsWithCatalog(rows, knownArgByName),
+        ),
         env: InstanceEnvSchema.parse(parseJsonObject(values.envJson, "env")),
         ...(values.cwd ? { cwd: values.cwd } : {}),
       };
@@ -4043,75 +2745,75 @@ export function App() {
 
           {route === "instances" && (
             <Table.ScrollContainer minWidth={900}>
-            <Table striped highlightOnHover verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>PID</Table.Th>
-                  <Table.Th>Binary</Table.Th>
-                  <Table.Th>Args</Table.Th>
-                  <Table.Th ta="right">Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {instances.map((instance) => (
-                  <Table.Tr
-                    key={instance.id}
-                    onClick={() => setSelectedId(instance.id)}
-                    {...(selectedInstance?.id === instance.id
-                      ? { className: "selected-row" }
-                      : {})}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <Table.Td>
-                      <Text fw={600}>{instance.name}</Text>
-                      <Text c="dimmed" size="xs">
-                        {instance.id}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <InstanceHealthBadge
-                        instance={instance}
-                        health={healthByInstanceId.get(instance.id)}
-                      />
-                    </Table.Td>
-                    <Table.Td>{instance.pid ?? "-"}</Table.Td>
-                    <Table.Td>
-                      <Code>{instance.binaryPath}</Code>
-                    </Table.Td>
-                    <Table.Td>
-                      <Code>{JSON.stringify(instance.args)}</Code>
-                    </Table.Td>
-                    <Table.Td>
-                      <InstanceActions
-                        instance={instance}
-                        health={healthByInstanceId.get(instance.id)}
-                        onEdit={() => setEditingInstance(instance)}
-                        onLaunchStarted={startLaunchMonitor}
-                        onLaunchStopped={clearLaunchMonitor}
-                      />
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-                {instances.length === 0 && (
+              <Table striped highlightOnHover verticalSpacing="sm">
+                <Table.Thead>
                   <Table.Tr>
-                    <Table.Td colSpan={6}>
-                      <Text c="dimmed" ta="center" py="lg">
-                        No instances yet
-                      </Text>
-                    </Table.Td>
+                    <Table.Th>Name</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>PID</Table.Th>
+                    <Table.Th>Binary</Table.Th>
+                    <Table.Th>Args</Table.Th>
+                    <Table.Th ta="right">Actions</Table.Th>
                   </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {instances.map((instance) => (
+                    <Table.Tr
+                      key={instance.id}
+                      onClick={() => setSelectedId(instance.id)}
+                      {...(selectedInstance?.id === instance.id
+                        ? { className: "selected-row" }
+                        : {})}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Table.Td>
+                        <Text fw={600}>{instance.name}</Text>
+                        <Text c="dimmed" size="xs">
+                          {instance.id}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <InstanceHealthBadge
+                          instance={instance}
+                          health={healthByInstanceId.get(instance.id)}
+                        />
+                      </Table.Td>
+                      <Table.Td>{instance.pid ?? "-"}</Table.Td>
+                      <Table.Td>
+                        <Code>{instance.binaryPath}</Code>
+                      </Table.Td>
+                      <Table.Td>
+                        <Code>{JSON.stringify(instance.args)}</Code>
+                      </Table.Td>
+                      <Table.Td>
+                        <InstanceActions
+                          instance={instance}
+                          health={healthByInstanceId.get(instance.id)}
+                          onEdit={() => setEditingInstance(instance)}
+                          onLaunchStarted={startLaunchMonitor}
+                          onLaunchStopped={clearLaunchMonitor}
+                        />
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                  {instances.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={6}>
+                        <Text c="dimmed" ta="center" py="lg">
+                          No instances yet
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
             </Table.ScrollContainer>
           )}
 
           {route === "build" && <BuildView />}
 
           {route === "models" && (
-            <ModelsPanel
+            <ModelsView
               selectedInstance={selectedInstance}
               onUseModel={(model) => {
                 setInitialModelPath(model.path);
@@ -4119,46 +2821,16 @@ export function App() {
               }}
               onUseInSelected={(model) => {
                 if (selectedInstance) {
-                  useModelMutation.mutate({ instance: selectedInstance, model });
-                }
-              }}
-              onAddToPreset={(model) => {
-                const current = queryClient.getQueryData<{
-                  data: ModelPreset;
-                }>(["model-preset"]);
-                const existingEntries = current?.data.entries ?? [];
-                if (
-                  existingEntries.some(
-                    (entry) => entry.modelPath === model.path,
-                  )
-                ) {
-                  notifications.show({
-                    title: "Preset already contains model",
-                    message: modelTitle(model),
+                  useModelMutation.mutate({
+                    instance: selectedInstance,
+                    model,
                   });
-                  return;
                 }
-                const entries = [
-                  ...existingEntries,
-                  presetEntryFromModel(model),
-                ];
-                updateModelPreset({ entries, path: current?.data.path }).then(
-                  async (result) => {
-                    queryClient.setQueryData(["model-preset"], result);
-                    await queryClient.invalidateQueries({
-                      queryKey: ["model-preset-preview"],
-                    });
-                    notifications.show({
-                      title: "Added to preset",
-                      message: modelTitle(model),
-                    });
-                  },
-                );
               }}
             />
           )}
 
-          {route === "presets" && <PresetBuilderPanel />}
+          {route === "presets" && <PresetsView />}
 
           {route === "instances" && (
             <InstanceDetails
