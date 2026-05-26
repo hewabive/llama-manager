@@ -99,6 +99,18 @@ type LaunchMonitor = {
   source: "create" | "start" | "restart";
 };
 
+let uiIdCounter = 0;
+
+function createUiId(prefix = "row") {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) {
+    return uuid;
+  }
+
+  uiIdCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${uiIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const defaultArgRows: ArgRow[] = [
   { id: "host", key: "--host", value: "127.0.0.1", valueType: "string" },
   { id: "port", key: "--port", value: "8080", valueType: "number" },
@@ -143,7 +155,7 @@ function InstanceHealthBadge(props: { instance: Instance; health: InstanceHealth
 
 function createArgRow(): ArgRow {
   return {
-    id: crypto.randomUUID(),
+    id: createUiId(),
     key: "",
     value: "",
     valueType: "string",
@@ -256,7 +268,7 @@ function upsertArgRow(rows: ArgRow[], key: string, value: string, valueType: Arg
     replaced = true;
     return { ...row, value, valueType };
   });
-  return replaced ? next : [...next, { id: crypto.randomUUID(), key, value, valueType }];
+  return replaced ? next : [...next, { id: createUiId(), key, value, valueType }];
 }
 
 function removeArgRow(rows: ArgRow[], key: string): ArgRow[] {
@@ -286,7 +298,7 @@ function defaultValueForArgument(option: LlamaArgumentOption) {
 function rowFromArgument(option: LlamaArgumentOption): ArgRow {
   const valueType = valueTypeFromArgument(option);
   return {
-    id: crypto.randomUUID(),
+    id: createUiId(),
     key: option.primaryName,
     value: defaultValueForArgument(option),
     valueType,
@@ -536,7 +548,7 @@ function RawArgRow(props: {
 
 function argsToRows(args: Instance["args"]): ArgRow[] {
   const rows = Object.entries(args).map(([key, value]) => {
-    const id = crypto.randomUUID();
+    const id = createUiId();
     if (value === true) {
       return { id, key, value: "", valueType: "flag" as const };
     }

@@ -16,3 +16,44 @@ code {
 .selected-row td {
   background: var(--mantine-color-dark-5);
 }
+
+.root-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+}
+
+.root-error > div {
+  width: min(520px, 100%);
+  padding: 20px;
+  border: 1px solid var(--mantine-color-dark-4);
+  border-radius: 8px;
+  background: var(--mantine-color-dark-7);
+}
+
+.root-error__eyebrow {
+  margin: 0 0 8px;
+  color: var(--mantine-color-dimmed);
+  font-size: 13px;
+}
+
+.root-error h1 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.root-error p {
+  margin: 0 0 16px;
+}
+
+.root-error button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--mantine-primary-color-filled);
+  color: var(--mantine-color-white);
+  cursor: pointer;
+}

@@ -12,12 +12,49 @@ import { App } from "./ui/App";
 
 const queryClient = new QueryClient();
 
+type RootErrorBoundaryState = {
+  error: Error | null;
+};
+
+class RootErrorBoundary extends React.Component<React.PropsWithChildren, RootErrorBoundaryState> {
+  state: RootErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): RootErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("Unhandled UI error", error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="root-error">
+          <div>
+            <p className="root-error__eyebrow">llama-manager</p>
+            <h1>UI render error</h1>
+            <p>{this.state.error.message}</p>
+            <button type="button" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <MantineProvider defaultColorScheme="dark">
-        <Notifications position="top-right" />
-        <App />
+        <RootErrorBoundary>
+          <Notifications position="top-right" />
+          <App />
+        </RootErrorBoundary>
       </MantineProvider>
     </QueryClientProvider>
   </React.StrictMode>,
