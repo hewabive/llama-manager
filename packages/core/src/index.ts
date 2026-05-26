@@ -27,7 +27,15 @@ export const InstanceUpdateSchema = InstanceCreateSchema.partial();
 
 export const InstanceSchema = InstanceCreateSchema.extend({
   id: z.string(),
-  status: z.enum(["stopped", "starting", "running", "stopping", "exited", "stale", "error"]),
+  status: z.enum([
+    "stopped",
+    "starting",
+    "running",
+    "stopping",
+    "exited",
+    "stale",
+    "error",
+  ]),
   pid: z.number().int().positive().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -143,9 +151,24 @@ export const BuildSettingsSchema = z.object({
   parallelJobs: z.number().int().positive().max(256).nullable(),
 });
 
-export const BuildJobStatusSchema = z.enum(["running", "succeeded", "failed", "canceled"]);
-export const BuildJobStepNameSchema = z.enum(["git-pull", "configure", "build"]);
-export const BuildJobStepStatusSchema = z.enum(["pending", "running", "succeeded", "failed", "skipped"]);
+export const BuildJobStatusSchema = z.enum([
+  "running",
+  "succeeded",
+  "failed",
+  "canceled",
+]);
+export const BuildJobStepNameSchema = z.enum([
+  "git-pull",
+  "configure",
+  "build",
+]);
+export const BuildJobStepStatusSchema = z.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+  "skipped",
+]);
 
 export const BuildJobStepSchema = z.object({
   name: BuildJobStepNameSchema,
@@ -297,10 +320,13 @@ export const ModelPresetEntrySchema = z.object({
   name: z.string().min(1),
   modelPath: z.string().min(1),
   ctxSize: z.number().int().positive().nullable(),
-  nGpuLayers: z.union([z.number().int(), z.literal("auto"), z.literal("all")]).nullable(),
+  nGpuLayers: z
+    .union([z.number().int(), z.literal("auto"), z.literal("all")])
+    .nullable(),
   mmprojPath: z.string().nullable(),
   loadOnStartup: z.boolean(),
   stopTimeout: z.number().int().positive().nullable(),
+  extraArgs: z.record(z.string(), z.string()).default({}),
 });
 
 export const ModelPresetSchema = z.object({
@@ -336,18 +362,24 @@ export type InstanceArgValue = z.infer<typeof InstanceArgValueSchema>;
 export type InstanceArgs = z.infer<typeof InstanceArgsSchema>;
 export type InstanceEnv = z.infer<typeof InstanceEnvSchema>;
 export type InstanceCreate = z.infer<typeof InstanceCreateSchema>;
-export type InstancePreflightPreview = z.infer<typeof InstancePreflightPreviewSchema>;
+export type InstancePreflightPreview = z.infer<
+  typeof InstancePreflightPreviewSchema
+>;
 export type InstanceUpdate = z.infer<typeof InstanceUpdateSchema>;
 export type Instance = z.infer<typeof InstanceSchema>;
 export type ProcessEvent = z.infer<typeof ProcessEventSchema>;
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 export type ProcessPreflightIssue = z.infer<typeof ProcessPreflightIssueSchema>;
-export type ProcessPreflightResult = z.infer<typeof ProcessPreflightResultSchema>;
+export type ProcessPreflightResult = z.infer<
+  typeof ProcessPreflightResultSchema
+>;
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;
-export type InstanceHealthSummaryStatus = z.infer<typeof InstanceHealthSummaryStatusSchema>;
+export type InstanceHealthSummaryStatus = z.infer<
+  typeof InstanceHealthSummaryStatusSchema
+>;
 export type InstanceHealthActions = z.infer<typeof InstanceHealthActionsSchema>;
 export type InstanceHealthSummary = z.infer<typeof InstanceHealthSummarySchema>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
@@ -358,13 +390,23 @@ export type BuildJobStep = z.infer<typeof BuildJobStepSchema>;
 export type BuildJob = z.infer<typeof BuildJobSchema>;
 export type BuildJobStart = z.infer<typeof BuildJobStartSchema>;
 export type BuildLogTail = z.infer<typeof BuildLogTailSchema>;
-export type LlamaArgumentValueType = z.infer<typeof LlamaArgumentValueTypeSchema>;
+export type LlamaArgumentValueType = z.infer<
+  typeof LlamaArgumentValueTypeSchema
+>;
 export type LlamaArgumentOption = z.infer<typeof LlamaArgumentOptionSchema>;
 export type LlamaArgumentCatalog = z.infer<typeof LlamaArgumentCatalogSchema>;
-export type LlamaArgumentHelpOverride = z.infer<typeof LlamaArgumentHelpOverrideSchema>;
-export type LlamaArgumentHelpOverrideUpdate = z.infer<typeof LlamaArgumentHelpOverrideUpdateSchema>;
-export type NetworkInterfaceAddress = z.infer<typeof NetworkInterfaceAddressSchema>;
-export type NetworkInterfacesResult = z.infer<typeof NetworkInterfacesResultSchema>;
+export type LlamaArgumentHelpOverride = z.infer<
+  typeof LlamaArgumentHelpOverrideSchema
+>;
+export type LlamaArgumentHelpOverrideUpdate = z.infer<
+  typeof LlamaArgumentHelpOverrideUpdateSchema
+>;
+export type NetworkInterfaceAddress = z.infer<
+  typeof NetworkInterfaceAddressSchema
+>;
+export type NetworkInterfacesResult = z.infer<
+  typeof NetworkInterfacesResultSchema
+>;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;

@@ -24,6 +24,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   Code,
   Divider,
   Group,
@@ -46,7 +47,19 @@ import {
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Hammer, Pencil, Plus, RefreshCw, RotateCcw, Save, Square, Trash2, Triangle, X } from "lucide-react";
+import {
+  ExternalLink,
+  Hammer,
+  Pencil,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Square,
+  Trash2,
+  Triangle,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -95,6 +108,12 @@ type ArgRow = {
   valueType: "string" | "number" | "boolean" | "flag" | "list" | "null";
 };
 
+type PresetExtraArgRow = {
+  id: string;
+  key: string;
+  value: string;
+};
+
 type LaunchMonitor = {
   instanceId: string;
   startedAt: string;
@@ -125,7 +144,9 @@ function hostOptionLabel(item: NetworkInterfaceAddress) {
   return parts.join(" - ");
 }
 
-function hostOptionsFromInterfaces(interfaces: NetworkInterfaceAddress[] | undefined) {
+function hostOptionsFromInterfaces(
+  interfaces: NetworkInterfaceAddress[] | undefined,
+) {
   const seen = new Set<string>();
   const options: Array<{ value: string; label: string }> = [];
   const add = (value: string, label: string) => {
@@ -155,7 +176,9 @@ const defaultArgRows: ArgRow[] = [
 ];
 
 function defaultRows(modelPath?: string, port = 8080): ArgRow[] {
-  const defaults = defaultArgRows.map((row) => (row.key === "--port" ? { ...row, value: String(port) } : { ...row }));
+  const defaults = defaultArgRows.map((row) =>
+    row.key === "--port" ? { ...row, value: String(port) } : { ...row },
+  );
   return modelPath
     ? [
         ...defaults,
@@ -174,24 +197,39 @@ function statusColor(status: Instance["status"]) {
 
 function healthStatusColor(status: InstanceHealthSummary["status"]) {
   if (status === "ready") return "green";
-  if (status === "starting" || status === "stopping" || status === "loading") return "yellow";
+  if (status === "starting" || status === "stopping" || status === "loading")
+    return "yellow";
   if (status === "degraded" || status === "stale") return "orange";
   if (status === "invalid" || status === "error") return "red";
   return "gray";
 }
 
-function InstanceHealthBadge(props: { instance: Instance; health: InstanceHealthSummary | undefined }) {
+function InstanceHealthBadge(props: {
+  instance: Instance;
+  health: InstanceHealthSummary | undefined;
+}) {
   const health = props.health;
   return (
     <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
-      <Badge color={health ? healthStatusColor(health.status) : statusColor(props.instance.status)} variant="light">
+      <Badge
+        color={
+          health
+            ? healthStatusColor(health.status)
+            : statusColor(props.instance.status)
+        }
+        variant="light"
+      >
         {health?.status ?? props.instance.status}
       </Badge>
     </Tooltip>
   );
 }
 
-function HostPicker(props: { label: string; value: string; onChange: (value: string) => void }) {
+function HostPicker(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
   const [customMode, setCustomMode] = useState(false);
   const interfacesQuery = useQuery({
     queryKey: ["network-interfaces"],
@@ -203,9 +241,13 @@ function HostPicker(props: { label: string; value: string; onChange: (value: str
     () => hostOptionsFromInterfaces(interfacesQuery.data?.data.interfaces),
     [interfacesQuery.data?.data.interfaces],
   );
-  const knownValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
+  const knownValues = useMemo(
+    () => new Set(options.map((option) => option.value)),
+    [options],
+  );
   const isKnownValue = knownValues.has(props.value);
-  const selectValue = customMode || !isKnownValue ? customHostSelectValue : props.value;
+  const selectValue =
+    customMode || !isKnownValue ? customHostSelectValue : props.value;
 
   useEffect(() => {
     if (props.value && knownValues.has(props.value)) {
@@ -220,7 +262,10 @@ function HostPicker(props: { label: string; value: string; onChange: (value: str
         searchable
         allowDeselect={false}
         value={selectValue}
-        data={[...options, { value: customHostSelectValue, label: "Custom host" }]}
+        data={[
+          ...options,
+          { value: customHostSelectValue, label: "Custom host" },
+        ]}
         onChange={(value) => {
           if (!value) {
             return;
@@ -236,7 +281,11 @@ function HostPicker(props: { label: string; value: string; onChange: (value: str
           setCustomMode(false);
           props.onChange(value);
         }}
-        nothingFoundMessage={interfacesQuery.isFetching ? "Loading interfaces..." : "No hosts found"}
+        nothingFoundMessage={
+          interfacesQuery.isFetching
+            ? "Loading interfaces..."
+            : "No hosts found"
+        }
       />
       {selectValue === customHostSelectValue && (
         <TextInput
@@ -247,7 +296,8 @@ function HostPicker(props: { label: string; value: string; onChange: (value: str
       )}
       {interfacesQuery.isError && (
         <Text c="yellow" size="xs">
-          Network interfaces unavailable: {(interfacesQuery.error as Error).message}
+          Network interfaces unavailable:{" "}
+          {(interfacesQuery.error as Error).message}
         </Text>
       )}
     </Stack>
@@ -295,10 +345,15 @@ function rowsToArgs(rows: ArgRow[]) {
 }
 
 function negativeArgumentName(option: LlamaArgumentOption) {
-  return option.names.find((name) => name.startsWith("--no-") || name.startsWith("-no"));
+  return option.names.find(
+    (name) => name.startsWith("--no-") || name.startsWith("-no"),
+  );
 }
 
-function rowsToArgsWithCatalog(rows: ArgRow[], knownArgByName: Map<string, LlamaArgumentOption>) {
+function rowsToArgsWithCatalog(
+  rows: ArgRow[],
+  knownArgByName: Map<string, LlamaArgumentOption>,
+) {
   const args: Record<string, string | number | boolean | string[] | null> = {};
 
   for (const row of rows) {
@@ -360,7 +415,12 @@ function rowsToArgsWithCatalog(rows: ArgRow[], knownArgByName: Map<string, Llama
   return args;
 }
 
-function upsertArgRow(rows: ArgRow[], key: string, value: string, valueType: ArgRow["valueType"]): ArgRow[] {
+function upsertArgRow(
+  rows: ArgRow[],
+  key: string,
+  value: string,
+  valueType: ArgRow["valueType"],
+): ArgRow[] {
   let replaced = false;
   const next = rows.map((row) => {
     if (row.key !== key) {
@@ -369,7 +429,9 @@ function upsertArgRow(rows: ArgRow[], key: string, value: string, valueType: Arg
     replaced = true;
     return { ...row, value, valueType };
   });
-  return replaced ? next : [...next, { id: createUiId(), key, value, valueType }];
+  return replaced
+    ? next
+    : [...next, { id: createUiId(), key, value, valueType }];
 }
 
 function removeArgRow(rows: ArgRow[], key: string): ArgRow[] {
@@ -381,7 +443,9 @@ function rowValue(rows: ArgRow[], key: string) {
   return rows.find((row) => row.key === key)?.value ?? "";
 }
 
-function valueTypeFromArgument(option: LlamaArgumentOption): ArgRow["valueType"] {
+function valueTypeFromArgument(
+  option: LlamaArgumentOption,
+): ArgRow["valueType"] {
   if (option.valueType === "flag") return "flag";
   if (option.valueType === "boolean") return "boolean";
   if (option.valueType === "number") return "number";
@@ -391,7 +455,9 @@ function valueTypeFromArgument(option: LlamaArgumentOption): ArgRow["valueType"]
 
 function defaultValueForArgument(option: LlamaArgumentOption) {
   if (option.valueType === "boolean") {
-    return option.allowedValues.includes("auto") ? "auto" : option.allowedValues[0] || "true";
+    return option.allowedValues.includes("auto")
+      ? "auto"
+      : option.allowedValues[0] || "true";
   }
   return "";
 }
@@ -406,12 +472,24 @@ function rowFromArgument(option: LlamaArgumentOption): ArgRow {
   };
 }
 
-function canonicalOptionForRow(row: ArgRow, knownArgByName: Map<string, LlamaArgumentOption>) {
+function canonicalOptionForRow(
+  row: ArgRow,
+  knownArgByName: Map<string, LlamaArgumentOption>,
+) {
   return knownArgByName.get(row.key.trim()) ?? null;
 }
 
 function replaceCanonicalRow(rows: ArgRow[], option: LlamaArgumentOption) {
-  return [...rows.filter((row) => canonicalOptionForRow(row, new Map(option.names.map((name) => [name, option])))?.primaryName !== option.primaryName), rowFromArgument(option)];
+  return [
+    ...rows.filter(
+      (row) =>
+        canonicalOptionForRow(
+          row,
+          new Map(option.names.map((name) => [name, option])),
+        )?.primaryName !== option.primaryName,
+    ),
+    rowFromArgument(option),
+  ];
 }
 
 function booleanValueOptions(option: LlamaArgumentOption) {
@@ -454,7 +532,9 @@ function SmartArgRow(props: {
     props.onChange({
       ...props.row,
       key: props.option.primaryName,
-      value: nextEnabled ? props.row.value || defaultValueForArgument(props.option) : props.row.value,
+      value: nextEnabled
+        ? props.row.value || defaultValueForArgument(props.option)
+        : props.row.value,
       valueType: nextEnabled ? rowValueType : "null",
     });
   }
@@ -470,7 +550,9 @@ function SmartArgRow(props: {
           <Switch
             label="Value"
             checked={props.row.value !== "false"}
-            onChange={(event) => updateValue(String(event.currentTarget.checked))}
+            onChange={(event) =>
+              updateValue(String(event.currentTarget.checked))
+            }
           />
         );
       }
@@ -481,17 +563,25 @@ function SmartArgRow(props: {
           data={booleanValueOptions(props.option)}
           value={props.row.value || defaultValueForArgument(props.option)}
           allowDeselect={false}
-          onChange={(value) => updateValue(value ?? defaultValueForArgument(props.option))}
+          onChange={(value) =>
+            updateValue(value ?? defaultValueForArgument(props.option))
+          }
           w={140}
         />
       );
     }
 
-    if (props.option.valueType === "enum" && props.option.allowedValues.length > 0) {
+    if (
+      props.option.valueType === "enum" &&
+      props.option.allowedValues.length > 0
+    ) {
       return (
         <Select
           label="Value"
-          data={props.option.allowedValues.map((value) => ({ value, label: value }))}
+          data={props.option.allowedValues.map((value) => ({
+            value,
+            label: value,
+          }))}
           value={props.row.value || null}
           searchable
           onChange={(value) => updateValue(value ?? "")}
@@ -505,7 +595,9 @@ function SmartArgRow(props: {
         <NumberInput
           label="Value"
           value={props.row.value === "" ? "" : Number(props.row.value)}
-          onChange={(value) => updateValue(typeof value === "number" ? String(value) : "")}
+          onChange={(value) =>
+            updateValue(typeof value === "number" ? String(value) : "")
+          }
           style={{ flex: 1 }}
         />
       );
@@ -526,7 +618,11 @@ function SmartArgRow(props: {
     return (
       <TextInput
         label="Value"
-        placeholder={props.option.valueType === "list" ? "a, b, c" : props.option.valueHint ?? "value"}
+        placeholder={
+          props.option.valueType === "list"
+            ? "a, b, c"
+            : (props.option.valueHint ?? "value")
+        }
         value={props.row.value}
         onChange={(event) => updateValue(event.currentTarget.value)}
         style={{ flex: 1 }}
@@ -556,9 +652,18 @@ function SmartArgRow(props: {
             </Text>
           </Box>
           <Group gap="xs" wrap="nowrap">
-            <Switch label="Enabled" checked={enabled} onChange={(event) => setEnabled(event.currentTarget.checked)} />
+            <Switch
+              label="Enabled"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.currentTarget.checked)}
+            />
             <Tooltip label="Remove">
-              <ActionIcon variant="subtle" color="red" disabled={!props.canRemove} onClick={props.onRemove}>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                disabled={!props.canRemove}
+                onClick={props.onRemove}
+              >
                 <Trash2 size={16} />
               </ActionIcon>
             </Tooltip>
@@ -590,7 +695,9 @@ function RawArgRow(props: {
         label={props.index === 0 ? "Flag" : undefined}
         placeholder="--port"
         value={props.row.key}
-        onChange={(event) => props.onChange({ ...props.row, key: event.currentTarget.value })}
+        onChange={(event) =>
+          props.onChange({ ...props.row, key: event.currentTarget.value })
+        }
         style={{ flex: 1.1 }}
       />
       <Select
@@ -605,7 +712,12 @@ function RawArgRow(props: {
         ]}
         value={props.row.valueType}
         allowDeselect={false}
-        onChange={(value) => props.onChange({ ...props.row, valueType: (value ?? "string") as ArgRow["valueType"] })}
+        onChange={(value) =>
+          props.onChange({
+            ...props.row,
+            valueType: (value ?? "string") as ArgRow["valueType"],
+          })
+        }
         w={120}
       />
       {props.row.valueType === "boolean" ? (
@@ -617,7 +729,9 @@ function RawArgRow(props: {
           ]}
           value={props.row.value || "true"}
           allowDeselect={false}
-          onChange={(value) => props.onChange({ ...props.row, value: value ?? "true" })}
+          onChange={(value) =>
+            props.onChange({ ...props.row, value: value ?? "true" })
+          }
           style={{ flex: 1 }}
         />
       ) : (
@@ -633,13 +747,22 @@ function RawArgRow(props: {
                   : "value"
           }
           value={props.row.value}
-          disabled={props.row.valueType === "flag" || props.row.valueType === "null"}
-          onChange={(event) => props.onChange({ ...props.row, value: event.currentTarget.value })}
+          disabled={
+            props.row.valueType === "flag" || props.row.valueType === "null"
+          }
+          onChange={(event) =>
+            props.onChange({ ...props.row, value: event.currentTarget.value })
+          }
           style={{ flex: 1 }}
         />
       )}
       <Tooltip label="Remove">
-        <ActionIcon variant="subtle" color="red" disabled={!props.canRemove} onClick={props.onRemove}>
+        <ActionIcon
+          variant="subtle"
+          color="red"
+          disabled={!props.canRemove}
+          onClick={props.onRemove}
+        >
           <Trash2 size={16} />
         </ActionIcon>
       </Tooltip>
@@ -703,16 +826,21 @@ function pathBaseName(path: string) {
 }
 
 function instanceNameFromModelPath(path: string) {
-  return pathBaseName(path)
-    .replace(/\.gguf$/i, "")
-    .replace(/[^\w.-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "local-server";
+  return (
+    pathBaseName(path)
+      .replace(/\.gguf$/i, "")
+      .replace(/[^\w.-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "local-server"
+  );
 }
 
 function isVocabModel(model: GgufModel) {
-  const haystack = `${model.name} ${model.path} ${model.metadata.name ?? ""}`.toLowerCase();
-  return haystack.includes("ggml-vocab") || haystack.includes("/models/ggml-vocab");
+  const haystack =
+    `${model.name} ${model.path} ${model.metadata.name ?? ""}`.toLowerCase();
+  return (
+    haystack.includes("ggml-vocab") || haystack.includes("/models/ggml-vocab")
+  );
 }
 
 function modelMatchesSearch(model: GgufModel, query: string) {
@@ -758,8 +886,11 @@ function apiPrefixFromArgs(args: Instance["args"]) {
 
 function browserReachableHost(host: string) {
   if (host === "0.0.0.0" || host === "::") {
-    const pageHost = typeof window === "undefined" ? "" : window.location.hostname;
-    return pageHost && pageHost !== "0.0.0.0" && pageHost !== "::" ? pageHost : "127.0.0.1";
+    const pageHost =
+      typeof window === "undefined" ? "" : window.location.hostname;
+    return pageHost && pageHost !== "0.0.0.0" && pageHost !== "::"
+      ? pageHost
+      : "127.0.0.1";
   }
   return host;
 }
@@ -778,14 +909,22 @@ function llamaServerWebUrl(instance: Instance) {
   return `http://${urlHost(browserReachableHost(rawHost))}:${port}${apiPrefixFromArgs(instance.args)}`;
 }
 
-function canOpenLlamaWebUi(health: InstanceHealthSummary | undefined, url: string | null) {
+function canOpenLlamaWebUi(
+  health: InstanceHealthSummary | undefined,
+  url: string | null,
+) {
   if (!health || !url) {
     return false;
   }
-  return ["starting", "loading", "ready", "degraded", "stale"].includes(health.status);
+  return ["starting", "loading", "ready", "degraded", "stale"].includes(
+    health.status,
+  );
 }
 
-function llamaWebUiTooltip(health: InstanceHealthSummary | undefined, url: string | null) {
+function llamaWebUiTooltip(
+  health: InstanceHealthSummary | undefined,
+  url: string | null,
+) {
   if (!url) {
     return "HTTP URL is unavailable for this instance";
   }
@@ -826,18 +965,64 @@ function nextAvailablePort(instances: Instance[], currentId?: string) {
   return 8080;
 }
 
-function presetEntryFromModel(model: GgufModel): ModelPresetEntry {
+function presetEntryNameFromModel(model: GgufModel) {
   const baseName = model.metadata.name || model.name.replace(/\.gguf$/i, "");
+  return baseName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "model";
+}
+
+function presetEntryFromModel(model: GgufModel): ModelPresetEntry {
   return {
-    id: crypto.randomUUID(),
-    name: baseName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "model",
+    id: createUiId("preset"),
+    name: presetEntryNameFromModel(model),
     modelPath: model.path,
     ctxSize: model.metadata.contextLength,
     nGpuLayers: "auto",
     mmprojPath: model.mmprojPaths[0] ?? null,
     loadOnStartup: false,
     stopTimeout: 10,
+    extraArgs: {},
   };
+}
+
+function normalizePresetArgKey(key: string) {
+  return key.trim().replace(/^-+/, "");
+}
+
+function extraArgsToRows(
+  args: ModelPresetEntry["extraArgs"] | undefined,
+): PresetExtraArgRow[] {
+  const rows = Object.entries(args ?? {}).map(([key, value]) => ({
+    id: createUiId("preset-arg"),
+    key,
+    value,
+  }));
+  return rows.length > 0
+    ? rows
+    : [{ id: createUiId("preset-arg"), key: "", value: "" }];
+}
+
+function rowsToExtraArgs(rows: PresetExtraArgRow[]) {
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    const key = normalizePresetArgKey(row.key);
+    const value = row.value.trim();
+    if (key && value) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function parseGpuLayersInput(value: string): ModelPresetEntry["nGpuLayers"] {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "auto" || normalized === "all") {
+    return normalized;
+  }
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 function buildStatusColor(status: BuildJob["status"]) {
@@ -865,8 +1050,11 @@ function parseExtraCmakeArgs(value: string) {
 function BuildPanel() {
   const queryClient = useQueryClient();
   const [repoPath, setRepoPath] = useState("/home/maxim/llama/llama.cpp");
-  const [buildDir, setBuildDir] = useState("/home/maxim/llama/llama.cpp/build-cuda");
-  const [buildType, setBuildType] = useState<BuildSettings["buildType"]>("Release");
+  const [buildDir, setBuildDir] = useState(
+    "/home/maxim/llama/llama.cpp/build-cuda",
+  );
+  const [buildType, setBuildType] =
+    useState<BuildSettings["buildType"]>("Release");
   const [target, setTarget] = useState("llama-server");
   const [parallelJobs, setParallelJobs] = useState<number | "">(8);
   const [cuda, setCuda] = useState(true);
@@ -932,7 +1120,11 @@ function BuildPanel() {
       notifications.show({ title: "Build settings saved", message: buildDir });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Settings save failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Settings save failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -947,10 +1139,17 @@ function BuildPanel() {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["build-settings"] });
       await queryClient.invalidateQueries({ queryKey: ["build-jobs"] });
-      notifications.show({ title: "Build job started", message: result.data.id });
+      notifications.show({
+        title: "Build job started",
+        message: result.data.id,
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Build start failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Build start failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -958,10 +1157,17 @@ function BuildPanel() {
     mutationFn: (id: string) => cancelBuildJob(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["build-jobs"] });
-      notifications.show({ title: "Build job canceled", message: "Stop signal sent" });
+      notifications.show({
+        title: "Build job canceled",
+        message: "Stop signal sent",
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Cancel failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Cancel failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -1006,22 +1212,38 @@ function BuildPanel() {
         </Group>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-          <TextInput label="llama.cpp repository" value={repoPath} onChange={(event) => setRepoPath(event.currentTarget.value)} />
-          <TextInput label="Build directory" value={buildDir} onChange={(event) => setBuildDir(event.currentTarget.value)} />
+          <TextInput
+            label="llama.cpp repository"
+            value={repoPath}
+            onChange={(event) => setRepoPath(event.currentTarget.value)}
+          />
+          <TextInput
+            label="Build directory"
+            value={buildDir}
+            onChange={(event) => setBuildDir(event.currentTarget.value)}
+          />
           <Select
             label="Build type"
             data={["Release", "Debug", "RelWithDebInfo", "MinSizeRel"]}
             value={buildType}
             allowDeselect={false}
-            onChange={(value) => setBuildType((value ?? "Release") as BuildSettings["buildType"])}
+            onChange={(value) =>
+              setBuildType((value ?? "Release") as BuildSettings["buildType"])
+            }
           />
-          <TextInput label="Target" value={target} onChange={(event) => setTarget(event.currentTarget.value)} />
+          <TextInput
+            label="Target"
+            value={target}
+            onChange={(event) => setTarget(event.currentTarget.value)}
+          />
           <NumberInput
             label="Parallel jobs"
             min={1}
             max={256}
             value={parallelJobs}
-            onChange={(value) => setParallelJobs(typeof value === "number" ? value : "")}
+            onChange={(value) =>
+              setParallelJobs(typeof value === "number" ? value : "")
+            }
           />
           <Textarea
             label="Extra CMake args"
@@ -1033,11 +1255,31 @@ function BuildPanel() {
         </SimpleGrid>
 
         <Group gap="lg">
-          <Switch label="git pull --ff-only" checked={runPull} onChange={(event) => setRunPull(event.currentTarget.checked)} />
-          <Switch label="Configure" checked={runConfigure} onChange={(event) => setRunConfigure(event.currentTarget.checked)} />
-          <Switch label="Build target" checked={runBuild} onChange={(event) => setRunBuild(event.currentTarget.checked)} />
-          <Switch label="CUDA (GGML_CUDA)" checked={cuda} onChange={(event) => setCuda(event.currentTarget.checked)} />
-          <Switch label="Native (GGML_NATIVE)" checked={native} onChange={(event) => setNative(event.currentTarget.checked)} />
+          <Switch
+            label="git pull --ff-only"
+            checked={runPull}
+            onChange={(event) => setRunPull(event.currentTarget.checked)}
+          />
+          <Switch
+            label="Configure"
+            checked={runConfigure}
+            onChange={(event) => setRunConfigure(event.currentTarget.checked)}
+          />
+          <Switch
+            label="Build target"
+            checked={runBuild}
+            onChange={(event) => setRunBuild(event.currentTarget.checked)}
+          />
+          <Switch
+            label="CUDA (GGML_CUDA)"
+            checked={cuda}
+            onChange={(event) => setCuda(event.currentTarget.checked)}
+          />
+          <Switch
+            label="Native (GGML_NATIVE)"
+            checked={native}
+            onChange={(event) => setNative(event.currentTarget.checked)}
+          />
         </Group>
 
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
@@ -1062,7 +1304,10 @@ function BuildPanel() {
                   {jobs.map((job) => (
                     <Table.Tr key={job.id}>
                       <Table.Td>
-                        <Badge color={buildStatusColor(job.status)} variant="light">
+                        <Badge
+                          color={buildStatusColor(job.status)}
+                          variant="light"
+                        >
                           {job.status}
                         </Badge>
                       </Table.Td>
@@ -1077,7 +1322,11 @@ function BuildPanel() {
                       <Table.Td>
                         <Group gap={4}>
                           {job.steps.map((item) => (
-                            <Badge key={item.name} color={buildStepColor(item.status)} variant="outline">
+                            <Badge
+                              key={item.name}
+                              color={buildStepColor(item.status)}
+                              variant="outline"
+                            >
                               {item.name}
                             </Badge>
                           ))}
@@ -1109,12 +1358,19 @@ function BuildPanel() {
               <Text fw={600} size="sm">
                 Build log
               </Text>
-              <Badge color={selectedJob ? buildStatusColor(selectedJob.status) : "gray"} variant="light">
+              <Badge
+                color={
+                  selectedJob ? buildStatusColor(selectedJob.status) : "gray"
+                }
+                variant="light"
+              >
                 {selectedJob?.status ?? "idle"}
               </Badge>
             </Group>
             <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
-              {logsQuery.data?.data.logPath ?? selectedJob?.logPath ?? "No log file yet"}
+              {logsQuery.data?.data.logPath ??
+                selectedJob?.logPath ??
+                "No log file yet"}
             </Text>
             <ScrollArea h={300} type="auto" offsetScrollbars>
               <Stack gap={4}>
@@ -1123,7 +1379,8 @@ function BuildPanel() {
                     {line}
                   </Code>
                 ))}
-                {(!logsQuery.data || logsQuery.data.data.lines.length === 0) && (
+                {(!logsQuery.data ||
+                  logsQuery.data.data.lines.length === 0) && (
                   <Text c="dimmed" size="sm" ta="center" py="lg">
                     No build log yet
                   </Text>
@@ -1161,8 +1418,13 @@ function ModelsPanel(props: {
   const settingsMutation = useMutation({
     mutationFn: updateModelScanSettings,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["model-scan-settings"] });
-      notifications.show({ title: "Scanner settings saved", message: directory });
+      await queryClient.invalidateQueries({
+        queryKey: ["model-scan-settings"],
+      });
+      notifications.show({
+        title: "Scanner settings saved",
+        message: directory,
+      });
     },
     onError: (error) => {
       notifications.show({
@@ -1214,7 +1476,9 @@ function ModelsPanel(props: {
               min={0}
               max={16}
               clampBehavior="strict"
-              onChange={(value) => setMaxDepth(typeof value === "number" ? value : 8)}
+              onChange={(value) =>
+                setMaxDepth(typeof value === "number" ? value : 8)
+              }
               w={92}
             />
             <Button
@@ -1224,18 +1488,27 @@ function ModelsPanel(props: {
             >
               Save
             </Button>
-            <Button onClick={() => void modelsQuery.refetch()} loading={modelsQuery.isFetching}>
+            <Button
+              onClick={() => void modelsQuery.refetch()}
+              loading={modelsQuery.isFetching}
+            >
               Scan
             </Button>
             <Button
               variant="subtle"
               onClick={() =>
-                queryClient.fetchQuery({
-                  queryKey: ["models", directory, maxDepth, "refresh"],
-                  queryFn: () => scanModels({ directory, maxDepth, refresh: true }),
-                }).then((result) => {
-                  queryClient.setQueryData(["models", directory, maxDepth], result);
-                })
+                queryClient
+                  .fetchQuery({
+                    queryKey: ["models", directory, maxDepth, "refresh"],
+                    queryFn: () =>
+                      scanModels({ directory, maxDepth, refresh: true }),
+                  })
+                  .then((result) => {
+                    queryClient.setQueryData(
+                      ["models", directory, maxDepth],
+                      result,
+                    );
+                  })
               }
               loading={modelsQuery.isFetching}
             >
@@ -1259,14 +1532,23 @@ function ModelsPanel(props: {
             style={{ flex: 1 }}
           />
           <Group gap="lg" pb={4}>
-            <Switch label="Hide vocab/test files" checked={hideVocab} onChange={(event) => setHideVocab(event.currentTarget.checked)} />
-            <Switch label="Hide mmproj" checked={hideMmproj} onChange={(event) => setHideMmproj(event.currentTarget.checked)} />
+            <Switch
+              label="Hide vocab/test files"
+              checked={hideVocab}
+              onChange={(event) => setHideVocab(event.currentTarget.checked)}
+            />
+            <Switch
+              label="Hide mmproj"
+              checked={hideMmproj}
+              onChange={(event) => setHideMmproj(event.currentTarget.checked)}
+            />
             <Badge variant="light">
               {filteredModels.length}/{models.length}
             </Badge>
             {modelsQuery.data?.data.cache && (
               <Badge variant="outline">
-                cache {modelsQuery.data.data.cache.hits}/{modelsQuery.data.data.cache.misses}
+                cache {modelsQuery.data.data.cache.hits}/
+                {modelsQuery.data.data.cache.misses}
               </Badge>
             )}
           </Group>
@@ -1305,10 +1587,19 @@ function ModelsPanel(props: {
                   <Table.Td>{model.metadata.quantization ?? "-"}</Table.Td>
                   <Table.Td>{model.metadata.contextLength ?? "-"}</Table.Td>
                   <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
-                  <Table.Td>{model.isMmproj ? "projector" : model.mmprojPaths.length || "-"}</Table.Td>
+                  <Table.Td>
+                    {model.isMmproj
+                      ? "projector"
+                      : model.mmprojPaths.length || "-"}
+                  </Table.Td>
                   <Table.Td>
                     <Group justify="flex-end" gap="xs">
-                      <Button size="xs" variant="light" disabled={model.isMmproj} onClick={() => props.onUseModel(model)}>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        disabled={model.isMmproj}
+                        onClick={() => props.onUseModel(model)}
+                      >
                         Use in new
                       </Button>
                       <Button
@@ -1319,7 +1610,12 @@ function ModelsPanel(props: {
                       >
                         Use selected
                       </Button>
-                      <Button size="xs" variant="subtle" disabled={model.isMmproj} onClick={() => props.onAddToPreset(model)}>
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        disabled={model.isMmproj}
+                        onClick={() => props.onAddToPreset(model)}
+                      >
                         Add preset
                       </Button>
                     </Group>
@@ -1330,7 +1626,9 @@ function ModelsPanel(props: {
                 <Table.Tr>
                   <Table.Td colSpan={7}>
                     <Text c="dimmed" ta="center" py="lg">
-                      {modelsQuery.isFetched ? "No matching GGUF files found" : "Run scan to list models"}
+                      {modelsQuery.isFetched
+                        ? "No matching GGUF files found"
+                        : "Run scan to list models"}
                     </Text>
                   </Table.Td>
                 </Table.Tr>
@@ -1340,6 +1638,218 @@ function ModelsPanel(props: {
         </Table.ScrollContainer>
       </Stack>
     </Paper>
+  );
+}
+
+function PresetEntryDetailModal(props: {
+  opened: boolean;
+  entry: ModelPresetEntry | null;
+  model: GgufModel | null;
+  onClose: () => void;
+  onSave: (entry: ModelPresetEntry) => void;
+}) {
+  const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
+  const [extraRows, setExtraRows] = useState<PresetExtraArgRow[]>([]);
+
+  useEffect(() => {
+    if (!props.opened || !props.entry) {
+      return;
+    }
+    setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
+    setExtraRows(extraArgsToRows(props.entry.extraArgs));
+  }, [props.entry, props.opened]);
+
+  function updateDraft(update: Partial<ModelPresetEntry>) {
+    setDraft((current) => (current ? { ...current, ...update } : current));
+  }
+
+  function save() {
+    if (!draft) {
+      return;
+    }
+    props.onSave({
+      ...draft,
+      name: draft.name.trim() || "model",
+      modelPath: draft.modelPath.trim(),
+      mmprojPath: draft.mmprojPath?.trim() || null,
+      extraArgs: rowsToExtraArgs(extraRows),
+    });
+    props.onClose();
+  }
+
+  return (
+    <Modal
+      opened={props.opened}
+      onClose={props.onClose}
+      title="Model preset details"
+      size="xl"
+    >
+      {draft && (
+        <Stack gap="sm">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+            <TextInput
+              label="Preset name"
+              value={draft.name}
+              onChange={(event) =>
+                updateDraft({ name: event.currentTarget.value })
+              }
+            />
+            <TextInput
+              label="Model path"
+              value={draft.modelPath}
+              onChange={(event) =>
+                updateDraft({ modelPath: event.currentTarget.value })
+              }
+            />
+            <NumberInput
+              label="Context size"
+              min={1}
+              value={draft.ctxSize ?? ""}
+              onChange={(value) =>
+                updateDraft({
+                  ctxSize: typeof value === "number" ? value : null,
+                })
+              }
+            />
+            <TextInput
+              label="GPU layers"
+              placeholder="auto, all, 35"
+              value={draft.nGpuLayers === null ? "" : String(draft.nGpuLayers)}
+              onChange={(event) =>
+                updateDraft({
+                  nGpuLayers: parseGpuLayersInput(event.currentTarget.value),
+                })
+              }
+            />
+            <TextInput
+              label="mmproj"
+              value={draft.mmprojPath ?? ""}
+              onChange={(event) =>
+                updateDraft({ mmprojPath: event.currentTarget.value || null })
+              }
+            />
+            <NumberInput
+              label="Stop timeout"
+              min={1}
+              value={draft.stopTimeout ?? ""}
+              onChange={(value) =>
+                updateDraft({
+                  stopTimeout: typeof value === "number" ? value : null,
+                })
+              }
+            />
+          </SimpleGrid>
+
+          <Group gap="lg">
+            <Switch
+              label="Load on startup"
+              checked={draft.loadOnStartup}
+              onChange={(event) =>
+                updateDraft({ loadOnStartup: event.currentTarget.checked })
+              }
+            />
+            {props.model && (
+              <Group gap="xs">
+                <Badge variant="light">
+                  {props.model.metadata.architecture ?? "unknown arch"}
+                </Badge>
+                <Badge variant="outline">
+                  {props.model.metadata.quantization ?? "unknown quant"}
+                </Badge>
+                <Badge variant="outline">
+                  {formatBytes(props.model.sizeBytes)}
+                </Badge>
+              </Group>
+            )}
+          </Group>
+
+          <Stack gap="xs">
+            <Group justify="space-between">
+              <Text fw={600} size="sm">
+                Extra INI args
+              </Text>
+              <Button
+                size="xs"
+                variant="light"
+                onClick={() =>
+                  setExtraRows((rows) => [
+                    ...rows,
+                    { id: createUiId("preset-arg"), key: "", value: "" },
+                  ])
+                }
+              >
+                Add arg
+              </Button>
+            </Group>
+            {extraRows.map((row) => (
+              <Group key={row.id} gap="xs" align="flex-end" wrap="nowrap">
+                <TextInput
+                  label="Key"
+                  placeholder="chat-template"
+                  value={row.key}
+                  onChange={(event) =>
+                    setExtraRows((rows) =>
+                      rows.map((item) =>
+                        item.id === row.id
+                          ? {
+                              ...item,
+                              key: normalizePresetArgKey(
+                                event.currentTarget.value,
+                              ),
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                  style={{ flex: 1 }}
+                />
+                <TextInput
+                  label="Value"
+                  placeholder="chatml"
+                  value={row.value}
+                  onChange={(event) =>
+                    setExtraRows((rows) =>
+                      rows.map((item) =>
+                        item.id === row.id
+                          ? { ...item, value: event.currentTarget.value }
+                          : item,
+                      ),
+                    )
+                  }
+                  style={{ flex: 1.4 }}
+                />
+                <Tooltip label="Remove">
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    disabled={extraRows.length <= 1}
+                    onClick={() =>
+                      setExtraRows((rows) =>
+                        rows.filter((item) => item.id !== row.id),
+                      )
+                    }
+                  >
+                    <Trash2 size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+            ))}
+          </Stack>
+
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={props.onClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={save}
+              disabled={!draft.name.trim() || !draft.modelPath.trim()}
+            >
+              Save details
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Modal>
   );
 }
 
@@ -1353,6 +1863,10 @@ function PresetBuilderPanel() {
   const [routerModelsMax, setRouterModelsMax] = useState<number | "">(4);
   const [routerModelsAutoload, setRouterModelsAutoload] = useState(true);
   const [routerWritePreset, setRouterWritePreset] = useState(true);
+  const [presetModelSearch, setPresetModelSearch] = useState("");
+  const [selectedPresetEntryId, setSelectedPresetEntryId] = useState<
+    string | null
+  >(null);
   const presetQuery = useQuery({
     queryKey: ["model-preset"],
     queryFn: getModelPreset,
@@ -1361,29 +1875,82 @@ function PresetBuilderPanel() {
     queryKey: ["model-preset-preview"],
     queryFn: getModelPresetPreview,
   });
+  const modelSettingsQuery = useQuery({
+    queryKey: ["model-scan-settings"],
+    queryFn: getModelScanSettings,
+  });
+  const modelDirectory =
+    modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
+  const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
+  const presetModelsQuery = useQuery({
+    queryKey: ["models", modelDirectory, modelMaxDepth],
+    queryFn: () =>
+      scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
+    staleTime: 60_000,
+  });
   const preset = presetQuery.data?.data;
   const preview = previewQuery.data?.data;
+  const scannedModels = (presetModelsQuery.data?.data.models ?? []).filter(
+    (model) => !model.isMmproj && !isVocabModel(model),
+  );
+  const presetModels = scannedModels.filter((model) =>
+    modelMatchesSearch(model, presetModelSearch),
+  );
+  const presetEntryByModelPath = useMemo(
+    () =>
+      new Map((preset?.entries ?? []).map((entry) => [entry.modelPath, entry])),
+    [preset?.entries],
+  );
+  const presetModelByPath = useMemo(
+    () => new Map(scannedModels.map((model) => [model.path, model])),
+    [scannedModels],
+  );
+  const selectedPresetEntry =
+    (preset?.entries ?? []).find(
+      (entry) => entry.id === selectedPresetEntryId,
+    ) ?? null;
+  const selectedPresetModel = selectedPresetEntry
+    ? (presetModelByPath.get(selectedPresetEntry.modelPath) ?? null)
+    : null;
 
   const saveMutation = useMutation({
     mutationFn: updateModelPreset,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
-      notifications.show({ title: "Preset saved", message: "Configuration stored" });
+      await queryClient.invalidateQueries({
+        queryKey: ["model-preset-preview"],
+      });
+      notifications.show({
+        title: "Preset saved",
+        message: "Configuration stored",
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Preset save failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Preset save failed",
+        message: (error as Error).message,
+      });
     },
   });
   const writeMutation = useMutation({
     mutationFn: writeModelPreset,
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
-      notifications.show({ title: "Preset file written", message: result.data.path });
+      await queryClient.invalidateQueries({
+        queryKey: ["model-preset-preview"],
+      });
+      notifications.show({
+        title: "Preset file written",
+        message: result.data.path,
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Preset write failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Preset write failed",
+        message: (error as Error).message,
+      });
     },
   });
   const routerMutation = useMutation({
@@ -1400,14 +1967,27 @@ function PresetBuilderPanel() {
       }),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary", result.data.id] });
+      await queryClient.invalidateQueries({
+        queryKey: ["instances-health-summary"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-health-summary", result.data.id],
+      });
       await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({ queryKey: ["model-preset-preview"] });
-      notifications.show({ title: "Router instance created", message: result.data.name });
+      await queryClient.invalidateQueries({
+        queryKey: ["model-preset-preview"],
+      });
+      notifications.show({
+        title: "Router instance created",
+        message: result.data.name,
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Router create failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Router create failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -1418,216 +1998,442 @@ function PresetBuilderPanel() {
     saveMutation.mutate({ entries, path: preset.path });
   }
 
+  function updateEntry(entry: ModelPresetEntry) {
+    if (!preset) {
+      return;
+    }
+    updateEntries(
+      preset.entries.map((item) => (item.id === entry.id ? entry : item)),
+    );
+  }
+
+  function togglePresetModel(model: GgufModel, checked: boolean) {
+    if (!preset) {
+      return;
+    }
+    if (checked) {
+      if (preset.entries.some((entry) => entry.modelPath === model.path)) {
+        return;
+      }
+      const entry = presetEntryFromModel(model);
+      updateEntries([...preset.entries, entry]);
+      setSelectedPresetEntryId(entry.id);
+      return;
+    }
+    const entry = preset.entries.find((item) => item.modelPath === model.path);
+    updateEntries(
+      preset.entries.filter((item) => item.modelPath !== model.path),
+    );
+    if (entry?.id === selectedPresetEntryId) {
+      setSelectedPresetEntryId(null);
+    }
+  }
+
   return (
-    <Paper withBorder p="md" radius="sm">
-      <Stack gap="sm">
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Title order={3}>Router preset</Title>
-            <Text c="dimmed" size="sm">
-              Generated llama-server --models-preset INI
-            </Text>
-          </div>
-          <Group gap="xs">
-            <Button
-              variant="light"
-              loading={saveMutation.isPending}
-              disabled={!preset}
-              onClick={() => preset && saveMutation.mutate({ entries: preset.entries, path: preset.path })}
-            >
-              Save
-            </Button>
-            <Button loading={writeMutation.isPending} disabled={!preset} onClick={() => writeMutation.mutate()}>
-              Write INI
-            </Button>
-          </Group>
-        </Group>
-
-        <TextInput
-          label="Preset path"
-          value={preset?.path ?? ""}
-          disabled={!preset}
-          onChange={(event) => {
-            if (preset) {
-              saveMutation.mutate({ entries: preset.entries, path: event.currentTarget.value });
-            }
-          }}
-        />
-
-        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-          <Box>
-            <Group justify="space-between" mb="xs">
-              <Text fw={600} size="sm">
-                INI preview
+    <>
+      <Paper withBorder p="md" radius="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Title order={3}>Router preset</Title>
+              <Text c="dimmed" size="sm">
+                Generated llama-server --models-preset INI
               </Text>
-              <Badge variant="light">{preview?.entries ?? 0} models</Badge>
-            </Group>
-            <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
-              {preview?.path ?? preset?.path ?? "-"}
-            </Text>
-            <ScrollArea h={260} type="auto" offsetScrollbars>
-              <Code block>{preview?.content ?? "; no preset loaded\n"}</Code>
-            </ScrollArea>
-          </Box>
-
-          <Box>
-            <Group justify="space-between" mb="xs">
-              <Text fw={600} size="sm">
-                Router instance
-              </Text>
-              <Switch
-                label="Write INI"
-                checked={routerWritePreset}
-                onChange={(event) => setRouterWritePreset(event.currentTarget.checked)}
-              />
-            </Group>
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
-              <TextInput label="Name" value={routerName} onChange={(event) => setRouterName(event.currentTarget.value)} />
-              <TextInput
-                label="Binary"
-                value={routerBinaryPath}
-                onChange={(event) => setRouterBinaryPath(event.currentTarget.value)}
-              />
-              <TextInput label="Working dir" value={routerCwd} onChange={(event) => setRouterCwd(event.currentTarget.value)} />
-              <HostPicker label="Host" value={routerHost} onChange={setRouterHost} />
-              <NumberInput
-                label="Port"
-                min={1}
-                max={65535}
-                value={routerPort}
-                onChange={(value) => setRouterPort(typeof value === "number" ? value : 8080)}
-              />
-              <NumberInput
-                label="Models max"
-                min={0}
-                value={routerModelsMax}
-                onChange={(value) => setRouterModelsMax(typeof value === "number" ? value : "")}
-              />
-            </SimpleGrid>
-            <Group justify="space-between" mt="sm">
-              <Switch
-                label="Models autoload"
-                checked={routerModelsAutoload}
-                onChange={(event) => setRouterModelsAutoload(event.currentTarget.checked)}
-              />
+            </div>
+            <Group gap="xs">
               <Button
-                leftSection={<Plus size={16} />}
-                loading={routerMutation.isPending}
-                disabled={!preset || !routerName.trim() || !routerBinaryPath.trim()}
-                onClick={() => routerMutation.mutate()}
+                variant="light"
+                loading={saveMutation.isPending}
+                disabled={!preset}
+                onClick={() =>
+                  preset &&
+                  saveMutation.mutate({
+                    entries: preset.entries,
+                    path: preset.path,
+                  })
+                }
               >
-                Create router
+                Save
+              </Button>
+              <Button
+                loading={writeMutation.isPending}
+                disabled={!preset}
+                onClick={() => writeMutation.mutate()}
+              >
+                Write INI
               </Button>
             </Group>
-          </Box>
-        </SimpleGrid>
+          </Group>
 
-        <Table.ScrollContainer minWidth={980}>
-          <Table striped highlightOnHover verticalSpacing="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Model</Table.Th>
-                <Table.Th>Ctx</Table.Th>
-                <Table.Th>GPU layers</Table.Th>
-                <Table.Th>Startup</Table.Th>
-                <Table.Th ta="right">Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {(preset?.entries ?? []).map((entry) => (
-                <Table.Tr key={entry.id}>
-                  <Table.Td>
-                    <TextInput
-                      value={entry.name}
-                      onChange={(event) =>
-                        updateEntries(
-                          preset!.entries.map((item) =>
-                            item.id === entry.id ? { ...item, name: event.currentTarget.value } : item,
-                          ),
-                        )
-                      }
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" lineClamp={1}>
-                      {entry.modelPath}
-                    </Text>
-                    {entry.mmprojPath && (
-                      <Text c="dimmed" size="xs" lineClamp={1}>
-                        mmproj: {entry.mmprojPath}
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      value={entry.ctxSize ?? ""}
-                      min={1}
-                      onChange={(value) =>
-                        updateEntries(
-                          preset!.entries.map((item) =>
-                            item.id === entry.id
-                              ? { ...item, ctxSize: typeof value === "number" ? value : null }
-                              : item,
-                          ),
-                        )
-                      }
-                      w={120}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <TextInput
-                      value={entry.nGpuLayers === null ? "" : String(entry.nGpuLayers)}
-                      placeholder="auto/all/N"
-                      onChange={(event) => {
-                        const value = event.currentTarget.value.trim();
-                        const nGpuLayers = value === "auto" || value === "all" ? value : value ? Number(value) : null;
-                        updateEntries(
-                          preset!.entries.map((item) => (item.id === entry.id ? { ...item, nGpuLayers } : item)),
-                        );
-                      }}
-                      w={120}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Switch
-                      checked={entry.loadOnStartup}
-                      onChange={(event) =>
-                        updateEntries(
-                          preset!.entries.map((item) =>
-                            item.id === entry.id ? { ...item, loadOnStartup: event.currentTarget.checked } : item,
-                          ),
-                        )
-                      }
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Group justify="flex-end">
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => updateEntries(preset!.entries.filter((item) => item.id !== entry.id))}
-                      >
-                        <Trash2 size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {(!preset || preset.entries.length === 0) && (
+          <TextInput
+            label="Preset path"
+            value={preset?.path ?? ""}
+            disabled={!preset}
+            onChange={(event) => {
+              if (preset) {
+                saveMutation.mutate({
+                  entries: preset.entries,
+                  path: event.currentTarget.value,
+                });
+              }
+            }}
+          />
+
+          <Stack gap="xs">
+            <Group justify="space-between" align="flex-end">
+              <TextInput
+                label="Models"
+                placeholder="name, path, architecture, quant"
+                value={presetModelSearch}
+                onChange={(event) =>
+                  setPresetModelSearch(event.currentTarget.value)
+                }
+                style={{ flex: 1 }}
+              />
+              <Group gap="xs" pb={4}>
+                <Badge variant="light">
+                  {preset?.entries.length ?? 0}/{scannedModels.length}
+                </Badge>
+                {presetModelsQuery.data?.data.cache && (
+                  <Badge variant="outline">
+                    cache {presetModelsQuery.data.data.cache.hits}/
+                    {presetModelsQuery.data.data.cache.misses}
+                  </Badge>
+                )}
+              </Group>
+            </Group>
+            {presetModelsQuery.isError && (
+              <Text c="red" size="sm">
+                {(presetModelsQuery.error as Error).message}
+              </Text>
+            )}
+            <Table.ScrollContainer minWidth={980}>
+              <Table striped highlightOnHover verticalSpacing="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th w={52}></Table.Th>
+                    <Table.Th>Model</Table.Th>
+                    <Table.Th>Arch</Table.Th>
+                    <Table.Th>Quant</Table.Th>
+                    <Table.Th>Ctx</Table.Th>
+                    <Table.Th>Size</Table.Th>
+                    <Table.Th ta="right">Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {presetModels.slice(0, 12).map((model) => {
+                    const entry = presetEntryByModelPath.get(model.path);
+                    return (
+                      <Table.Tr key={model.path}>
+                        <Table.Td>
+                          <Checkbox
+                            checked={Boolean(entry)}
+                            disabled={!preset}
+                            onChange={(event) =>
+                              togglePresetModel(
+                                model,
+                                event.currentTarget.checked,
+                              )
+                            }
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <Text fw={600} size="sm" lineClamp={1}>
+                            {modelTitle(model)}
+                          </Text>
+                          <Text c="dimmed" size="xs" lineClamp={1}>
+                            {model.path}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          {model.metadata.architecture ?? "-"}
+                        </Table.Td>
+                        <Table.Td>
+                          {model.metadata.quantization ?? "-"}
+                        </Table.Td>
+                        <Table.Td>
+                          {model.metadata.contextLength ?? "-"}
+                        </Table.Td>
+                        <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
+                        <Table.Td>
+                          <Group justify="flex-end">
+                            <Tooltip label="Details">
+                              <ActionIcon
+                                variant="subtle"
+                                disabled={!entry}
+                                onClick={() =>
+                                  entry && setSelectedPresetEntryId(entry.id)
+                                }
+                              >
+                                <Pencil size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                  {presetModels.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={7}>
+                        <Text c="dimmed" ta="center" py="lg">
+                          {presetModelsQuery.isFetching
+                            ? "Loading models..."
+                            : "No matching GGUF files found"}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Stack>
+
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+            <Box>
+              <Group justify="space-between" mb="xs">
+                <Text fw={600} size="sm">
+                  INI preview
+                </Text>
+                <Badge variant="light">{preview?.entries ?? 0} models</Badge>
+              </Group>
+              <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
+                {preview?.path ?? preset?.path ?? "-"}
+              </Text>
+              <ScrollArea h={260} type="auto" offsetScrollbars>
+                <Code block>{preview?.content ?? "; no preset loaded\n"}</Code>
+              </ScrollArea>
+            </Box>
+
+            <Box>
+              <Group justify="space-between" mb="xs">
+                <Text fw={600} size="sm">
+                  Router instance
+                </Text>
+                <Switch
+                  label="Write INI"
+                  checked={routerWritePreset}
+                  onChange={(event) =>
+                    setRouterWritePreset(event.currentTarget.checked)
+                  }
+                />
+              </Group>
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+                <TextInput
+                  label="Name"
+                  value={routerName}
+                  onChange={(event) => setRouterName(event.currentTarget.value)}
+                />
+                <TextInput
+                  label="Binary"
+                  value={routerBinaryPath}
+                  onChange={(event) =>
+                    setRouterBinaryPath(event.currentTarget.value)
+                  }
+                />
+                <TextInput
+                  label="Working dir"
+                  value={routerCwd}
+                  onChange={(event) => setRouterCwd(event.currentTarget.value)}
+                />
+                <HostPicker
+                  label="Host"
+                  value={routerHost}
+                  onChange={setRouterHost}
+                />
+                <NumberInput
+                  label="Port"
+                  min={1}
+                  max={65535}
+                  value={routerPort}
+                  onChange={(value) =>
+                    setRouterPort(typeof value === "number" ? value : 8080)
+                  }
+                />
+                <NumberInput
+                  label="Models max"
+                  min={0}
+                  value={routerModelsMax}
+                  onChange={(value) =>
+                    setRouterModelsMax(typeof value === "number" ? value : "")
+                  }
+                />
+              </SimpleGrid>
+              <Group justify="space-between" mt="sm">
+                <Switch
+                  label="Models autoload"
+                  checked={routerModelsAutoload}
+                  onChange={(event) =>
+                    setRouterModelsAutoload(event.currentTarget.checked)
+                  }
+                />
+                <Button
+                  leftSection={<Plus size={16} />}
+                  loading={routerMutation.isPending}
+                  disabled={
+                    !preset || !routerName.trim() || !routerBinaryPath.trim()
+                  }
+                  onClick={() => routerMutation.mutate()}
+                >
+                  Create router
+                </Button>
+              </Group>
+            </Box>
+          </SimpleGrid>
+
+          <Table.ScrollContainer minWidth={980}>
+            <Table striped highlightOnHover verticalSpacing="sm">
+              <Table.Thead>
                 <Table.Tr>
-                  <Table.Td colSpan={6}>
-                    <Text c="dimmed" ta="center" py="lg">
-                      Add models from the Models table
-                    </Text>
-                  </Table.Td>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Model</Table.Th>
+                  <Table.Th>Ctx</Table.Th>
+                  <Table.Th>GPU layers</Table.Th>
+                  <Table.Th>Startup</Table.Th>
+                  <Table.Th ta="right">Actions</Table.Th>
                 </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Stack>
-    </Paper>
+              </Table.Thead>
+              <Table.Tbody>
+                {(preset?.entries ?? []).map((entry) => (
+                  <Table.Tr key={entry.id}>
+                    <Table.Td>
+                      <TextInput
+                        value={entry.name}
+                        onChange={(event) =>
+                          updateEntries(
+                            preset!.entries.map((item) =>
+                              item.id === entry.id
+                                ? { ...item, name: event.currentTarget.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" lineClamp={1}>
+                        {entry.modelPath}
+                      </Text>
+                      {entry.mmprojPath && (
+                        <Text c="dimmed" size="xs" lineClamp={1}>
+                          mmproj: {entry.mmprojPath}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <NumberInput
+                        value={entry.ctxSize ?? ""}
+                        min={1}
+                        onChange={(value) =>
+                          updateEntries(
+                            preset!.entries.map((item) =>
+                              item.id === entry.id
+                                ? {
+                                    ...item,
+                                    ctxSize:
+                                      typeof value === "number" ? value : null,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        w={120}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <TextInput
+                        value={
+                          entry.nGpuLayers === null
+                            ? ""
+                            : String(entry.nGpuLayers)
+                        }
+                        placeholder="auto/all/N"
+                        onChange={(event) => {
+                          updateEntries(
+                            preset!.entries.map((item) =>
+                              item.id === entry.id
+                                ? {
+                                    ...item,
+                                    nGpuLayers: parseGpuLayersInput(
+                                      event.currentTarget.value,
+                                    ),
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                        w={120}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Switch
+                        checked={entry.loadOnStartup}
+                        onChange={(event) =>
+                          updateEntries(
+                            preset!.entries.map((item) =>
+                              item.id === entry.id
+                                ? {
+                                    ...item,
+                                    loadOnStartup: event.currentTarget.checked,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Group justify="flex-end" gap="xs">
+                        <Tooltip label="Details">
+                          <ActionIcon
+                            variant="subtle"
+                            onClick={() => setSelectedPresetEntryId(entry.id)}
+                          >
+                            <Pencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Badge variant="outline">
+                          {Object.keys(entry.extraArgs ?? {}).length} args
+                        </Badge>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() =>
+                            updateEntries(
+                              preset!.entries.filter(
+                                (item) => item.id !== entry.id,
+                              ),
+                            )
+                          }
+                        >
+                          <Trash2 size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+                {(!preset || preset.entries.length === 0) && (
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Text c="dimmed" ta="center" py="lg">
+                        Select models above
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Stack>
+      </Paper>
+      <PresetEntryDetailModal
+        opened={Boolean(selectedPresetEntry)}
+        entry={selectedPresetEntry}
+        model={selectedPresetModel}
+        onClose={() => setSelectedPresetEntryId(null)}
+        onSave={updateEntry}
+      />
+    </>
   );
 }
 
@@ -1647,7 +2453,9 @@ function InstanceFormModal(props: {
   const [notesDraft, setNotesDraft] = useState("");
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
   const [showRawArgs, setShowRawArgs] = useState(false);
-  const [selectedModelPath, setSelectedModelPath] = useState<string | null>(null);
+  const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
+    null,
+  );
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
     initialValues: {
@@ -1663,11 +2471,13 @@ function InstanceFormModal(props: {
     queryFn: getModelScanSettings,
     enabled: props.opened,
   });
-  const modelDirectory = modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
+  const modelDirectory =
+    modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
   const formModelsQuery = useQuery({
     queryKey: ["models", modelDirectory, modelMaxDepth],
-    queryFn: () => scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
+    queryFn: () =>
+      scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
     enabled: props.opened,
     staleTime: 60_000,
   });
@@ -1691,10 +2501,17 @@ function InstanceFormModal(props: {
     }
     return map;
   }, [knownArgs]);
-  const selectedKnownOption = selectedKnownArg ? knownArgByName.get(selectedKnownArg) : null;
-  const visibleKnownArgs = showDeprecatedArgs ? knownArgs : knownArgs.filter((option) => !option.deprecated);
-  const selectableModels = (formModelsQuery.data?.data.models ?? []).filter((model) => !model.isMmproj && !isVocabModel(model));
-  const selectedModel = selectableModels.find((model) => model.path === selectedModelPath) ?? null;
+  const selectedKnownOption = selectedKnownArg
+    ? knownArgByName.get(selectedKnownArg)
+    : null;
+  const visibleKnownArgs = showDeprecatedArgs
+    ? knownArgs
+    : knownArgs.filter((option) => !option.deprecated);
+  const selectableModels = (formModelsQuery.data?.data.models ?? []).filter(
+    (model) => !model.isMmproj && !isVocabModel(model),
+  );
+  const selectedModel =
+    selectableModels.find((model) => model.path === selectedModelPath) ?? null;
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
   const portValue = Number(rowValue(argRows, "--port") || 8080);
 
@@ -1733,12 +2550,20 @@ function InstanceFormModal(props: {
   useEffect(() => {
     setHelpRuDraft(selectedKnownOption?.helpRu ?? "");
     setNotesDraft(selectedKnownOption?.notes ?? "");
-  }, [selectedKnownOption?.primaryName, selectedKnownOption?.helpRu, selectedKnownOption?.notes]);
+  }, [
+    selectedKnownOption?.primaryName,
+    selectedKnownOption?.helpRu,
+    selectedKnownOption?.notes,
+  ]);
 
   const draftPreview = useMemo(() => {
     try {
-      const args = InstanceArgsSchema.parse(rowsToArgsWithCatalog(argRows, knownArgByName));
-      const env = InstanceEnvSchema.parse(parseJsonObject(form.values.envJson, "env"));
+      const args = InstanceArgsSchema.parse(
+        rowsToArgsWithCatalog(argRows, knownArgByName),
+      );
+      const env = InstanceEnvSchema.parse(
+        parseJsonObject(form.values.envJson, "env"),
+      );
       const input: InstancePreflightPreview = {
         ...(props.instance?.id ? { id: props.instance.id } : {}),
         name: form.values.name,
@@ -1751,7 +2576,15 @@ function InstanceFormModal(props: {
     } catch (error) {
       return { input: null, error: (error as Error).message };
     }
-  }, [argRows, form.values.binaryPath, form.values.cwd, form.values.envJson, form.values.name, knownArgByName, props.instance?.id]);
+  }, [
+    argRows,
+    form.values.binaryPath,
+    form.values.cwd,
+    form.values.envJson,
+    form.values.name,
+    knownArgByName,
+    props.instance?.id,
+  ]);
 
   const preflightPreviewQuery = useQuery({
     queryKey: ["instance-preflight-preview", draftPreview.input],
@@ -1763,11 +2596,21 @@ function InstanceFormModal(props: {
 
   function applyModelSelection(modelPath: string | null) {
     setSelectedModelPath(modelPath);
-    setArgRows((rows) => (modelPath ? upsertArgRow(rows, "--model", modelPath, "string") : removeArgRow(rows, "--model")));
+    setArgRows((rows) =>
+      modelPath
+        ? upsertArgRow(rows, "--model", modelPath, "string")
+        : removeArgRow(rows, "--model"),
+    );
     if (!isEdit && modelPath) {
       setStartAfterCreate(true);
     }
-    if (!isEdit && modelPath && (!form.values.name || form.values.name === "local-server" || form.values.name === "local-router")) {
+    if (
+      !isEdit &&
+      modelPath &&
+      (!form.values.name ||
+        form.values.name === "local-server" ||
+        form.values.name === "local-router")
+    ) {
       form.setFieldValue("name", instanceNameFromModelPath(modelPath));
     }
   }
@@ -1776,10 +2619,14 @@ function InstanceFormModal(props: {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["instances"] }),
       queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
-      queryClient.invalidateQueries({ queryKey: ["instance-health-summary", id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-health-summary", id],
+      }),
       queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
       queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
-      queryClient.invalidateQueries({ queryKey: ["instance-status-summary", id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-status-summary", id],
+      }),
       queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
     ]);
   }
@@ -1794,7 +2641,11 @@ function InstanceFormModal(props: {
     onSuccess: async (result) => {
       const created = result.data;
       props.onSaved?.(created);
-      let notification: { title: string; message: string; color?: "yellow" | "red" } = {
+      let notification: {
+        title: string;
+        message: string;
+        color?: "yellow" | "red";
+      } = {
         title: isEdit ? "Instance updated" : "Instance created",
         message: "Configuration saved",
       };
@@ -1851,29 +2702,51 @@ function InstanceFormModal(props: {
       });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Argument refresh failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Argument refresh failed",
+        message: (error as Error).message,
+      });
     },
   });
 
   const helpOverrideMutation = useMutation({
     mutationFn: updateLlamaArgumentOverride,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["llama-args", form.values.binaryPath] });
-      notifications.show({ title: "Argument help saved", message: selectedKnownOption?.primaryName ?? "" });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-args", form.values.binaryPath],
+      });
+      notifications.show({
+        title: "Argument help saved",
+        message: selectedKnownOption?.primaryName ?? "",
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Help save failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Help save failed",
+        message: (error as Error).message,
+      });
     },
   });
 
   const deleteHelpOverrideMutation = useMutation({
     mutationFn: deleteLlamaArgumentOverride,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["llama-args", form.values.binaryPath] });
-      notifications.show({ title: "Argument help reset", message: selectedKnownOption?.primaryName ?? "" });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-args", form.values.binaryPath],
+      });
+      notifications.show({
+        title: "Argument help reset",
+        message: selectedKnownOption?.primaryName ?? "",
+      });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Help reset failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Help reset failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -1882,7 +2755,9 @@ function InstanceFormModal(props: {
       const input: InstanceCreate = {
         name: values.name,
         binaryPath: values.binaryPath,
-        args: InstanceArgsSchema.parse(rowsToArgsWithCatalog(argRows, knownArgByName)),
+        args: InstanceArgsSchema.parse(
+          rowsToArgsWithCatalog(argRows, knownArgByName),
+        ),
         env: InstanceEnvSchema.parse(parseJsonObject(values.envJson, "env")),
         ...(values.cwd ? { cwd: values.cwd } : {}),
       };
@@ -1900,19 +2775,29 @@ function InstanceFormModal(props: {
     <Modal
       opened={props.opened}
       onClose={props.onClose}
-      title={isEdit ? "Edit llama-server instance" : "New llama-server instance"}
+      title={
+        isEdit ? "Edit llama-server instance" : "New llama-server instance"
+      }
       size="lg"
     >
       <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="sm">
           <TextInput label="Name" required {...form.getInputProps("name")} />
-          <TextInput label="Binary path" required {...form.getInputProps("binaryPath")} />
+          <TextInput
+            label="Binary path"
+            required
+            {...form.getInputProps("binaryPath")}
+          />
           <TextInput label="Working directory" {...form.getInputProps("cwd")} />
           <Paper withBorder p="sm" radius="sm">
             <Stack gap="xs">
               <Select
                 label="Model"
-                placeholder={formModelsQuery.isFetching ? "Loading models..." : "Select GGUF model"}
+                placeholder={
+                  formModelsQuery.isFetching
+                    ? "Loading models..."
+                    : "Select GGUF model"
+                }
                 searchable
                 clearable
                 value={selectedModelPath}
@@ -1921,13 +2806,21 @@ function InstanceFormModal(props: {
                   value: model.path,
                   label: `${modelTitle(model)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
                 }))}
-                nothingFoundMessage={formModelsQuery.isError ? (formModelsQuery.error as Error).message : "No models found"}
+                nothingFoundMessage={
+                  formModelsQuery.isError
+                    ? (formModelsQuery.error as Error).message
+                    : "No models found"
+                }
               />
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
                 <HostPicker
                   label="Host"
                   value={hostValue}
-                  onChange={(value) => setArgRows((rows) => upsertArgRow(rows, "--host", value, "string"))}
+                  onChange={(value) =>
+                    setArgRows((rows) =>
+                      upsertArgRow(rows, "--host", value, "string"),
+                    )
+                  }
                 />
                 <NumberInput
                   label="Port"
@@ -1935,16 +2828,33 @@ function InstanceFormModal(props: {
                   max={65535}
                   value={Number.isFinite(portValue) ? portValue : ""}
                   onChange={(value) =>
-                    setArgRows((rows) => upsertArgRow(rows, "--port", typeof value === "number" ? String(value) : "", "number"))
+                    setArgRows((rows) =>
+                      upsertArgRow(
+                        rows,
+                        "--port",
+                        typeof value === "number" ? String(value) : "",
+                        "number",
+                      ),
+                    )
                   }
                 />
               </SimpleGrid>
               {selectedModel && (
                 <Group gap="xs">
-                  <Badge variant="light">{selectedModel.metadata.architecture ?? "unknown arch"}</Badge>
-                  <Badge variant="outline">{selectedModel.metadata.quantization ?? "unknown quant"}</Badge>
-                  <Badge variant="outline">{formatBytes(selectedModel.sizeBytes)}</Badge>
-                  {selectedModel.mmprojPaths.length > 0 && <Badge variant="outline">{selectedModel.mmprojPaths.length} mmproj</Badge>}
+                  <Badge variant="light">
+                    {selectedModel.metadata.architecture ?? "unknown arch"}
+                  </Badge>
+                  <Badge variant="outline">
+                    {selectedModel.metadata.quantization ?? "unknown quant"}
+                  </Badge>
+                  <Badge variant="outline">
+                    {formatBytes(selectedModel.sizeBytes)}
+                  </Badge>
+                  {selectedModel.mmprojPaths.length > 0 && (
+                    <Badge variant="outline">
+                      {selectedModel.mmprojPaths.length} mmproj
+                    </Badge>
+                  )}
                 </Group>
               )}
             </Stack>
@@ -1958,14 +2868,24 @@ function InstanceFormModal(props: {
                 <Switch
                   label="Deprecated"
                   checked={showDeprecatedArgs}
-                  onChange={(event) => setShowDeprecatedArgs(event.currentTarget.checked)}
+                  onChange={(event) =>
+                    setShowDeprecatedArgs(event.currentTarget.checked)
+                  }
                 />
                 <Switch
                   label="Raw"
                   checked={showRawArgs}
-                  onChange={(event) => setShowRawArgs(event.currentTarget.checked)}
+                  onChange={(event) =>
+                    setShowRawArgs(event.currentTarget.checked)
+                  }
                 />
-                <Button size="xs" variant="light" onClick={() => setArgRows((rows) => [...rows, createArgRow()])}>
+                <Button
+                  size="xs"
+                  variant="light"
+                  onClick={() =>
+                    setArgRows((rows) => [...rows, createArgRow()])
+                  }
+                >
                   Add raw
                 </Button>
               </Group>
@@ -1973,7 +2893,11 @@ function InstanceFormModal(props: {
             <Group align="flex-end" gap="xs" wrap="nowrap">
               <Select
                 label="Known argument"
-                placeholder={argsCatalogQuery.isError ? "Unable to read --help from this binary" : "Search llama-server args"}
+                placeholder={
+                  argsCatalogQuery.isError
+                    ? "Unable to read --help from this binary"
+                    : "Search llama-server args"
+                }
                 searchable
                 clearable
                 value={selectedKnownArg}
@@ -1982,7 +2906,11 @@ function InstanceFormModal(props: {
                   value: option.primaryName,
                   label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
                 }))}
-                nothingFoundMessage={argsCatalogQuery.isFetching ? "Loading..." : "No arguments found"}
+                nothingFoundMessage={
+                  argsCatalogQuery.isFetching
+                    ? "Loading..."
+                    : "No arguments found"
+                }
                 disabled={argsCatalogQuery.isError}
                 style={{ flex: 1 }}
               />
@@ -1993,7 +2921,9 @@ function InstanceFormModal(props: {
                   if (!selectedKnownOption) {
                     return;
                   }
-                  setArgRows((rows) => replaceCanonicalRow(rows, selectedKnownOption));
+                  setArgRows((rows) =>
+                    replaceCanonicalRow(rows, selectedKnownOption),
+                  );
                 }}
               >
                 Add known
@@ -2001,7 +2931,9 @@ function InstanceFormModal(props: {
               <Tooltip label="Reload from binary --help">
                 <ActionIcon
                   variant="subtle"
-                  loading={argsCatalogQuery.isFetching || refreshArgsMutation.isPending}
+                  loading={
+                    argsCatalogQuery.isFetching || refreshArgsMutation.isPending
+                  }
                   onClick={() => refreshArgsMutation.mutate()}
                 >
                   <RefreshCw size={16} />
@@ -2011,7 +2943,10 @@ function InstanceFormModal(props: {
             {argsCatalog && (
               <Group gap="xs">
                 <Badge variant="light">{argsCatalog.options.length} args</Badge>
-                <Badge color={argsCatalog.cache.hit ? "green" : "yellow"} variant="outline">
+                <Badge
+                  color={argsCatalog.cache.hit ? "green" : "yellow"}
+                  variant="outline"
+                >
                   {argsCatalog.cache.hit ? "cache hit" : "refreshed"}
                 </Badge>
                 <Text c="dimmed" size="xs" lineClamp={1}>
@@ -2028,9 +2963,20 @@ function InstanceFormModal(props: {
               <Paper withBorder p="xs" radius="sm">
                 <Stack gap={4}>
                   <Group gap="xs">
-                    <Badge variant="light">{selectedKnownOption.category}</Badge>
-                    <Badge variant="outline">{selectedKnownOption.valueType}</Badge>
-                    <Badge color={selectedKnownOption.helpRuSource === "override" ? "green" : "gray"} variant="outline">
+                    <Badge variant="light">
+                      {selectedKnownOption.category}
+                    </Badge>
+                    <Badge variant="outline">
+                      {selectedKnownOption.valueType}
+                    </Badge>
+                    <Badge
+                      color={
+                        selectedKnownOption.helpRuSource === "override"
+                          ? "green"
+                          : "gray"
+                      }
+                      variant="outline"
+                    >
                       {selectedKnownOption.helpRuSource}
                     </Badge>
                     {selectedKnownOption.env.map((env) => (
@@ -2044,12 +2990,16 @@ function InstanceFormModal(props: {
                     label="Russian help overlay"
                     minRows={2}
                     value={helpRuDraft}
-                    onChange={(event) => setHelpRuDraft(event.currentTarget.value)}
+                    onChange={(event) =>
+                      setHelpRuDraft(event.currentTarget.value)
+                    }
                   />
                   <TextInput
                     label="Notes"
                     value={notesDraft}
-                    onChange={(event) => setNotesDraft(event.currentTarget.value)}
+                    onChange={(event) =>
+                      setNotesDraft(event.currentTarget.value)
+                    }
                   />
                   <Group justify="flex-end" gap="xs">
                     <Button
@@ -2073,7 +3023,11 @@ function InstanceFormModal(props: {
                       color="red"
                       loading={deleteHelpOverrideMutation.isPending}
                       disabled={selectedKnownOption.helpRuSource !== "override"}
-                      onClick={() => deleteHelpOverrideMutation.mutate(selectedKnownOption.primaryName)}
+                      onClick={() =>
+                        deleteHelpOverrideMutation.mutate(
+                          selectedKnownOption.primaryName,
+                        )
+                      }
                     >
                       Reset
                     </Button>
@@ -2097,8 +3051,11 @@ function InstanceFormModal(props: {
             {argRows.map((row, index) => {
               const option = canonicalOptionForRow(row, knownArgByName);
               const onChange = (nextRow: ArgRow) =>
-                setArgRows((rows) => rows.map((item) => (item.id === row.id ? nextRow : item)));
-              const onRemove = () => setArgRows((rows) => rows.filter((item) => item.id !== row.id));
+                setArgRows((rows) =>
+                  rows.map((item) => (item.id === row.id ? nextRow : item)),
+                );
+              const onRemove = () =>
+                setArgRows((rows) => rows.filter((item) => item.id !== row.id));
 
               if (option && !showRawArgs) {
                 return (
@@ -2158,16 +3115,23 @@ function InstanceFormModal(props: {
                   {draftPreview.error}
                 </Text>
               )}
-              {(preflightPreviewQuery.data?.data.issues ?? []).map((issue, index) => (
-                <Text key={`${issue.field}-${index}`} c={issue.level === "error" ? "red" : "yellow"} size="xs">
-                  {issue.field}: {issue.message}
-                </Text>
-              ))}
-              {!draftPreview.error && preflightPreviewQuery.data?.data.issues.length === 0 && (
-                <Text c="dimmed" size="xs">
-                  Binary, model, working directory and port look valid.
-                </Text>
+              {(preflightPreviewQuery.data?.data.issues ?? []).map(
+                (issue, index) => (
+                  <Text
+                    key={`${issue.field}-${index}`}
+                    c={issue.level === "error" ? "red" : "yellow"}
+                    size="xs"
+                  >
+                    {issue.field}: {issue.message}
+                  </Text>
+                ),
               )}
+              {!draftPreview.error &&
+                preflightPreviewQuery.data?.data.issues.length === 0 && (
+                  <Text c="dimmed" size="xs">
+                    Binary, model, working directory and port look valid.
+                  </Text>
+                )}
               {preflightPreviewQuery.isError && (
                 <Text c="red" size="xs">
                   {(preflightPreviewQuery.error as Error).message}
@@ -2175,7 +3139,12 @@ function InstanceFormModal(props: {
               )}
             </Stack>
           </Paper>
-          <JsonInput label="Environment" minRows={4} formatOnBlur {...form.getInputProps("envJson")} />
+          <JsonInput
+            label="Environment"
+            minRows={4}
+            formatOnBlur
+            {...form.getInputProps("envJson")}
+          />
           <Group justify="space-between" mt="sm">
             <Box>
               {!isEdit && (
@@ -2183,16 +3152,34 @@ function InstanceFormModal(props: {
                   label="Start after create"
                   checked={startAfterCreate}
                   disabled={mutation.isPending}
-                  onChange={(event) => setStartAfterCreate(event.currentTarget.checked)}
+                  onChange={(event) =>
+                    setStartAfterCreate(event.currentTarget.checked)
+                  }
                 />
               )}
             </Box>
             <Group gap="xs">
-              <Button variant="subtle" onClick={props.onClose} disabled={mutation.isPending}>
+              <Button
+                variant="subtle"
+                onClick={props.onClose}
+                disabled={mutation.isPending}
+              >
                 Cancel
               </Button>
-              <Button type="submit" loading={mutation.isPending} leftSection={!isEdit && startAfterCreate ? <Triangle size={16} fill="currentColor" /> : undefined}>
-                {isEdit ? "Save" : startAfterCreate ? "Create & Start" : "Create"}
+              <Button
+                type="submit"
+                loading={mutation.isPending}
+                leftSection={
+                  !isEdit && startAfterCreate ? (
+                    <Triangle size={16} fill="currentColor" />
+                  ) : undefined
+                }
+              >
+                {isEdit
+                  ? "Save"
+                  : startAfterCreate
+                    ? "Create & Start"
+                    : "Create"}
               </Button>
             </Group>
           </Group>
@@ -2204,14 +3191,21 @@ function InstanceFormModal(props: {
 
 type InstanceActionName = "start" | "stop" | "restart";
 
-function actionAllowed(action: InstanceActionName, health: InstanceHealthSummary | undefined) {
+function actionAllowed(
+  action: InstanceActionName,
+  health: InstanceHealthSummary | undefined,
+) {
   if (!health) return false;
   if (action === "start") return health.actions.canStart;
   if (action === "stop") return health.actions.canStop;
   return health.actions.canRestart;
 }
 
-function actionTooltip(action: InstanceActionName, health: InstanceHealthSummary | undefined, pending: boolean) {
+function actionTooltip(
+  action: InstanceActionName,
+  health: InstanceHealthSummary | undefined,
+  pending: boolean,
+) {
   if (pending) return "Action is in progress";
   if (!health) return "Health summary is loading";
   if (actionAllowed(action, health)) {
@@ -2220,11 +3214,15 @@ function actionTooltip(action: InstanceActionName, health: InstanceHealthSummary
     return "Restart";
   }
   if ((action === "start" || action === "restart") && !health.preflight.ok) {
-    const error = health.preflight.issues.find((issue) => issue.level === "error");
+    const error = health.preflight.issues.find(
+      (issue) => issue.level === "error",
+    );
     return error?.message ?? "Preflight must pass before starting";
   }
   if (health.status === "stale") {
-    return action === "stop" ? "Stop unmanaged stale process" : "Stop the stale process before starting another";
+    return action === "stop"
+      ? "Stop unmanaged stale process"
+      : "Stop the stale process before starting another";
   }
   if (action === "stop") return "No running process to stop";
   if (action === "restart") return "No valid running process to restart";
@@ -2242,7 +3240,8 @@ function InstanceActions(props: {
   const health = props.health;
 
   const actionMutation = useMutation({
-    mutationFn: (action: InstanceActionName) => instanceAction(props.instance.id, action),
+    mutationFn: (action: InstanceActionName) =>
+      instanceAction(props.instance.id, action),
     onSuccess: async (_result, action) => {
       if (action === "start" || action === "restart") {
         props.onLaunchStarted(props.instance, action);
@@ -2251,16 +3250,32 @@ function InstanceActions(props: {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["instances"] }),
-        queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-health-summary", props.instance.id] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-runtime", props.instance.id] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-llama", props.instance.id] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-status-summary", props.instance.id] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-logs", props.instance.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instances-health-summary"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-health-summary", props.instance.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-runtime", props.instance.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-llama", props.instance.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-status-summary", props.instance.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-logs", props.instance.id],
+        }),
       ]);
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Action failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Action failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -2269,19 +3284,31 @@ function InstanceActions(props: {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["instances"] }),
-        queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-health-summary", props.instance.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instances-health-summary"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-health-summary", props.instance.id],
+        }),
       ]);
     },
   });
-  const startDisabled = actionMutation.isPending || !actionAllowed("start", health);
-  const stopDisabled = actionMutation.isPending || !actionAllowed("stop", health);
-  const restartDisabled = actionMutation.isPending || !actionAllowed("restart", health);
+  const startDisabled =
+    actionMutation.isPending || !actionAllowed("start", health);
+  const stopDisabled =
+    actionMutation.isPending || !actionAllowed("stop", health);
+  const restartDisabled =
+    actionMutation.isPending || !actionAllowed("restart", health);
   const webUiUrl = llamaServerWebUrl(props.instance);
   const webUiDisabled = !canOpenLlamaWebUi(health, webUiUrl);
 
   return (
-    <Group gap={4} justify="flex-end" wrap="nowrap" onClick={(event) => event.stopPropagation()}>
+    <Group
+      gap={4}
+      justify="flex-end"
+      wrap="nowrap"
+      onClick={(event) => event.stopPropagation()}
+    >
       <Tooltip label={llamaWebUiTooltip(health, webUiUrl)}>
         <ActionIcon
           variant="subtle"
@@ -2323,7 +3350,9 @@ function InstanceActions(props: {
           <Square size={16} />
         </ActionIcon>
       </Tooltip>
-      <Tooltip label={actionTooltip("restart", health, actionMutation.isPending)}>
+      <Tooltip
+        label={actionTooltip("restart", health, actionMutation.isPending)}
+      >
         <ActionIcon
           variant="subtle"
           disabled={restartDisabled}
@@ -2334,7 +3363,11 @@ function InstanceActions(props: {
         </ActionIcon>
       </Tooltip>
       <Tooltip label="Delete">
-        <ActionIcon variant="subtle" color="red" onClick={() => deleteMutation.mutate()}>
+        <ActionIcon
+          variant="subtle"
+          color="red"
+          onClick={() => deleteMutation.mutate()}
+        >
           <Trash2 size={16} />
         </ActionIcon>
       </Tooltip>
@@ -2349,7 +3382,10 @@ function probeColor(probe: LlamaEndpointProbe | undefined) {
   return "red";
 }
 
-function ProbeCard(props: { title: string; probe: LlamaEndpointProbe | undefined }) {
+function ProbeCard(props: {
+  title: string;
+  probe: LlamaEndpointProbe | undefined;
+}) {
   return (
     <Paper withBorder p="sm" radius="sm">
       <Group justify="space-between" gap="xs" wrap="nowrap">
@@ -2392,31 +3428,63 @@ function propsSummary(probe: LlamaProbe | undefined): Array<[string, unknown]> {
 
 function startupStage(health: InstanceHealthSummary | undefined) {
   if (!health) {
-    return { label: "checking", color: "gray", text: "Collecting runtime state." };
+    return {
+      label: "checking",
+      color: "gray",
+      text: "Collecting runtime state.",
+    };
   }
   if (health.status === "ready") {
-    return { label: "ready", color: "green", text: "llama-server is ready to accept requests." };
+    return {
+      label: "ready",
+      color: "green",
+      text: "llama-server is ready to accept requests.",
+    };
   }
   if (health.status === "starting" || health.status === "loading") {
-    return { label: health.status, color: "yellow", text: "Model process is starting and readiness is still pending." };
+    return {
+      label: health.status,
+      color: "yellow",
+      text: "Model process is starting and readiness is still pending.",
+    };
   }
   if (health.status === "degraded") {
-    return { label: "degraded", color: "orange", text: "Server is reachable, but warnings or non-blocking issues were detected." };
+    return {
+      label: "degraded",
+      color: "orange",
+      text: "Server is reachable, but warnings or non-blocking issues were detected.",
+    };
   }
   if (health.status === "invalid") {
-    return { label: "invalid", color: "red", text: "Configuration has blocking preflight issues." };
+    return {
+      label: "invalid",
+      color: "red",
+      text: "Configuration has blocking preflight issues.",
+    };
   }
   if (health.status === "error") {
     return { label: "error", color: "red", text: "Startup or runtime failed." };
   }
   if (health.status === "stale") {
-    return { label: "stale", color: "orange", text: "A process exists outside the current supervisor." };
+    return {
+      label: "stale",
+      color: "orange",
+      text: "A process exists outside the current supervisor.",
+    };
   }
-  return { label: health.status, color: "gray", text: "Instance is not running." };
+  return {
+    label: health.status,
+    color: "gray",
+    text: "Instance is not running.",
+  };
 }
 
-function importantStartupLines(logTail: LogTail | undefined, statusSummary: InstanceHealthSummary["logSummary"] | undefined) {
-  const interesting = /\b(error|fatal|failed|exception|server is listening|http server listening|listening on|starting the main loop|model loaded|loading model|llama_model_loader|offload|warming up|ready)\b/i;
+function importantStartupLines(
+  logTail: LogTail | undefined,
+  statusSummary: InstanceHealthSummary["logSummary"] | undefined,
+) {
+  const interesting =
+    /\b(error|fatal|failed|exception|server is listening|http server listening|listening on|starting the main loop|model loaded|loading model|llama_model_loader|offload|warming up|ready)\b/i;
   const lines = [
     ...(statusSummary?.errors ?? []),
     ...(statusSummary?.notices ?? []),
@@ -2442,8 +3510,16 @@ function isStartupStatus(status: InstanceHealthSummary["status"] | undefined) {
   return status === "starting" || status === "loading";
 }
 
-function isLaunchTerminalStatus(status: InstanceHealthSummary["status"] | undefined) {
-  return status === "ready" || status === "error" || status === "invalid" || status === "stale" || status === "stopped";
+function isLaunchTerminalStatus(
+  status: InstanceHealthSummary["status"] | undefined,
+) {
+  return (
+    status === "ready" ||
+    status === "error" ||
+    status === "invalid" ||
+    status === "stale" ||
+    status === "stopped"
+  );
 }
 
 function LaunchMonitorPanel(props: {
@@ -2456,17 +3532,31 @@ function LaunchMonitorPanel(props: {
   onStop: () => void;
   stopping: boolean;
 }) {
-  const healthIsFresh = !props.monitor || !props.health || Date.parse(props.health.checkedAt) >= Date.parse(props.monitor.startedAt);
+  const healthIsFresh =
+    !props.monitor ||
+    !props.health ||
+    Date.parse(props.health.checkedAt) >= Date.parse(props.monitor.startedAt);
   const effectiveHealth = healthIsFresh ? props.health : undefined;
   const startup =
     props.monitor && !effectiveHealth
-      ? { label: "starting", color: "yellow", text: "Start command was accepted; waiting for the first health update." }
+      ? {
+          label: "starting",
+          color: "yellow",
+          text: "Start command was accepted; waiting for the first health update.",
+        }
       : startupStage(effectiveHealth);
-  const startupLines = importantStartupLines(props.logTail, props.statusSummary).slice(-5);
-  const startedAt = props.monitor?.startedAt ?? props.runtime?.startedAt ?? null;
+  const startupLines = importantStartupLines(
+    props.logTail,
+    props.statusSummary,
+  ).slice(-5);
+  const startedAt =
+    props.monitor?.startedAt ?? props.runtime?.startedAt ?? null;
   const elapsedMs = startedAt ? props.nowMs - Date.parse(startedAt) : null;
   const timedOut = Boolean(
-    props.monitor && (!effectiveHealth || isStartupStatus(effectiveHealth.status)) && elapsedMs !== null && elapsedMs > launchMonitorTimeoutMs,
+    props.monitor &&
+    (!effectiveHealth || isStartupStatus(effectiveHealth.status)) &&
+    elapsedMs !== null &&
+    elapsedMs > launchMonitorTimeoutMs,
   );
 
   return (
@@ -2481,8 +3571,18 @@ function LaunchMonitorPanel(props: {
               {timedOut ? "loading too long" : startup.label}
             </Badge>
           </Group>
-          <Text c={effectiveHealth?.status === "error" || effectiveHealth?.status === "invalid" ? "red" : "dimmed"} size="sm">
-            {timedOut ? "Startup is still pending after 5 minutes; the process was not stopped." : startup.text}
+          <Text
+            c={
+              effectiveHealth?.status === "error" ||
+              effectiveHealth?.status === "invalid"
+                ? "red"
+                : "dimmed"
+            }
+            size="sm"
+          >
+            {timedOut
+              ? "Startup is still pending after 5 minutes; the process was not stopped."
+              : startup.text}
           </Text>
         </Stack>
         <Button
@@ -2491,7 +3591,10 @@ function LaunchMonitorPanel(props: {
           color="yellow"
           leftSection={<Square size={14} />}
           loading={props.stopping}
-          disabled={props.stopping || (!props.monitor && !effectiveHealth?.actions.canStop)}
+          disabled={
+            props.stopping ||
+            (!props.monitor && !effectiveHealth?.actions.canStop)
+          }
           onClick={props.onStop}
         >
           Stop
@@ -2587,7 +3690,14 @@ function InstanceDetails(props: {
       }
     };
 
-    for (const eventName of ["ready", "status", "stdout", "stderr", "exit", "error"]) {
+    for (const eventName of [
+      "ready",
+      "status",
+      "stdout",
+      "stderr",
+      "exit",
+      "error",
+    ]) {
       eventSource.addEventListener(eventName, append as EventListener);
     }
 
@@ -2603,7 +3713,9 @@ function InstanceDetails(props: {
   const logTail = logsQuery.data?.data;
   const statusSummary = health?.logSummary ?? statusSummaryQuery.data?.data;
   const summary = useMemo(() => propsSummary(llama), [llama]);
-  const showLaunchMonitor = Boolean(props.launchMonitor || isStartupStatus(health?.status));
+  const showLaunchMonitor = Boolean(
+    props.launchMonitor || isStartupStatus(health?.status),
+  );
 
   const monitorStopMutation = useMutation({
     mutationFn: () => instanceAction(id!, "stop"),
@@ -2613,16 +3725,26 @@ function InstanceDetails(props: {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["instances"] }),
-        queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-health-summary", id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instances-health-summary"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-health-summary", id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
         queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-status-summary", id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-status-summary", id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
       ]);
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Stop failed", message: (error as Error).message });
+      notifications.show({
+        color: "red",
+        title: "Stop failed",
+        message: (error as Error).message,
+      });
     },
   });
 
@@ -2665,8 +3787,18 @@ function InstanceDetails(props: {
                 Web UI
               </Button>
             </Tooltip>
-            <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
-              <Badge color={health ? healthStatusColor(health.status) : statusColor(runtime?.status ?? props.instance.status)} variant="light">
+            <Tooltip
+              label={health?.reason ?? "Health summary is loading"}
+              withArrow
+            >
+              <Badge
+                color={
+                  health
+                    ? healthStatusColor(health.status)
+                    : statusColor(runtime?.status ?? props.instance.status)
+                }
+                variant="light"
+              >
                 {health?.status ?? runtime?.status ?? props.instance.status}
               </Badge>
             </Tooltip>
@@ -2679,18 +3811,35 @@ function InstanceDetails(props: {
               <Text fw={600} size="sm">
                 Health
               </Text>
-              <Text c={health?.status === "error" || health?.status === "invalid" ? "red" : "dimmed"} size="sm">
-                {health?.reason ?? "Checking process, preflight, logs and HTTP endpoints..."}
+              <Text
+                c={
+                  health?.status === "error" || health?.status === "invalid"
+                    ? "red"
+                    : "dimmed"
+                }
+                size="sm"
+              >
+                {health?.reason ??
+                  "Checking process, preflight, logs and HTTP endpoints..."}
               </Text>
             </Stack>
             <Group gap="xs">
-              <Badge color={health?.actions.canStart ? "green" : "gray"} variant="outline">
+              <Badge
+                color={health?.actions.canStart ? "green" : "gray"}
+                variant="outline"
+              >
                 start
               </Badge>
-              <Badge color={health?.actions.canStop ? "yellow" : "gray"} variant="outline">
+              <Badge
+                color={health?.actions.canStop ? "yellow" : "gray"}
+                variant="outline"
+              >
                 stop
               </Badge>
-              <Badge color={health?.actions.canRestart ? "blue" : "gray"} variant="outline">
+              <Badge
+                color={health?.actions.canRestart ? "blue" : "gray"}
+                variant="outline"
+              >
                 restart
               </Badge>
             </Group>
@@ -2751,13 +3900,24 @@ function InstanceDetails(props: {
             <Text fw={600} size="sm">
               Preflight
             </Text>
-            <Badge color={preflight ? (preflight.ok ? "green" : "red") : "gray"} variant="light">
-              {preflight ? (preflight.ok ? "ok" : "needs attention") : "checking"}
+            <Badge
+              color={preflight ? (preflight.ok ? "green" : "red") : "gray"}
+              variant="light"
+            >
+              {preflight
+                ? preflight.ok
+                  ? "ok"
+                  : "needs attention"
+                : "checking"}
             </Badge>
           </Group>
           <Stack gap={4}>
             {(preflight?.issues ?? []).map((issue, index) => (
-              <Text key={`${issue.field}-${index}`} c={issue.level === "error" ? "red" : "yellow"} size="xs">
+              <Text
+                key={`${issue.field}-${index}`}
+                c={issue.level === "error" ? "red" : "yellow"}
+                size="xs"
+              >
                 {issue.field}: {issue.message}
               </Text>
             ))}
@@ -2774,7 +3934,10 @@ function InstanceDetails(props: {
             <Text fw={600} size="sm">
               Parsed status
             </Text>
-            <Badge color={statusSummary?.ready ? "green" : "gray"} variant="light">
+            <Badge
+              color={statusSummary?.ready ? "green" : "gray"}
+              variant="light"
+            >
               {statusSummary?.ready ? "ready" : "not ready"}
             </Badge>
           </Group>
@@ -2783,16 +3946,22 @@ function InstanceDetails(props: {
               URL: {statusSummary?.listeningUrl ?? llama?.baseUrl ?? "-"}
             </Text>
             <Text size="sm" lineClamp={1}>
-              Model: {statusSummary?.modelAlias ?? statusSummary?.modelPath ?? "-"}
+              Model:{" "}
+              {statusSummary?.modelAlias ?? statusSummary?.modelPath ?? "-"}
             </Text>
             <Text size="sm">Context: {statusSummary?.contextSize ?? "-"}</Text>
             <Text size="sm">Slots: {statusSummary?.slots ?? "-"}</Text>
             <Text size="sm" lineClamp={1}>
               GPU/offload: {statusSummary?.gpuLayers ?? "-"}
             </Text>
-            <Text size="sm">Warnings: {statusSummary?.warnings.length ?? 0}</Text>
+            <Text size="sm">
+              Warnings: {statusSummary?.warnings.length ?? 0}
+            </Text>
           </SimpleGrid>
-          {Boolean((statusSummary?.errors.length ?? 0) + (statusSummary?.notices.length ?? 0)) && (
+          {Boolean(
+            (statusSummary?.errors.length ?? 0) +
+            (statusSummary?.notices.length ?? 0),
+          ) && (
             <Stack gap={4} mt="xs">
               {(statusSummary?.errors ?? []).slice(-3).map((line, index) => (
                 <Text key={`error-${index}`} c="red" size="xs" lineClamp={2}>
@@ -2800,7 +3969,12 @@ function InstanceDetails(props: {
                 </Text>
               ))}
               {(statusSummary?.notices ?? []).slice(-4).map((line, index) => (
-                <Text key={`notice-${index}`} c="dimmed" size="xs" lineClamp={2}>
+                <Text
+                  key={`notice-${index}`}
+                  c="dimmed"
+                  size="xs"
+                  lineClamp={2}
+                >
                   {line}
                 </Text>
               ))}
@@ -2870,7 +4044,9 @@ export function App() {
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [initialModelPath, setInitialModelPath] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [launchMonitor, setLaunchMonitor] = useState<LaunchMonitor | null>(null);
+  const [launchMonitor, setLaunchMonitor] = useState<LaunchMonitor | null>(
+    null,
+  );
   const [monitorNowMs, setMonitorNowMs] = useState(Date.now());
   const queryClient = useQueryClient();
   const instancesQuery = useQuery({
@@ -2886,12 +4062,24 @@ export function App() {
 
   const instances = instancesQuery.data?.data ?? [];
   const healthByInstanceId = useMemo(
-    () => new Map((healthSummariesQuery.data?.data ?? []).map((health) => [health.instanceId, health])),
+    () =>
+      new Map(
+        (healthSummariesQuery.data?.data ?? []).map((health) => [
+          health.instanceId,
+          health,
+        ]),
+      ),
     [healthSummariesQuery.data?.data],
   );
-  const selectedInstance = instances.find((instance) => instance.id === selectedId) ?? instances[0] ?? null;
-  const selectedHealth = selectedInstance ? healthByInstanceId.get(selectedInstance.id) : null;
-  const selectedLaunchMonitor = selectedInstance?.id === launchMonitor?.instanceId ? launchMonitor : null;
+  const selectedInstance =
+    instances.find((instance) => instance.id === selectedId) ??
+    instances[0] ??
+    null;
+  const selectedHealth = selectedInstance
+    ? healthByInstanceId.get(selectedInstance.id)
+    : null;
+  const selectedLaunchMonitor =
+    selectedInstance?.id === launchMonitor?.instanceId ? launchMonitor : null;
 
   useEffect(() => {
     if (!launchMonitor) {
@@ -2907,7 +4095,10 @@ export function App() {
       return;
     }
     const health = healthByInstanceId.get(launchMonitor.instanceId);
-    if (!health || Date.parse(health.checkedAt) < Date.parse(launchMonitor.startedAt)) {
+    if (
+      !health ||
+      Date.parse(health.checkedAt) < Date.parse(launchMonitor.startedAt)
+    ) {
       return;
     }
     if (isLaunchTerminalStatus(health.status)) {
@@ -2915,7 +4106,10 @@ export function App() {
     }
   }, [healthByInstanceId, launchMonitor]);
 
-  function startLaunchMonitor(instance: Instance, source: LaunchMonitor["source"]) {
+  function startLaunchMonitor(
+    instance: Instance,
+    source: LaunchMonitor["source"],
+  ) {
     setSelectedId(instance.id);
     setLaunchMonitor({
       instanceId: instance.id,
@@ -2925,17 +4119,28 @@ export function App() {
   }
 
   function clearLaunchMonitor(instance: Instance) {
-    setLaunchMonitor((monitor) => (monitor?.instanceId === instance.id ? null : monitor));
+    setLaunchMonitor((monitor) =>
+      monitor?.instanceId === instance.id ? null : monitor,
+    );
   }
 
   const useModelMutation = useMutation({
-    mutationFn: ({ instance, model }: { instance: Instance; model: GgufModel }) =>
-      updateInstance(instance.id, { args: argsWithModel(instance, model) }),
+    mutationFn: ({
+      instance,
+      model,
+    }: {
+      instance: Instance;
+      model: GgufModel;
+    }) => updateInstance(instance.id, { args: argsWithModel(instance, model) }),
     onSuccess: async (result) => {
       setSelectedId(result.data.id);
       await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] });
-      await queryClient.invalidateQueries({ queryKey: ["instance-health-summary", result.data.id] });
+      await queryClient.invalidateQueries({
+        queryKey: ["instances-health-summary"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["instance-health-summary", result.data.id],
+      });
       notifications.show({
         title: "Model applied",
         message: `Updated ${result.data.name}`,
@@ -2970,7 +4175,10 @@ export function App() {
                 <RefreshCw size={18} />
               </ActionIcon>
             </Tooltip>
-            <Button leftSection={<Plus size={16} />} onClick={() => setCreateOpened(true)}>
+            <Button
+              leftSection={<Plus size={16} />}
+              onClick={() => setCreateOpened(true)}
+            >
               New instance
             </Button>
           </Group>
@@ -3005,7 +4213,9 @@ export function App() {
                   <Table.Tr
                     key={instance.id}
                     onClick={() => setSelectedId(instance.id)}
-                    {...(selectedInstance?.id === instance.id ? { className: "selected-row" } : {})}
+                    {...(selectedInstance?.id === instance.id
+                      ? { className: "selected-row" }
+                      : {})}
                     style={{ cursor: "pointer" }}
                   >
                     <Table.Td>
@@ -3015,7 +4225,10 @@ export function App() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <InstanceHealthBadge instance={instance} health={healthByInstanceId.get(instance.id)} />
+                      <InstanceHealthBadge
+                        instance={instance}
+                        health={healthByInstanceId.get(instance.id)}
+                      />
                     </Table.Td>
                     <Table.Td>{instance.pid ?? "-"}</Table.Td>
                     <Table.Td>
@@ -3062,12 +4275,32 @@ export function App() {
               }
             }}
             onAddToPreset={(model) => {
-              const current = queryClient.getQueryData<{ data: ModelPreset }>(["model-preset"]);
-              const entries = [...(current?.data.entries ?? []), presetEntryFromModel(model)];
-              updateModelPreset({ entries, path: current?.data.path }).then((result) => {
-                queryClient.setQueryData(["model-preset"], result);
-                notifications.show({ title: "Added to preset", message: modelTitle(model) });
-              });
+              const current = queryClient.getQueryData<{ data: ModelPreset }>([
+                "model-preset",
+              ]);
+              const existingEntries = current?.data.entries ?? [];
+              if (
+                existingEntries.some((entry) => entry.modelPath === model.path)
+              ) {
+                notifications.show({
+                  title: "Preset already contains model",
+                  message: modelTitle(model),
+                });
+                return;
+              }
+              const entries = [...existingEntries, presetEntryFromModel(model)];
+              updateModelPreset({ entries, path: current?.data.path }).then(
+                async (result) => {
+                  queryClient.setQueryData(["model-preset"], result);
+                  await queryClient.invalidateQueries({
+                    queryKey: ["model-preset-preview"],
+                  });
+                  notifications.show({
+                    title: "Added to preset",
+                    message: modelTitle(model),
+                  });
+                },
+              );
             }}
           />
 

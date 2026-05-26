@@ -1,4 +1,9 @@
-import type { ModelPreset, ModelPresetEntry, ModelPresetPreview, ModelPresetUpdate } from "@llama-manager/core";
+import type {
+  ModelPreset,
+  ModelPresetEntry,
+  ModelPresetPreview,
+  ModelPresetUpdate,
+} from "@llama-manager/core";
 import { eq } from "drizzle-orm";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -34,12 +39,24 @@ function sanitizeEntries(entries: ModelPresetEntry[]) {
     return {
       ...entry,
       name,
+      extraArgs: Object.fromEntries(
+        Object.entries(entry.extraArgs ?? {})
+          .map(
+            ([key, value]) =>
+              [key.trim().replace(/^-+/, ""), String(value).trim()] as const,
+          )
+          .filter(([key, value]) => key && value),
+      ),
     };
   });
 }
 
 export function getModelPreset(): ModelPreset {
-  const row = db.select().from(modelPresets).where(eq(modelPresets.id, PRESET_ID)).get();
+  const row = db
+    .select()
+    .from(modelPresets)
+    .where(eq(modelPresets.id, PRESET_ID))
+    .get();
   if (!row) {
     return {
       entries: [],
@@ -49,7 +66,7 @@ export function getModelPreset(): ModelPreset {
   }
 
   return {
-    entries: JSON.parse(row.entriesJson) as ModelPresetEntry[],
+    entries: sanitizeEntries(JSON.parse(row.entriesJson) as ModelPresetEntry[]),
     path: row.path,
     updatedAt: row.updatedAt,
   };
