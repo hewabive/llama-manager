@@ -10,7 +10,10 @@ import type {
 
 import { llamaBaseUrl, probeLlamaServer } from "../llama/probe.js";
 import { summarizeInstanceLog } from "./log-summary.js";
-import { validateInstancePreflight } from "./preflight.js";
+import {
+  validateInstancePreflight,
+  validateInstanceStartPreflight,
+} from "./preflight.js";
 import { latestProcessRun } from "./runs-repository.js";
 import { supervisor } from "./supervisor.js";
 
@@ -232,9 +235,16 @@ export async function getInstanceHealthSummary(
   options: HealthSummaryOptions = {},
 ): Promise<InstanceHealthSummary> {
   const runtime = supervisor.getState(instance.id) ?? durableRuntime(instance);
-  const preflight = validateInstancePreflight(instance, {
-    peers: options.peers,
-  });
+  const shouldCheckStartAvailability = ["stopped", "exited", "error"].includes(
+    runtime.status,
+  );
+  const preflight = shouldCheckStartAvailability
+    ? await validateInstanceStartPreflight(instance, {
+        peers: options.peers,
+      })
+    : validateInstancePreflight(instance, {
+        peers: options.peers,
+      });
   const shouldProbe = probeableStatuses.has(runtime.status);
   const [llama, logSummary] = await Promise.all([
     shouldProbe

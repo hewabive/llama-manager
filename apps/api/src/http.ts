@@ -21,7 +21,12 @@ import {
   saveArgumentHelpOverride,
 } from "./arguments/repository.js";
 import { tailBuildLog } from "./build/logs.js";
-import { getBuildJob, getBuildSettings, listBuildJobs, saveBuildSettings } from "./build/repository.js";
+import {
+  getBuildJob,
+  getBuildSettings,
+  listBuildJobs,
+  saveBuildSettings,
+} from "./build/repository.js";
 import { buildRunner } from "./build/runner.js";
 import {
   createInstance,
@@ -31,15 +36,30 @@ import {
   updateInstance,
 } from "./instances/repository.js";
 import { probeLlamaServer } from "./llama/probe.js";
-import { getModelScanSettings, saveModelScanSettings } from "./models/cache-repository.js";
+import {
+  getModelScanSettings,
+  saveModelScanSettings,
+} from "./models/cache-repository.js";
 import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
-import { getModelPreset, previewModelPresetIni, saveModelPreset, writeModelPresetFile } from "./presets/repository.js";
+import {
+  getModelPreset,
+  previewModelPresetIni,
+  saveModelPreset,
+  writeModelPresetFile,
+} from "./presets/repository.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
 import { summarizeInstanceLog } from "./process/log-summary.js";
 import { tailInstanceLog } from "./process/logs.js";
 import { isPidAlive } from "./process/pid.js";
-import { ProcessPreflightError, validateInstancePreflight } from "./process/preflight.js";
-import { latestProcessRun, updateProcessRun } from "./process/runs-repository.js";
+import {
+  ProcessPreflightError,
+  validateInstancePreflight,
+  validateInstanceStartPreflight,
+} from "./process/preflight.js";
+import {
+  latestProcessRun,
+  updateProcessRun,
+} from "./process/runs-repository.js";
 import { supervisor } from "./process/supervisor.js";
 import { listNetworkInterfaceAddresses } from "./system/network.js";
 
@@ -66,7 +86,13 @@ app.get("/api/instances", (c) => {
 
 app.get("/api/instances/health-summary", async (c) => {
   const instances = listInstances();
-  return c.json({ data: await Promise.all(instances.map((instance) => getInstanceHealthSummary(instance, { peers: instances }))) });
+  return c.json({
+    data: await Promise.all(
+      instances.map((instance) =>
+        getInstanceHealthSummary(instance, { peers: instances }),
+      ),
+    ),
+  });
 });
 
 app.get("/api/llama-args", (c) => {
@@ -86,7 +112,9 @@ app.get("/api/llama-args/overrides", (c) => {
 });
 
 app.put("/api/llama-args/overrides", async (c) => {
-  const parsed = LlamaArgumentHelpOverrideUpdateSchema.safeParse(await c.req.json());
+  const parsed = LlamaArgumentHelpOverrideUpdateSchema.safeParse(
+    await c.req.json(),
+  );
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
@@ -94,7 +122,9 @@ app.put("/api/llama-args/overrides", async (c) => {
 });
 
 app.delete("/api/llama-args/overrides/:primaryName", (c) => {
-  const deleted = deleteArgumentHelpOverride(decodeURIComponent(c.req.param("primaryName")));
+  const deleted = deleteArgumentHelpOverride(
+    decodeURIComponent(c.req.param("primaryName")),
+  );
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
@@ -151,7 +181,9 @@ app.get("/api/build/jobs/:id/logs", (c) => {
   }
 
   const lines = Number(c.req.query("lines") ?? "200");
-  return c.json({ data: tailBuildLog(job.id, Number.isFinite(lines) ? lines : 200) });
+  return c.json({
+    data: tailBuildLog(job.id, Number.isFinite(lines) ? lines : 200),
+  });
 });
 
 app.get("/api/models", async (c) => {
@@ -159,7 +191,8 @@ app.get("/api/models", async (c) => {
     const settings = getModelScanSettings();
     const maxDepth = Number(c.req.query("maxDepth") ?? settings.maxDepth);
     const result = await scanModels({
-      directory: c.req.query("dir") ?? settings.directory ?? defaultModelsDirectory,
+      directory:
+        c.req.query("dir") ?? settings.directory ?? defaultModelsDirectory,
       maxDepth: Number.isFinite(maxDepth) ? maxDepth : 8,
       refresh: c.req.query("refresh") === "true",
     });
@@ -214,7 +247,9 @@ app.post("/api/model-preset/router-instance", async (c) => {
     "--port": input.port,
     "--models-preset": preset.path,
     ...(input.modelsMax === null ? {} : { "--models-max": input.modelsMax }),
-    ...(input.modelsAutoload ? { "--models-autoload": true } : { "--no-models-autoload": true }),
+    ...(input.modelsAutoload
+      ? { "--models-autoload": true }
+      : { "--no-models-autoload": true }),
   };
 
   try {
@@ -252,7 +287,7 @@ app.post("/api/instances/preflight", async (c) => {
   const timestamp = new Date().toISOString();
   const preview = parsed.data;
   return c.json({
-    data: validateInstancePreflight(
+    data: await validateInstanceStartPreflight(
       {
         id: preview.id ?? "preview",
         name: preview.name,
@@ -287,26 +322,28 @@ app.get("/api/instances/:id/runtime", (c) => {
   const latestRun = latestProcessRun(instance.id);
   const fallbackPid = latestRun?.pid ? Number(latestRun.pid) : null;
   return c.json({
-    data:
-      supervisor.getState(instance.id) ?? {
-        instanceId: instance.id,
-        pid: fallbackPid && Number.isFinite(fallbackPid) ? fallbackPid : null,
-        status: latestRun?.status ?? instance.status,
-        startedAt: latestRun?.startedAt ?? null,
-        stoppedAt: latestRun?.stoppedAt ?? null,
-        exitCode: latestRun?.exitCode === null || latestRun?.exitCode === undefined ? null : Number(latestRun.exitCode),
-        logPath: latestRun?.logPath ?? null,
-      },
+    data: supervisor.getState(instance.id) ?? {
+      instanceId: instance.id,
+      pid: fallbackPid && Number.isFinite(fallbackPid) ? fallbackPid : null,
+      status: latestRun?.status ?? instance.status,
+      startedAt: latestRun?.startedAt ?? null,
+      stoppedAt: latestRun?.stoppedAt ?? null,
+      exitCode:
+        latestRun?.exitCode === null || latestRun?.exitCode === undefined
+          ? null
+          : Number(latestRun.exitCode),
+      logPath: latestRun?.logPath ?? null,
+    },
   });
 });
 
-app.get("/api/instances/:id/preflight", (c) => {
+app.get("/api/instances/:id/preflight", async (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  return c.json({ data: validateInstancePreflight(instance) });
+  return c.json({ data: await validateInstanceStartPreflight(instance) });
 });
 
 app.get("/api/instances/:id/health-summary", async (c) => {
@@ -315,7 +352,9 @@ app.get("/api/instances/:id/health-summary", async (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  return c.json({ data: await getInstanceHealthSummary(instance, { peers: listInstances() }) });
+  return c.json({
+    data: await getInstanceHealthSummary(instance, { peers: listInstances() }),
+  });
 });
 
 app.get("/api/instances/:id/logs", (c) => {
@@ -378,14 +417,17 @@ app.delete("/api/instances/:id", (c) => {
 
 function staleProcessConflict(instanceId: string) {
   const latestRun = latestProcessRun(instanceId);
-  const stalePid = latestRun?.status === "stale" && latestRun.pid ? Number(latestRun.pid) : null;
+  const stalePid =
+    latestRun?.status === "stale" && latestRun.pid
+      ? Number(latestRun.pid)
+      : null;
   if (stalePid && Number.isFinite(stalePid) && isPidAlive(stalePid)) {
     return `instance has unmanaged stale process pid=${stalePid}; stop it before starting another`;
   }
   return null;
 }
 
-app.post("/api/instances/:id/start", (c) => {
+app.post("/api/instances/:id/start", async (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
@@ -394,7 +436,9 @@ app.post("/api/instances/:id/start", (c) => {
   if (staleConflict) {
     return c.json({ error: staleConflict }, 409);
   }
-  const preflight = validateInstancePreflight(instance, { peers: listInstances() });
+  const preflight = await validateInstanceStartPreflight(instance, {
+    peers: listInstances(),
+  });
   if (!preflight.ok) {
     return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
   }
@@ -402,7 +446,13 @@ app.post("/api/instances/:id/start", (c) => {
     return c.json({ data: supervisor.start(instance) });
   } catch (error) {
     if (error instanceof ProcessPreflightError) {
-      return c.json({ error: error.message || "preflight failed", issues: error.result.issues }, 400);
+      return c.json(
+        {
+          error: error.message || "preflight failed",
+          issues: error.result.issues,
+        },
+        400,
+      );
     }
     return c.json({ error: (error as Error).message }, 400);
   }
@@ -414,7 +464,12 @@ app.post("/api/instances/:id/stop", (c) => {
   if (!state) {
     const latestRun = latestProcessRun(instanceId);
     const pid = latestRun?.pid ? Number(latestRun.pid) : null;
-    if (latestRun?.status === "stale" && pid && Number.isFinite(pid) && isPidAlive(pid)) {
+    if (
+      latestRun?.status === "stale" &&
+      pid &&
+      Number.isFinite(pid) &&
+      isPidAlive(pid)
+    ) {
       try {
         process.kill(pid, "SIGTERM");
       } catch (error) {
@@ -464,7 +519,9 @@ app.post("/api/instances/:id/restart", async (c) => {
   if (staleConflict) {
     return c.json({ error: staleConflict }, 409);
   }
-  const preflight = validateInstancePreflight(instance, { peers: listInstances() });
+  const preflight = validateInstancePreflight(instance, {
+    peers: listInstances(),
+  });
   if (!preflight.ok) {
     return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
   }
@@ -472,7 +529,13 @@ app.post("/api/instances/:id/restart", async (c) => {
     return c.json({ data: await supervisor.restart(instance) });
   } catch (error) {
     if (error instanceof ProcessPreflightError) {
-      return c.json({ error: error.message || "preflight failed", issues: error.result.issues }, 400);
+      return c.json(
+        {
+          error: error.message || "preflight failed",
+          issues: error.result.issues,
+        },
+        400,
+      );
     }
     return c.json({ error: (error as Error).message }, 400);
   }

@@ -1,12 +1,16 @@
 import { strict as assert } from "node:assert";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import type { Instance } from "@llama-manager/core";
 
-import { validateInstancePreflight } from "./preflight.js";
+import {
+  validateInstancePreflight,
+  validateInstanceStartPreflight,
+} from "./preflight.js";
 
 function instance(input: Partial<Instance>): Instance {
   return {
@@ -52,6 +56,55 @@ test("validateInstancePreflight blocks configs without a model source", () => {
       },
     );
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateInstanceStartPreflight blocks occupied host ports", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  const listener = createServer();
+
+  try {
+    writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(binaryPath, 0o755);
+    writeFileSync(modelPath, "");
+
+    await new Promise<void>((resolve) => {
+      listener.listen({ host: "127.0.0.1", port: 0 }, resolve);
+    });
+    const port = (listener.address() as AddressInfo).port;
+
+    const result = await validateInstanceStartPreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--host": "127.0.0.1",
+          "--port": port,
+          "--model": modelPath,
+        },
+      }),
+    );
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.--port"),
+      {
+        level: "error",
+        field: "args.--port",
+        message: `Port ${port} is already in use on 127.0.0.1`,
+      },
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      if (!listener.listening) {
+        resolve();
+        return;
+      }
+      listener.close((error) => (error ? reject(error) : resolve()));
+    });
     rmSync(dir, { recursive: true, force: true });
   }
 });

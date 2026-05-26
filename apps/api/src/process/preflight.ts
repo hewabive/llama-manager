@@ -4,10 +4,15 @@ import type {
   ProcessPreflightResult,
 } from "@llama-manager/core";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
+import { createServer } from "node:net";
 import { dirname } from "node:path";
 
 type PreflightOptions = {
   peers?: Instance[] | undefined;
+};
+
+type StartPreflightOptions = PreflightOptions & {
+  checkPortAvailability?: boolean | undefined;
 };
 
 function nowIso() {
@@ -149,6 +154,52 @@ function validatePort(instance: Instance, issues: ProcessPreflightIssue[]) {
   }
 }
 
+function bindErrorMessage(host: string, port: number, error: Error) {
+  const code = (error as Error & { code?: string }).code;
+  if (code === "EADDRINUSE") {
+    return `Port ${port} is already in use on ${host}`;
+  }
+  if (code === "EADDRNOTAVAIL") {
+    return `Host ${host} is not available on this machine`;
+  }
+  if (code === "EACCES" || code === "EPERM") {
+    return `Port ${port} cannot be bound without additional permissions on ${host}`;
+  }
+  return `Unable to bind ${host}:${port}: ${error.message}`;
+}
+
+function checkListenAvailable(host: string, port: number) {
+  return new Promise<string | null>((resolve) => {
+    const server = createServer();
+    let settled = false;
+    const timeout = setTimeout(() => {
+      finish(`Timed out while checking ${host}:${port}`);
+    }, 1_000);
+
+    function finish(message: string | null) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      server.removeAllListeners();
+      if (server.listening) {
+        server.close(() => resolve(message));
+        return;
+      }
+      resolve(message);
+    }
+
+    server.unref();
+    server.once("error", (error) => {
+      finish(bindErrorMessage(host, port, error));
+    });
+    server.listen({ host, port }, () => {
+      finish(null);
+    });
+  });
+}
+
 function argString(instance: Instance, key: string, fallback: string) {
   const value = instance.args[key];
   if (value === undefined || value === null || Array.isArray(value)) {
@@ -207,6 +258,26 @@ function validatePortConflicts(
       level: active ? "error" : "warning",
       field: "args.--port",
       message: `Port ${port} conflicts with ${peer.name} (${peer.status})`,
+    });
+  }
+}
+
+async function validatePortAvailability(
+  instance: Instance,
+  issues: ProcessPreflightIssue[],
+) {
+  const port = parsedPort(instance);
+  if (!port) {
+    return;
+  }
+
+  const host = normalizedHost(instance);
+  const message = await checkListenAvailable(host, port);
+  if (message) {
+    issues.push({
+      level: "error",
+      field: "args.--port",
+      message,
     });
   }
 }
@@ -295,6 +366,23 @@ export function validateInstancePreflight(
     instanceId: instance.id,
     ok: !issues.some((issue) => issue.level === "error"),
     issues,
+    checkedAt: nowIso(),
+  };
+}
+
+export async function validateInstanceStartPreflight(
+  instance: Instance,
+  options: StartPreflightOptions = {},
+): Promise<ProcessPreflightResult> {
+  const result = validateInstancePreflight(instance, options);
+  if (options.checkPortAvailability === false) {
+    return result;
+  }
+
+  await validatePortAvailability(instance, result.issues);
+  return {
+    ...result,
+    ok: !result.issues.some((issue) => issue.level === "error"),
     checkedAt: nowIso(),
   };
 }
