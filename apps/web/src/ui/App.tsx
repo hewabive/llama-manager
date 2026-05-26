@@ -4,10 +4,8 @@ import {
   AppShell,
   Badge,
   Button,
-  Code,
   Group,
   Stack,
-  Table,
   Text,
   Title,
   Tooltip,
@@ -22,14 +20,13 @@ import {
   listInstances,
   updateInstance,
 } from "../api/client";
-import { InstanceActions } from "./components/InstanceActions";
 import { InstanceDetails } from "./components/InstanceDetails";
 import { InstanceFormModal } from "./components/InstanceFormModal";
-import { InstanceHealthBadge } from "./components/InstanceHealthBadge";
 import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { argsWithModel } from "./utils/models";
 import { BuildView } from "./views/BuildView";
+import { InstancesView } from "./views/InstancesView";
 import { ModelsView } from "./views/ModelsView";
 import { PresetsView } from "./views/PresetsView";
 
@@ -206,70 +203,15 @@ export function App() {
           </Group>
 
           {route === "instances" && (
-            <Table.ScrollContainer minWidth={900}>
-              <Table striped highlightOnHover verticalSpacing="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Name</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>PID</Table.Th>
-                    <Table.Th>Binary</Table.Th>
-                    <Table.Th>Args</Table.Th>
-                    <Table.Th ta="right">Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {instances.map((instance) => (
-                    <Table.Tr
-                      key={instance.id}
-                      onClick={() => setSelectedId(instance.id)}
-                      {...(selectedInstance?.id === instance.id
-                        ? { className: "selected-row" }
-                        : {})}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <Table.Td>
-                        <Text fw={600}>{instance.name}</Text>
-                        <Text c="dimmed" size="xs">
-                          {instance.id}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <InstanceHealthBadge
-                          instance={instance}
-                          health={healthByInstanceId.get(instance.id)}
-                        />
-                      </Table.Td>
-                      <Table.Td>{instance.pid ?? "-"}</Table.Td>
-                      <Table.Td>
-                        <Code>{instance.binaryPath}</Code>
-                      </Table.Td>
-                      <Table.Td>
-                        <Code>{JSON.stringify(instance.args)}</Code>
-                      </Table.Td>
-                      <Table.Td>
-                        <InstanceActions
-                          instance={instance}
-                          health={healthByInstanceId.get(instance.id)}
-                          onEdit={() => setEditingInstance(instance)}
-                          onLaunchStarted={startLaunchMonitor}
-                          onLaunchStopped={clearLaunchMonitor}
-                        />
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                  {instances.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={6}>
-                        <Text c="dimmed" ta="center" py="lg">
-                          No instances yet
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+            <InstancesView
+              instances={instances}
+              selectedInstance={selectedInstance}
+              healthByInstanceId={healthByInstanceId}
+              onSelect={(instance) => setSelectedId(instance.id)}
+              onEdit={setEditingInstance}
+              onLaunchStarted={startLaunchMonitor}
+              onLaunchStopped={clearLaunchMonitor}
+            />
           )}
 
           {route === "build" && <BuildView />}
