@@ -497,7 +497,7 @@ function slotsRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
   const busy = slots.filter((slot) => slot.is_processing === true).length;
   const decoded = slots.reduce(
     (sum, slot) =>
-      sum + (numberValue(objectRecord(slot.next_token)?.n_decoded) ?? 0),
+      sum + (numberValue(nextTokenRecord(slot.next_token)?.n_decoded) ?? 0),
     0,
   );
   const contexts = [
@@ -517,6 +517,40 @@ function slotsRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function nextTokenRecord(value: unknown) {
+  if (Array.isArray(value)) {
+    return objectRecord(value[0]);
+  }
+  return objectRecord(value);
+}
+
+function slotRowsFromProbe(probe: LlamaEndpointProbe | undefined) {
+  if (!probe?.ok || !Array.isArray(probe.body)) {
+    return [];
+  }
+
+  return probe.body
+    .map((slot) => objectRecord(slot))
+    .filter((slot): slot is Record<string, unknown> => Boolean(slot))
+    .map((slot) => {
+      const nextToken = nextTokenRecord(slot.next_token);
+      return {
+        id: jsonValuePreview(slot.id) ?? "-",
+        busy: slot.is_processing === true,
+        taskId: formatInteger(numberValue(slot.id_task)) ?? "-",
+        nCtx: formatInteger(numberValue(slot.n_ctx)) ?? "-",
+        decoded: formatInteger(numberValue(nextToken?.n_decoded)) ?? "-",
+        remain: formatInteger(numberValue(nextToken?.n_remain)) ?? "-",
+        promptTokens: formatInteger(numberValue(slot.n_prompt_tokens)) ?? "-",
+        promptProcessed:
+          formatInteger(numberValue(slot.n_prompt_tokens_processed)) ?? "-",
+        promptCache:
+          formatInteger(numberValue(slot.n_prompt_tokens_cache)) ?? "-",
+        speculative: slot.speculative === true,
+      };
+    });
 }
 
 function metricValue(body: unknown, name: string) {
@@ -668,6 +702,7 @@ function V1ModelsPanel(props: {
         {models.map((model) => {
           const runtime = props.modelDiagnostics[model.id];
           const loraAdapters = loraAdaptersFromProbe(runtime?.loraAdapters);
+          const slotRows = slotRowsFromProbe(runtime?.slots);
 
           return (
             <Paper key={model.id} withBorder p="xs" radius="sm">
@@ -844,6 +879,29 @@ function V1ModelsPanel(props: {
                     summary={loraRuntimeSummary(runtime.loraAdapters)}
                   />
                 </SimpleGrid>
+              )}
+
+              {slotRows.length > 0 && (
+                <Box
+                  component="details"
+                  className="v1-model-diagnostics"
+                  mt={8}
+                >
+                  <Text component="summary" c="dimmed" size="xs">
+                    Slot details
+                  </Text>
+                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing={4} mt={4}>
+                    {slotRows.map((slot) => (
+                      <Text key={slot.id} c="dimmed" size="xs">
+                        slot {slot.id} · {slot.busy ? "busy" : "idle"} · task{" "}
+                        {slot.taskId} · ctx {slot.nCtx} · decoded {slot.decoded}{" "}
+                        · remain {slot.remain} · prompt {slot.promptTokens}/
+                        {slot.promptProcessed} · cache {slot.promptCache}
+                        {slot.speculative ? " · speculative" : ""}
+                      </Text>
+                    ))}
+                  </SimpleGrid>
+                </Box>
               )}
 
               {loraAdapters.length > 0 && (
