@@ -23,6 +23,19 @@ code {
   overflow-wrap: anywhere;
 }
 
+.min-w-0 {
+  min-width: 0;
+}
+
+.v1-model-diagnostics summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.v1-model-diagnostics summary:hover {
+  color: var(--mantine-color-text);
+}
+
 .app-header__inner {
   justify-content: space-between;
   gap: var(--mantine-spacing-sm);

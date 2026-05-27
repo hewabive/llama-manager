@@ -97,6 +97,19 @@ export const LlamaProbeSchema = z.object({
   models: LlamaEndpointProbeSchema,
 });
 
+export const LlamaModelActionNameSchema = z.enum(["load", "unload", "reload"]);
+
+export const LlamaModelActionRequestSchema = z.object({
+  model: z.string().min(1),
+});
+
+export const LlamaModelActionResultSchema = z.object({
+  action: LlamaModelActionNameSchema,
+  model: z.string().nullable(),
+  response: LlamaEndpointProbeSchema,
+  fallback: z.string().nullable().default(null),
+});
+
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -567,6 +580,13 @@ export type ProcessPreflightResult = z.infer<
 >;
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
+export type LlamaModelActionName = z.infer<typeof LlamaModelActionNameSchema>;
+export type LlamaModelActionRequest = z.infer<
+  typeof LlamaModelActionRequestSchema
+>;
+export type LlamaModelActionResult = z.infer<
+  typeof LlamaModelActionResultSchema
+>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;

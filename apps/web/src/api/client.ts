@@ -20,6 +20,8 @@ import type {
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
+  LlamaModelActionName,
+  LlamaModelActionResult,
   LlamaProbe,
   LogTail,
   ModelPreset,
@@ -375,6 +377,29 @@ export async function getInstanceHealthSummary(id: string) {
 
 export async function getLlamaProbe(id: string) {
   return request<{ data: LlamaProbe }>(`/api/instances/${id}/llama`);
+}
+
+export async function llamaModelAction(
+  id: string,
+  action: Exclude<LlamaModelActionName, "reload">,
+  model: string,
+) {
+  return request<{ data: LlamaModelActionResult }>(
+    `/api/instances/${id}/llama/models/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    },
+  );
+}
+
+export async function reloadLlamaModels(id: string) {
+  return request<{ data: LlamaModelActionResult }>(
+    `/api/instances/${id}/llama/models/reload`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export async function getInstanceLogs(id: string, lines = 200) {

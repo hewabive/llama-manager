@@ -7,9 +7,11 @@ import {
   InstanceCreateSchema,
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
+  LlamaModelActionRequestSchema,
   type Instance,
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
+  type LlamaEndpointProbe,
   type ProcessPreflightIssue,
   LlamaArgumentHelpOverrideUpdateSchema,
   ModelPresetUpdateSchema,
@@ -53,7 +55,11 @@ import {
   updateInstance,
 } from "./instances/repository.js";
 import { listFilesystemDirectory } from "./filesystem/browser.js";
-import { probeLlamaServer } from "./llama/probe.js";
+import {
+  llamaEndpointErrorMessage,
+  probeLlamaServer,
+  requestLlamaModelAction,
+} from "./llama/probe.js";
 import {
   getModelScanSettings,
   saveModelScanSettings,
@@ -520,6 +526,67 @@ app.get("/api/instances/:id/llama", async (c) => {
   }
 
   return c.json({ data: await probeLlamaServer(instance) });
+});
+
+function llamaActionHttpStatus(probe: LlamaEndpointProbe) {
+  if (probe.status && probe.status >= 400 && probe.status < 500) {
+    return 400;
+  }
+  return 502;
+}
+
+app.post("/api/instances/:id/llama/models/reload", async (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  try {
+    const result = await requestLlamaModelAction(instance, "reload");
+    if (!result.response.ok) {
+      return c.json(
+        { error: llamaEndpointErrorMessage(result.response), data: result },
+        llamaActionHttpStatus(result.response),
+      );
+    }
+    return c.json({ data: result });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.post("/api/instances/:id/llama/models/:action", async (c) => {
+  const action = c.req.param("action");
+  if (action !== "load" && action !== "unload") {
+    return c.json({ error: "unsupported model action" }, 404);
+  }
+
+  const parsed = LlamaModelActionRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  try {
+    const result = await requestLlamaModelAction(
+      instance,
+      action,
+      parsed.data.model,
+    );
+    if (!result.response.ok) {
+      return c.json(
+        { error: llamaEndpointErrorMessage(result.response), data: result },
+        llamaActionHttpStatus(result.response),
+      );
+    }
+    return c.json({ data: result });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.patch("/api/instances/:id", async (c) => {

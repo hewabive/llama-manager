@@ -2,6 +2,7 @@ import type {
   Instance,
   InstanceHealthSummary,
   LlamaEndpointProbe,
+  LlamaModelActionName,
   LlamaProbe,
   LogTail,
   ProcessEvent,
@@ -23,7 +24,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Square } from "lucide-react";
+import { ExternalLink, Play, Power, RefreshCw, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -35,6 +36,8 @@ import {
   getRuntime,
   instanceAction,
   instanceEventsUrl,
+  llamaModelAction,
+  reloadLlamaModels,
 } from "../../api/client";
 import { healthStatusColor, statusColor } from "./InstanceHealthBadge";
 import {
@@ -44,6 +47,7 @@ import {
   openUrlInNewTab,
 } from "../utils/instance-url";
 import type { LaunchMonitor } from "../utils/launch";
+import { pathBaseName } from "../utils/models";
 import { formatLocalDateTime } from "../utils/time";
 
 const launchMonitorTimeoutMs = 5 * 60 * 1000;
@@ -104,8 +108,23 @@ type V1ModelInfo = {
   object: string | null;
   ownedBy: string | null;
   created: string | null;
-  extras: Array<[string, string]>;
+  aliases: string[];
+  tags: string[];
+  status: string | null;
+  modelPath: string | null;
+  ctxSize: string | null;
+  nGpuLayers: string | null;
+  loadOnStartup: string | null;
+  stopTimeout: string | null;
+  modalities: string | null;
+  failed: boolean;
+  exitCode: string | null;
+  diagnosticArgs: string[];
+  diagnosticPreset: string | null;
+  unknownExtras: Array<[string, string]>;
 };
+
+type RouterModelAction = Exclude<LlamaModelActionName, "reload">;
 
 function jsonValuePreview(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -135,6 +154,103 @@ function formatModelCreated(value: unknown) {
   return null;
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) =>
+      typeof item === "string" || typeof item === "number"
+        ? String(item)
+        : null,
+    )
+    .filter((item): item is string => Boolean(item));
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function valueFromArgv(args: string[], names: string[]) {
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (!current) {
+      continue;
+    }
+    for (const name of names) {
+      if (current === name) {
+        const next = args[index + 1];
+        return next && !next.startsWith("--") ? next : null;
+      }
+      if (current.startsWith(`${name}=`)) {
+        return current.slice(name.length + 1);
+      }
+    }
+  }
+  return null;
+}
+
+function valueFromPreset(preset: string | null, key: string) {
+  if (!preset) {
+    return null;
+  }
+  const match = preset.match(
+    new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.*?)\\s*$`, "im"),
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function firstConfigValue(input: {
+  args: string[];
+  preset: string | null;
+  argNames: string[];
+  presetKey: string;
+}) {
+  return (
+    valueFromArgv(input.args, input.argNames) ??
+    valueFromPreset(input.preset, input.presetKey)
+  );
+}
+
+function modelStatusColor(status: string | null) {
+  const normalized = status?.toLowerCase() ?? "";
+  if (["loaded", "ready", "running"].includes(normalized)) return "green";
+  if (["loading", "starting"].includes(normalized)) return "yellow";
+  if (["error", "failed"].includes(normalized)) return "red";
+  if (["unloading", "stopping"].includes(normalized)) return "orange";
+  return "gray";
+}
+
+function formatStartupMode(value: string | null) {
+  if (value === null) return null;
+  if (["true", "1", "yes", "on"].includes(value.toLowerCase())) {
+    return "autoload";
+  }
+  if (["false", "0", "no", "off"].includes(value.toLowerCase())) {
+    return "manual";
+  }
+  return value;
+}
+
+function architectureModalities(value: unknown) {
+  const architecture = objectRecord(value);
+  if (!architecture) {
+    return null;
+  }
+  const input = stringArray(architecture.input_modalities);
+  const output = stringArray(architecture.output_modalities);
+  if (input.length === 0 && output.length === 0) {
+    return null;
+  }
+  return `${input.join(", ") || "?"} -> ${output.join(", ") || "?"}`;
+}
+
 function v1ModelsFromProbe(
   probe: LlamaEndpointProbe | undefined,
 ): V1ModelInfo[] {
@@ -155,12 +271,40 @@ function v1ModelsFromProbe(
           object: null,
           ownedBy: null,
           created: null,
-          extras: [],
+          aliases: [],
+          tags: [],
+          status: null,
+          modelPath: null,
+          ctxSize: null,
+          nGpuLayers: null,
+          loadOnStartup: null,
+          stopTimeout: null,
+          modalities: null,
+          failed: false,
+          exitCode: null,
+          diagnosticArgs: [],
+          diagnosticPreset: null,
+          unknownExtras: [],
         };
       }
 
       const record = item as Record<string, unknown>;
-      const reserved = new Set(["id", "object", "owned_by", "created"]);
+      const status = objectRecord(record.status);
+      const args = stringArray(status?.args);
+      const preset =
+        typeof status?.preset === "string" && status.preset.trim()
+          ? status.preset
+          : null;
+      const reserved = new Set([
+        "id",
+        "object",
+        "owned_by",
+        "created",
+        "aliases",
+        "tags",
+        "status",
+        "architecture",
+      ]);
       return {
         id: String(record.id ?? `model-${index + 1}`),
         object:
@@ -172,7 +316,42 @@ function v1ModelsFromProbe(
             ? record.owned_by
             : null,
         created: formatModelCreated(record.created),
-        extras: Object.entries(record)
+        aliases: stringArray(record.aliases),
+        tags: stringArray(record.tags),
+        status:
+          status?.failed === true
+            ? "failed"
+            : typeof status?.value === "string" && status.value
+              ? status.value
+              : null,
+        modelPath: firstConfigValue({
+          args,
+          preset,
+          argNames: ["--model", "-m"],
+          presetKey: "model",
+        }),
+        ctxSize: firstConfigValue({
+          args,
+          preset,
+          argNames: ["--ctx-size", "-c"],
+          presetKey: "ctx-size",
+        }),
+        nGpuLayers: firstConfigValue({
+          args,
+          preset,
+          argNames: ["--n-gpu-layers", "--gpu-layers", "-ngl"],
+          presetKey: "n-gpu-layers",
+        }),
+        loadOnStartup: formatStartupMode(
+          valueFromPreset(preset, "load-on-startup"),
+        ),
+        stopTimeout: valueFromPreset(preset, "stop-timeout"),
+        modalities: architectureModalities(record.architecture),
+        failed: status?.failed === true,
+        exitCode: jsonValuePreview(status?.exit_code),
+        diagnosticArgs: args,
+        diagnosticPreset: preset,
+        unknownExtras: Object.entries(record)
           .filter(([key]) => !reserved.has(key))
           .map(([key, value]) => [key, jsonValuePreview(value)] as const)
           .filter((entry): entry is [string, string] => Boolean(entry[1])),
@@ -181,9 +360,34 @@ function v1ModelsFromProbe(
     .filter((model) => model.id);
 }
 
-function V1ModelsPanel(props: { probe: LlamaEndpointProbe | undefined }) {
+function isRouterModelStatus(status: string | null) {
+  return ["unloaded", "loading", "loaded", "sleeping", "failed"].includes(
+    status?.toLowerCase() ?? "",
+  );
+}
+
+function modelCanLoad(status: string | null) {
+  return ["unloaded", "failed"].includes(status?.toLowerCase() ?? "");
+}
+
+function modelCanUnload(status: string | null) {
+  return ["loaded", "loading", "sleeping"].includes(
+    status?.toLowerCase() ?? "",
+  );
+}
+
+function V1ModelsPanel(props: {
+  probe: LlamaEndpointProbe | undefined;
+  onReload: () => void;
+  reloadPending: boolean;
+  onModelAction: (model: string, action: RouterModelAction) => void;
+  pendingAction: { model: string; action: RouterModelAction } | null;
+}) {
   const models = v1ModelsFromProbe(props.probe);
   const body = props.probe?.body;
+  const loadedCount = models.filter(
+    (model) => model.status?.toLowerCase() === "loaded",
+  ).length;
   const unexpectedBody =
     props.probe?.ok &&
     models.length === 0 &&
@@ -197,17 +401,29 @@ function V1ModelsPanel(props: { probe: LlamaEndpointProbe | undefined }) {
       <Group justify="space-between" mb="xs">
         <Stack gap={2}>
           <Text fw={600} size="sm">
-            v1/models
+            Models API
           </Text>
           <Text c="dimmed" size="xs">
-            OpenAI-compatible model list reported by this llama-server.
+            Models exposed by `GET /v1/models`.
           </Text>
         </Stack>
-        <Badge color={probeColor(props.probe)} variant="light">
-          {props.probe?.ok
-            ? `${models.length} model${models.length === 1 ? "" : "s"}`
-            : (props.probe?.status ?? "offline")}
-        </Badge>
+        <Group gap="xs">
+          <Button
+            size="xs"
+            variant="subtle"
+            leftSection={<RefreshCw size={14} />}
+            loading={props.reloadPending}
+            disabled={!props.probe?.ok || props.reloadPending}
+            onClick={props.onReload}
+          >
+            Reload list
+          </Button>
+          <Badge color={probeColor(props.probe)} variant="light">
+            {props.probe?.ok
+              ? `${models.length} total · ${loadedCount} loaded`
+              : (props.probe?.status ?? "offline")}
+          </Badge>
+        </Group>
       </Group>
 
       {props.probe?.error && (
@@ -219,33 +435,170 @@ function V1ModelsPanel(props: { probe: LlamaEndpointProbe | undefined }) {
       <Stack gap="xs">
         {models.map((model) => (
           <Paper key={model.id} withBorder p="xs" radius="sm">
-            <Group justify="space-between" gap="xs" wrap="nowrap">
-              <Code className="code-wrap">{model.id}</Code>
-              {model.object && (
-                <Badge variant="outline" color="gray">
-                  {model.object}
-                </Badge>
+            <Group justify="space-between" gap="xs" align="flex-start">
+              <Stack gap={4} className="min-w-0">
+                <Group gap="xs">
+                  <Text fw={600} size="sm" className="text-wrap">
+                    {model.id}
+                  </Text>
+                  <Badge color={modelStatusColor(model.status)} variant="light">
+                    {model.status ?? "unknown"}
+                  </Badge>
+                  {model.modalities && (
+                    <Badge variant="outline" color="gray">
+                      {model.modalities}
+                    </Badge>
+                  )}
+                </Group>
+                {model.modelPath && (
+                  <Text
+                    c="dimmed"
+                    size="xs"
+                    title={model.modelPath}
+                    className="text-wrap"
+                  >
+                    {pathBaseName(model.modelPath)}
+                  </Text>
+                )}
+              </Stack>
+              <Group gap="xs" justify="flex-end">
+                {isRouterModelStatus(model.status) && (
+                  <>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="green"
+                      leftSection={<Play size={14} />}
+                      loading={
+                        props.pendingAction?.model === model.id &&
+                        props.pendingAction.action === "load"
+                      }
+                      disabled={
+                        !modelCanLoad(model.status) ||
+                        props.pendingAction !== null
+                      }
+                      onClick={() => props.onModelAction(model.id, "load")}
+                    >
+                      Load
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="yellow"
+                      leftSection={<Power size={14} />}
+                      loading={
+                        props.pendingAction?.model === model.id &&
+                        props.pendingAction.action === "unload"
+                      }
+                      disabled={
+                        !modelCanUnload(model.status) ||
+                        props.pendingAction !== null
+                      }
+                      onClick={() => props.onModelAction(model.id, "unload")}
+                    >
+                      Unload
+                    </Button>
+                  </>
+                )}
+                {model.object && model.object !== "model" && (
+                  <Badge variant="outline">{model.object}</Badge>
+                )}
+              </Group>
+            </Group>
+
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing={4} mt={8}>
+              <Text size="xs">
+                Context:{" "}
+                <Text span c="dimmed">
+                  {model.ctxSize ?? "-"}
+                </Text>
+              </Text>
+              <Text size="xs">
+                GPU layers:{" "}
+                <Text span c="dimmed">
+                  {model.nGpuLayers ?? "-"}
+                </Text>
+              </Text>
+              <Text size="xs">
+                Startup:{" "}
+                <Text span c="dimmed">
+                  {model.loadOnStartup ?? "-"}
+                </Text>
+              </Text>
+              <Text size="xs">
+                Stop timeout:{" "}
+                <Text span c="dimmed">
+                  {model.stopTimeout ? `${model.stopTimeout}s` : "-"}
+                </Text>
+              </Text>
+              {model.failed && (
+                <Text size="xs" c="red">
+                  Last exit:{" "}
+                  <Text span c="red">
+                    {model.exitCode ?? "failed"}
+                  </Text>
+                </Text>
+              )}
+            </SimpleGrid>
+
+            {(model.aliases.length > 0 || model.tags.length > 0) && (
+              <Group gap={4} mt={8}>
+                {model.aliases.map((alias) => (
+                  <Badge key={`alias-${alias}`} size="xs" variant="light">
+                    alias {alias}
+                  </Badge>
+                ))}
+                {model.tags.map((tag) => (
+                  <Badge
+                    key={`tag-${tag}`}
+                    size="xs"
+                    color="grape"
+                    variant="light"
+                  >
+                    tag {tag}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+
+            <Group gap="xs" mt={8}>
+              {model.created && (
+                <Text c="dimmed" size="xs">
+                  Registered: {model.created}
+                </Text>
+              )}
+              {model.ownedBy && model.ownedBy !== "llamacpp" && (
+                <Text c="dimmed" size="xs">
+                  Owner: {model.ownedBy}
+                </Text>
               )}
             </Group>
-            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing={4} mt={6}>
-              <Text c="dimmed" size="xs" lineClamp={1}>
-                owned_by: {model.ownedBy ?? "-"}
-              </Text>
-              <Text c="dimmed" size="xs" lineClamp={1}>
-                created: {model.created ?? "-"}
-              </Text>
-              <Text c="dimmed" size="xs" lineClamp={1}>
-                extras: {model.extras.length}
-              </Text>
-            </SimpleGrid>
-            {model.extras.length > 0 && (
-              <Stack gap={2} mt={6}>
-                {model.extras.slice(0, 6).map(([key, value]) => (
-                  <Text key={key} c="dimmed" size="xs" lineClamp={2}>
-                    {key}: {value}
-                  </Text>
-                ))}
-              </Stack>
+
+            {(model.diagnosticArgs.length > 0 ||
+              model.diagnosticPreset ||
+              model.unknownExtras.length > 0) && (
+              <Box component="details" className="v1-model-diagnostics" mt={8}>
+                <Text component="summary" c="dimmed" size="xs">
+                  Diagnostics
+                </Text>
+                <Stack gap={4} mt={4}>
+                  {model.diagnosticArgs.length > 0 && (
+                    <Code block className="code-wrap">
+                      {model.diagnosticArgs.join(" ")}
+                    </Code>
+                  )}
+                  {model.diagnosticPreset && (
+                    <Code block className="code-wrap">
+                      {model.diagnosticPreset}
+                    </Code>
+                  )}
+                  {model.unknownExtras.map(([key, value]) => (
+                    <Text key={key} c="dimmed" size="xs" lineClamp={2}>
+                      {key}: {value}
+                    </Text>
+                  ))}
+                </Stack>
+              </Box>
             )}
           </Paper>
         ))}
@@ -561,32 +914,83 @@ export function InstanceDetails(props: {
     props.launchMonitor || isStartupStatus(health?.status),
   );
 
+  const invalidateInstanceRuntime = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instances-health-summary"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-health-summary", id],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-status-summary", id],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
+    ]);
+  };
+
   const monitorStopMutation = useMutation({
     mutationFn: () => instanceAction(id!, "stop"),
     onSuccess: async () => {
       if (props.instance) {
         props.onLaunchStopped(props.instance);
       }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["instances"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["instances-health-summary"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["instance-health-summary", id],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
-        queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
-        queryClient.invalidateQueries({
-          queryKey: ["instance-status-summary", id],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
-      ]);
+      await invalidateInstanceRuntime();
     },
     onError: (error) => {
       notifications.show({
         color: "red",
         title: "Stop failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  const modelActionMutation = useMutation({
+    mutationFn: (input: { model: string; action: RouterModelAction }) =>
+      llamaModelAction(id!, input.action, input.model),
+    onSuccess: async (result, variables) => {
+      notifications.show({
+        color: variables.action === "load" ? "green" : "yellow",
+        title:
+          variables.action === "load"
+            ? "Model load requested"
+            : "Model unload requested",
+        message: result.data.fallback
+          ? "llama-server used the autoload fallback for this build."
+          : variables.model,
+      });
+      await invalidateInstanceRuntime();
+    },
+    onError: (error, variables) => {
+      notifications.show({
+        color: "red",
+        title:
+          variables.action === "load"
+            ? "Model load failed"
+            : "Model unload failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  const reloadModelsMutation = useMutation({
+    mutationFn: () => reloadLlamaModels(id!),
+    onSuccess: async () => {
+      notifications.show({
+        color: "blue",
+        title: "Model list reloaded",
+        message: "llama-server refreshed router model metadata.",
+      });
+      await invalidateInstanceRuntime();
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Model reload failed",
         message: (error as Error).message,
       });
     },
@@ -742,7 +1146,19 @@ export function InstanceDetails(props: {
           </Stack>
         </SimpleGrid>
 
-        <V1ModelsPanel probe={llama?.models} />
+        <V1ModelsPanel
+          probe={llama?.models}
+          onReload={() => reloadModelsMutation.mutate()}
+          reloadPending={reloadModelsMutation.isPending}
+          onModelAction={(model, action) =>
+            modelActionMutation.mutate({ model, action })
+          }
+          pendingAction={
+            modelActionMutation.isPending
+              ? (modelActionMutation.variables ?? null)
+              : null
+          }
+        />
 
         <Paper withBorder p="sm" radius="sm">
           <Group justify="space-between" mb="xs">

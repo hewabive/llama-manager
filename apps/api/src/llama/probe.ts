@@ -8,6 +8,7 @@ import type {
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8080;
 const PROBE_TIMEOUT_MS = 1_500;
+const ACTION_TIMEOUT_MS = 15 * 60 * 1_000;
 
 function firstArg(
   args: Instance["args"],
@@ -66,11 +67,16 @@ export function llamaBaseUrl(instance: Instance): string {
   return `http://${host}:${port}${apiPrefix(instance)}`;
 }
 
-async function probeJson(url: string): Promise<LlamaEndpointProbe> {
+export async function requestLlamaJson(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<LlamaEndpointProbe> {
+  const { timeoutMs = PROBE_TIMEOUT_MS, ...requestInit } = init;
   const started = performance.now();
   try {
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      ...requestInit,
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const text = await response.text();
     let body: unknown = text;
@@ -98,6 +104,85 @@ async function probeJson(url: string): Promise<LlamaEndpointProbe> {
       error: (error as Error).message,
     };
   }
+}
+
+async function probeJson(url: string): Promise<LlamaEndpointProbe> {
+  return requestLlamaJson(url);
+}
+
+export function llamaEndpointErrorMessage(probe: LlamaEndpointProbe): string {
+  const body = probe.body;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const error = (body as { error?: unknown }).error;
+    if (error && typeof error === "object" && !Array.isArray(error)) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+    }
+  }
+  return (
+    probe.error ?? `llama-server returned ${probe.status ?? "no response"}`
+  );
+}
+
+function isFileNotFound(probe: LlamaEndpointProbe): boolean {
+  return (
+    probe.status === 404 &&
+    llamaEndpointErrorMessage(probe) === "File Not Found"
+  );
+}
+
+export async function requestLlamaModelAction(
+  instance: Instance,
+  action: "load" | "unload" | "reload",
+  model?: string,
+) {
+  const baseUrl = llamaBaseUrl(instance);
+  if (!baseUrl) {
+    throw new Error("UNIX socket model actions are not implemented yet");
+  }
+
+  if (action === "reload") {
+    return {
+      action,
+      model: null,
+      fallback: null,
+      response: await requestLlamaJson(`${baseUrl}/models?reload=1`, {
+        timeoutMs: ACTION_TIMEOUT_MS,
+      }),
+    };
+  }
+
+  if (!model) {
+    throw new Error("model is required");
+  }
+
+  const response = await requestLlamaJson(`${baseUrl}/models/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ model }),
+    headers: { "content-type": "application/json" },
+    timeoutMs: ACTION_TIMEOUT_MS,
+  });
+
+  if (action === "load" && isFileNotFound(response)) {
+    const query = new URLSearchParams({ model, autoload: "true" });
+    return {
+      action,
+      model,
+      fallback: "/props?autoload=true",
+      response: await requestLlamaJson(`${baseUrl}/props?${query.toString()}`, {
+        timeoutMs: ACTION_TIMEOUT_MS,
+      }),
+    };
+  }
+
+  return {
+    action,
+    model,
+    fallback: null,
+    response,
+  };
 }
 
 export async function probeLlamaServer(
