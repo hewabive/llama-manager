@@ -1682,7 +1682,11 @@ export function InstanceDetails(props: {
           <ScrollArea h={220} type="auto" offsetScrollbars>
             <Stack gap={4}>
               {logTail?.lines.map((line, index) => (
-                <Code key={`${logTail.logPath}-${index}`} block>
+                <Code
+                  key={`${logTail.logPath}-${index}`}
+                  block
+                  className="code-wrap"
+                >
                   {line}
                 </Code>
               ))}
@@ -1707,7 +1711,11 @@ export function InstanceDetails(props: {
           <ScrollArea h={260} type="auto" offsetScrollbars>
             <Stack gap={4}>
               {events.map((event, index) => (
-                <Code key={`${event.timestamp}-${index}`} block>
+                <Code
+                  key={`${event.timestamp}-${index}`}
+                  block
+                  className="code-wrap"
+                >
                   {formatLocalDateTime(event.timestamp)} [{event.type}]{" "}
                   {event.message.trimEnd()}
                 </Code>
