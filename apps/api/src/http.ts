@@ -64,6 +64,13 @@ import {
   requestLlamaModelAction,
 } from "./llama/probe.js";
 import {
+  clearLlamaApiProbeHistory,
+  createLlamaApiProbeHistory,
+  listLlamaApiProbeHistory,
+  pruneLlamaApiProbeHistory,
+  updateLlamaApiProbeHistory,
+} from "./llama/probe-history-repository.js";
+import {
   getModelScanSettings,
   saveModelScanSettings,
 } from "./models/cache-repository.js";
@@ -531,6 +538,30 @@ app.get("/api/instances/:id/llama", async (c) => {
   return c.json({ data: await probeLlamaServer(instance) });
 });
 
+app.get("/api/instances/:id/llama/probe/history", (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+  const limit = Number(c.req.query("limit") ?? "20");
+  return c.json({
+    data: listLlamaApiProbeHistory(
+      instance.id,
+      Number.isFinite(limit) ? limit : 20,
+    ),
+  });
+});
+
+app.delete("/api/instances/:id/llama/probe/history", (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+  return c.json({
+    data: { deleted: clearLlamaApiProbeHistory(instance.id) },
+  });
+});
+
 app.post("/api/instances/:id/llama/probe", async (c) => {
   const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
@@ -542,11 +573,37 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
+  let historyId: string | null = null;
   try {
-    return c.json({
-      data: await requestLlamaApiProbe(instance, parsed.data),
+    const target = llamaApiProbeTarget(instance, parsed.data);
+    historyId = createLlamaApiProbeHistory({
+      instanceId: instance.id,
+      request: parsed.data,
+      endpoint: target.endpoint,
+      requestBody: target.requestBody,
+      streamed: false,
     });
+    const data = await requestLlamaApiProbe(instance, parsed.data);
+    const body = recordValue(data.response.body);
+    updateLlamaApiProbeHistory(historyId, {
+      status: data.response.ok ? "ok" : "error",
+      httpStatus: data.response.status,
+      latencyMs: data.response.latencyMs,
+      output: probeOutputText(data.kind, data.response),
+      error: data.response.ok ? null : llamaEndpointErrorMessage(data.response),
+      usage: body?.usage ?? null,
+      timings: body?.timings ?? null,
+    });
+    pruneLlamaApiProbeHistory(instance.id);
+    return c.json({ data });
   } catch (error) {
+    if (historyId) {
+      updateLlamaApiProbeHistory(historyId, {
+        status: "error",
+        error: (error as Error).message,
+      });
+      pruneLlamaApiProbeHistory(instance.id);
+    }
     return c.json({ error: (error as Error).message }, 400);
   }
 });
@@ -559,6 +616,62 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function probeOutputText(kind: string, response: LlamaEndpointProbe) {
+  const body = recordValue(response.body);
+  if (!response.ok) {
+    return llamaEndpointErrorMessage(response);
+  }
+
+  if (kind === "tokenize") {
+    const tokens = arrayValue(body?.tokens);
+    return `${tokens.length} token${tokens.length === 1 ? "" : "s"}`;
+  }
+
+  if (kind === "detokenize") {
+    return stringValue(body?.content);
+  }
+
+  if (kind === "count-tokens") {
+    const count = body?.input_tokens;
+    return typeof count === "number" ? `${count} input tokens` : null;
+  }
+
+  if (kind === "apply-template") {
+    return stringValue(body?.prompt);
+  }
+
+  if (kind === "responses") {
+    const outputText = stringValue(body?.output_text);
+    if (outputText) return outputText;
+    return (
+      arrayValue(body?.output)
+        .flatMap((item) => arrayValue(recordValue(item)?.content))
+        .map((content) => stringValue(recordValue(content)?.text))
+        .filter(Boolean)
+        .join("\n\n") || null
+    );
+  }
+
+  const firstChoice = firstRecord(body?.choices);
+  if (kind === "chat") {
+    return (
+      stringValue(recordValue(firstChoice?.message)?.content) ??
+      stringValue(recordValue(firstChoice?.message)?.reasoning_content) ??
+      stringValue(firstChoice?.text)
+    );
+  }
+
+  return stringValue(firstChoice?.text);
 }
 
 function firstRecord(value: unknown): Record<string, unknown> | null {
@@ -618,13 +731,14 @@ async function writeUpstreamStreamEvents(props: {
       event: "error",
       data: JSON.stringify({ message: "llama-server returned no stream body" }),
     });
-    return;
+    return null;
   }
 
   const decoder = new TextDecoder();
   let buffer = "";
   let finalBody: unknown = null;
   let finishReason: string | null = null;
+  let output = "";
 
   const consumeBlock = async (block: string) => {
     const data = streamEventData(block);
@@ -637,12 +751,14 @@ async function writeUpstreamStreamEvents(props: {
       finishReason = streamFinishReason(parsed) ?? finishReason;
       const delta = streamDeltaText(parsed);
       if (delta) {
+        output += delta;
         await props.stream.writeSSE({
           event: "token",
           data: JSON.stringify({ text: delta }),
         });
       }
     } catch {
+      output += data;
       await props.stream.writeSSE({
         event: "token",
         data: JSON.stringify({ text: data }),
@@ -674,15 +790,23 @@ async function writeUpstreamStreamEvents(props: {
   }
 
   const finalRecord = recordValue(finalBody);
+  const latencyMs = Math.round(performance.now() - props.started);
   await props.stream.writeSSE({
     event: "done",
     data: JSON.stringify({
-      latencyMs: Math.round(performance.now() - props.started),
+      latencyMs,
       finishReason,
       usage: finalRecord?.usage ?? null,
       timings: finalRecord?.timings ?? null,
     }),
   });
+  return {
+    output,
+    latencyMs,
+    finishReason,
+    usage: finalRecord?.usage ?? null,
+    timings: finalRecord?.timings ?? null,
+  };
 }
 
 app.post("/api/instances/:id/llama/probe/stream", async (c) => {
@@ -708,6 +832,14 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
+
+  const historyId = createLlamaApiProbeHistory({
+    instanceId: instance.id,
+    request: parsed.data,
+    endpoint: target.endpoint,
+    requestBody: target.requestBody,
+    streamed: true,
+  });
 
   return streamSSE(c, async (stream) => {
     const controller = new AbortController();
@@ -757,12 +889,51 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
               response.statusText,
           }),
         });
+        updateLlamaApiProbeHistory(historyId, {
+          status: "error",
+          httpStatus: response.status,
+          latencyMs: Math.round(performance.now() - started),
+          output: typeof body === "string" ? body : null,
+          error:
+            String(recordValue(recordValue(body)?.error)?.message ?? "") ||
+            response.statusText,
+        });
+        pruneLlamaApiProbeHistory(instance.id);
         return;
       }
 
-      await writeUpstreamStreamEvents({ stream, response, started });
+      const summary = await writeUpstreamStreamEvents({
+        stream,
+        response,
+        started,
+      });
+      if (!summary) {
+        updateLlamaApiProbeHistory(historyId, {
+          status: "error",
+          httpStatus: response.status,
+          latencyMs: Math.round(performance.now() - started),
+          error: "llama-server returned no stream body",
+        });
+        pruneLlamaApiProbeHistory(instance.id);
+        return;
+      }
+      updateLlamaApiProbeHistory(historyId, {
+        status: "ok",
+        httpStatus: response.status,
+        latencyMs: summary.latencyMs,
+        output: summary.output,
+        usage: summary.usage,
+        timings: summary.timings,
+        finishReason: summary.finishReason,
+      });
+      pruneLlamaApiProbeHistory(instance.id);
     } catch (error) {
       if (controller.signal.aborted) {
+        updateLlamaApiProbeHistory(historyId, {
+          status: "cancelled",
+          latencyMs: Math.round(performance.now() - started),
+        });
+        pruneLlamaApiProbeHistory(instance.id);
         await stream.writeSSE({
           event: "cancelled",
           data: JSON.stringify({
@@ -771,6 +942,12 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
         });
         return;
       }
+      updateLlamaApiProbeHistory(historyId, {
+        status: "error",
+        latencyMs: Math.round(performance.now() - started),
+        error: (error as Error).message,
+      });
+      pruneLlamaApiProbeHistory(instance.id);
       await stream.writeSSE({
         event: "error",
         data: JSON.stringify({ message: (error as Error).message }),

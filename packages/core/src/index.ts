@@ -168,6 +168,34 @@ export const LlamaApiProbeResultSchema = z.object({
   response: LlamaEndpointProbeSchema,
 });
 
+export const LlamaApiProbeHistoryStatusSchema = z.enum([
+  "running",
+  "ok",
+  "error",
+  "cancelled",
+]);
+
+export const LlamaApiProbeHistoryEntrySchema = z.object({
+  id: z.string(),
+  instanceId: z.string(),
+  kind: LlamaApiProbeKindSchema,
+  model: z.string().nullable(),
+  endpoint: z.string().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  status: LlamaApiProbeHistoryStatusSchema,
+  httpStatus: z.number().int().nullable(),
+  latencyMs: z.number().int().nullable(),
+  request: LlamaApiProbeRequestSchema,
+  requestBody: z.unknown().nullable(),
+  output: z.string().nullable(),
+  error: z.string().nullable(),
+  usage: z.unknown().nullable(),
+  timings: z.unknown().nullable(),
+  streamed: z.boolean(),
+  finishReason: z.string().nullable(),
+});
+
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -649,6 +677,12 @@ export type LlamaModelActionResult = z.infer<
 export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
 export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;
 export type LlamaApiProbeResult = z.infer<typeof LlamaApiProbeResultSchema>;
+export type LlamaApiProbeHistoryStatus = z.infer<
+  typeof LlamaApiProbeHistoryStatusSchema
+>;
+export type LlamaApiProbeHistoryEntry = z.infer<
+  typeof LlamaApiProbeHistoryEntrySchema
+>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;

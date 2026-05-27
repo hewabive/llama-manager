@@ -17,6 +17,7 @@ import type {
   InstanceUpdate,
   InstanceLogSummary,
   LlamaApiProbeRequest,
+  LlamaApiProbeHistoryEntry,
   LlamaApiProbeResult,
   LlamaArgumentCatalog,
   LlamaArgumentEngineeringDoc,
@@ -390,6 +391,21 @@ export async function runLlamaApiProbe(
     {
       method: "POST",
       body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function listLlamaApiProbeHistory(id: string, limit = 20) {
+  return request<{ data: LlamaApiProbeHistoryEntry[] }>(
+    `/api/instances/${id}/llama/probe/history?limit=${limit}`,
+  );
+}
+
+export async function clearLlamaApiProbeHistory(id: string) {
+  return request<{ data: { deleted: number } }>(
+    `/api/instances/${id}/llama/probe/history`,
+    {
+      method: "DELETE",
     },
   );
 }

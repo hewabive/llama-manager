@@ -88,9 +88,35 @@ export const llamaArgumentCatalogs = sqliteTable("llama_argument_catalogs", {
   generatedAt: text("generated_at").notNull(),
 });
 
-export const llamaArgumentHelpOverrides = sqliteTable("llama_argument_help_overrides", {
-  primaryName: text("primary_name").primaryKey(),
-  helpRu: text("help_ru").notNull(),
-  notes: text("notes"),
-  updatedAt: text("updated_at").notNull(),
+export const llamaArgumentHelpOverrides = sqliteTable(
+  "llama_argument_help_overrides",
+  {
+    primaryName: text("primary_name").primaryKey(),
+    helpRu: text("help_ru").notNull(),
+    notes: text("notes"),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
+
+export const llamaApiProbeHistory = sqliteTable("llama_api_probe_history", {
+  id: text("id").primaryKey(),
+  instanceId: text("instance_id")
+    .notNull()
+    .references(() => instances.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  model: text("model"),
+  endpoint: text("endpoint"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+  status: text("status").notNull(),
+  httpStatus: text("http_status"),
+  latencyMs: text("latency_ms"),
+  requestJson: text("request_json").notNull(),
+  requestBodyJson: text("request_body_json"),
+  output: text("output"),
+  error: text("error"),
+  usageJson: text("usage_json"),
+  timingsJson: text("timings_json"),
+  streamed: text("streamed").notNull(),
+  finishReason: text("finish_reason"),
 });

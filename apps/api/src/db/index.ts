@@ -123,4 +123,32 @@ export function migrate() {
       updated_at TEXT NOT NULL
     )
   `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS llama_api_probe_history (
+      id TEXT PRIMARY KEY NOT NULL,
+      instance_id TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      model TEXT,
+      endpoint TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      status TEXT NOT NULL,
+      http_status TEXT,
+      latency_ms TEXT,
+      request_json TEXT NOT NULL,
+      request_body_json TEXT,
+      output TEXT,
+      error TEXT,
+      usage_json TEXT,
+      timings_json TEXT,
+      streamed TEXT NOT NULL,
+      finish_reason TEXT
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS llama_api_probe_history_instance_started_idx
+    ON llama_api_probe_history (instance_id, started_at DESC)
+  `);
 }
