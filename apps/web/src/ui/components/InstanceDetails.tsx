@@ -54,9 +54,33 @@ import { formatLocalDateTime } from "../utils/time";
 
 const launchMonitorTimeoutMs = 5 * 60 * 1000;
 
+function probeEndpointMessage(probe: LlamaEndpointProbe | undefined) {
+  const body = probe?.body;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const error = (body as { error?: unknown }).error;
+    if (error && typeof error === "object" && !Array.isArray(error)) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+    }
+  }
+  return probe?.error ?? null;
+}
+
+function isModelScopedRouterProbe(probe: LlamaEndpointProbe | undefined) {
+  return (
+    probe?.status === 400 &&
+    /model name is missing from the request/i.test(
+      probeEndpointMessage(probe) ?? "",
+    )
+  );
+}
+
 function probeColor(probe: LlamaEndpointProbe | undefined) {
   if (!probe) return "gray";
   if (probe.ok) return "green";
+  if (isModelScopedRouterProbe(probe)) return "yellow";
   if (probe.status === 503) return "yellow";
   return "red";
 }
@@ -78,6 +102,11 @@ function ProbeCard(props: {
       <Text c="dimmed" size="xs" mt={4}>
         {props.probe ? `${props.probe.latencyMs} ms` : "not probed"}
       </Text>
+      {isModelScopedRouterProbe(props.probe) && (
+        <Text c="dimmed" size="xs" mt={4}>
+          Router endpoint requires a model. See per-model diagnostics.
+        </Text>
+      )}
       {props.probe?.error && (
         <Text c="red" size="xs" mt={4} lineClamp={2}>
           {props.probe.error}
@@ -451,12 +480,7 @@ function modelCanUnload(status: string | null) {
 }
 
 function endpointErrorText(probe: LlamaEndpointProbe | undefined) {
-  const error = objectRecord(probe?.body)?.error;
-  const message = objectRecord(error)?.message;
-  if (typeof message === "string" && message.trim()) {
-    return message;
-  }
-  return probe?.error ?? null;
+  return probeEndpointMessage(probe);
 }
 
 function boolLabel(value: unknown) {
