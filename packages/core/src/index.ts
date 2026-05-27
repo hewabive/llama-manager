@@ -89,12 +89,20 @@ export const LlamaEndpointProbeSchema = z.object({
   error: z.string().optional(),
 });
 
+export const LlamaModelDiagnosticsSchema = z.object({
+  id: z.string(),
+  props: LlamaEndpointProbeSchema,
+  slots: LlamaEndpointProbeSchema,
+  metrics: LlamaEndpointProbeSchema,
+});
+
 export const LlamaProbeSchema = z.object({
   baseUrl: z.string(),
   health: LlamaEndpointProbeSchema,
   props: LlamaEndpointProbeSchema,
   slots: LlamaEndpointProbeSchema,
   models: LlamaEndpointProbeSchema,
+  modelDiagnostics: z.record(z.string(), LlamaModelDiagnosticsSchema),
 });
 
 export const LlamaModelActionNameSchema = z.enum(["load", "unload", "reload"]);
@@ -579,6 +587,7 @@ export type ProcessPreflightResult = z.infer<
   typeof ProcessPreflightResultSchema
 >;
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
+export type LlamaModelDiagnostics = z.infer<typeof LlamaModelDiagnosticsSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
 export type LlamaModelActionName = z.infer<typeof LlamaModelActionNameSchema>;
 export type LlamaModelActionRequest = z.infer<

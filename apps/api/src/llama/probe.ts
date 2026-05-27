@@ -2,6 +2,7 @@ import type {
   Instance,
   InstanceArgValue,
   LlamaEndpointProbe,
+  LlamaModelDiagnostics,
   LlamaProbe,
 } from "@llama-manager/core";
 
@@ -9,6 +10,7 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8080;
 const PROBE_TIMEOUT_MS = 1_500;
 const ACTION_TIMEOUT_MS = 15 * 60 * 1_000;
+const ROUTER_MODEL_DIAGNOSTICS_LIMIT = 12;
 
 function firstArg(
   args: Instance["args"],
@@ -110,6 +112,102 @@ async function probeJson(url: string): Promise<LlamaEndpointProbe> {
   return requestLlamaJson(url);
 }
 
+function objectBody(probe: LlamaEndpointProbe): Record<string, unknown> | null {
+  return probe.body &&
+    typeof probe.body === "object" &&
+    !Array.isArray(probe.body)
+    ? (probe.body as Record<string, unknown>)
+    : null;
+}
+
+function isRouterProps(probe: LlamaEndpointProbe): boolean {
+  return objectBody(probe)?.role === "router";
+}
+
+function modelRecordsFromProbe(
+  probe: LlamaEndpointProbe,
+): Array<{ id: string; status: string | null }> {
+  const body = probe.body;
+  const data =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { data?: unknown }).data
+      : null;
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const status =
+        record.status &&
+        typeof record.status === "object" &&
+        !Array.isArray(record.status)
+          ? (record.status as Record<string, unknown>)
+          : null;
+      const id = typeof record.id === "string" ? record.id : null;
+      if (!id) {
+        return null;
+      }
+      return {
+        id,
+        status:
+          status?.failed === true
+            ? "failed"
+            : typeof status?.value === "string"
+              ? status.value
+              : null,
+      };
+    })
+    .filter((item): item is { id: string; status: string | null } =>
+      Boolean(item),
+    );
+}
+
+function shouldProbeRouterModel(status: string | null) {
+  return ["loaded", "loading", "sleeping"].includes(
+    status?.toLowerCase() ?? "",
+  );
+}
+
+async function probeRouterModelDiagnostics(
+  baseUrl: string,
+  models: LlamaEndpointProbe,
+): Promise<Record<string, LlamaModelDiagnostics>> {
+  const activeModels = modelRecordsFromProbe(models)
+    .filter((model) => shouldProbeRouterModel(model.status))
+    .slice(0, ROUTER_MODEL_DIAGNOSTICS_LIMIT);
+
+  const entries = await Promise.all(
+    activeModels.map(async (model) => {
+      const query = new URLSearchParams({
+        model: model.id,
+        autoload: "false",
+      });
+      const [props, slots, metrics] = await Promise.all([
+        probeJson(`${baseUrl}/props?${query.toString()}`),
+        probeJson(`${baseUrl}/slots?${query.toString()}`),
+        probeJson(`${baseUrl}/metrics?${query.toString()}`),
+      ]);
+
+      return [
+        model.id,
+        {
+          id: model.id,
+          props,
+          slots,
+          metrics,
+        },
+      ] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries);
+}
+
 export function llamaEndpointErrorMessage(probe: LlamaEndpointProbe): string {
   const body = probe.body;
   if (body && typeof body === "object" && !Array.isArray(body)) {
@@ -203,6 +301,7 @@ export async function probeLlamaServer(
       props: unsupported,
       slots: unsupported,
       models: unsupported,
+      modelDiagnostics: {},
     };
   }
 
@@ -212,6 +311,10 @@ export async function probeLlamaServer(
     probeJson(`${baseUrl}/slots`),
     probeJson(`${baseUrl}/v1/models`),
   ]);
+  const modelDiagnostics =
+    isRouterProps(props) && models.ok
+      ? await probeRouterModelDiagnostics(baseUrl, models)
+      : {};
 
   return {
     baseUrl,
@@ -219,5 +322,6 @@ export async function probeLlamaServer(
     props,
     slots,
     models,
+    modelDiagnostics,
   };
 }

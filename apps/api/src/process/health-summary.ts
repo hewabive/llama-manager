@@ -103,6 +103,7 @@ function offlineProbe(instance: Instance, error: string): LlamaProbe {
     props: offlineEndpoint(baseUrl ? `${baseUrl}/props` : "", error),
     slots: offlineEndpoint(baseUrl ? `${baseUrl}/slots` : "", error),
     models: offlineEndpoint(baseUrl ? `${baseUrl}/v1/models` : "", error),
+    modelDiagnostics: {},
   };
 }
 

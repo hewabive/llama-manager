@@ -2,6 +2,7 @@ import type {
   Instance,
   InstanceHealthSummary,
   LlamaEndpointProbe,
+  LlamaModelDiagnostics,
   LlamaModelActionName,
   LlamaProbe,
   LogTail,
@@ -119,9 +120,20 @@ type V1ModelInfo = {
   modalities: string | null;
   failed: boolean;
   exitCode: string | null;
+  meta: V1ModelMeta | null;
   diagnosticArgs: string[];
   diagnosticPreset: string | null;
   unknownExtras: Array<[string, string]>;
+};
+
+type V1ModelMeta = {
+  nParams: number | null;
+  sizeBytes: number | null;
+  nCtx: number | null;
+  nCtxTrain: number | null;
+  nVocab: number | null;
+  nEmbd: number | null;
+  vocabType: number | null;
 };
 
 type RouterModelAction = Exclude<LlamaModelActionName, "reload">;
@@ -158,6 +170,64 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function numberValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatInteger(value: number | null) {
+  return value === null ? null : new Intl.NumberFormat().format(value);
+}
+
+function formatCompactCount(value: number | null) {
+  if (value === null) return null;
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) {
+    return `${(value / 1_000_000_000).toFixed(abs >= 10_000_000_000 ? 1 : 2)}B`;
+  }
+  if (abs >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${(value / 1_000).toFixed(abs >= 10_000 ? 1 : 2)}K`;
+  }
+  return String(value);
+}
+
+function formatBytes(value: number | null) {
+  if (value === null) return null;
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let scaled = value;
+  let unit = 0;
+  while (Math.abs(scaled) >= 1024 && unit < units.length - 1) {
+    scaled /= 1024;
+    unit += 1;
+  }
+  return `${scaled.toFixed(unit === 0 ? 0 : 2)} ${units[unit]}`;
+}
+
+function modelMetaFromRecord(value: unknown): V1ModelMeta | null {
+  const meta = objectRecord(value);
+  if (!meta) {
+    return null;
+  }
+  return {
+    nParams: numberValue(meta.n_params),
+    sizeBytes: numberValue(meta.size),
+    nCtx: numberValue(meta.n_ctx),
+    nCtxTrain: numberValue(meta.n_ctx_train),
+    nVocab: numberValue(meta.n_vocab),
+    nEmbd: numberValue(meta.n_embd),
+    vocabType: numberValue(meta.vocab_type),
+  };
 }
 
 function stringArray(value: unknown) {
@@ -282,6 +352,7 @@ function v1ModelsFromProbe(
           modalities: null,
           failed: false,
           exitCode: null,
+          meta: null,
           diagnosticArgs: [],
           diagnosticPreset: null,
           unknownExtras: [],
@@ -304,6 +375,7 @@ function v1ModelsFromProbe(
         "tags",
         "status",
         "architecture",
+        "meta",
       ]);
       return {
         id: String(record.id ?? `model-${index + 1}`),
@@ -349,6 +421,7 @@ function v1ModelsFromProbe(
         modalities: architectureModalities(record.architecture),
         failed: status?.failed === true,
         exitCode: jsonValuePreview(status?.exit_code),
+        meta: modelMetaFromRecord(record.meta),
         diagnosticArgs: args,
         diagnosticPreset: preset,
         unknownExtras: Object.entries(record)
@@ -376,8 +449,141 @@ function modelCanUnload(status: string | null) {
   );
 }
 
+function endpointErrorText(probe: LlamaEndpointProbe | undefined) {
+  const error = objectRecord(probe?.body)?.error;
+  const message = objectRecord(error)?.message;
+  if (typeof message === "string" && message.trim()) {
+    return message;
+  }
+  return probe?.error ?? null;
+}
+
+function boolLabel(value: unknown) {
+  if (value === true) return "yes";
+  if (value === false) return "no";
+  return null;
+}
+
+function propsRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
+  if (!probe) return "not probed";
+  if (!probe.ok) return endpointErrorText(probe) ?? "unavailable";
+  const body = objectRecord(probe.body);
+  if (!body) return "no data";
+
+  const parts = [
+    boolLabel(body.is_sleeping)
+      ? `sleeping: ${boolLabel(body.is_sleeping)}`
+      : null,
+    numberValue(body.total_slots) !== null
+      ? `slots: ${formatInteger(numberValue(body.total_slots))}`
+      : null,
+    boolLabel(body.endpoint_metrics)
+      ? `metrics: ${boolLabel(body.endpoint_metrics)}`
+      : null,
+  ].filter(Boolean);
+
+  return parts.join(" · ") || "ok";
+}
+
+function slotsRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
+  if (!probe) return "not probed";
+  if (!probe.ok) return endpointErrorText(probe) ?? "unavailable";
+  if (!Array.isArray(probe.body)) return "no slot data";
+
+  const slots = probe.body
+    .map((slot) => objectRecord(slot))
+    .filter((slot): slot is Record<string, unknown> => Boolean(slot));
+  const busy = slots.filter((slot) => slot.is_processing === true).length;
+  const decoded = slots.reduce(
+    (sum, slot) =>
+      sum + (numberValue(objectRecord(slot.next_token)?.n_decoded) ?? 0),
+    0,
+  );
+  const contexts = [
+    ...new Set(
+      slots
+        .map((slot) => numberValue(slot.n_ctx))
+        .filter((value): value is number => value !== null),
+    ),
+  ];
+
+  return [
+    `${busy}/${slots.length} busy`,
+    decoded > 0 ? `${formatInteger(decoded)} decoded` : null,
+    contexts.length > 0
+      ? `ctx ${contexts.map(formatInteger).join(", ")}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function metricValue(body: unknown, name: string) {
+  if (typeof body !== "string") {
+    return null;
+  }
+  const match = body.match(
+    new RegExp(`^${escapeRegExp(name)}\\s+(-?\\d+(?:\\.\\d+)?)$`, "m"),
+  );
+  return match ? numberValue(match[1]) : null;
+}
+
+function formatRate(value: number | null) {
+  if (value === null) return null;
+  return `${value.toFixed(value >= 10 ? 1 : 2)}/s`;
+}
+
+function metricsRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
+  if (!probe) return "not probed";
+  if (!probe.ok) return endpointErrorText(probe) ?? "unavailable";
+
+  const promptRate = metricValue(probe.body, "llamacpp:prompt_tokens_seconds");
+  const generationRate = metricValue(
+    probe.body,
+    "llamacpp:predicted_tokens_seconds",
+  );
+  const processing = metricValue(probe.body, "llamacpp:requests_processing");
+  const deferred = metricValue(probe.body, "llamacpp:requests_deferred");
+
+  return (
+    [
+      generationRate !== null ? `gen ${formatRate(generationRate)}` : null,
+      promptRate !== null ? `prompt ${formatRate(promptRate)}` : null,
+      processing !== null ? `${formatInteger(processing)} active` : null,
+      deferred !== null && deferred > 0
+        ? `${formatInteger(deferred)} queued`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "no metrics"
+  );
+}
+
+function RuntimeProbeLine(props: {
+  label: string;
+  probe: LlamaEndpointProbe | undefined;
+  summary: string;
+}) {
+  return (
+    <Paper withBorder p="xs" radius="sm">
+      <Group justify="space-between" gap="xs" wrap="nowrap">
+        <Text fw={600} size="xs">
+          {props.label}
+        </Text>
+        <Badge color={probeColor(props.probe)} variant="light" size="xs">
+          {props.probe?.status ?? "offline"}
+        </Badge>
+      </Group>
+      <Text c={props.probe?.ok ? "dimmed" : "red"} size="xs" mt={4}>
+        {props.summary}
+      </Text>
+    </Paper>
+  );
+}
+
 function V1ModelsPanel(props: {
   probe: LlamaEndpointProbe | undefined;
+  modelDiagnostics: Record<string, LlamaModelDiagnostics>;
   onReload: () => void;
   reloadPending: boolean;
   onModelAction: (model: string, action: RouterModelAction) => void;
@@ -433,175 +639,247 @@ function V1ModelsPanel(props: {
       )}
 
       <Stack gap="xs">
-        {models.map((model) => (
-          <Paper key={model.id} withBorder p="xs" radius="sm">
-            <Group justify="space-between" gap="xs" align="flex-start">
-              <Stack gap={4} className="min-w-0">
-                <Group gap="xs">
-                  <Text fw={600} size="sm" className="text-wrap">
-                    {model.id}
-                  </Text>
-                  <Badge color={modelStatusColor(model.status)} variant="light">
-                    {model.status ?? "unknown"}
-                  </Badge>
-                  {model.modalities && (
-                    <Badge variant="outline" color="gray">
-                      {model.modalities}
+        {models.map((model) => {
+          const runtime = props.modelDiagnostics[model.id];
+
+          return (
+            <Paper key={model.id} withBorder p="xs" radius="sm">
+              <Group justify="space-between" gap="xs" align="flex-start">
+                <Stack gap={4} className="min-w-0">
+                  <Group gap="xs">
+                    <Text fw={600} size="sm" className="text-wrap">
+                      {model.id}
+                    </Text>
+                    <Badge
+                      color={modelStatusColor(model.status)}
+                      variant="light"
+                    >
+                      {model.status ?? "unknown"}
                     </Badge>
+                    {model.modalities && (
+                      <Badge variant="outline" color="gray">
+                        {model.modalities}
+                      </Badge>
+                    )}
+                  </Group>
+                  {model.modelPath && (
+                    <Text
+                      c="dimmed"
+                      size="xs"
+                      title={model.modelPath}
+                      className="text-wrap"
+                    >
+                      {pathBaseName(model.modelPath)}
+                    </Text>
+                  )}
+                </Stack>
+                <Group gap="xs" justify="flex-end">
+                  {isRouterModelStatus(model.status) && (
+                    <>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="green"
+                        leftSection={<Play size={14} />}
+                        loading={
+                          props.pendingAction?.model === model.id &&
+                          props.pendingAction.action === "load"
+                        }
+                        disabled={
+                          !modelCanLoad(model.status) ||
+                          props.pendingAction !== null
+                        }
+                        onClick={() => props.onModelAction(model.id, "load")}
+                      >
+                        Load
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="yellow"
+                        leftSection={<Power size={14} />}
+                        loading={
+                          props.pendingAction?.model === model.id &&
+                          props.pendingAction.action === "unload"
+                        }
+                        disabled={
+                          !modelCanUnload(model.status) ||
+                          props.pendingAction !== null
+                        }
+                        onClick={() => props.onModelAction(model.id, "unload")}
+                      >
+                        Unload
+                      </Button>
+                    </>
+                  )}
+                  {model.object && model.object !== "model" && (
+                    <Badge variant="outline">{model.object}</Badge>
                   )}
                 </Group>
-                {model.modelPath && (
-                  <Text
-                    c="dimmed"
-                    size="xs"
-                    title={model.modelPath}
-                    className="text-wrap"
-                  >
-                    {pathBaseName(model.modelPath)}
-                  </Text>
-                )}
-              </Stack>
-              <Group gap="xs" justify="flex-end">
-                {isRouterModelStatus(model.status) && (
-                  <>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      color="green"
-                      leftSection={<Play size={14} />}
-                      loading={
-                        props.pendingAction?.model === model.id &&
-                        props.pendingAction.action === "load"
-                      }
-                      disabled={
-                        !modelCanLoad(model.status) ||
-                        props.pendingAction !== null
-                      }
-                      onClick={() => props.onModelAction(model.id, "load")}
-                    >
-                      Load
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      color="yellow"
-                      leftSection={<Power size={14} />}
-                      loading={
-                        props.pendingAction?.model === model.id &&
-                        props.pendingAction.action === "unload"
-                      }
-                      disabled={
-                        !modelCanUnload(model.status) ||
-                        props.pendingAction !== null
-                      }
-                      onClick={() => props.onModelAction(model.id, "unload")}
-                    >
-                      Unload
-                    </Button>
-                  </>
-                )}
-                {model.object && model.object !== "model" && (
-                  <Badge variant="outline">{model.object}</Badge>
-                )}
               </Group>
-            </Group>
 
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing={4} mt={8}>
-              <Text size="xs">
-                Context:{" "}
-                <Text span c="dimmed">
-                  {model.ctxSize ?? "-"}
-                </Text>
-              </Text>
-              <Text size="xs">
-                GPU layers:{" "}
-                <Text span c="dimmed">
-                  {model.nGpuLayers ?? "-"}
-                </Text>
-              </Text>
-              <Text size="xs">
-                Startup:{" "}
-                <Text span c="dimmed">
-                  {model.loadOnStartup ?? "-"}
-                </Text>
-              </Text>
-              <Text size="xs">
-                Stop timeout:{" "}
-                <Text span c="dimmed">
-                  {model.stopTimeout ? `${model.stopTimeout}s` : "-"}
-                </Text>
-              </Text>
-              {model.failed && (
-                <Text size="xs" c="red">
-                  Last exit:{" "}
-                  <Text span c="red">
-                    {model.exitCode ?? "failed"}
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing={4} mt={8}>
+                <Text size="xs">
+                  Context:{" "}
+                  <Text span c="dimmed">
+                    {model.ctxSize ?? "-"}
                   </Text>
                 </Text>
-              )}
-            </SimpleGrid>
-
-            {(model.aliases.length > 0 || model.tags.length > 0) && (
-              <Group gap={4} mt={8}>
-                {model.aliases.map((alias) => (
-                  <Badge key={`alias-${alias}`} size="xs" variant="light">
-                    alias {alias}
-                  </Badge>
-                ))}
-                {model.tags.map((tag) => (
-                  <Badge
-                    key={`tag-${tag}`}
-                    size="xs"
-                    color="grape"
-                    variant="light"
-                  >
-                    tag {tag}
-                  </Badge>
-                ))}
-              </Group>
-            )}
-
-            <Group gap="xs" mt={8}>
-              {model.created && (
-                <Text c="dimmed" size="xs">
-                  Registered: {model.created}
+                <Text size="xs">
+                  GPU layers:{" "}
+                  <Text span c="dimmed">
+                    {model.nGpuLayers ?? "-"}
+                  </Text>
                 </Text>
-              )}
-              {model.ownedBy && model.ownedBy !== "llamacpp" && (
-                <Text c="dimmed" size="xs">
-                  Owner: {model.ownedBy}
+                <Text size="xs">
+                  Startup:{" "}
+                  <Text span c="dimmed">
+                    {model.loadOnStartup ?? "-"}
+                  </Text>
                 </Text>
-              )}
-            </Group>
-
-            {(model.diagnosticArgs.length > 0 ||
-              model.diagnosticPreset ||
-              model.unknownExtras.length > 0) && (
-              <Box component="details" className="v1-model-diagnostics" mt={8}>
-                <Text component="summary" c="dimmed" size="xs">
-                  Diagnostics
+                <Text size="xs">
+                  Stop timeout:{" "}
+                  <Text span c="dimmed">
+                    {model.stopTimeout ? `${model.stopTimeout}s` : "-"}
+                  </Text>
                 </Text>
-                <Stack gap={4} mt={4}>
-                  {model.diagnosticArgs.length > 0 && (
-                    <Code block className="code-wrap">
-                      {model.diagnosticArgs.join(" ")}
-                    </Code>
-                  )}
-                  {model.diagnosticPreset && (
-                    <Code block className="code-wrap">
-                      {model.diagnosticPreset}
-                    </Code>
-                  )}
-                  {model.unknownExtras.map(([key, value]) => (
-                    <Text key={key} c="dimmed" size="xs" lineClamp={2}>
-                      {key}: {value}
+                {model.failed && (
+                  <Text size="xs" c="red">
+                    Last exit:{" "}
+                    <Text span c="red">
+                      {model.exitCode ?? "failed"}
                     </Text>
+                  </Text>
+                )}
+              </SimpleGrid>
+
+              {model.meta && (
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing={4} mt={8}>
+                  <Text size="xs">
+                    Parameters:{" "}
+                    <Text span c="dimmed">
+                      {formatCompactCount(model.meta.nParams) ?? "-"}
+                    </Text>
+                  </Text>
+                  <Text size="xs">
+                    Runtime size:{" "}
+                    <Text span c="dimmed">
+                      {formatBytes(model.meta.sizeBytes) ?? "-"}
+                    </Text>
+                  </Text>
+                  <Text size="xs">
+                    Loaded ctx:{" "}
+                    <Text span c="dimmed">
+                      {formatInteger(model.meta.nCtx) ?? "-"}
+                    </Text>
+                  </Text>
+                  <Text size="xs">
+                    Train ctx:{" "}
+                    <Text span c="dimmed">
+                      {formatInteger(model.meta.nCtxTrain) ?? "-"}
+                    </Text>
+                  </Text>
+                  <Text size="xs">
+                    Vocab:{" "}
+                    <Text span c="dimmed">
+                      {formatInteger(model.meta.nVocab) ?? "-"}
+                    </Text>
+                  </Text>
+                  <Text size="xs">
+                    Embedding:{" "}
+                    <Text span c="dimmed">
+                      {formatInteger(model.meta.nEmbd) ?? "-"}
+                    </Text>
+                  </Text>
+                </SimpleGrid>
+              )}
+
+              {runtime && (
+                <SimpleGrid cols={{ base: 1, md: 3 }} spacing="xs" mt={8}>
+                  <RuntimeProbeLine
+                    label="props"
+                    probe={runtime.props}
+                    summary={propsRuntimeSummary(runtime.props)}
+                  />
+                  <RuntimeProbeLine
+                    label="slots"
+                    probe={runtime.slots}
+                    summary={slotsRuntimeSummary(runtime.slots)}
+                  />
+                  <RuntimeProbeLine
+                    label="metrics"
+                    probe={runtime.metrics}
+                    summary={metricsRuntimeSummary(runtime.metrics)}
+                  />
+                </SimpleGrid>
+              )}
+
+              {(model.aliases.length > 0 || model.tags.length > 0) && (
+                <Group gap={4} mt={8}>
+                  {model.aliases.map((alias) => (
+                    <Badge key={`alias-${alias}`} size="xs" variant="light">
+                      alias {alias}
+                    </Badge>
                   ))}
-                </Stack>
-              </Box>
-            )}
-          </Paper>
-        ))}
+                  {model.tags.map((tag) => (
+                    <Badge
+                      key={`tag-${tag}`}
+                      size="xs"
+                      color="grape"
+                      variant="light"
+                    >
+                      tag {tag}
+                    </Badge>
+                  ))}
+                </Group>
+              )}
+
+              <Group gap="xs" mt={8}>
+                {model.created && (
+                  <Text c="dimmed" size="xs">
+                    Registered: {model.created}
+                  </Text>
+                )}
+                {model.ownedBy && model.ownedBy !== "llamacpp" && (
+                  <Text c="dimmed" size="xs">
+                    Owner: {model.ownedBy}
+                  </Text>
+                )}
+              </Group>
+
+              {(model.diagnosticArgs.length > 0 ||
+                model.diagnosticPreset ||
+                model.unknownExtras.length > 0) && (
+                <Box
+                  component="details"
+                  className="v1-model-diagnostics"
+                  mt={8}
+                >
+                  <Text component="summary" c="dimmed" size="xs">
+                    Diagnostics
+                  </Text>
+                  <Stack gap={4} mt={4}>
+                    {model.diagnosticArgs.length > 0 && (
+                      <Code block className="code-wrap">
+                        {model.diagnosticArgs.join(" ")}
+                      </Code>
+                    )}
+                    {model.diagnosticPreset && (
+                      <Code block className="code-wrap">
+                        {model.diagnosticPreset}
+                      </Code>
+                    )}
+                    {model.unknownExtras.map(([key, value]) => (
+                      <Text key={key} c="dimmed" size="xs" lineClamp={2}>
+                        {key}: {value}
+                      </Text>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </Paper>
+          );
+        })}
 
         {!props.probe && (
           <Text c="dimmed" size="sm">
@@ -1148,6 +1426,7 @@ export function InstanceDetails(props: {
 
         <V1ModelsPanel
           probe={llama?.models}
+          modelDiagnostics={llama?.modelDiagnostics ?? {}}
           onReload={() => reloadModelsMutation.mutate()}
           reloadPending={reloadModelsMutation.isPending}
           onModelAction={(model, action) =>
