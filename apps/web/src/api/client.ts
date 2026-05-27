@@ -26,6 +26,9 @@ import type {
   LlamaArgumentHelpOverrideUpdate,
   LlamaModelActionName,
   LlamaModelActionResult,
+  LlamaSlotActionName,
+  LlamaSlotActionRequest,
+  LlamaSlotActionResult,
   LlamaProbe,
   LogTail,
   ModelPreset,
@@ -581,6 +584,21 @@ export async function reloadLlamaModels(id: string) {
     `/api/instances/${id}/llama/models/reload`,
     {
       method: "POST",
+    },
+  );
+}
+
+export async function llamaSlotAction(
+  id: string,
+  action: LlamaSlotActionName,
+  slotId: number,
+  input: LlamaSlotActionRequest = {},
+) {
+  return request<{ data: LlamaSlotActionResult }>(
+    `/api/instances/${id}/llama/slots/${slotId}/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
     },
   );
 }

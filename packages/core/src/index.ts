@@ -153,10 +153,30 @@ export const LlamaModelActionResultSchema = z.object({
   fallback: z.string().nullable().default(null),
 });
 
+export const LlamaSlotActionNameSchema = z.enum([
+  "save",
+  "restore",
+  "erase",
+]);
+
+export const LlamaSlotActionRequestSchema = z.object({
+  model: z.string().trim().min(1).max(500).optional(),
+  filename: z.string().trim().min(1).max(255).optional(),
+});
+
+export const LlamaSlotActionResultSchema = z.object({
+  action: LlamaSlotActionNameSchema,
+  slotId: z.number().int().min(0),
+  model: z.string().nullable(),
+  filename: z.string().nullable(),
+  response: LlamaEndpointProbeSchema,
+});
+
 export const LlamaApiProbeKindSchema = z.enum([
   "chat",
   "completion",
   "responses",
+  "infill",
   "embeddings",
   "rerank",
   "tokenize",
@@ -170,6 +190,8 @@ export const LlamaApiProbeRequestSchema = z
     kind: LlamaApiProbeKindSchema,
     model: z.string().trim().min(1).max(500).optional(),
     prompt: z.string().max(20_000).default(""),
+    inputPrefix: z.string().max(20_000).optional(),
+    inputSuffix: z.string().max(20_000).optional(),
     systemPrompt: z.string().max(4_000).optional(),
     tokens: z.array(z.number().int()).max(8_192).optional(),
     documents: z.array(z.string().min(1).max(8_000)).max(64).optional(),
@@ -736,6 +758,13 @@ export type LlamaModelActionRequest = z.infer<
 >;
 export type LlamaModelActionResult = z.infer<
   typeof LlamaModelActionResultSchema
+>;
+export type LlamaSlotActionName = z.infer<typeof LlamaSlotActionNameSchema>;
+export type LlamaSlotActionRequest = z.infer<
+  typeof LlamaSlotActionRequestSchema
+>;
+export type LlamaSlotActionResult = z.infer<
+  typeof LlamaSlotActionResultSchema
 >;
 export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
 export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;

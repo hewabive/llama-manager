@@ -10,6 +10,9 @@ import type {
   LlamaEndpointProbe,
   LlamaModelDiagnostics,
   LlamaProbe,
+  LlamaSlotActionName,
+  LlamaSlotActionRequest,
+  LlamaSlotActionResult,
 } from "@llama-manager/core";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -315,6 +318,14 @@ const capabilityDefinitions: CapabilityDefinition[] = [
     body: (model) => (model ? { model } : {}),
   },
   {
+    id: "infill",
+    label: "Infill",
+    category: "generation",
+    method: "POST",
+    endpoint: "/infill",
+    body: (model) => (model ? { model } : {}),
+  },
+  {
     id: "anthropic-messages",
     label: "Anthropic messages",
     category: "generation",
@@ -554,6 +565,42 @@ export async function requestLlamaModelAction(
   };
 }
 
+export async function requestLlamaSlotAction(
+  instance: Instance,
+  action: LlamaSlotActionName,
+  slotId: number,
+  input: LlamaSlotActionRequest,
+): Promise<LlamaSlotActionResult> {
+  const baseUrl = llamaBaseUrl(instance);
+  if (!baseUrl) {
+    throw new Error("UNIX socket slot actions are not implemented yet");
+  }
+
+  const query = new URLSearchParams({ action });
+  const filename = compactOptionalString(input.filename);
+  const model = compactOptionalString(input.model);
+  const body = {
+    ...(model ? { model } : {}),
+    ...(filename ? { filename } : {}),
+  };
+
+  return {
+    action,
+    slotId,
+    model: model ?? null,
+    filename: filename ?? null,
+    response: await requestLlamaJson(
+      `${baseUrl}/slots/${slotId}?${query.toString()}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        timeoutMs: ACTION_TIMEOUT_MS,
+      },
+    ),
+  };
+}
+
 function compactOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
@@ -666,6 +713,23 @@ function apiProbeRequestBody(
         {
           prompt: input.prompt,
           max_tokens: input.maxTokens,
+          temperature: input.temperature,
+          stream: options.stream ?? false,
+        },
+        input.model,
+      ),
+    };
+  }
+
+  if (input.kind === "infill") {
+    return {
+      endpoint: "/infill",
+      body: withModel(
+        {
+          input_prefix: input.inputPrefix ?? "",
+          prompt: input.prompt,
+          input_suffix: input.inputSuffix ?? "",
+          n_predict: input.maxTokens,
           temperature: input.temperature,
           stream: options.stream ?? false,
         },

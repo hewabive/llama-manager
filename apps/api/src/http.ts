@@ -9,6 +9,7 @@ import {
   InstanceUpdateSchema,
   LlamaApiProbeRequestSchema,
   LlamaModelActionRequestSchema,
+  LlamaSlotActionRequestSchema,
   type Instance,
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
@@ -63,6 +64,7 @@ import {
   probeLlamaServer,
   requestLlamaApiProbe,
   requestLlamaModelAction,
+  requestLlamaSlotAction,
 } from "./llama/probe.js";
 import {
   clearLlamaApiProbeHistory,
@@ -623,7 +625,12 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
 });
 
 function isStreamingProbeKind(kind: string) {
-  return kind === "chat" || kind === "completion" || kind === "responses";
+  return (
+    kind === "chat" ||
+    kind === "completion" ||
+    kind === "responses" ||
+    kind === "infill"
+  );
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -693,6 +700,10 @@ function probeOutputText(kind: string, response: LlamaEndpointProbe) {
     }`;
   }
 
+  if (kind === "infill") {
+    return stringValue(body?.content);
+  }
+
   if (kind === "responses") {
     const outputText = stringValue(body?.output_text);
     if (outputText) return outputText;
@@ -727,6 +738,7 @@ function streamDeltaText(value: unknown) {
 
   if (typeof record.delta === "string") return record.delta;
   if (typeof record.text === "string") return record.text;
+  if (typeof record.content === "string") return record.content;
   if (typeof record.output_text === "string") return record.output_text;
 
   const choice = firstRecord(record.choices);
@@ -1047,6 +1059,50 @@ app.post("/api/instances/:id/llama/models/:action", async (c) => {
       instance,
       action,
       parsed.data.model,
+    );
+    if (!result.response.ok) {
+      return c.json(
+        { error: llamaEndpointErrorMessage(result.response), data: result },
+        llamaActionHttpStatus(result.response),
+      );
+    }
+    return c.json({ data: result });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.post("/api/instances/:id/llama/slots/:slotId/:action", async (c) => {
+  const action = c.req.param("action");
+  if (action !== "save" && action !== "restore" && action !== "erase") {
+    return c.json({ error: "unsupported slot action" }, 404);
+  }
+
+  const slotId = Number(c.req.param("slotId"));
+  if (!Number.isInteger(slotId) || slotId < 0) {
+    return c.json({ error: "invalid slot id" }, 400);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = LlamaSlotActionRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  if ((action === "save" || action === "restore") && !parsed.data.filename) {
+    return c.json({ error: "filename is required" }, 400);
+  }
+
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  try {
+    const result = await requestLlamaSlotAction(
+      instance,
+      action,
+      slotId,
+      parsed.data,
     );
     if (!result.response.ok) {
       return c.json(

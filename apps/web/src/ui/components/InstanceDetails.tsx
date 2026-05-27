@@ -5,6 +5,7 @@ import type {
   LlamaModelDiagnostics,
   LlamaModelActionName,
   LlamaProbe,
+  LlamaSlotActionName,
   LogTail,
   ProcessEvent,
 } from "@llama-manager/core";
@@ -20,12 +21,22 @@ import {
   SimpleGrid,
   Stack,
   Text,
+  TextInput,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Play, Power, RefreshCw, Square } from "lucide-react";
+import {
+  ExternalLink,
+  Play,
+  Power,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -39,6 +50,7 @@ import {
   instanceAction,
   instanceEventsUrl,
   llamaModelAction,
+  llamaSlotAction,
   reloadLlamaModels,
 } from "../../api/client";
 import { healthStatusColor, statusColor } from "./InstanceHealthBadge";
@@ -169,6 +181,12 @@ type V1ModelMeta = {
 };
 
 type RouterModelAction = Exclude<LlamaModelActionName, "reload">;
+type SlotActionInput = {
+  model: string | null;
+  slotId: number;
+  action: LlamaSlotActionName;
+  filename?: string;
+};
 
 function jsonValuePreview(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -562,7 +580,12 @@ function slotRowsFromProbe(probe: LlamaEndpointProbe | undefined) {
     .filter((slot): slot is Record<string, unknown> => Boolean(slot))
     .map((slot) => {
       const nextToken = nextTokenRecord(slot.next_token);
+      const idNumber = numberValue(slot.id);
       return {
+        idNumber:
+          idNumber !== null && Number.isInteger(idNumber) && idNumber >= 0
+            ? idNumber
+            : null,
         id: jsonValuePreview(slot.id) ?? "-",
         busy: slot.is_processing === true,
         taskId: formatInteger(numberValue(slot.id_task)) ?? "-",
@@ -577,6 +600,129 @@ function slotRowsFromProbe(probe: LlamaEndpointProbe | undefined) {
         speculative: slot.speculative === true,
       };
     });
+}
+
+type SlotRow = ReturnType<typeof slotRowsFromProbe>[number];
+
+function slotFilenameBase(model: string | null, slotId: string) {
+  const base = (model ?? "llama")
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 16);
+  return `${base || "llama"}-s${slotId}.bin`;
+}
+
+function SlotDetailsBlock(props: {
+  rows: SlotRow[];
+  model: string | null;
+  pendingAction: SlotActionInput | null;
+  onSlotAction: (input: SlotActionInput) => void;
+}) {
+  const [filenames, setFilenames] = useState<Record<string, string>>({});
+
+  return (
+    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs" mt={4}>
+      {props.rows.map((slot) => {
+        const filename =
+          filenames[slot.id] ?? slotFilenameBase(props.model, slot.id);
+        const pending =
+          props.pendingAction?.slotId === slot.idNumber &&
+          props.pendingAction.model === props.model
+            ? props.pendingAction.action
+            : null;
+        const actionInFlight = props.pendingAction !== null;
+        const canAct = slot.idNumber !== null;
+
+        return (
+          <Paper key={slot.id} withBorder p="xs" radius="sm">
+            <Group justify="space-between" gap="xs">
+              <Text fw={600} size="xs">
+                slot {slot.id}
+              </Text>
+              <Badge color={slot.busy ? "yellow" : "green"} size="xs">
+                {slot.busy ? "busy" : "idle"}
+              </Badge>
+            </Group>
+            <Text c="dimmed" size="xs" mt={4}>
+              task {slot.taskId} · ctx {slot.nCtx} · decoded {slot.decoded} ·
+              remain {slot.remain} · prompt {slot.promptTokens}/
+              {slot.promptProcessed} · cache {slot.promptCache}
+              {slot.speculative ? " · speculative" : ""}
+            </Text>
+            <Group gap="xs" mt="xs" align="flex-end">
+              <TextInput
+                label="State file"
+                size="xs"
+                value={filename}
+                className="min-w-0"
+                style={{ flex: "1 1 180px" }}
+                onChange={(event) =>
+                  setFilenames((current) => ({
+                    ...current,
+                    [slot.id]: event.currentTarget.value,
+                  }))
+                }
+              />
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<Save size={14} />}
+                loading={pending === "save"}
+                disabled={!canAct || !filename.trim() || actionInFlight}
+                onClick={() =>
+                  props.onSlotAction({
+                    model: props.model,
+                    slotId: slot.idNumber!,
+                    action: "save",
+                    filename,
+                  })
+                }
+              >
+                Save
+              </Button>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<RotateCcw size={14} />}
+                loading={pending === "restore"}
+                disabled={!canAct || !filename.trim() || actionInFlight}
+                onClick={() =>
+                  props.onSlotAction({
+                    model: props.model,
+                    slotId: slot.idNumber!,
+                    action: "restore",
+                    filename,
+                  })
+                }
+              >
+                Restore
+              </Button>
+              <Button
+                size="xs"
+                variant="light"
+                color="red"
+                leftSection={<Trash2 size={14} />}
+                loading={pending === "erase"}
+                disabled={!canAct || actionInFlight}
+                onClick={() => {
+                  if (!window.confirm(`Erase slot ${slot.id} cache?`)) {
+                    return;
+                  }
+                  props.onSlotAction({
+                    model: props.model,
+                    slotId: slot.idNumber!,
+                    action: "erase",
+                  });
+                }}
+              >
+                Erase
+              </Button>
+            </Group>
+          </Paper>
+        );
+      })}
+    </SimpleGrid>
+  );
 }
 
 function metricValue(body: unknown, name: string) {
@@ -674,6 +820,8 @@ function V1ModelsPanel(props: {
   reloadPending: boolean;
   onModelAction: (model: string, action: RouterModelAction) => void;
   pendingAction: { model: string; action: RouterModelAction } | null;
+  onSlotAction: (input: SlotActionInput) => void;
+  pendingSlotAction: SlotActionInput | null;
 }) {
   const models = v1ModelsFromProbe(props.probe);
   const body = props.probe?.body;
@@ -916,17 +1064,12 @@ function V1ModelsPanel(props: {
                   <Text component="summary" c="dimmed" size="xs">
                     Slot details
                   </Text>
-                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing={4} mt={4}>
-                    {slotRows.map((slot) => (
-                      <Text key={slot.id} c="dimmed" size="xs">
-                        slot {slot.id} · {slot.busy ? "busy" : "idle"} · task{" "}
-                        {slot.taskId} · ctx {slot.nCtx} · decoded {slot.decoded}{" "}
-                        · remain {slot.remain} · prompt {slot.promptTokens}/
-                        {slot.promptProcessed} · cache {slot.promptCache}
-                        {slot.speculative ? " · speculative" : ""}
-                      </Text>
-                    ))}
-                  </SimpleGrid>
+                  <SlotDetailsBlock
+                    rows={slotRows}
+                    model={model.id}
+                    pendingAction={props.pendingSlotAction}
+                    onSlotAction={props.onSlotAction}
+                  />
                 </Box>
               )}
 
@@ -1408,6 +1551,36 @@ export function InstanceDetails(props: {
     },
   });
 
+  const slotActionMutation = useMutation({
+    mutationFn: (input: SlotActionInput) =>
+      llamaSlotAction(id!, input.action, input.slotId, {
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.filename ? { filename: input.filename } : {}),
+      }),
+    onSuccess: async (result, variables) => {
+      const body = result.data.response.body;
+      const record = objectRecord(body);
+      const count =
+        record?.n_saved ?? record?.n_restored ?? record?.n_erased ?? null;
+      notifications.show({
+        color: variables.action === "erase" ? "yellow" : "green",
+        title: `Slot ${variables.action} completed`,
+        message:
+          typeof count === "number"
+            ? `slot ${variables.slotId}: ${count} token${count === 1 ? "" : "s"}`
+            : `slot ${variables.slotId}`,
+      });
+      await invalidateInstanceRuntime();
+    },
+    onError: (error, variables) => {
+      notifications.show({
+        color: "red",
+        title: `Slot ${variables.action} failed`,
+        message: (error as Error).message,
+      });
+    },
+  });
+
   const reloadModelsMutation = useMutation({
     mutationFn: () => reloadLlamaModels(id!),
     onSuccess: async () => {
@@ -1439,6 +1612,10 @@ export function InstanceDetails(props: {
 
   const webUiUrl = llamaServerWebUrl(props.instance);
   const webUiDisabled = !canOpenLlamaWebUi(health, webUiUrl);
+  const rootSlotRows = slotRowsFromProbe(llama?.slots);
+  const pendingSlotAction = slotActionMutation.isPending
+    ? (slotActionMutation.variables ?? null)
+    : null;
 
   return (
     <Paper withBorder p="md" radius="sm">
@@ -1537,6 +1714,30 @@ export function InstanceDetails(props: {
           <ProbeCard title="v1/models" probe={llama?.models} />
         </SimpleGrid>
 
+        {rootSlotRows.length > 0 && (
+          <Paper withBorder p="sm" radius="sm">
+            <Group justify="space-between" mb="xs">
+              <Stack gap={2}>
+                <Text fw={600} size="sm">
+                  Slots
+                </Text>
+                <Text c="dimmed" size="xs">
+                  Live slot cache state from `GET /slots`.
+                </Text>
+              </Stack>
+              <Badge color={probeColor(llama?.slots)} variant="light">
+                {slotsRuntimeSummary(llama?.slots)}
+              </Badge>
+            </Group>
+            <SlotDetailsBlock
+              rows={rootSlotRows}
+              model={null}
+              pendingAction={pendingSlotAction}
+              onSlotAction={(input) => slotActionMutation.mutate(input)}
+            />
+          </Paper>
+        )}
+
         {showLaunchMonitor && (
           <LaunchMonitorPanel
             health={health}
@@ -1590,6 +1791,8 @@ export function InstanceDetails(props: {
               ? (modelActionMutation.variables ?? null)
               : null
           }
+          onSlotAction={(input) => slotActionMutation.mutate(input)}
+          pendingSlotAction={pendingSlotAction}
         />
 
         <LlamaCapabilitiesPanel

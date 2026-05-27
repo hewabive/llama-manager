@@ -51,6 +51,9 @@ type ModelOption = {
 
 const defaultPrompt =
   "Answer briefly: how can I check that llama-server is working?";
+const defaultInfillPrefix =
+  '#include <stdio.h>\n\nint main(void) {\n  printf("llama';
+const defaultInfillSuffix = '");\n  return 0;\n}\n';
 const defaultRerankDocuments = [
   "llama-server exposes an OpenAI-compatible HTTP API.",
   "GPU memory pressure can prevent a model from loading.",
@@ -217,6 +220,10 @@ function responseOutput(result: LlamaApiProbeResult) {
     return rows.length > 0 ? rows.join("\n") : "Rerank returned no result rows";
   }
 
+  if (result.kind === "infill") {
+    return stringValue(record?.content) ?? "Infill returned no content";
+  }
+
   if (result.kind === "responses") {
     const outputText = stringValue(record?.output_text);
     if (outputText) return outputText;
@@ -264,7 +271,12 @@ function usageLines(result: LlamaApiProbeResult) {
 }
 
 function kindNeedsGenerationControls(kind: LlamaApiProbeKind) {
-  return kind === "chat" || kind === "completion" || kind === "responses";
+  return (
+    kind === "chat" ||
+    kind === "completion" ||
+    kind === "responses" ||
+    kind === "infill"
+  );
 }
 
 function kindSupportsSystemPrompt(kind: LlamaApiProbeKind) {
@@ -284,6 +296,7 @@ function promptLabel(kind: LlamaApiProbeKind) {
   if (kind === "tokenize") return "Text";
   if (kind === "embeddings") return "Input";
   if (kind === "rerank") return "Query";
+  if (kind === "infill") return "Middle prompt";
   return "Prompt";
 }
 
@@ -613,6 +626,8 @@ export function LlamaApiProbePanel(props: {
   const [kind, setKind] = useState<LlamaApiProbeKind>("chat");
   const [model, setModel] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
+  const [inputPrefix, setInputPrefix] = useState(defaultInfillPrefix);
+  const [inputSuffix, setInputSuffix] = useState(defaultInfillSuffix);
   const [tokensText, setTokensText] = useState("7925 21485");
   const [documentsText, setDocumentsText] = useState(defaultRerankDocuments);
   const [systemPrompt, setSystemPrompt] = useState("Answer briefly.");
@@ -641,6 +656,7 @@ export function LlamaApiProbePanel(props: {
     kind,
     ...(model ? { model } : {}),
     prompt,
+    ...(kind === "infill" ? { inputPrefix, inputSuffix } : {}),
     ...(systemPrompt.trim() ? { systemPrompt } : {}),
     ...(kind === "detokenize" ? { tokens: parseTokenInput(tokensText) } : {}),
     ...(kind === "rerank"
@@ -676,6 +692,8 @@ export function LlamaApiProbePanel(props: {
     setKind(input.kind);
     setModel(input.model ?? null);
     setPrompt(input.prompt);
+    setInputPrefix(input.inputPrefix ?? inputPrefix);
+    setInputSuffix(input.inputSuffix ?? inputSuffix);
     setSystemPrompt(input.systemPrompt ?? "");
     setTokensText((input.tokens ?? []).join(" "));
     setDocumentsText(
@@ -903,6 +921,7 @@ export function LlamaApiProbePanel(props: {
               { value: "chat", label: "Chat" },
               { value: "completion", label: "Completion" },
               { value: "responses", label: "Responses" },
+              { value: "infill", label: "Infill" },
               { value: "embeddings", label: "Embeddings" },
               { value: "rerank", label: "Rerank" },
               { value: "tokenize", label: "Tokenize" },
@@ -935,6 +954,27 @@ export function LlamaApiProbePanel(props: {
             value={systemPrompt}
             onChange={(event) => setSystemPrompt(event.currentTarget.value)}
           />
+        )}
+
+        {kind === "infill" && (
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+            <Textarea
+              label="Input prefix"
+              autosize
+              minRows={4}
+              maxRows={10}
+              value={inputPrefix}
+              onChange={(event) => setInputPrefix(event.currentTarget.value)}
+            />
+            <Textarea
+              label="Input suffix"
+              autosize
+              minRows={4}
+              maxRows={10}
+              value={inputSuffix}
+              onChange={(event) => setInputSuffix(event.currentTarget.value)}
+            />
+          </SimpleGrid>
         )}
 
         {kindUsesPrompt(kind) ? (
