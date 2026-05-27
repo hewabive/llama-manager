@@ -41,6 +41,7 @@ import {
   reloadLlamaModels,
 } from "../../api/client";
 import { healthStatusColor, statusColor } from "./InstanceHealthBadge";
+import { LlamaApiProbePanel } from "./LlamaApiProbePanel";
 import {
   canOpenLlamaWebUi,
   llamaServerWebUrl,
@@ -1437,6 +1438,11 @@ export function InstanceDetails(props: {
               ? (modelActionMutation.variables ?? null)
               : null
           }
+        />
+
+        <LlamaApiProbePanel
+          instanceId={props.instance.id}
+          modelsProbe={llama?.models}
         />
 
         <Paper withBorder p="sm" radius="sm">

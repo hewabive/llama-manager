@@ -1,6 +1,8 @@
 import type {
   Instance,
   InstanceArgValue,
+  LlamaApiProbeRequest,
+  LlamaApiProbeResult,
   LlamaEndpointProbe,
   LlamaModelDiagnostics,
   LlamaProbe,
@@ -10,6 +12,7 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8080;
 const PROBE_TIMEOUT_MS = 1_500;
 const ACTION_TIMEOUT_MS = 15 * 60 * 1_000;
+const API_PROBE_TIMEOUT_MS = 10 * 60 * 1_000;
 const ROUTER_MODEL_DIAGNOSTICS_LIMIT = 12;
 
 function firstArg(
@@ -280,6 +283,132 @@ export async function requestLlamaModelAction(
     model,
     fallback: null,
     response,
+  };
+}
+
+function compactOptionalString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function withModel<T extends Record<string, unknown>>(
+  body: T,
+  model: string | undefined,
+): T & { model?: string } {
+  return model ? { ...body, model } : body;
+}
+
+function apiProbeRequestBody(input: LlamaApiProbeRequest): {
+  endpoint: string;
+  body: Record<string, unknown>;
+} {
+  const systemPrompt = compactOptionalString(input.systemPrompt);
+
+  if (input.kind === "tokenize") {
+    return {
+      endpoint: "/tokenize",
+      body: withModel(
+        {
+          content: input.prompt,
+          with_pieces: true,
+          add_special: false,
+          parse_special: true,
+        },
+        input.model,
+      ),
+    };
+  }
+
+  if (input.kind === "apply-template") {
+    return {
+      endpoint: "/apply-template",
+      body: withModel(
+        {
+          messages: [
+            ...(systemPrompt
+              ? [{ role: "system", content: systemPrompt }]
+              : []),
+            { role: "user", content: input.prompt },
+          ],
+        },
+        input.model,
+      ),
+    };
+  }
+
+  if (input.kind === "completion") {
+    return {
+      endpoint: "/v1/completions",
+      body: withModel(
+        {
+          prompt: input.prompt,
+          max_tokens: input.maxTokens,
+          temperature: input.temperature,
+          stream: false,
+        },
+        input.model,
+      ),
+    };
+  }
+
+  if (input.kind === "responses") {
+    return {
+      endpoint: "/v1/responses",
+      body: withModel(
+        {
+          ...(systemPrompt ? { instructions: systemPrompt } : {}),
+          input: input.prompt,
+          max_output_tokens: input.maxTokens,
+          temperature: input.temperature,
+          stream: false,
+        },
+        input.model,
+      ),
+    };
+  }
+
+  return {
+    endpoint: "/v1/chat/completions",
+    body: withModel(
+      {
+        messages: [
+          ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+          { role: "user", content: input.prompt },
+        ],
+        max_tokens: input.maxTokens,
+        temperature: input.temperature,
+        stream: false,
+      },
+      input.model,
+    ),
+  };
+}
+
+export async function requestLlamaApiProbe(
+  instance: Instance,
+  input: LlamaApiProbeRequest,
+): Promise<LlamaApiProbeResult> {
+  const baseUrl = llamaBaseUrl(instance);
+  if (!baseUrl) {
+    throw new Error("UNIX socket API probes are not implemented yet");
+  }
+
+  const { endpoint, body } = apiProbeRequestBody(input);
+  const query = new URLSearchParams({
+    autoload: input.autoload ? "true" : "false",
+  });
+  const endpointWithQuery = `${endpoint}?${query.toString()}`;
+
+  return {
+    kind: input.kind,
+    endpoint: endpointWithQuery,
+    requestBody: body,
+    response: await requestLlamaJson(`${baseUrl}${endpointWithQuery}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+      timeoutMs: API_PROBE_TIMEOUT_MS,
+    }),
   };
 }
 

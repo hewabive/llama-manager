@@ -7,6 +7,7 @@ import {
   InstanceCreateSchema,
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
+  LlamaApiProbeRequestSchema,
   LlamaModelActionRequestSchema,
   type Instance,
   type InstanceBulkActionItem,
@@ -58,6 +59,7 @@ import { listFilesystemDirectory } from "./filesystem/browser.js";
 import {
   llamaEndpointErrorMessage,
   probeLlamaServer,
+  requestLlamaApiProbe,
   requestLlamaModelAction,
 } from "./llama/probe.js";
 import {
@@ -526,6 +528,26 @@ app.get("/api/instances/:id/llama", async (c) => {
   }
 
   return c.json({ data: await probeLlamaServer(instance) });
+});
+
+app.post("/api/instances/:id/llama/probe", async (c) => {
+  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  try {
+    return c.json({
+      data: await requestLlamaApiProbe(instance, parsed.data),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 function llamaActionHttpStatus(probe: LlamaEndpointProbe) {

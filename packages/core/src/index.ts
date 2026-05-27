@@ -118,6 +118,31 @@ export const LlamaModelActionResultSchema = z.object({
   fallback: z.string().nullable().default(null),
 });
 
+export const LlamaApiProbeKindSchema = z.enum([
+  "chat",
+  "completion",
+  "responses",
+  "tokenize",
+  "apply-template",
+]);
+
+export const LlamaApiProbeRequestSchema = z.object({
+  kind: LlamaApiProbeKindSchema,
+  model: z.string().trim().min(1).max(500).optional(),
+  prompt: z.string().min(1).max(20_000),
+  systemPrompt: z.string().max(4_000).optional(),
+  maxTokens: z.number().int().min(1).max(2_048).default(64),
+  temperature: z.number().min(0).max(2).default(0.2),
+  autoload: z.boolean().default(true),
+});
+
+export const LlamaApiProbeResultSchema = z.object({
+  kind: LlamaApiProbeKindSchema,
+  endpoint: z.string(),
+  requestBody: z.unknown(),
+  response: LlamaEndpointProbeSchema,
+});
+
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -596,6 +621,9 @@ export type LlamaModelActionRequest = z.infer<
 export type LlamaModelActionResult = z.infer<
   typeof LlamaModelActionResultSchema
 >;
+export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
+export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;
+export type LlamaApiProbeResult = z.infer<typeof LlamaApiProbeResultSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;

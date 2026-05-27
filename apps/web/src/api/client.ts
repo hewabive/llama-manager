@@ -16,6 +16,8 @@ import type {
   InstancePreflightPreview,
   InstanceUpdate,
   InstanceLogSummary,
+  LlamaApiProbeRequest,
+  LlamaApiProbeResult,
   LlamaArgumentCatalog,
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
@@ -377,6 +379,19 @@ export async function getInstanceHealthSummary(id: string) {
 
 export async function getLlamaProbe(id: string) {
   return request<{ data: LlamaProbe }>(`/api/instances/${id}/llama`);
+}
+
+export async function runLlamaApiProbe(
+  id: string,
+  input: LlamaApiProbeRequest,
+) {
+  return request<{ data: LlamaApiProbeResult }>(
+    `/api/instances/${id}/llama/probe`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function llamaModelAction(
