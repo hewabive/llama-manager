@@ -58,6 +58,7 @@ import {
 import { listFilesystemDirectory } from "./filesystem/browser.js";
 import {
   llamaEndpointErrorMessage,
+  llamaApiProbeTarget,
   probeLlamaServer,
   requestLlamaApiProbe,
   requestLlamaModelAction,
@@ -548,6 +549,234 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
+});
+
+function isStreamingProbeKind(kind: string) {
+  return kind === "chat" || kind === "completion" || kind === "responses";
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function firstRecord(value: unknown): Record<string, unknown> | null {
+  return Array.isArray(value) ? recordValue(value[0]) : null;
+}
+
+function streamDeltaText(value: unknown) {
+  const record = recordValue(value);
+  if (!record) return "";
+
+  if (typeof record.delta === "string") return record.delta;
+  if (typeof record.text === "string") return record.text;
+  if (typeof record.output_text === "string") return record.output_text;
+
+  const choice = firstRecord(record.choices);
+  const delta = recordValue(choice?.delta);
+  const message = recordValue(choice?.message);
+  const content =
+    delta?.content ??
+    delta?.reasoning_content ??
+    delta?.text ??
+    message?.content ??
+    choice?.text;
+  if (typeof content === "string") return content;
+
+  if (typeof record.type === "string" && record.type.endsWith(".delta")) {
+    const deltaText = record.delta ?? record.text;
+    if (typeof deltaText === "string") return deltaText;
+  }
+
+  return "";
+}
+
+function streamFinishReason(value: unknown) {
+  const choice = firstRecord(recordValue(value)?.choices);
+  const reason = choice?.finish_reason;
+  return typeof reason === "string" ? reason : null;
+}
+
+function streamEventData(block: string) {
+  return block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+    .trim();
+}
+
+async function writeUpstreamStreamEvents(props: {
+  stream: Parameters<Parameters<typeof streamSSE>[1]>[0];
+  response: Response;
+  started: number;
+}) {
+  const reader = props.response.body?.getReader();
+  if (!reader) {
+    await props.stream.writeSSE({
+      event: "error",
+      data: JSON.stringify({ message: "llama-server returned no stream body" }),
+    });
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalBody: unknown = null;
+  let finishReason: string | null = null;
+
+  const consumeBlock = async (block: string) => {
+    const data = streamEventData(block);
+    if (!data) return false;
+    if (data === "[DONE]") return true;
+
+    try {
+      const parsed = JSON.parse(data) as unknown;
+      finalBody = parsed;
+      finishReason = streamFinishReason(parsed) ?? finishReason;
+      const delta = streamDeltaText(parsed);
+      if (delta) {
+        await props.stream.writeSSE({
+          event: "token",
+          data: JSON.stringify({ text: delta }),
+        });
+      }
+    } catch {
+      await props.stream.writeSSE({
+        event: "token",
+        data: JSON.stringify({ text: data }),
+      });
+    }
+
+    return false;
+  };
+
+  let done = false;
+  while (!done) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+
+    let separator = buffer.match(/\r?\n\r?\n/);
+    while (separator && separator.index !== undefined) {
+      const separatorIndex = separator.index;
+      const block = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + separator[0].length);
+      done = await consumeBlock(block);
+      if (done) break;
+      separator = buffer.match(/\r?\n\r?\n/);
+    }
+  }
+
+  if (buffer.trim()) {
+    await consumeBlock(buffer);
+  }
+
+  const finalRecord = recordValue(finalBody);
+  await props.stream.writeSSE({
+    event: "done",
+    data: JSON.stringify({
+      latencyMs: Math.round(performance.now() - props.started),
+      finishReason,
+      usage: finalRecord?.usage ?? null,
+      timings: finalRecord?.timings ?? null,
+    }),
+  });
+}
+
+app.post("/api/instances/:id/llama/probe/stream", async (c) => {
+  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  if (!isStreamingProbeKind(parsed.data.kind)) {
+    return c.json(
+      { error: "streaming is only supported for generation probes" },
+      400,
+    );
+  }
+
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  let target: ReturnType<typeof llamaApiProbeTarget>;
+  try {
+    target = llamaApiProbeTarget(instance, parsed.data, { stream: true });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+
+  return streamSSE(c, async (stream) => {
+    const controller = new AbortController();
+    stream.onAbort(() => controller.abort());
+
+    await stream.writeSSE({
+      event: "meta",
+      data: JSON.stringify({
+        kind: parsed.data.kind,
+        endpoint: target.endpoint,
+        requestBody: target.requestBody,
+      }),
+    });
+
+    const started = performance.now();
+    try {
+      const response = await fetch(target.url, {
+        method: "POST",
+        body: JSON.stringify(target.requestBody),
+        headers: { "content-type": "application/json" },
+        signal: controller.signal,
+      });
+
+      await stream.writeSSE({
+        event: "status",
+        data: JSON.stringify({
+          ok: response.ok,
+          status: response.status,
+          latencyMs: Math.round(performance.now() - started),
+        }),
+      });
+
+      if (!response.ok) {
+        let body: unknown = await response.text();
+        try {
+          body = JSON.parse(String(body)) as unknown;
+        } catch {
+          // Keep raw text body.
+        }
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({
+            status: response.status,
+            body,
+            message:
+              recordValue(recordValue(body)?.error)?.message ??
+              response.statusText,
+          }),
+        });
+        return;
+      }
+
+      await writeUpstreamStreamEvents({ stream, response, started });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        await stream.writeSSE({
+          event: "cancelled",
+          data: JSON.stringify({
+            latencyMs: Math.round(performance.now() - started),
+          }),
+        });
+        return;
+      }
+      await stream.writeSSE({
+        event: "error",
+        data: JSON.stringify({ message: (error as Error).message }),
+      });
+    }
+  });
 });
 
 function llamaActionHttpStatus(probe: LlamaEndpointProbe) {

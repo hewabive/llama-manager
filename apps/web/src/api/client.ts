@@ -394,6 +394,151 @@ export async function runLlamaApiProbe(
   );
 }
 
+export type LlamaApiProbeStreamMeta = {
+  kind: LlamaApiProbeRequest["kind"];
+  endpoint: string;
+  requestBody: unknown;
+};
+
+export type LlamaApiProbeStreamStatus = {
+  ok: boolean;
+  status: number;
+  latencyMs: number;
+};
+
+export type LlamaApiProbeStreamDone = {
+  latencyMs: number;
+  finishReason: string | null;
+  usage: unknown;
+  timings: unknown;
+};
+
+export type LlamaApiProbeStreamCallbacks = {
+  onMeta?: (meta: LlamaApiProbeStreamMeta) => void;
+  onStatus?: (status: LlamaApiProbeStreamStatus) => void;
+  onToken?: (token: string) => void;
+  onDone?: (done: LlamaApiProbeStreamDone) => void;
+  onError?: (error: unknown) => void;
+  onCancelled?: (payload: unknown) => void;
+};
+
+function parseSseBlock(block: string) {
+  let event = "message";
+  const data: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      data.push(line.slice(5).trimStart());
+    }
+  }
+  return { event, data: data.join("\n") };
+}
+
+function parseSseJson(data: string): unknown {
+  if (!data) return null;
+  try {
+    return JSON.parse(data) as unknown;
+  } catch {
+    return data;
+  }
+}
+
+function dispatchLlamaProbeStreamEvent(
+  block: string,
+  callbacks: LlamaApiProbeStreamCallbacks,
+) {
+  const parsed = parseSseBlock(block);
+  if (!parsed.data) return;
+  const payload = parseSseJson(parsed.data);
+
+  switch (parsed.event) {
+    case "meta":
+      callbacks.onMeta?.(payload as LlamaApiProbeStreamMeta);
+      break;
+    case "status":
+      callbacks.onStatus?.(payload as LlamaApiProbeStreamStatus);
+      break;
+    case "token": {
+      const record =
+        payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>)
+          : null;
+      const token = typeof record?.text === "string" ? record.text : "";
+      if (token) callbacks.onToken?.(token);
+      break;
+    }
+    case "done":
+      callbacks.onDone?.(payload as LlamaApiProbeStreamDone);
+      break;
+    case "error":
+      callbacks.onError?.(payload);
+      break;
+    case "cancelled":
+      callbacks.onCancelled?.(payload);
+      break;
+    default:
+      break;
+  }
+}
+
+export async function streamLlamaApiProbe(
+  id: string,
+  input: LlamaApiProbeRequest,
+  callbacks: LlamaApiProbeStreamCallbacks,
+  signal?: AbortSignal,
+) {
+  const response = await fetch(
+    `${apiBase}/api/instances/${id}/llama/probe/stream`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+      signal: signal ?? null,
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    let parsed: { error?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(error) as { error?: unknown };
+    } catch {
+      parsed = null;
+    }
+    throw new Error(
+      formatApiErrorValue(parsed?.error) || error || response.statusText,
+    );
+  }
+
+  if (!response.body) {
+    throw new Error("Streaming response has no body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+
+    let separator = buffer.match(/\r?\n\r?\n/);
+    while (separator && separator.index !== undefined) {
+      const block = buffer.slice(0, separator.index);
+      buffer = buffer.slice(separator.index + separator[0].length);
+      dispatchLlamaProbeStreamEvent(block, callbacks);
+      separator = buffer.match(/\r?\n\r?\n/);
+    }
+  }
+
+  if (buffer.trim()) {
+    dispatchLlamaProbeStreamEvent(buffer, callbacks);
+  }
+}
+
 export async function llamaModelAction(
   id: string,
   action: Exclude<LlamaModelActionName, "reload">,

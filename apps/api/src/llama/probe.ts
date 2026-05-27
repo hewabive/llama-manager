@@ -300,7 +300,10 @@ function withModel<T extends Record<string, unknown>>(
   return model ? { ...body, model } : body;
 }
 
-function apiProbeRequestBody(input: LlamaApiProbeRequest): {
+function apiProbeRequestBody(
+  input: LlamaApiProbeRequest,
+  options: { stream?: boolean } = {},
+): {
   endpoint: string;
   body: Record<string, unknown>;
 } {
@@ -371,7 +374,7 @@ function apiProbeRequestBody(input: LlamaApiProbeRequest): {
           prompt: input.prompt,
           max_tokens: input.maxTokens,
           temperature: input.temperature,
-          stream: false,
+          stream: options.stream ?? false,
         },
         input.model,
       ),
@@ -387,7 +390,7 @@ function apiProbeRequestBody(input: LlamaApiProbeRequest): {
           input: input.prompt,
           max_output_tokens: input.maxTokens,
           temperature: input.temperature,
-          stream: false,
+          stream: options.stream ?? false,
         },
         input.model,
       ),
@@ -404,10 +407,33 @@ function apiProbeRequestBody(input: LlamaApiProbeRequest): {
         ],
         max_tokens: input.maxTokens,
         temperature: input.temperature,
-        stream: false,
+        stream: options.stream ?? false,
       },
       input.model,
     ),
+  };
+}
+
+export function llamaApiProbeTarget(
+  instance: Instance,
+  input: LlamaApiProbeRequest,
+  options: { stream?: boolean } = {},
+) {
+  const baseUrl = llamaBaseUrl(instance);
+  if (!baseUrl) {
+    throw new Error("UNIX socket API probes are not implemented yet");
+  }
+
+  const { endpoint, body } = apiProbeRequestBody(input, options);
+  const query = new URLSearchParams({
+    autoload: input.autoload ? "true" : "false",
+  });
+  const endpointWithQuery = `${endpoint}?${query.toString()}`;
+
+  return {
+    endpoint: endpointWithQuery,
+    requestBody: body,
+    url: `${baseUrl}${endpointWithQuery}`,
   };
 }
 
@@ -415,24 +441,15 @@ export async function requestLlamaApiProbe(
   instance: Instance,
   input: LlamaApiProbeRequest,
 ): Promise<LlamaApiProbeResult> {
-  const baseUrl = llamaBaseUrl(instance);
-  if (!baseUrl) {
-    throw new Error("UNIX socket API probes are not implemented yet");
-  }
-
-  const { endpoint, body } = apiProbeRequestBody(input);
-  const query = new URLSearchParams({
-    autoload: input.autoload ? "true" : "false",
-  });
-  const endpointWithQuery = `${endpoint}?${query.toString()}`;
+  const target = llamaApiProbeTarget(instance, input);
 
   return {
     kind: input.kind,
-    endpoint: endpointWithQuery,
-    requestBody: body,
-    response: await requestLlamaJson(`${baseUrl}${endpointWithQuery}`, {
+    endpoint: target.endpoint,
+    requestBody: target.requestBody,
+    response: await requestLlamaJson(target.url, {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify(target.requestBody),
       headers: { "content-type": "application/json" },
       timeoutMs: API_PROBE_TIMEOUT_MS,
     }),

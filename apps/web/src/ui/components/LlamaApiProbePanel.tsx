@@ -1,5 +1,6 @@
 import type {
   LlamaApiProbeKind,
+  LlamaApiProbeRequest,
   LlamaApiProbeResult,
   LlamaEndpointProbe,
 } from "@llama-manager/core";
@@ -20,10 +21,10 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Radio, Send, Square } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { runLlamaApiProbe } from "../../api/client";
+import { runLlamaApiProbe, streamLlamaApiProbe } from "../../api/client";
 
 type ModelOption = {
   value: string;
@@ -100,6 +101,26 @@ function formatNumber(value: unknown) {
     : null;
 }
 
+function formatUnknown(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function errorMessage(value: unknown) {
+  if (value instanceof Error) return value.message;
+  const record = objectRecord(value);
+  const message =
+    stringValue(record?.message) ??
+    stringValue(objectRecord(record?.error)?.message);
+  const fallback = formatUnknown(value);
+  return message ?? (fallback || "Unknown error");
+}
+
 function parseTokenInput(value: string) {
   return (value.match(/-?\d+/g) ?? [])
     .map((item) => Number(item))
@@ -167,10 +188,9 @@ function responseOutput(result: LlamaApiProbeResult) {
   return stringValue(firstChoice?.text) ?? "Completion returned no text";
 }
 
-function usageLines(result: LlamaApiProbeResult) {
-  const body = objectRecord(result.response.body);
-  const usage = objectRecord(body?.usage);
-  const timings = objectRecord(body?.timings);
+function usageRows(usageValue: unknown, timingsValue: unknown) {
+  const usage = objectRecord(usageValue);
+  const timings = objectRecord(timingsValue);
   const rows: Array<[string, unknown]> = [
     ["Prompt tokens", usage?.prompt_tokens],
     ["Completion tokens", usage?.completion_tokens],
@@ -181,6 +201,11 @@ function usageLines(result: LlamaApiProbeResult) {
   return rows
     .map(([label, value]) => [label, formatNumber(value)] as const)
     .filter((item): item is readonly [string, string] => Boolean(item[1]));
+}
+
+function usageLines(result: LlamaApiProbeResult) {
+  const body = objectRecord(result.response.body);
+  return usageRows(body?.usage, body?.timings);
 }
 
 function kindNeedsGenerationControls(kind: LlamaApiProbeKind) {
@@ -251,6 +276,109 @@ function ProbeResult(props: { result: LlamaApiProbeResult }) {
   );
 }
 
+type StreamProbeState = {
+  status: "idle" | "streaming" | "done" | "error" | "cancelled";
+  text: string;
+  endpoint: string | null;
+  requestBody: unknown;
+  statusCode: number | null;
+  latencyMs: number | null;
+  finishReason: string | null;
+  usage: unknown;
+  timings: unknown;
+  error: string | null;
+};
+
+const emptyStreamProbeState: StreamProbeState = {
+  status: "idle",
+  text: "",
+  endpoint: null,
+  requestBody: null,
+  statusCode: null,
+  latencyMs: null,
+  finishReason: null,
+  usage: null,
+  timings: null,
+  error: null,
+};
+
+function streamStatusColor(status: StreamProbeState["status"]) {
+  if (status === "done") return "green";
+  if (status === "streaming") return "blue";
+  if (status === "cancelled") return "yellow";
+  if (status === "error") return "red";
+  return "gray";
+}
+
+function StreamProbeResult(props: { result: StreamProbeState }) {
+  const lines = usageRows(props.result.usage, props.result.timings);
+
+  return (
+    <Paper withBorder p="sm" radius="sm">
+      <Group justify="space-between" gap="xs">
+        <Group gap="xs">
+          <Text fw={600} size="sm">
+            Stream
+          </Text>
+          <Badge color={streamStatusColor(props.result.status)} variant="light">
+            {props.result.status}
+          </Badge>
+          {props.result.statusCode && (
+            <Badge color="gray" variant="outline">
+              HTTP {props.result.statusCode}
+            </Badge>
+          )}
+        </Group>
+        <Text c="dimmed" size="xs">
+          {props.result.latencyMs !== null
+            ? `${props.result.latencyMs} ms`
+            : "running"}
+          {props.result.endpoint ? ` · ${props.result.endpoint}` : ""}
+        </Text>
+      </Group>
+
+      {lines.length > 0 && (
+        <Group gap="xs" mt="xs">
+          {lines.map(([label, value]) => (
+            <Badge key={label} variant="outline">
+              {label}: {value}
+            </Badge>
+          ))}
+          {props.result.finishReason && (
+            <Badge variant="outline">Finish: {props.result.finishReason}</Badge>
+          )}
+        </Group>
+      )}
+
+      <Code block className="code-wrap" mt="xs">
+        {props.result.error ??
+          (props.result.text ||
+            (props.result.status === "streaming"
+              ? "Waiting for tokens..."
+              : "No streamed text received."))}
+      </Code>
+
+      <Box component="details" className="v1-model-diagnostics" mt="xs">
+        <Text component="summary" c="dimmed" size="xs">
+          Raw streaming request and metrics
+        </Text>
+        <Stack gap={4} mt={4}>
+          <Code block className="code-wrap">
+            {formatUnknown(props.result.requestBody)}
+          </Code>
+          <Code block className="code-wrap">
+            {formatUnknown({
+              usage: props.result.usage,
+              timings: props.result.timings,
+              finishReason: props.result.finishReason,
+            })}
+          </Code>
+        </Stack>
+      </Box>
+    </Paper>
+  );
+}
+
 export function LlamaApiProbePanel(props: {
   instanceId: string;
   modelsProbe: LlamaEndpointProbe | undefined;
@@ -268,6 +396,10 @@ export function LlamaApiProbePanel(props: {
   const [maxTokens, setMaxTokens] = useState(64);
   const [temperature, setTemperature] = useState(0.2);
   const [autoload, setAutoload] = useState(true);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const [streamResult, setStreamResult] = useState<StreamProbeState>(
+    emptyStreamProbeState,
+  );
 
   useEffect(() => {
     if (model && modelOptions.some((option) => option.value === model)) {
@@ -276,20 +408,25 @@ export function LlamaApiProbePanel(props: {
     setModel(modelOptions[0]?.value ?? null);
   }, [model, modelOptions]);
 
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+    };
+  }, []);
+
+  const buildProbeInput = (): LlamaApiProbeRequest => ({
+    kind,
+    ...(model ? { model } : {}),
+    prompt,
+    ...(systemPrompt.trim() ? { systemPrompt } : {}),
+    ...(kind === "detokenize" ? { tokens: parseTokenInput(tokensText) } : {}),
+    maxTokens,
+    temperature,
+    autoload,
+  });
+
   const probeMutation = useMutation({
-    mutationFn: () =>
-      runLlamaApiProbe(props.instanceId, {
-        kind,
-        ...(model ? { model } : {}),
-        prompt,
-        ...(systemPrompt.trim() ? { systemPrompt } : {}),
-        ...(kind === "detokenize"
-          ? { tokens: parseTokenInput(tokensText) }
-          : {}),
-        maxTokens,
-        temperature,
-        autoload,
-      }),
+    mutationFn: () => runLlamaApiProbe(props.instanceId, buildProbeInput()),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["instance-llama", props.instanceId],
@@ -307,12 +444,115 @@ export function LlamaApiProbePanel(props: {
     },
   });
 
+  const isStreaming = streamResult.status === "streaming";
   const canSubmit =
     !probeMutation.isPending &&
+    !isStreaming &&
     (kind === "detokenize"
       ? parseTokenInput(tokensText).length > 0
       : prompt.trim().length > 0);
+  const canStream = kindNeedsGenerationControls(kind) && canSubmit;
   const result = probeMutation.data?.data ?? null;
+
+  const startStream = async () => {
+    streamAbortRef.current?.abort();
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    probeMutation.reset();
+    setStreamResult({
+      ...emptyStreamProbeState,
+      status: "streaming",
+    });
+
+    try {
+      await streamLlamaApiProbe(
+        props.instanceId,
+        buildProbeInput(),
+        {
+          onMeta: (meta) => {
+            setStreamResult((current) => ({
+              ...current,
+              endpoint: meta.endpoint,
+              requestBody: meta.requestBody,
+            }));
+          },
+          onStatus: (status) => {
+            setStreamResult((current) => ({
+              ...current,
+              statusCode: status.status,
+              latencyMs: status.latencyMs,
+            }));
+          },
+          onToken: (token) => {
+            setStreamResult((current) => ({
+              ...current,
+              text: `${current.text}${token}`,
+            }));
+          },
+          onDone: (done) => {
+            setStreamResult((current) => ({
+              ...current,
+              status: "done",
+              latencyMs: done.latencyMs,
+              finishReason: done.finishReason,
+              usage: done.usage,
+              timings: done.timings,
+            }));
+            void queryClient.invalidateQueries({
+              queryKey: ["instance-llama", props.instanceId],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["instance-health-summary", props.instanceId],
+            });
+          },
+          onError: (error) => {
+            setStreamResult((current) => ({
+              ...current,
+              status: "error",
+              error: errorMessage(error),
+            }));
+          },
+          onCancelled: (payload) => {
+            const latency = objectRecord(payload)?.latencyMs;
+            setStreamResult((current) => ({
+              ...current,
+              status: "cancelled",
+              latencyMs:
+                typeof latency === "number" ? latency : current.latencyMs,
+            }));
+          },
+        },
+        controller.signal,
+      );
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        setStreamResult((current) => ({
+          ...current,
+          status: "cancelled",
+        }));
+      } else {
+        const message = errorMessage(error);
+        setStreamResult((current) => ({
+          ...current,
+          status: "error",
+          error: message,
+        }));
+        notifications.show({
+          color: "red",
+          title: "Streaming probe failed",
+          message,
+        });
+      }
+    } finally {
+      if (streamAbortRef.current === controller) {
+        streamAbortRef.current = null;
+      }
+    }
+  };
+
+  const cancelStream = () => {
+    streamAbortRef.current?.abort();
+  };
 
   return (
     <Paper withBorder p="sm" radius="sm">
@@ -323,7 +563,8 @@ export function LlamaApiProbePanel(props: {
               API probe
             </Text>
             <Text c="dimmed" size="xs">
-              Send a small non-streaming request through llama-manager.
+              Send small non-streaming or streaming requests through
+              llama-manager.
             </Text>
           </Stack>
           <Switch
@@ -429,16 +670,44 @@ export function LlamaApiProbePanel(props: {
               This request does not generate tokens.
             </Text>
           )}
-          <Button
-            leftSection={<Send size={14} />}
-            loading={probeMutation.isPending}
-            disabled={!canSubmit}
-            onClick={() => probeMutation.mutate()}
-          >
-            Send
-          </Button>
+          <Group gap="xs" justify="flex-end">
+            <Button
+              leftSection={<Send size={14} />}
+              loading={probeMutation.isPending}
+              disabled={!canSubmit}
+              onClick={() => {
+                setStreamResult(emptyStreamProbeState);
+                probeMutation.mutate();
+              }}
+            >
+              Send
+            </Button>
+            {kindNeedsGenerationControls(kind) &&
+              (isStreaming ? (
+                <Button
+                  color="red"
+                  leftSection={<Square size={14} />}
+                  variant="light"
+                  onClick={cancelStream}
+                >
+                  Cancel
+                </Button>
+              ) : (
+                <Button
+                  leftSection={<Radio size={14} />}
+                  variant="light"
+                  disabled={!canStream}
+                  onClick={() => void startStream()}
+                >
+                  Stream
+                </Button>
+              ))}
+          </Group>
         </Group>
 
+        {streamResult.status !== "idle" && (
+          <StreamProbeResult result={streamResult} />
+        )}
         {result && <ProbeResult result={result} />}
       </Stack>
     </Paper>
