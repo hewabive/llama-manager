@@ -190,10 +190,11 @@ async function probeRouterModelDiagnostics(
         model: model.id,
         autoload: "false",
       });
-      const [props, slots, metrics] = await Promise.all([
+      const [props, slots, metrics, loraAdapters] = await Promise.all([
         probeJson(`${baseUrl}/props?${query.toString()}`),
         probeJson(`${baseUrl}/slots?${query.toString()}`),
         probeJson(`${baseUrl}/metrics?${query.toString()}`),
+        probeJson(`${baseUrl}/lora-adapters?${query.toString()}`),
       ]);
 
       return [
@@ -203,6 +204,7 @@ async function probeRouterModelDiagnostics(
           props,
           slots,
           metrics,
+          loraAdapters,
         },
       ] as const;
     }),

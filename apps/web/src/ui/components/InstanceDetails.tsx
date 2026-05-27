@@ -560,6 +560,31 @@ function metricsRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
   );
 }
 
+function loraAdaptersFromProbe(probe: LlamaEndpointProbe | undefined) {
+  if (!Array.isArray(probe?.body)) {
+    return [];
+  }
+  return probe.body
+    .map((item) => objectRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+}
+
+function loraRuntimeSummary(probe: LlamaEndpointProbe | undefined) {
+  if (!probe) return "not probed";
+  if (!probe.ok) return endpointErrorText(probe) ?? "unavailable";
+
+  const adapters = loraAdaptersFromProbe(probe);
+  const enabled = adapters.filter((adapter) => {
+    const scale = numberValue(adapter.scale);
+    return scale !== null && scale > 0;
+  }).length;
+
+  if (adapters.length === 0) {
+    return "no adapters";
+  }
+  return `${adapters.length} adapter${adapters.length === 1 ? "" : "s"} · ${enabled} enabled`;
+}
+
 function RuntimeProbeLine(props: {
   label: string;
   probe: LlamaEndpointProbe | undefined;
@@ -642,6 +667,7 @@ function V1ModelsPanel(props: {
       <Stack gap="xs">
         {models.map((model) => {
           const runtime = props.modelDiagnostics[model.id];
+          const loraAdapters = loraAdaptersFromProbe(runtime?.loraAdapters);
 
           return (
             <Paper key={model.id} withBorder p="xs" radius="sm">
@@ -796,7 +822,7 @@ function V1ModelsPanel(props: {
               )}
 
               {runtime && (
-                <SimpleGrid cols={{ base: 1, md: 3 }} spacing="xs" mt={8}>
+                <SimpleGrid cols={{ base: 1, md: 4 }} spacing="xs" mt={8}>
                   <RuntimeProbeLine
                     label="props"
                     probe={runtime.props}
@@ -812,7 +838,34 @@ function V1ModelsPanel(props: {
                     probe={runtime.metrics}
                     summary={metricsRuntimeSummary(runtime.metrics)}
                   />
+                  <RuntimeProbeLine
+                    label="lora"
+                    probe={runtime.loraAdapters}
+                    summary={loraRuntimeSummary(runtime.loraAdapters)}
+                  />
                 </SimpleGrid>
+              )}
+
+              {loraAdapters.length > 0 && (
+                <Group gap={4} mt={8}>
+                  {loraAdapters.map((adapter, index) => {
+                    const id = jsonValuePreview(adapter.id) ?? String(index);
+                    const path = jsonValuePreview(adapter.path);
+                    const scale = numberValue(adapter.scale);
+                    return (
+                      <Badge
+                        key={`${id}-${path ?? index}`}
+                        size="xs"
+                        variant="light"
+                        color={scale && scale > 0 ? "green" : "gray"}
+                        title={path ?? undefined}
+                      >
+                        {path ? pathBaseName(path) : `adapter ${id}`} · scale{" "}
+                        {scale ?? "-"}
+                      </Badge>
+                    );
+                  })}
+                </Group>
               )}
 
               {(model.aliases.length > 0 || model.tags.length > 0) && (

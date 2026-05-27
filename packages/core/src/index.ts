@@ -94,6 +94,7 @@ export const LlamaModelDiagnosticsSchema = z.object({
   props: LlamaEndpointProbeSchema,
   slots: LlamaEndpointProbeSchema,
   metrics: LlamaEndpointProbeSchema,
+  loraAdapters: LlamaEndpointProbeSchema,
 });
 
 export const LlamaProbeSchema = z.object({
