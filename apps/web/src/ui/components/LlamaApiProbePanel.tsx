@@ -51,6 +51,11 @@ type ModelOption = {
 
 const defaultPrompt =
   "Answer briefly: how can I check that llama-server is working?";
+const defaultRerankDocuments = [
+  "llama-server exposes an OpenAI-compatible HTTP API.",
+  "GPU memory pressure can prevent a model from loading.",
+  "A preset can contain multiple model sections for the router.",
+].join("\n\n");
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -144,6 +149,13 @@ function parseTokenInput(value: string) {
     .filter((item) => Number.isInteger(item));
 }
 
+function parseDocumentsInput(value: string) {
+  return value
+    .split(/\n\s*\n/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function responseOutput(result: LlamaApiProbeResult) {
   const body = result.response.body;
   const record = objectRecord(body);
@@ -178,6 +190,31 @@ function responseOutput(result: LlamaApiProbeResult) {
 
   if (result.kind === "apply-template") {
     return stringValue(record?.prompt) ?? "Template returned no prompt field";
+  }
+
+  if (result.kind === "embeddings") {
+    const data = arrayValue(record?.data);
+    const first = objectRecord(data[0]);
+    const dimensions = Array.isArray(first?.embedding)
+      ? first.embedding.length
+      : null;
+    return `${data.length} embedding${data.length === 1 ? "" : "s"}${
+      dimensions ? ` · ${dimensions} dimensions` : ""
+    }`;
+  }
+
+  if (result.kind === "rerank") {
+    const rows = arrayValue(record?.results)
+      .map((item) => {
+        const resultRecord = objectRecord(item);
+        const score = resultRecord?.relevance_score ?? resultRecord?.score;
+        return typeof resultRecord?.index === "number" &&
+          typeof score === "number"
+          ? `#${resultRecord.index}: ${score.toFixed(4)}`
+          : null;
+      })
+      .filter(Boolean);
+    return rows.length > 0 ? rows.join("\n") : "Rerank returned no result rows";
   }
 
   if (result.kind === "responses") {
@@ -241,6 +278,13 @@ function kindSupportsSystemPrompt(kind: LlamaApiProbeKind) {
 
 function kindUsesPrompt(kind: LlamaApiProbeKind) {
   return kind !== "detokenize";
+}
+
+function promptLabel(kind: LlamaApiProbeKind) {
+  if (kind === "tokenize") return "Text";
+  if (kind === "embeddings") return "Input";
+  if (kind === "rerank") return "Query";
+  return "Prompt";
 }
 
 function ProbeResult(props: { result: LlamaApiProbeResult }) {
@@ -570,6 +614,7 @@ export function LlamaApiProbePanel(props: {
   const [model, setModel] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [tokensText, setTokensText] = useState("7925 21485");
+  const [documentsText, setDocumentsText] = useState(defaultRerankDocuments);
   const [systemPrompt, setSystemPrompt] = useState("Answer briefly.");
   const [maxTokens, setMaxTokens] = useState(64);
   const [temperature, setTemperature] = useState(0.2);
@@ -598,6 +643,9 @@ export function LlamaApiProbePanel(props: {
     prompt,
     ...(systemPrompt.trim() ? { systemPrompt } : {}),
     ...(kind === "detokenize" ? { tokens: parseTokenInput(tokensText) } : {}),
+    ...(kind === "rerank"
+      ? { documents: parseDocumentsInput(documentsText) }
+      : {}),
     maxTokens,
     temperature,
     autoload,
@@ -630,6 +678,9 @@ export function LlamaApiProbePanel(props: {
     setPrompt(input.prompt);
     setSystemPrompt(input.systemPrompt ?? "");
     setTokensText((input.tokens ?? []).join(" "));
+    setDocumentsText(
+      (input.documents ?? parseDocumentsInput(documentsText)).join("\n\n"),
+    );
     setMaxTokens(input.maxTokens);
     setTemperature(input.temperature);
     setAutoload(input.autoload);
@@ -667,7 +718,10 @@ export function LlamaApiProbePanel(props: {
     !isStreaming &&
     (kind === "detokenize"
       ? parseTokenInput(tokensText).length > 0
-      : prompt.trim().length > 0);
+      : kind === "rerank"
+        ? prompt.trim().length > 0 &&
+          parseDocumentsInput(documentsText).length > 0
+        : prompt.trim().length > 0);
   const canStream = kindNeedsGenerationControls(kind) && canSubmit;
   const result = probeMutation.data?.data ?? null;
   const historyEntries = historyQuery.data?.data ?? [];
@@ -849,6 +903,8 @@ export function LlamaApiProbePanel(props: {
               { value: "chat", label: "Chat" },
               { value: "completion", label: "Completion" },
               { value: "responses", label: "Responses" },
+              { value: "embeddings", label: "Embeddings" },
+              { value: "rerank", label: "Rerank" },
               { value: "tokenize", label: "Tokenize" },
               { value: "detokenize", label: "Detokenize" },
               { value: "count-tokens", label: "Count tokens" },
@@ -883,7 +939,7 @@ export function LlamaApiProbePanel(props: {
 
         {kindUsesPrompt(kind) ? (
           <Textarea
-            label={kind === "tokenize" ? "Text" : "Prompt"}
+            label={promptLabel(kind)}
             autosize
             minRows={3}
             maxRows={8}
@@ -899,6 +955,18 @@ export function LlamaApiProbePanel(props: {
             maxRows={8}
             value={tokensText}
             onChange={(event) => setTokensText(event.currentTarget.value)}
+          />
+        )}
+
+        {kind === "rerank" && (
+          <Textarea
+            label="Documents"
+            description="Separate documents with a blank line."
+            autosize
+            minRows={4}
+            maxRows={10}
+            value={documentsText}
+            onChange={(event) => setDocumentsText(event.currentTarget.value)}
           />
         )}
 

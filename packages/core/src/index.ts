@@ -106,6 +106,40 @@ export const LlamaProbeSchema = z.object({
   modelDiagnostics: z.record(z.string(), LlamaModelDiagnosticsSchema),
 });
 
+export const LlamaCapabilityStatusSchema = z.enum([
+  "available",
+  "unsupported",
+  "error",
+]);
+
+export const LlamaCapabilityCategorySchema = z.enum([
+  "runtime",
+  "models",
+  "generation",
+  "tokens",
+  "embeddings",
+]);
+
+export const LlamaCapabilitySchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  category: LlamaCapabilityCategorySchema,
+  method: z.enum(["GET", "POST"]),
+  endpoint: z.string(),
+  status: LlamaCapabilityStatusSchema,
+  httpStatus: z.number().int().nullable(),
+  latencyMs: z.number().int(),
+  reason: z.string().nullable(),
+  model: z.string().nullable(),
+});
+
+export const LlamaCapabilitiesResultSchema = z.object({
+  baseUrl: z.string(),
+  checkedAt: z.string(),
+  model: z.string().nullable(),
+  capabilities: z.array(LlamaCapabilitySchema),
+});
+
 export const LlamaModelActionNameSchema = z.enum(["load", "unload", "reload"]);
 
 export const LlamaModelActionRequestSchema = z.object({
@@ -123,6 +157,8 @@ export const LlamaApiProbeKindSchema = z.enum([
   "chat",
   "completion",
   "responses",
+  "embeddings",
+  "rerank",
   "tokenize",
   "detokenize",
   "count-tokens",
@@ -136,6 +172,7 @@ export const LlamaApiProbeRequestSchema = z
     prompt: z.string().max(20_000).default(""),
     systemPrompt: z.string().max(4_000).optional(),
     tokens: z.array(z.number().int()).max(8_192).optional(),
+    documents: z.array(z.string().min(1).max(8_000)).max(64).optional(),
     maxTokens: z.number().int().min(1).max(2_048).default(64),
     temperature: z.number().min(0).max(2).default(0.2),
     autoload: z.boolean().default(true),
@@ -147,6 +184,24 @@ export const LlamaApiProbeRequestSchema = z
           code: z.ZodIssueCode.custom,
           path: ["tokens"],
           message: "At least one token is required",
+        });
+      }
+      return;
+    }
+
+    if (input.kind === "rerank") {
+      if (!input.prompt.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["prompt"],
+          message: "Query is required",
+        });
+      }
+      if (!input.documents?.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["documents"],
+          message: "At least one document is required",
         });
       }
       return;
@@ -667,6 +722,14 @@ export type ProcessPreflightResult = z.infer<
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaModelDiagnostics = z.infer<typeof LlamaModelDiagnosticsSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
+export type LlamaCapabilityStatus = z.infer<typeof LlamaCapabilityStatusSchema>;
+export type LlamaCapabilityCategory = z.infer<
+  typeof LlamaCapabilityCategorySchema
+>;
+export type LlamaCapability = z.infer<typeof LlamaCapabilitySchema>;
+export type LlamaCapabilitiesResult = z.infer<
+  typeof LlamaCapabilitiesResultSchema
+>;
 export type LlamaModelActionName = z.infer<typeof LlamaModelActionNameSchema>;
 export type LlamaModelActionRequest = z.infer<
   typeof LlamaModelActionRequestSchema

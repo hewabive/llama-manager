@@ -33,6 +33,7 @@ import {
   getInstanceLogs,
   getInstancePreflight,
   getInstanceStatusSummary,
+  getLlamaCapabilities,
   getLlamaProbe,
   getRuntime,
   instanceAction,
@@ -42,6 +43,7 @@ import {
 } from "../../api/client";
 import { healthStatusColor, statusColor } from "./InstanceHealthBadge";
 import { LlamaApiProbePanel } from "./LlamaApiProbePanel";
+import { LlamaCapabilitiesPanel } from "./LlamaCapabilitiesPanel";
 import {
   canOpenLlamaWebUi,
   llamaServerWebUrl,
@@ -1271,6 +1273,18 @@ export function InstanceDetails(props: {
     refetchInterval: 3_000,
   });
 
+  const capabilityStatus =
+    props.health?.status ?? props.instance?.status ?? null;
+  const canProbeCapabilities =
+    capabilityStatus === "running" || capabilityStatus === "stale";
+
+  const capabilitiesQuery = useQuery({
+    queryKey: ["instance-llama-capabilities", id],
+    queryFn: () => getLlamaCapabilities(id!),
+    enabled: Boolean(id) && canProbeCapabilities,
+    staleTime: 30_000,
+  });
+
   const logsQuery = useQuery({
     queryKey: ["instance-logs", id],
     queryFn: () => getInstanceLogs(id!, 200),
@@ -1339,6 +1353,9 @@ export function InstanceDetails(props: {
       }),
       queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
       queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-llama-capabilities", id],
+      }),
       queryClient.invalidateQueries({
         queryKey: ["instance-status-summary", id],
       }),
@@ -1573,6 +1590,24 @@ export function InstanceDetails(props: {
               ? (modelActionMutation.variables ?? null)
               : null
           }
+        />
+
+        <LlamaCapabilitiesPanel
+          data={
+            canProbeCapabilities ? (capabilitiesQuery.data?.data ?? null) : null
+          }
+          disabledReason={
+            canProbeCapabilities
+              ? null
+              : "Start the instance to probe live llama-server endpoints."
+          }
+          loading={capabilitiesQuery.isFetching}
+          error={
+            canProbeCapabilities
+              ? ((capabilitiesQuery.error as Error | null)?.message ?? null)
+              : null
+          }
+          onRefresh={() => void capabilitiesQuery.refetch()}
         />
 
         <LlamaApiProbePanel

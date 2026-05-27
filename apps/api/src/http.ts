@@ -59,6 +59,7 @@ import { listFilesystemDirectory } from "./filesystem/browser.js";
 import {
   llamaEndpointErrorMessage,
   llamaApiProbeTarget,
+  probeLlamaCapabilities,
   probeLlamaServer,
   requestLlamaApiProbe,
   requestLlamaModelAction,
@@ -538,6 +539,19 @@ app.get("/api/instances/:id/llama", async (c) => {
   return c.json({ data: await probeLlamaServer(instance) });
 });
 
+app.get("/api/instances/:id/llama/capabilities", async (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  try {
+    return c.json({ data: await probeLlamaCapabilities(instance) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
 app.get("/api/instances/:id/llama/probe/history", (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
@@ -648,6 +662,35 @@ function probeOutputText(kind: string, response: LlamaEndpointProbe) {
 
   if (kind === "apply-template") {
     return stringValue(body?.prompt);
+  }
+
+  if (kind === "embeddings") {
+    const data = arrayValue(body?.data);
+    const first = recordValue(data[0]);
+    const embedding = first?.embedding;
+    const dimensions = Array.isArray(embedding) ? embedding.length : null;
+    return `${data.length} embedding${data.length === 1 ? "" : "s"}${
+      dimensions ? ` · ${dimensions} dimensions` : ""
+    }`;
+  }
+
+  if (kind === "rerank") {
+    const results = arrayValue(body?.results);
+    const preview = results
+      .slice(0, 5)
+      .map((item) => {
+        const record = recordValue(item);
+        const index = record?.index;
+        const score = record?.relevance_score ?? record?.score;
+        return typeof index === "number" && typeof score === "number"
+          ? `#${index}: ${score.toFixed(4)}`
+          : null;
+      })
+      .filter(Boolean)
+      .join(" · ");
+    return `${results.length} result${results.length === 1 ? "" : "s"}${
+      preview ? ` · ${preview}` : ""
+    }`;
   }
 
   if (kind === "responses") {

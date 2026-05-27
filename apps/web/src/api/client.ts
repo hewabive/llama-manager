@@ -16,6 +16,7 @@ import type {
   InstancePreflightPreview,
   InstanceUpdate,
   InstanceLogSummary,
+  LlamaCapabilitiesResult,
   LlamaApiProbeRequest,
   LlamaApiProbeHistoryEntry,
   LlamaApiProbeResult,
@@ -380,6 +381,12 @@ export async function getInstanceHealthSummary(id: string) {
 
 export async function getLlamaProbe(id: string) {
   return request<{ data: LlamaProbe }>(`/api/instances/${id}/llama`);
+}
+
+export async function getLlamaCapabilities(id: string) {
+  return request<{ data: LlamaCapabilitiesResult }>(
+    `/api/instances/${id}/llama/capabilities`,
+  );
 }
 
 export async function runLlamaApiProbe(
