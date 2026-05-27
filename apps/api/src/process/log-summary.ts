@@ -1,4 +1,8 @@
-import type { InstanceLogSummary, RuntimeState } from "@llama-manager/core";
+import type {
+  InstanceLoadProgress,
+  InstanceLogSummary,
+  RuntimeState,
+} from "@llama-manager/core";
 
 import { latestProcessRun } from "./runs-repository.js";
 import { readTailLines } from "../utils/log-tail.js";
@@ -17,6 +21,15 @@ function lastMatch(lines: string[], pattern: RegExp) {
     }
   }
   return null;
+}
+
+function lastIndex(lines: string[], pattern: RegExp) {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (pattern.test(lines[index]!)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function interestingLines(lines: string[], pattern: RegExp, limit: number) {
@@ -101,6 +114,124 @@ function isReady(lines: string[]) {
   );
 }
 
+function loadProgress(
+  stage: InstanceLoadProgress["stage"],
+  percent: number | null,
+  message: string,
+  estimated = true,
+): InstanceLoadProgress {
+  return { stage, percent, message, estimated };
+}
+
+function pendingLoadProgress() {
+  return loadProgress("pending", null, "Waiting for model loading log lines.");
+}
+
+function countProgressDots(lines: string[]) {
+  return lines.reduce((sum, line) => {
+    const matches = line.match(/\.{3,}/g) ?? [];
+    return (
+      sum +
+      matches.reduce((nested, match) => nested + Math.min(match.length, 100), 0)
+    );
+  }, 0);
+}
+
+function parseLoadProgress(lines: string[]): InstanceLoadProgress {
+  const readyPattern =
+    /(?:starting the main loop|model loaded|warming up.*done)/i;
+  const listeningPattern =
+    /(?:server is listening|http server listening|listening on)/i;
+  const loadingPattern =
+    /\b(?:main:\s+loading model|llama_server:\s+loading model|load_model:\s+loading model)\b/i;
+  const readyIndex = lastIndex(lines, readyPattern);
+  const listeningIndex = lastIndex(lines, listeningPattern);
+  const loadingIndex = lastIndex(lines, loadingPattern);
+
+  if (
+    (readyIndex >= 0 && (loadingIndex < 0 || readyIndex >= loadingIndex)) ||
+    (listeningIndex >= 0 && listeningIndex >= loadingIndex)
+  ) {
+    return loadProgress(
+      "ready",
+      100,
+      "Model is loaded and the server is ready.",
+      false,
+    );
+  }
+
+  if (loadingIndex < 0) {
+    if (listeningIndex >= 0) {
+      return loadProgress(
+        "starting",
+        10,
+        "HTTP listener is up; waiting for model loading logs.",
+      );
+    }
+    return pendingLoadProgress();
+  }
+
+  const window = lines.slice(loadingIndex);
+  const errorLine = interestingLines(
+    window,
+    /\b(error|fatal|failed|exception)\b/i,
+    1,
+  )[0];
+  if (errorLine) {
+    return loadProgress("error", null, errorLine, false);
+  }
+
+  const warmupIndex = lastIndex(window, /\b(warming up|warmup|empty run)\b/i);
+  if (warmupIndex >= 0) {
+    return loadProgress(
+      "warmup",
+      95,
+      "Model tensors are loaded; llama.cpp is warming up the model.",
+    );
+  }
+
+  const contextIndex = lastIndex(
+    window,
+    /\b(llama_context|initializing slots|new slot|kv cache|n_ctx)\b/i,
+  );
+  if (contextIndex >= 0) {
+    return loadProgress(
+      "context",
+      88,
+      "Model tensors are loaded; llama.cpp is initializing context and slots.",
+    );
+  }
+
+  const tensorIndex = lastIndex(window, /\bload_tensors:/i);
+  if (tensorIndex >= 0) {
+    const dots = countProgressDots(window.slice(tensorIndex + 1));
+    const percent = Math.min(85, 45 + Math.round(Math.min(dots, 90) * 0.45));
+    return loadProgress(
+      "tensors",
+      percent,
+      "Loading model tensors; progress is estimated from llama.cpp loader output.",
+    );
+  }
+
+  const metadataIndex = lastIndex(
+    window,
+    /\b(loaded meta data|dumping metadata|print_info|fitting params|common_params_fit_impl|llama_model_loader)\b/i,
+  );
+  if (metadataIndex >= 0) {
+    return loadProgress(
+      "metadata",
+      25,
+      "Model metadata is being read and launch parameters are being prepared.",
+    );
+  }
+
+  return loadProgress(
+    "starting",
+    5,
+    "llama.cpp accepted the model load request.",
+  );
+}
+
 export function summarizeInstanceLog(input: {
   instanceId: string;
   runtime: RuntimeState | undefined;
@@ -124,6 +255,7 @@ export function summarizeInstanceLog(input: {
       warnings: [],
       errors: [],
       notices: [],
+      loadProgress: pendingLoadProgress(),
       updatedAt: nowIso(),
     };
   }
@@ -147,6 +279,7 @@ export function summarizeInstanceLog(input: {
         /\b(server is listening|http server listening|offload|loaded|warming up|cache|slot|ready)\b/i,
         10,
       ),
+      loadProgress: parseLoadProgress(lines),
       updatedAt: nowIso(),
     };
   } catch (error) {
@@ -163,6 +296,12 @@ export function summarizeInstanceLog(input: {
       warnings: [],
       errors: [`Unable to parse log file: ${(error as Error).message}`],
       notices: [],
+      loadProgress: loadProgress(
+        "error",
+        null,
+        `Unable to parse log file: ${(error as Error).message}`,
+        false,
+      ),
       updatedAt: nowIso(),
     };
   }

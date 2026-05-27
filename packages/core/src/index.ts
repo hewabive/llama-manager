@@ -153,11 +153,7 @@ export const LlamaModelActionResultSchema = z.object({
   fallback: z.string().nullable().default(null),
 });
 
-export const LlamaSlotActionNameSchema = z.enum([
-  "save",
-  "restore",
-  "erase",
-]);
+export const LlamaSlotActionNameSchema = z.enum(["save", "restore", "erase"]);
 
 export const LlamaSlotActionRequestSchema = z.object({
   model: z.string().trim().min(1).max(500).optional(),
@@ -303,6 +299,24 @@ export const FileSystemListResultSchema = z.object({
   entries: z.array(FileSystemEntrySchema),
 });
 
+export const InstanceLoadProgressStageSchema = z.enum([
+  "pending",
+  "starting",
+  "metadata",
+  "tensors",
+  "context",
+  "warmup",
+  "ready",
+  "error",
+]);
+
+export const InstanceLoadProgressSchema = z.object({
+  stage: InstanceLoadProgressStageSchema,
+  percent: z.number().int().min(0).max(100).nullable(),
+  message: z.string(),
+  estimated: z.boolean(),
+});
+
 export const InstanceLogSummarySchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -316,6 +330,7 @@ export const InstanceLogSummarySchema = z.object({
   warnings: z.array(z.string()),
   errors: z.array(z.string()),
   notices: z.array(z.string()),
+  loadProgress: InstanceLoadProgressSchema,
   updatedAt: z.string(),
 });
 
@@ -763,9 +778,7 @@ export type LlamaSlotActionName = z.infer<typeof LlamaSlotActionNameSchema>;
 export type LlamaSlotActionRequest = z.infer<
   typeof LlamaSlotActionRequestSchema
 >;
-export type LlamaSlotActionResult = z.infer<
-  typeof LlamaSlotActionResultSchema
->;
+export type LlamaSlotActionResult = z.infer<typeof LlamaSlotActionResultSchema>;
 export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
 export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;
 export type LlamaApiProbeResult = z.infer<typeof LlamaApiProbeResultSchema>;
@@ -779,6 +792,10 @@ export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;
 export type FileSystemListResult = z.infer<typeof FileSystemListResultSchema>;
+export type InstanceLoadProgressStage = z.infer<
+  typeof InstanceLoadProgressStageSchema
+>;
+export type InstanceLoadProgress = z.infer<typeof InstanceLoadProgressSchema>;
 export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;
 export type InstanceHealthSummaryStatus = z.infer<
   typeof InstanceHealthSummaryStatusSchema

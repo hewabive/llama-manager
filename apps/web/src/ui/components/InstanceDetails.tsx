@@ -17,6 +17,7 @@ import {
   Divider,
   Group,
   Paper,
+  Progress,
   ScrollArea,
   SimpleGrid,
   Stack,
@@ -989,6 +990,31 @@ function V1ModelsPanel(props: {
                 )}
               </SimpleGrid>
 
+              {model.status?.toLowerCase() === "loading" && (
+                <Stack gap={4} mt="xs">
+                  <Group justify="space-between">
+                    <Text fw={600} size="xs">
+                      Model load
+                    </Text>
+                    <Text c="dimmed" size="xs">
+                      loading
+                    </Text>
+                  </Group>
+                  <Progress
+                    animated
+                    striped
+                    color="yellow"
+                    radius="xs"
+                    size="sm"
+                    value={35}
+                  />
+                  <Text c="dimmed" size="xs">
+                    Router reports that this model is loading. Exact progress is
+                    not exposed by the llama-server API.
+                  </Text>
+                </Stack>
+              )}
+
               {model.meta && (
                 <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing={4} mt={8}>
                   <Text size="xs">
@@ -1305,6 +1331,7 @@ function LaunchMonitorPanel(props: {
     props.logTail,
     props.statusSummary,
   ).slice(-5);
+  const loadProgress = props.statusSummary?.loadProgress;
   const startedAt =
     props.monitor?.startedAt ?? props.runtime?.startedAt ?? null;
   const elapsedMs = startedAt ? props.nowMs - Date.parse(startedAt) : null;
@@ -1361,6 +1388,41 @@ function LaunchMonitorPanel(props: {
         <Text size="sm">Elapsed: {formatElapsed(elapsedMs)}</Text>
         <Text size="sm">Started: {formatLocalDateTime(startedAt)}</Text>
       </SimpleGrid>
+      {loadProgress && (
+        <Stack gap={4} mt="xs">
+          <Group justify="space-between">
+            <Text fw={600} size="xs">
+              Model load
+            </Text>
+            <Text c="dimmed" size="xs">
+              {loadProgress.percent === null
+                ? loadProgress.stage
+                : `${loadProgress.percent}%`}
+            </Text>
+          </Group>
+          <Progress
+            animated={loadProgress.stage !== "ready"}
+            color={
+              loadProgress.stage === "error"
+                ? "red"
+                : loadProgress.stage === "ready"
+                  ? "green"
+                  : "blue"
+            }
+            radius="xs"
+            size="md"
+            striped={loadProgress.stage !== "ready"}
+            value={
+              loadProgress.percent ??
+              (isStartupStatus(effectiveHealth?.status) ? 35 : 0)
+            }
+          />
+          <Text c={loadProgress.stage === "error" ? "red" : "dimmed"} size="xs">
+            {loadProgress.message}
+            {loadProgress.estimated ? " Estimated from logs." : ""}
+          </Text>
+        </Stack>
+      )}
       <Stack gap={4} mt="xs">
         {startupLines.map((line, index) => (
           <Code key={`${index}-${line}`} block>
