@@ -9,10 +9,12 @@ import {
   Text,
   Title,
   Tooltip,
+  useComputedColorScheme,
+  useMantineColorScheme,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, Plus, RefreshCw } from "lucide-react";
+import { LogOut, Moon, Plus, RefreshCw, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -27,6 +29,7 @@ import { InstanceFormModal } from "./components/InstanceFormModal";
 import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { argsWithModel } from "./utils/models";
+import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
 import { InstancesView } from "./views/InstancesView";
 import { LoginView } from "./views/LoginView";
@@ -45,6 +48,8 @@ export function App() {
     null,
   );
   const [monitorNowMs, setMonitorNowMs] = useState(Date.now());
+  const { setColorScheme } = useMantineColorScheme();
+  const colorScheme = useComputedColorScheme("dark");
   const queryClient = useQueryClient();
   const authQuery = useQuery({
     queryKey: ["auth-state"],
@@ -204,41 +209,62 @@ export function App() {
               </Button>
             ))}
           </Group>
-          {canUseAdmin && !isPublicRoute && (
-            <Group className="app-header__actions" gap="xs">
-              <Tooltip label="Refresh">
-                <ActionIcon
-                  aria-label="Refresh instances"
-                  variant="subtle"
-                  onClick={() => {
-                    void instancesQuery.refetch();
-                    void healthSummariesQuery.refetch();
-                  }}
-                >
-                  <RefreshCw size={18} />
-                </ActionIcon>
-              </Tooltip>
-              <Button
-                leftSection={<Plus size={16} />}
-                onClick={() => setCreateOpened(true)}
+          <Group className="app-header__actions" gap="xs">
+            <Tooltip
+              label={
+                colorScheme === "dark" ? "Switch to light" : "Switch to dark"
+              }
+            >
+              <ActionIcon
+                aria-label="Toggle color scheme"
+                variant="subtle"
+                onClick={() =>
+                  setColorScheme(colorScheme === "dark" ? "light" : "dark")
+                }
               >
-                New instance
-              </Button>
-              {authState?.enabled && (
-                <Tooltip label="Sign out">
+                {colorScheme === "dark" ? (
+                  <Sun size={18} />
+                ) : (
+                  <Moon size={18} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+            {canUseAdmin && !isPublicRoute && (
+              <>
+                <Tooltip label="Refresh">
                   <ActionIcon
-                    aria-label="Sign out"
+                    aria-label="Refresh instances"
                     variant="subtle"
-                    color="gray"
-                    loading={logoutMutation.isPending}
-                    onClick={() => logoutMutation.mutate()}
+                    onClick={() => {
+                      void instancesQuery.refetch();
+                      void healthSummariesQuery.refetch();
+                    }}
                   >
-                    <LogOut size={18} />
+                    <RefreshCw size={18} />
                   </ActionIcon>
                 </Tooltip>
-              )}
-            </Group>
-          )}
+                <Button
+                  leftSection={<Plus size={16} />}
+                  onClick={() => setCreateOpened(true)}
+                >
+                  New instance
+                </Button>
+                {authState?.enabled && (
+                  <Tooltip label="Sign out">
+                    <ActionIcon
+                      aria-label="Sign out"
+                      variant="subtle"
+                      color="gray"
+                      loading={logoutMutation.isPending}
+                      onClick={() => logoutMutation.mutate()}
+                    >
+                      <LogOut size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </>
+            )}
+          </Group>
         </Group>
       </AppShell.Header>
 
@@ -278,6 +304,8 @@ export function App() {
           )}
 
           {canUseAdmin && route === "build" && <BuildView />}
+
+          {canUseAdmin && route === "args" && <ArgumentsView />}
 
           {canUseAdmin && route === "models" && (
             <ModelsView

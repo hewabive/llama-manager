@@ -22,6 +22,7 @@ import {
   updateModelPreset,
   updateModelScanSettings,
 } from "../../api/client";
+import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultModelsDirectory } from "../constants";
 import {
   formatBytes,
@@ -179,11 +180,12 @@ export function ModelsView(props: {
             </Text>
           </div>
           <Group className="model-scan-controls" gap="xs" align="flex-end">
-            <TextInput
+            <PathPickerInput
               aria-label="Directory"
               label="Directory"
+              mode="directory"
               value={directory}
-              onChange={(event) => setDirectory(event.currentTarget.value)}
+              onChange={setDirectory}
               className="model-directory-input"
             />
             <NumberInput

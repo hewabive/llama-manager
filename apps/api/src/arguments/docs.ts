@@ -1,0 +1,277 @@
+import type {
+  LlamaArgumentDocIndex,
+  LlamaArgumentDocStatus,
+  LlamaArgumentEngineeringDoc,
+  LlamaArgumentOption,
+} from "@llama-manager/core";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from "node:fs";
+import { resolve } from "node:path";
+
+import { config } from "../config.js";
+
+const validStatuses = new Set<LlamaArgumentDocStatus>([
+  "missing",
+  "draft",
+  "current",
+  "needs-review",
+  "deprecated",
+  "orphaned",
+]);
+
+export const argumentDocsDirectory = resolve(
+  config.rootDir,
+  "content",
+  "llama-args",
+  "llama-server",
+);
+
+type ParsedDocFile = {
+  frontmatter: Record<string, unknown>;
+  markdown: string;
+};
+
+export function argumentDocSlug(primaryName: string) {
+  return (
+    primaryName
+      .replace(/^-+/, "")
+      .replace(/[^\w.-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "argument"
+  );
+}
+
+export function argumentDocPath(primaryName: string) {
+  return resolve(argumentDocsDirectory, `${argumentDocSlug(primaryName)}.md`);
+}
+
+function readFilePrefix(path: string, maxBytes = 128 * 1024) {
+  const stat = statSync(path);
+  const fd = openSync(path, "r");
+  try {
+    const buffer = Buffer.alloc(Math.min(stat.size, maxBytes));
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function scalarValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === "null") return null;
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed
+      .slice(1, -1)
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => String(scalarValue(item)));
+  }
+  return trimmed;
+}
+
+export function parseArgumentDocFile(raw: string): ParsedDocFile {
+  if (!raw.startsWith("---\n") && !raw.startsWith("---\r\n")) {
+    return {
+      frontmatter: {},
+      markdown: raw.trim(),
+    };
+  }
+
+  const delimiter = raw.startsWith("---\r\n") ? "\r\n---" : "\n---";
+  const end = raw.indexOf(delimiter, 4);
+  if (end === -1) {
+    return {
+      frontmatter: {},
+      markdown: raw.trim(),
+    };
+  }
+
+  const frontmatterText = raw.slice(4, end).trim();
+  const markdown = raw
+    .slice(end + delimiter.length)
+    .replace(/^\r?\n/, "")
+    .trim();
+  const frontmatter: Record<string, unknown> = {};
+  let activeArrayKey: string | null = null;
+
+  for (const line of frontmatterText.split(/\r?\n/)) {
+    const arrayItem = line.match(/^\s*-\s+(.+)$/);
+    if (activeArrayKey && arrayItem) {
+      const list = frontmatter[activeArrayKey];
+      if (Array.isArray(list)) {
+        list.push(String(scalarValue(arrayItem[1]!)));
+      }
+      continue;
+    }
+
+    activeArrayKey = null;
+    const property = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+    if (!property) {
+      continue;
+    }
+
+    const key = property[1]!;
+    const value = property[2]!;
+    if (!value.trim()) {
+      frontmatter[key] = [];
+      activeArrayKey = key;
+      continue;
+    }
+    frontmatter[key] = scalarValue(value);
+  }
+
+  return {
+    frontmatter,
+    markdown,
+  };
+}
+
+function stringFrontmatter(
+  frontmatter: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = frontmatter[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function statusFromFrontmatter(frontmatter: Record<string, unknown>) {
+  const status = stringFrontmatter(frontmatter, "docStatus");
+  return status && validStatuses.has(status as LlamaArgumentDocStatus)
+    ? (status as LlamaArgumentDocStatus)
+    : "draft";
+}
+
+function firstMarkdownParagraph(markdown: string) {
+  const paragraph = markdown
+    .split(/\n\s*\n/)
+    .map((item) => item.trim())
+    .find((item) => item && !item.startsWith("#"));
+  return paragraph?.replace(/\s+/g, " ").slice(0, 240) ?? null;
+}
+
+function docStatus(input: {
+  fileStatus: LlamaArgumentDocStatus;
+  reviewedHelpHash: string | null;
+  currentHelpHash: string | null | undefined;
+}) {
+  if (
+    input.fileStatus === "current" &&
+    input.reviewedHelpHash &&
+    input.currentHelpHash &&
+    input.reviewedHelpHash !== input.currentHelpHash
+  ) {
+    return "needs-review";
+  }
+  return input.fileStatus;
+}
+
+export function getArgumentDocIndex(
+  option: LlamaArgumentOption,
+  currentHelpHash?: string,
+): LlamaArgumentDocIndex {
+  const path = argumentDocPath(option.primaryName);
+  if (!existsSync(path)) {
+    return {
+      status: "missing",
+      path,
+      summary: null,
+      updatedAt: null,
+      reviewedHelpHash: null,
+    };
+  }
+
+  const parsed = parseArgumentDocFile(readFilePrefix(path));
+  const reviewedHelpHash = stringFrontmatter(
+    parsed.frontmatter,
+    "reviewedHelpHash",
+  );
+  const fileStatus = statusFromFrontmatter(parsed.frontmatter);
+  return {
+    status: docStatus({ fileStatus, reviewedHelpHash, currentHelpHash }),
+    path,
+    summary:
+      stringFrontmatter(parsed.frontmatter, "summary") ??
+      firstMarkdownParagraph(parsed.markdown),
+    updatedAt: statSync(path).mtime.toISOString(),
+    reviewedHelpHash,
+  };
+}
+
+export function withArgumentDocIndex(
+  options: LlamaArgumentOption[],
+  currentHelpHash?: string,
+) {
+  return options.map((option) => ({
+    ...option,
+    doc: getArgumentDocIndex(option, currentHelpHash),
+  }));
+}
+
+export function readArgumentEngineeringDoc(input: {
+  primaryName: string;
+  option?: LlamaArgumentOption | null;
+  currentHelpHash?: string;
+}): LlamaArgumentEngineeringDoc {
+  const path = argumentDocPath(input.primaryName);
+  if (!existsSync(path)) {
+    return {
+      primaryName: input.primaryName,
+      path,
+      exists: false,
+      status: "missing",
+      title: null,
+      summary: null,
+      updatedAt: null,
+      reviewedHelpHash: null,
+      frontmatter: {},
+      markdown: "",
+    };
+  }
+
+  const parsed = parseArgumentDocFile(readFileSync(path, "utf8"));
+  const reviewedHelpHash = stringFrontmatter(
+    parsed.frontmatter,
+    "reviewedHelpHash",
+  );
+  const fileStatus = statusFromFrontmatter(parsed.frontmatter);
+  const title =
+    stringFrontmatter(parsed.frontmatter, "title") ??
+    parsed.markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() ??
+    input.option?.primaryName ??
+    input.primaryName;
+
+  return {
+    primaryName: input.primaryName,
+    path,
+    exists: true,
+    status: docStatus({
+      fileStatus,
+      reviewedHelpHash,
+      currentHelpHash: input.currentHelpHash,
+    }),
+    title,
+    summary:
+      stringFrontmatter(parsed.frontmatter, "summary") ??
+      firstMarkdownParagraph(parsed.markdown),
+    updatedAt: statSync(path).mtime.toISOString(),
+    reviewedHelpHash,
+    frontmatter: parsed.frontmatter,
+    markdown: parsed.markdown,
+  };
+}

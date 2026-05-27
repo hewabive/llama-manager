@@ -61,6 +61,7 @@ code {
 }
 
 .instances-mobile-list,
+.args-mobile-list,
 .models-mobile-list,
 .preset-models-mobile-list,
 .preset-entries-mobile-list,
@@ -74,8 +75,12 @@ code {
   cursor: pointer;
 }
 
-.instance-card--selected {
+:root[data-mantine-color-scheme="dark"] .instance-card--selected {
   background: var(--mantine-color-dark-5);
+}
+
+:root[data-mantine-color-scheme="light"] .instance-card--selected {
+  background: var(--mantine-color-blue-0);
 }
 
 .instance-card__title {
@@ -105,8 +110,86 @@ code {
   min-width: 0;
 }
 
-.selected-row td {
+:root[data-mantine-color-scheme="dark"] .selected-row td {
   background: var(--mantine-color-dark-5);
+}
+
+:root[data-mantine-color-scheme="light"] .selected-row td {
+  background: var(--mantine-color-blue-0);
+}
+
+.args-binary-input {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.args-filter-controls {
+  flex: 1 1 640px;
+  min-width: 0;
+}
+
+.args-reference-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  gap: var(--mantine-spacing-md);
+  align-items: start;
+}
+
+.args-reference-layout > * {
+  min-width: 0;
+}
+
+.args-reference-detail {
+  position: sticky;
+  top: 74px;
+}
+
+.argument-row {
+  cursor: pointer;
+}
+
+.argument-name {
+  min-width: 0;
+}
+
+.argument-value-hint {
+  max-width: 100%;
+}
+
+.argument-value-hint .mantine-Badge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.argument-doc-markdown {
+  white-space: pre-wrap;
+}
+
+.path-picker-row {
+  cursor: pointer;
+}
+
+:root[data-mantine-color-scheme="dark"] .path-picker-row:hover {
+  background: var(--mantine-color-dark-6);
+}
+
+:root[data-mantine-color-scheme="light"] .path-picker-row:hover {
+  background: var(--mantine-color-gray-0);
+}
+
+.path-picker-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 64em) {
+  .args-reference-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .args-reference-detail {
+    position: static;
+  }
 }
 
 @media (max-width: 48em) {
@@ -152,6 +235,7 @@ code {
   }
 
   .instances-mobile-list,
+  .args-mobile-list,
   .models-mobile-list,
   .preset-models-mobile-list,
   .preset-entries-mobile-list,
@@ -161,6 +245,7 @@ code {
   }
 
   .instances-table,
+  .args-table,
   .models-table,
   .preset-models-table,
   .preset-entries-table,

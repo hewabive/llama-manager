@@ -33,6 +33,19 @@ type FoundFile = {
   directory: string;
 };
 
+type SplitInfo = {
+  prefix: string;
+  index: number;
+  count: number;
+  indexWidth: number;
+  countWidth: number;
+};
+
+type ModelFile = FoundFile & {
+  shardPaths: string[];
+  missingShardNames: string[];
+};
+
 export const defaultModelsDirectory = resolve(config.rootDir, "..");
 
 async function walk(
@@ -93,6 +106,103 @@ function emptyMetadata(): GgufMetadata {
   };
 }
 
+function parseSplitInfo(name: string): SplitInfo | null {
+  const match = /^(?<prefix>.+)-(?<index>\d+)-of-(?<count>\d+)\.gguf$/i.exec(
+    name,
+  );
+  const groups = match?.groups;
+  if (!groups) {
+    return null;
+  }
+
+  const prefix = groups.prefix;
+  const indexText = groups.index;
+  const countText = groups.count;
+  const index = Number(indexText);
+  const count = Number(countText);
+  if (!prefix || !indexText || !countText) {
+    return null;
+  }
+  if (!Number.isInteger(index) || !Number.isInteger(count)) {
+    return null;
+  }
+  if (count <= 1 || index < 1 || index > count) {
+    return null;
+  }
+
+  return {
+    prefix,
+    index,
+    count,
+    indexWidth: indexText.length,
+    countWidth: countText.length,
+  };
+}
+
+function splitShardName(split: SplitInfo, index: number, count: number) {
+  const indexText = String(index).padStart(split.indexWidth, "0");
+  const countText = String(count).padStart(split.countWidth, "0");
+  return `${split.prefix}-${indexText}-of-${countText}.gguf`;
+}
+
+function collapseSplitFiles(files: FoundFile[]): ModelFile[] {
+  const splitGroups = new Map<
+    string,
+    { count: number; files: Array<FoundFile & { split: SplitInfo }> }
+  >();
+  const splitFilePaths = new Set<string>();
+
+  for (const file of files) {
+    const split = parseSplitInfo(file.name);
+    if (!split) {
+      continue;
+    }
+
+    const key = `${file.directory}\0${split.prefix}\0${split.count}`;
+    const group = splitGroups.get(key) ?? { count: split.count, files: [] };
+    group.files.push({ ...file, split });
+    splitGroups.set(key, group);
+    splitFilePaths.add(file.path);
+  }
+
+  const collapsed: ModelFile[] = files
+    .filter((file) => !splitFilePaths.has(file.path))
+    .map((file) => ({
+      ...file,
+      shardPaths: [file.path],
+      missingShardNames: [],
+    }));
+
+  for (const group of splitGroups.values()) {
+    const firstShard = group.files.find((file) => file.split.index === 1);
+    if (!firstShard) {
+      continue;
+    }
+
+    const presentIndexes = new Set(group.files.map((file) => file.split.index));
+    const missingShardNames: string[] = [];
+    for (let index = 1; index <= group.count; index += 1) {
+      if (!presentIndexes.has(index)) {
+        missingShardNames.push(
+          splitShardName(firstShard.split, index, group.count),
+        );
+      }
+    }
+
+    collapsed.push({
+      path: firstShard.path,
+      name: firstShard.name,
+      directory: firstShard.directory,
+      shardPaths: group.files
+        .sort((left, right) => left.split.index - right.split.index)
+        .map((file) => file.path),
+      missingShardNames,
+    });
+  }
+
+  return collapsed.sort((left, right) => left.path.localeCompare(right.path));
+}
+
 function readDirectoryErrorMessage(directory: string, error: unknown) {
   const code = (error as NodeJS.ErrnoException).code;
   if (code === "ENOENT") {
@@ -124,7 +234,7 @@ export async function scanModels(input: {
     throw new Error(`Model scan target is not a directory: ${directory}`);
   }
 
-  const files = await walk(directory, maxDepth);
+  const files = collapseSplitFiles(await walk(directory, maxDepth));
   const mmprojByDir = new Map<string, string[]>();
   for (const file of files) {
     if (file.name.toLowerCase().includes("mmproj")) {
@@ -137,17 +247,21 @@ export async function scanModels(input: {
   const models: GgufModel[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
-  for (const file of files.sort((left, right) =>
-    left.path.localeCompare(right.path),
-  )) {
-    const fileStat = await stat(file.path);
+  for (const file of files) {
+    const shardStats = await Promise.all(
+      file.shardPaths.map((path) => stat(path)),
+    );
+    const sizeBytes = shardStats.reduce((sum, item) => sum + item.size, 0);
+    const modifiedAt = new Date(
+      Math.max(...shardStats.map((item) => item.mtime.getTime())),
+    ).toISOString();
     const isMmproj = file.name.toLowerCase().includes("mmproj");
     const mmprojPaths = isMmproj ? [] : (mmprojByDir.get(file.directory) ?? []);
     const cached = input.refresh ? null : getCachedModel(file.path);
     if (
       cached &&
-      cached.sizeBytes === fileStat.size &&
-      cached.modifiedAt === fileStat.mtime.toISOString()
+      cached.sizeBytes === sizeBytes &&
+      cached.modifiedAt === modifiedAt
     ) {
       cacheHits += 1;
       models.push({
@@ -166,13 +280,21 @@ export async function scanModels(input: {
     } catch (caught) {
       error = (caught as Error).message;
     }
+    if (file.missingShardNames.length > 0) {
+      error = [
+        error,
+        `missing GGUF split shards: ${file.missingShardNames.join(", ")}`,
+      ]
+        .filter(Boolean)
+        .join("; ");
+    }
 
     const model: GgufModel = {
       name: basename(file.path),
       path: file.path,
       directory: dirname(file.path),
-      sizeBytes: fileStat.size,
-      modifiedAt: fileStat.mtime.toISOString(),
+      sizeBytes,
+      modifiedAt,
       isMmproj,
       mmprojPaths,
       metadata,

@@ -1,6 +1,26 @@
-import type { Instance, InstanceHealthSummary } from "@llama-manager/core";
-import { Code, Group, Paper, Stack, Table, Text } from "@mantine/core";
+import type {
+  Instance,
+  InstanceBulkActionName,
+  InstanceBulkActionResult,
+  InstanceHealthSummary,
+} from "@llama-manager/core";
+import {
+  Button,
+  Code,
+  Group,
+  Modal,
+  Paper,
+  Stack,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { RotateCcw, Square, Triangle } from "lucide-react";
+import { useState } from "react";
 
+import { bulkInstanceAction } from "../../api/client";
 import { InstanceActions } from "../components/InstanceActions";
 import { InstanceHealthBadge } from "../components/InstanceHealthBadge";
 import type { LaunchMonitor } from "../utils/launch";
@@ -62,6 +82,198 @@ function InstanceArgsList(props: { args: Instance["args"] }) {
   );
 }
 
+function bulkActionAllowed(
+  action: InstanceBulkActionName,
+  health: InstanceHealthSummary | undefined,
+) {
+  if (!health) return false;
+  if (action === "start") return health.actions.canStart;
+  if (action === "stop") return health.actions.canStop;
+  return health.actions.canRestart;
+}
+
+function bulkActionLabel(action: InstanceBulkActionName) {
+  if (action === "start") return "Start all";
+  if (action === "stop") return "Stop all";
+  return "Restart all";
+}
+
+function bulkActionIcon(action: InstanceBulkActionName) {
+  if (action === "start") return <Triangle size={16} fill="currentColor" />;
+  if (action === "stop") return <Square size={16} />;
+  return <RotateCcw size={16} />;
+}
+
+function bulkActionColor(action: InstanceBulkActionName) {
+  if (action === "start") return "green";
+  if (action === "stop") return "yellow";
+  return "blue";
+}
+
+function bulkResultMessage(result: InstanceBulkActionResult) {
+  const failed = result.items.find((item) => item.error && !item.skipped);
+  const details = `${result.succeeded} succeeded, ${result.skipped} skipped, ${result.failed} failed.`;
+  return failed
+    ? `${details} First error: ${failed.name}: ${failed.error}`
+    : details;
+}
+
+function BulkActionsToolbar(props: {
+  instances: Instance[];
+  healthByInstanceId: Map<string, InstanceHealthSummary>;
+}) {
+  const queryClient = useQueryClient();
+  const [pendingAction, setPendingAction] =
+    useState<InstanceBulkActionName | null>(null);
+
+  const actionMutation = useMutation({
+    mutationFn: (action: InstanceBulkActionName) =>
+      bulkInstanceAction({
+        action,
+        instanceIds: props.instances.map((instance) => instance.id),
+      }),
+    onSuccess: async (result) => {
+      setPendingAction(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instances"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instances-health-summary"],
+        }),
+        ...result.data.items.flatMap((item) => [
+          queryClient.invalidateQueries({
+            queryKey: ["instance-health-summary", item.instanceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["instance-runtime", item.instanceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["instance-llama", item.instanceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["instance-status-summary", item.instanceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["instance-logs", item.instanceId],
+          }),
+        ]),
+      ]);
+      notifications.show({
+        color:
+          result.data.failed > 0
+            ? "red"
+            : result.data.skipped > 0
+              ? "yellow"
+              : "green",
+        title: `${bulkActionLabel(result.data.action)} finished`,
+        message: bulkResultMessage(result.data),
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Bulk action failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  const counts = {
+    start: props.instances.filter((instance) =>
+      bulkActionAllowed("start", props.healthByInstanceId.get(instance.id)),
+    ).length,
+    stop: props.instances.filter((instance) =>
+      bulkActionAllowed("stop", props.healthByInstanceId.get(instance.id)),
+    ).length,
+    restart: props.instances.filter((instance) =>
+      bulkActionAllowed("restart", props.healthByInstanceId.get(instance.id)),
+    ).length,
+  } satisfies Record<InstanceBulkActionName, number>;
+  const targetCount = pendingAction ? counts[pendingAction] : 0;
+
+  return (
+    <>
+      <Paper withBorder p="sm" radius="sm">
+        <Group justify="space-between" align="center" gap="sm">
+          <div>
+            <Text fw={600}>Bulk actions</Text>
+            <Text c="dimmed" size="sm">
+              Applies to all instances; ineligible instances are skipped.
+            </Text>
+          </div>
+          <Group gap="xs">
+            {(["start", "stop", "restart"] as const).map((action) => (
+              <Tooltip
+                key={action}
+                label={
+                  counts[action] > 0
+                    ? `${counts[action]} eligible instance${counts[action] === 1 ? "" : "s"}`
+                    : "No eligible instances"
+                }
+              >
+                <Button
+                  size="xs"
+                  variant="light"
+                  color={bulkActionColor(action)}
+                  leftSection={bulkActionIcon(action)}
+                  disabled={
+                    props.instances.length === 0 ||
+                    counts[action] === 0 ||
+                    actionMutation.isPending
+                  }
+                  loading={
+                    actionMutation.isPending &&
+                    actionMutation.variables === action
+                  }
+                  onClick={() => setPendingAction(action)}
+                >
+                  {bulkActionLabel(action)}
+                </Button>
+              </Tooltip>
+            ))}
+          </Group>
+        </Group>
+      </Paper>
+
+      <Modal
+        opened={Boolean(pendingAction)}
+        onClose={() => setPendingAction(null)}
+        title={pendingAction ? bulkActionLabel(pendingAction) : "Bulk action"}
+        centered
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            This will run the action for all configured instances. Currently{" "}
+            {targetCount} of {props.instances.length} instance
+            {props.instances.length === 1 ? "" : "s"} are eligible; the rest
+            will be skipped.
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="default"
+              onClick={() => setPendingAction(null)}
+              disabled={actionMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              color={pendingAction ? bulkActionColor(pendingAction) : "blue"}
+              leftSection={pendingAction ? bulkActionIcon(pendingAction) : null}
+              loading={actionMutation.isPending}
+              onClick={() => {
+                if (pendingAction) {
+                  actionMutation.mutate(pendingAction);
+                }
+              }}
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
+  );
+}
+
 export function InstancesView(props: {
   instances: Instance[];
   selectedInstance: Instance | null;
@@ -76,6 +288,11 @@ export function InstancesView(props: {
 }) {
   return (
     <>
+      <BulkActionsToolbar
+        instances={props.instances}
+        healthByInstanceId={props.healthByInstanceId}
+      />
+
       <Stack className="instances-mobile-list" gap="xs">
         {props.instances.map((instance) => (
           <Paper

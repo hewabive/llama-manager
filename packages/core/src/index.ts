@@ -103,6 +103,29 @@ export const LogTailSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const FileSystemEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  type: z.enum(["directory", "file", "other"]),
+  extension: z.string().nullable(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  modifiedAt: z.string().nullable(),
+  executable: z.boolean(),
+  readable: z.boolean(),
+});
+
+export const FileSystemRootSchema = z.object({
+  label: z.string(),
+  path: z.string(),
+});
+
+export const FileSystemListResultSchema = z.object({
+  path: z.string(),
+  parentPath: z.string().nullable(),
+  roots: z.array(FileSystemRootSchema),
+  entries: z.array(FileSystemEntrySchema),
+});
+
 export const InstanceLogSummarySchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -149,6 +172,37 @@ export const InstanceHealthSummarySchema = z.object({
   checkedAt: z.string(),
 });
 
+export const InstanceBulkActionNameSchema = z.enum([
+  "start",
+  "stop",
+  "restart",
+]);
+
+export const InstanceBulkActionRequestSchema = z.object({
+  action: InstanceBulkActionNameSchema,
+  instanceIds: z.array(z.string().min(1)).optional(),
+});
+
+export const InstanceBulkActionItemSchema = z.object({
+  instanceId: z.string(),
+  name: z.string(),
+  action: InstanceBulkActionNameSchema,
+  ok: z.boolean(),
+  skipped: z.boolean(),
+  status: RuntimeStateSchema.nullable(),
+  error: z.string().nullable(),
+  issues: z.array(ProcessPreflightIssueSchema).default([]),
+});
+
+export const InstanceBulkActionResultSchema = z.object({
+  action: InstanceBulkActionNameSchema,
+  requested: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  items: z.array(InstanceBulkActionItemSchema),
+});
+
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
@@ -168,6 +222,7 @@ export const BuildJobStatusSchema = z.enum([
 ]);
 export const BuildJobStepNameSchema = z.enum([
   "git-pull",
+  "ui-install",
   "configure",
   "build",
 ]);
@@ -205,6 +260,7 @@ export const BuildJobSchema = z.object({
 export const BuildJobStartSchema = z.object({
   settings: BuildSettingsSchema.optional(),
   pull: z.boolean().default(true),
+  installUiDeps: z.boolean().default(true),
   configure: z.boolean().default(true),
   build: z.boolean().default(true),
 });
@@ -227,6 +283,31 @@ export const LlamaArgumentValueTypeSchema = z.enum([
   "list",
 ]);
 
+export const LlamaArgumentDocStatusSchema = z.enum([
+  "missing",
+  "draft",
+  "current",
+  "needs-review",
+  "deprecated",
+  "orphaned",
+]);
+
+export const LlamaArgumentDocIndexSchema = z
+  .object({
+    status: LlamaArgumentDocStatusSchema,
+    path: z.string().nullable(),
+    summary: z.string().nullable(),
+    updatedAt: z.string().nullable(),
+    reviewedHelpHash: z.string().nullable(),
+  })
+  .default({
+    status: "missing",
+    path: null,
+    summary: null,
+    updatedAt: null,
+    reviewedHelpHash: null,
+  });
+
 export const LlamaArgumentOptionSchema = z.object({
   primaryName: z.string(),
   names: z.array(z.string()),
@@ -239,6 +320,7 @@ export const LlamaArgumentOptionSchema = z.object({
   helpRu: z.string(),
   helpRuSource: z.enum(["builtin", "override", "fallback"]),
   notes: z.string().nullable(),
+  doc: LlamaArgumentDocIndexSchema,
   deprecated: z.boolean(),
 });
 
@@ -271,6 +353,19 @@ export const LlamaArgumentHelpOverrideUpdateSchema = z.object({
   primaryName: z.string().min(1),
   helpRu: z.string().min(1),
   notes: z.string().nullable().optional(),
+});
+
+export const LlamaArgumentEngineeringDocSchema = z.object({
+  primaryName: z.string(),
+  path: z.string(),
+  exists: z.boolean(),
+  status: LlamaArgumentDocStatusSchema,
+  title: z.string().nullable(),
+  summary: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  reviewedHelpHash: z.string().nullable(),
+  frontmatter: z.record(z.string(), z.unknown()),
+  markdown: z.string(),
 });
 
 export const NetworkInterfaceAddressSchema = z.object({
@@ -472,12 +567,27 @@ export type ProcessPreflightResult = z.infer<
 export type LlamaEndpointProbe = z.infer<typeof LlamaEndpointProbeSchema>;
 export type LlamaProbe = z.infer<typeof LlamaProbeSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
+export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
+export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;
+export type FileSystemListResult = z.infer<typeof FileSystemListResultSchema>;
 export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;
 export type InstanceHealthSummaryStatus = z.infer<
   typeof InstanceHealthSummaryStatusSchema
 >;
 export type InstanceHealthActions = z.infer<typeof InstanceHealthActionsSchema>;
 export type InstanceHealthSummary = z.infer<typeof InstanceHealthSummarySchema>;
+export type InstanceBulkActionName = z.infer<
+  typeof InstanceBulkActionNameSchema
+>;
+export type InstanceBulkActionRequest = z.infer<
+  typeof InstanceBulkActionRequestSchema
+>;
+export type InstanceBulkActionItem = z.infer<
+  typeof InstanceBulkActionItemSchema
+>;
+export type InstanceBulkActionResult = z.infer<
+  typeof InstanceBulkActionResultSchema
+>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;
@@ -489,6 +599,10 @@ export type BuildLogTail = z.infer<typeof BuildLogTailSchema>;
 export type LlamaArgumentValueType = z.infer<
   typeof LlamaArgumentValueTypeSchema
 >;
+export type LlamaArgumentDocStatus = z.infer<
+  typeof LlamaArgumentDocStatusSchema
+>;
+export type LlamaArgumentDocIndex = z.infer<typeof LlamaArgumentDocIndexSchema>;
 export type LlamaArgumentOption = z.infer<typeof LlamaArgumentOptionSchema>;
 export type LlamaArgumentCatalog = z.infer<typeof LlamaArgumentCatalogSchema>;
 export type LlamaArgumentHelpOverride = z.infer<
@@ -496,6 +610,9 @@ export type LlamaArgumentHelpOverride = z.infer<
 >;
 export type LlamaArgumentHelpOverrideUpdate = z.infer<
   typeof LlamaArgumentHelpOverrideUpdateSchema
+>;
+export type LlamaArgumentEngineeringDoc = z.infer<
+  typeof LlamaArgumentEngineeringDocSchema
 >;
 export type NetworkInterfaceAddress = z.infer<
   typeof NetworkInterfaceAddressSchema

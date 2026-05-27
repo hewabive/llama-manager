@@ -72,6 +72,7 @@ import {
   upsertArgRow,
   canonicalOptionForRow,
 } from "./InstanceArgumentRows";
+import { PathPickerInput } from "./PathPickerInput";
 
 type LaunchMode = "model" | "router";
 
@@ -226,6 +227,22 @@ export function InstanceFormModal(props: {
   );
   const selectedModel =
     selectableModels.find((model) => model.path === selectedModelPath) ?? null;
+  const modelOptions = useMemo(() => {
+    const options = selectableModels.map((model) => ({
+      value: model.path,
+      label: `${modelTitle(model)} · ${pathBaseName(model.path)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+    }));
+    if (
+      selectedModelPath &&
+      !options.some((option) => option.value === selectedModelPath)
+    ) {
+      options.push({
+        value: selectedModelPath,
+        label: `${pathBaseName(selectedModelPath)} · custom path`,
+      });
+    }
+    return options;
+  }, [selectableModels, selectedModelPath]);
   const modelPreset = modelPresetQuery.data?.data;
   const effectivePresetPath = selectedPresetPath ?? modelPreset?.path ?? null;
   const presetOptions = useMemo(() => {
@@ -627,12 +644,20 @@ export function InstanceFormModal(props: {
       <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="sm">
           <TextInput label="Name" required {...form.getInputProps("name")} />
-          <TextInput
+          <PathPickerInput
             label="Binary path"
             required
-            {...form.getInputProps("binaryPath")}
+            mode="file"
+            filter="binary"
+            value={form.values.binaryPath}
+            onChange={(value) => form.setFieldValue("binaryPath", value)}
           />
-          <TextInput label="Working directory" {...form.getInputProps("cwd")} />
+          <PathPickerInput
+            label="Working directory"
+            mode="directory"
+            value={form.values.cwd}
+            onChange={(value) => form.setFieldValue("cwd", value)}
+          />
           <Paper withBorder p="sm" radius="sm">
             <Stack gap="xs">
               <SegmentedControl
@@ -645,27 +670,33 @@ export function InstanceFormModal(props: {
                 fullWidth
               />
               {launchMode === "model" ? (
-                <Select
-                  label="Model"
-                  placeholder={
-                    formModelsQuery.isFetching
-                      ? "Loading models..."
-                      : "Select GGUF model"
-                  }
-                  searchable={!isMobile}
-                  clearable
-                  value={selectedModelPath}
-                  onChange={applyModelSelection}
-                  data={selectableModels.map((model) => ({
-                    value: model.path,
-                    label: `${modelTitle(model)} · ${pathBaseName(model.path)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
-                  }))}
-                  nothingFoundMessage={
-                    formModelsQuery.isError
-                      ? (formModelsQuery.error as Error).message
-                      : "No models found"
-                  }
-                />
+                <>
+                  <Select
+                    label="Model"
+                    placeholder={
+                      formModelsQuery.isFetching
+                        ? "Loading models..."
+                        : "Select GGUF model"
+                    }
+                    searchable={!isMobile}
+                    clearable
+                    value={selectedModelPath}
+                    onChange={applyModelSelection}
+                    data={modelOptions}
+                    nothingFoundMessage={
+                      formModelsQuery.isError
+                        ? (formModelsQuery.error as Error).message
+                        : "No models found"
+                    }
+                  />
+                  <PathPickerInput
+                    label="Model path"
+                    mode="file"
+                    filter="model"
+                    value={selectedModelPath ?? ""}
+                    onChange={applyModelSelection}
+                  />
+                </>
               ) : (
                 <Stack gap={6}>
                   <Select
@@ -685,6 +716,13 @@ export function InstanceFormModal(props: {
                         ? (modelPresetQuery.error as Error).message
                         : "No presets found"
                     }
+                  />
+                  <PathPickerInput
+                    label="Preset path"
+                    mode="file"
+                    filter="preset"
+                    value={effectivePresetPath ?? ""}
+                    onChange={applyPresetSelection}
                   />
                   <Group justify="space-between" align="center" gap="xs">
                     <Group gap="xs">

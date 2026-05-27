@@ -44,6 +44,7 @@ import {
   openUrlInNewTab,
 } from "../utils/instance-url";
 import type { LaunchMonitor } from "../utils/launch";
+import { formatLocalDateTime } from "../utils/time";
 
 const launchMonitorTimeoutMs = 5 * 60 * 1000;
 
@@ -275,7 +276,7 @@ function LaunchMonitorPanel(props: {
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
         <Text size="sm">PID: {props.runtime?.pid ?? "-"}</Text>
         <Text size="sm">Elapsed: {formatElapsed(elapsedMs)}</Text>
-        <Text size="sm">Started: {startedAt ?? "-"}</Text>
+        <Text size="sm">Started: {formatLocalDateTime(startedAt)}</Text>
       </SimpleGrid>
       <Stack gap={4} mt="xs">
         {startupLines.map((line, index) => (
@@ -518,7 +519,7 @@ export function InstanceDetails(props: {
           </Group>
           {health && (
             <Text c="dimmed" size="xs" mt={6}>
-              Checked: {health.checkedAt}
+              Checked: {formatLocalDateTime(health.checkedAt)}
             </Text>
           )}
         </Paper>
@@ -548,7 +549,9 @@ export function InstanceDetails(props: {
               Runtime
             </Text>
             <Text size="sm">PID: {runtime?.pid ?? "-"}</Text>
-            <Text size="sm">Started: {runtime?.startedAt ?? "-"}</Text>
+            <Text size="sm">
+              Started: {formatLocalDateTime(runtime?.startedAt)}
+            </Text>
             <Text size="sm">Exit code: {runtime?.exitCode ?? "-"}</Text>
             <Text size="sm" lineClamp={2}>
               Log: {runtime?.logPath ?? "-"}
@@ -695,7 +698,8 @@ export function InstanceDetails(props: {
             <Stack gap={4}>
               {events.map((event, index) => (
                 <Code key={`${event.timestamp}-${index}`} block>
-                  {event.timestamp} [{event.type}] {event.message.trimEnd()}
+                  {formatLocalDateTime(event.timestamp)} [{event.type}]{" "}
+                  {event.message.trimEnd()}
                 </Code>
               ))}
               {events.length === 0 && (

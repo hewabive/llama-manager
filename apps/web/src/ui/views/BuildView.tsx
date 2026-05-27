@@ -32,6 +32,8 @@ import {
   startBuildJob,
   updateBuildSettings,
 } from "../../api/client";
+import { PathPickerInput } from "../components/PathPickerInput";
+import { formatLocalDateTime } from "../utils/time";
 
 function buildStatusColor(status: BuildJob["status"]) {
   if (status === "succeeded") return "green";
@@ -69,6 +71,7 @@ export function BuildView() {
   const [native, setNative] = useState(false);
   const [extraCmakeArgs, setExtraCmakeArgs] = useState("");
   const [runPull, setRunPull] = useState(true);
+  const [runUiInstall, setRunUiInstall] = useState(true);
   const [runConfigure, setRunConfigure] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
   const [startConfirmOpened, setStartConfirmOpened] = useState(false);
@@ -88,6 +91,7 @@ export function BuildView() {
   const selectedJob = runningJob ?? jobs[0] ?? null;
   const selectedSteps = [
     ...(runPull ? ["git pull --ff-only"] : []),
+    ...(runUiInstall ? ["npm install in tools/ui"] : []),
     ...(runConfigure ? ["Configure CMake"] : []),
     ...(runBuild ? [`Build ${target || "target"}`] : []),
   ];
@@ -148,6 +152,7 @@ export function BuildView() {
       startBuildJob({
         settings: currentSettings(),
         pull: runPull,
+        installUiDeps: runUiInstall,
         configure: runConfigure,
         build: runBuild,
       }),
@@ -237,15 +242,17 @@ export function BuildView() {
         )}
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-          <TextInput
+          <PathPickerInput
             label="llama.cpp repository"
+            mode="directory"
             value={repoPath}
-            onChange={(event) => setRepoPath(event.currentTarget.value)}
+            onChange={setRepoPath}
           />
-          <TextInput
+          <PathPickerInput
             label="Build directory"
+            mode="directory"
             value={buildDir}
-            onChange={(event) => setBuildDir(event.currentTarget.value)}
+            onChange={setBuildDir}
           />
           <Select
             label="Build type"
@@ -284,6 +291,11 @@ export function BuildView() {
             label="git pull --ff-only"
             checked={runPull}
             onChange={(event) => setRunPull(event.currentTarget.checked)}
+          />
+          <Switch
+            label="npm install tools/ui"
+            checked={runUiInstall}
+            onChange={(event) => setRunUiInstall(event.currentTarget.checked)}
           />
           <Switch
             label="Configure"
@@ -327,7 +339,7 @@ export function BuildView() {
                         {job.status}
                       </Badge>
                       <Text c="dimmed" size="xs">
-                        {job.startedAt}
+                        {formatLocalDateTime(job.startedAt)}
                       </Text>
                     </Group>
                     {job.error && (
@@ -383,7 +395,9 @@ export function BuildView() {
                         </Badge>
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm">{job.startedAt}</Text>
+                        <Text size="sm">
+                          {formatLocalDateTime(job.startedAt)}
+                        </Text>
                         {job.error && (
                           <Text c="red" size="xs" lineClamp={1}>
                             {job.error}
@@ -472,8 +486,8 @@ export function BuildView() {
           <Group gap="xs" align="flex-start" wrap="nowrap">
             <AlertTriangle size={18} />
             <Text size="sm">
-              This can run git, CMake and compiler processes for a long time and
-              may modify the llama.cpp checkout and build directory.
+              This can run git, npm, CMake and compiler processes for a long
+              time and may modify the llama.cpp checkout and build directory.
             </Text>
           </Group>
           <Stack gap={4}>

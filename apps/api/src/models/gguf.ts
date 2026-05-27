@@ -17,37 +17,45 @@ const GGUF_VALUE_SIZE: Record<number, number> = {
   12: 8,
 };
 
-const QUANT_TYPES: Record<number, string> = {
+const GGUF_FILE_TYPES: Record<number, string> = {
   0: "F32",
   1: "F16",
   2: "Q4_0",
   3: "Q4_1",
-  6: "Q5_0",
-  7: "Q5_1",
-  8: "Q8_0",
-  9: "Q8_1",
+  7: "Q8_0",
+  8: "Q5_0",
+  9: "Q5_1",
   10: "Q2_K",
-  11: "Q3_K",
-  12: "Q4_K",
-  13: "Q5_K",
-  14: "Q6_K",
-  15: "Q8_K",
-  16: "IQ2_XXS",
-  17: "IQ2_XS",
-  18: "IQ3_XXS",
-  19: "IQ1_S",
-  20: "IQ4_NL",
-  21: "IQ3_S",
-  22: "IQ2_S",
-  23: "IQ4_XS",
-  24: "I8",
-  25: "I16",
-  26: "I32",
-  27: "I64",
-  28: "F64",
-  29: "IQ1_M",
-  30: "BF16",
+  11: "Q3_K_S",
+  12: "Q3_K_M",
+  13: "Q3_K_L",
+  14: "Q4_K_S",
+  15: "Q4_K_M",
+  16: "Q5_K_S",
+  17: "Q5_K_M",
+  18: "Q6_K",
+  19: "IQ2_XXS",
+  20: "IQ2_XS",
+  21: "Q2_K_S",
+  22: "IQ3_XS",
+  23: "IQ3_XXS",
+  24: "IQ1_S",
+  25: "IQ4_NL",
+  26: "IQ3_S",
+  27: "IQ3_M",
+  28: "IQ2_S",
+  29: "IQ2_M",
+  30: "IQ4_XS",
+  31: "IQ1_M",
+  32: "BF16",
+  36: "TQ1_0",
+  37: "TQ2_0",
+  38: "MXFP4_MOE",
+  39: "NVFP4",
+  40: "Q1_0",
 };
+
+const LLAMA_FTYPE_GUESSED = 1024;
 
 class FileReader {
   private offset = 0;
@@ -172,17 +180,20 @@ function findNumberBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
   return null;
 }
 
-function readQuantization(reader: FileReader, tensorCount: number) {
-  for (let index = 0; index < tensorCount; index += 1) {
-    const name = reader.string();
-    const dimensions = reader.u32();
-    reader.skip(dimensions * 8);
-    const type = reader.u32();
-    reader.skip(8);
+export function ggufFileTypeLabel(fileType: number) {
+  const guessed = (fileType & LLAMA_FTYPE_GUESSED) === LLAMA_FTYPE_GUESSED;
+  const normalized = guessed ? fileType & ~LLAMA_FTYPE_GUESSED : fileType;
+  const label = GGUF_FILE_TYPES[normalized];
+  if (!label) {
+    return null;
+  }
+  return guessed ? `${label} (guessed)` : label;
+}
 
-    if (name.startsWith("blk.")) {
-      return QUANT_TYPES[type] ?? `Type(${type})`;
-    }
+function readQuantization(metadata: Map<string, GgufScalar>) {
+  const fileType = numberMetadata(metadata, ["general.file_type"]);
+  if (fileType !== null) {
+    return ggufFileTypeLabel(fileType) ?? `FileType(${fileType})`;
   }
   return null;
 }
@@ -196,7 +207,7 @@ export function readGgufMetadata(path: string): GgufMetadata {
     }
 
     reader.u32(); // version
-    const tensorCount = reader.u64Number();
+    reader.u64Number(); // tensor count
     const kvCount = reader.u64Number();
     const metadata = new Map<string, GgufScalar>();
 
@@ -208,13 +219,16 @@ export function readGgufMetadata(path: string): GgufMetadata {
 
     const architecture = stringMetadata(metadata, ["general.architecture"]);
     const contextLength =
-      numberMetadata(metadata, ["llama.context_length", "general.context_length", "context_length"]) ??
-      findNumberBySuffix(metadata, ".context_length");
+      numberMetadata(metadata, [
+        "llama.context_length",
+        "general.context_length",
+        "context_length",
+      ]) ?? findNumberBySuffix(metadata, ".context_length");
 
     return {
       name: stringMetadata(metadata, ["general.name"]),
       architecture,
-      quantization: readQuantization(reader, tensorCount),
+      quantization: readQuantization(metadata),
       contextLength,
       embeddingLength: findNumberBySuffix(metadata, ".embedding_length"),
       blockCount: findNumberBySuffix(metadata, ".block_count"),

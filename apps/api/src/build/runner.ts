@@ -1,6 +1,17 @@
-import type { BuildJob, BuildJobStart, BuildJobStep, BuildJobStepName, BuildSettings } from "@llama-manager/core";
+import type {
+  BuildJob,
+  BuildJobStart,
+  BuildJobStep,
+  BuildJobStepName,
+  BuildSettings,
+} from "@llama-manager/core";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, type WriteStream } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  type WriteStream,
+} from "node:fs";
 import { resolve } from "node:path";
 import type { Readable } from "node:stream";
 
@@ -34,11 +45,22 @@ function step(name: BuildJobStepName, command: string[]): BuildJobStep {
   };
 }
 
-function buildSteps(settings: BuildSettings, input: BuildJobStart): BuildJobStep[] {
+function uiDirectory(settings: BuildSettings) {
+  return resolve(settings.repoPath, "tools", "ui");
+}
+
+function buildSteps(
+  settings: BuildSettings,
+  input: BuildJobStart,
+): BuildJobStep[] {
   const steps: BuildJobStep[] = [];
 
   if (input.pull) {
     steps.push(step("git-pull", ["git", "pull", "--ff-only"]));
+  }
+
+  if (input.installUiDeps) {
+    steps.push(step("ui-install", ["npm", "install"]));
   }
 
   if (input.configure) {
@@ -58,7 +80,15 @@ function buildSteps(settings: BuildSettings, input: BuildJobStart): BuildJobStep
   }
 
   if (input.build) {
-    const command = ["cmake", "--build", settings.buildDir, "--config", settings.buildType, "--target", settings.target];
+    const command = [
+      "cmake",
+      "--build",
+      settings.buildDir,
+      "--config",
+      settings.buildType,
+      "--target",
+      settings.target,
+    ];
     if (settings.parallelJobs) {
       command.push("-j", String(settings.parallelJobs));
     }
@@ -72,6 +102,9 @@ function commandCwd(settings: BuildSettings, stepName: BuildJobStepName) {
   if (stepName === "git-pull") {
     return settings.repoPath;
   }
+  if (stepName === "ui-install") {
+    return uiDirectory(settings);
+  }
   return config.rootDir;
 }
 
@@ -80,8 +113,18 @@ function validateSettings(settings: BuildSettings, steps: BuildJobStep[]) {
     throw new Error(`CMakeLists.txt not found in ${settings.repoPath}`);
   }
 
-  if (steps.some((item) => item.name === "git-pull") && !existsSync(resolve(settings.repoPath, ".git"))) {
+  if (
+    steps.some((item) => item.name === "git-pull") &&
+    !existsSync(resolve(settings.repoPath, ".git"))
+  ) {
     throw new Error(`Git repository not found in ${settings.repoPath}`);
+  }
+
+  if (
+    steps.some((item) => item.name === "ui-install") &&
+    !existsSync(resolve(uiDirectory(settings), "package.json"))
+  ) {
+    throw new Error(`tools/ui/package.json not found in ${settings.repoPath}`);
   }
 
   mkdirSync(settings.buildDir, { recursive: true });
@@ -125,7 +168,9 @@ export class LlamaBuildRunner {
       this.running = null;
     }
 
-    const settings = input.settings ? saveBuildSettings(input.settings) : getBuildSettings();
+    const settings = input.settings
+      ? saveBuildSettings(input.settings)
+      : getBuildSettings();
     const steps = buildSteps(settings, input);
     if (steps.length === 0) {
       throw new Error("at least one build step must be enabled");
@@ -187,17 +232,35 @@ export class LlamaBuildRunner {
         });
 
         logStream.write(`$ ${plannedStep.command.join(" ")}\n`);
-        const exitCode = await this.runCommand(plannedStep.command, commandCwd(job.settings, plannedStep.name), logStream);
+        const exitCode = await this.runCommand(
+          plannedStep.command,
+          commandCwd(job.settings, plannedStep.name),
+          logStream,
+        );
 
         if (this.running?.jobId === jobId && this.running.canceled) {
-          this.markStep(jobId, plannedStep.name, { status: "failed", finishedAt: nowIso(), exitCode });
+          this.markStep(jobId, plannedStep.name, {
+            status: "failed",
+            finishedAt: nowIso(),
+            exitCode,
+          });
           this.finish(jobId, "canceled", null, null, "canceled by user");
           return;
         }
 
         if (exitCode !== 0) {
-          this.markStep(jobId, plannedStep.name, { status: "failed", finishedAt: nowIso(), exitCode });
-          this.finish(jobId, "failed", exitCode, null, `${plannedStep.name} exited with code ${exitCode}`);
+          this.markStep(jobId, plannedStep.name, {
+            status: "failed",
+            finishedAt: nowIso(),
+            exitCode,
+          });
+          this.finish(
+            jobId,
+            "failed",
+            exitCode,
+            null,
+            `${plannedStep.name} exited with code ${exitCode}`,
+          );
           return;
         }
 
@@ -231,7 +294,9 @@ export class LlamaBuildRunner {
       throw new Error(`build job not found: ${jobId}`);
     }
 
-    const steps = current.steps.map((item) => (item.name === name ? { ...item, ...patch } : item));
+    const steps = current.steps.map((item) =>
+      item.name === name ? { ...item, ...patch } : item,
+    );
     const updated = updateBuildJob(jobId, {
       steps,
       currentStep: patch.status === "running" ? name : current.currentStep,
@@ -259,7 +324,11 @@ export class LlamaBuildRunner {
     });
   }
 
-  private runCommand(command: string[], cwd: string, logStream: WriteStream): Promise<number> {
+  private runCommand(
+    command: string[],
+    cwd: string,
+    logStream: WriteStream,
+  ): Promise<number> {
     return new Promise((resolveDone, reject) => {
       const child = spawn(command[0]!, command.slice(1), {
         cwd,

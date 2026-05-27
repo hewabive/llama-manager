@@ -13,6 +13,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { getPublicStatus } from "../../api/client";
 import { SystemResourcesPanel } from "../components/SystemResourcesPanel";
+import { formatLocalDateTime } from "../utils/time";
 
 function statusColor(status: PublicInstanceStatus["status"]) {
   if (status === "ready") return "green";
@@ -92,7 +93,7 @@ export function PublicStatusView() {
                       {item.summary}
                     </Text>
                     <Text c="dimmed" size="xs">
-                      Checked {item.checkedAt}
+                      Checked {formatLocalDateTime(item.checkedAt)}
                     </Text>
                   </div>
                   <Badge color={statusColor(item.status)} variant="light">

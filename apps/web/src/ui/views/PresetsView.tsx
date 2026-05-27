@@ -35,6 +35,7 @@ import {
   writeModelPreset,
 } from "../../api/client";
 import { HostPicker } from "../components/HostPicker";
+import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
 import { createUiId } from "../utils/id";
 import {
@@ -106,12 +107,12 @@ function PresetEntryDetailModal(props: {
                 updateDraft({ name: event.currentTarget.value })
               }
             />
-            <TextInput
+            <PathPickerInput
               label="Model path"
+              mode="file"
+              filter="model"
               value={draft.modelPath}
-              onChange={(event) =>
-                updateDraft({ modelPath: event.currentTarget.value })
-              }
+              onChange={(value) => updateDraft({ modelPath: value })}
             />
             <NumberInput
               label="Context size"
@@ -133,12 +134,12 @@ function PresetEntryDetailModal(props: {
                 })
               }
             />
-            <TextInput
+            <PathPickerInput
               label="mmproj"
+              mode="file"
+              filter="model"
               value={draft.mmprojPath ?? ""}
-              onChange={(event) =>
-                updateDraft({ mmprojPath: event.currentTarget.value || null })
-              }
+              onChange={(value) => updateDraft({ mmprojPath: value || null })}
             />
             <NumberInput
               label="Stop timeout"
@@ -497,15 +498,17 @@ export function PresetsView() {
             </Group>
           </Group>
 
-          <TextInput
+          <PathPickerInput
             label="Preset path"
+            mode="file"
+            filter="preset"
             value={preset?.path ?? ""}
             disabled={!preset}
-            onChange={(event) => {
+            onChange={(value) => {
               if (preset) {
                 saveMutation.mutate({
                   entries: preset.entries,
-                  path: event.currentTarget.value,
+                  path: value,
                 });
               }
             }}
@@ -735,17 +738,18 @@ export function PresetsView() {
                   value={routerName}
                   onChange={(event) => setRouterName(event.currentTarget.value)}
                 />
-                <TextInput
+                <PathPickerInput
                   label="Binary"
+                  mode="file"
+                  filter="binary"
                   value={routerBinaryPath}
-                  onChange={(event) =>
-                    setRouterBinaryPath(event.currentTarget.value)
-                  }
+                  onChange={setRouterBinaryPath}
                 />
-                <TextInput
+                <PathPickerInput
                   label="Working dir"
+                  mode="directory"
                   value={routerCwd}
-                  onChange={(event) => setRouterCwd(event.currentTarget.value)}
+                  onChange={setRouterCwd}
                 />
                 <HostPicker
                   label="Host"

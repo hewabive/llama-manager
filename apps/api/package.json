@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test src/**/*.test.ts",
+    "args:docs:audit": "tsx src/arguments/docs-audit.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

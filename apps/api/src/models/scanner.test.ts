@@ -32,3 +32,24 @@ test("scanModels reports a friendly error when target is a file", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("scanModels collapses split GGUF shards into a single model", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-scan-"));
+
+  try {
+    writeFileSync(join(dir, "alpha-00001-of-00003.gguf"), "a");
+    writeFileSync(join(dir, "alpha-00002-of-00003.gguf"), "bb");
+    writeFileSync(join(dir, "alpha-00003-of-00003.gguf"), "ccc");
+    writeFileSync(join(dir, "beta.gguf"), "dddd");
+
+    const result = await scanModels({ directory: dir, refresh: true });
+
+    assert.deepEqual(
+      result.models.map((model) => model.name),
+      ["alpha-00001-of-00003.gguf", "beta.gguf"],
+    );
+    assert.equal(result.models[0]?.sizeBytes, 6);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

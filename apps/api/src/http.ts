@@ -3,14 +3,20 @@ import {
   BuildJobStartSchema,
   BuildSettingsSchema,
   ExternalProcessKillSchema,
+  InstanceBulkActionRequestSchema,
   InstanceCreateSchema,
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
+  type Instance,
+  type InstanceBulkActionItem,
+  type InstanceBulkActionName,
+  type ProcessPreflightIssue,
   LlamaArgumentHelpOverrideUpdateSchema,
   ModelPresetUpdateSchema,
   ModelScanSettingsSchema,
   RouterInstanceCreateSchema,
   type ProcessEvent,
+  type RuntimeState,
 } from "@llama-manager/core";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -25,6 +31,7 @@ import {
   verifyAdminPassword,
 } from "./auth.js";
 import { getLlamaArgumentCatalog } from "./arguments/catalog.js";
+import { readArgumentEngineeringDoc } from "./arguments/docs.js";
 import {
   deleteArgumentHelpOverride,
   listArgumentHelpOverrides,
@@ -45,6 +52,7 @@ import {
   listInstances,
   updateInstance,
 } from "./instances/repository.js";
+import { listFilesystemDirectory } from "./filesystem/browser.js";
 import { probeLlamaServer } from "./llama/probe.js";
 import {
   getModelScanSettings,
@@ -141,6 +149,16 @@ app.get("/api/system/resources", (c) => {
   return c.json({ data: getSystemResources() });
 });
 
+app.get("/api/filesystem/list", (c) => {
+  try {
+    return c.json({
+      data: listFilesystemDirectory(c.req.query("path")),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
 app.get("/api/system/llama-processes", async (c) => {
   return c.json({ data: await listExternalLlamaProcesses() });
 });
@@ -185,6 +203,24 @@ app.get("/api/llama-args", (c) => {
     return c.json({
       data: getLlamaArgumentCatalog(c.req.query("binaryPath"), {
         refresh: c.req.query("refresh") === "true",
+      }),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.get("/api/llama-args/docs/:primaryName", (c) => {
+  try {
+    const catalog = getLlamaArgumentCatalog(c.req.query("binaryPath"));
+    const primaryName = decodeURIComponent(c.req.param("primaryName"));
+    const option =
+      catalog.options.find((item) => item.primaryName === primaryName) ?? null;
+    return c.json({
+      data: readArgumentEngineeringDoc({
+        primaryName,
+        option,
+        currentHelpHash: catalog.source.hash,
       }),
     });
   } catch (error) {
@@ -522,52 +558,249 @@ function staleProcessConflict(instanceId: string) {
   return null;
 }
 
-app.post("/api/instances/:id/start", async (c) => {
-  const instance = getInstance(c.req.param("id"));
-  if (!instance) {
-    return c.json({ error: "instance not found" }, 404);
+class ProcessActionHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409 = 400,
+    readonly issues: ProcessPreflightIssue[] = [],
+  ) {
+    super(message);
+    this.name = "ProcessActionHttpError";
   }
+}
+
+function actionAllowed(
+  action: InstanceBulkActionName,
+  health: Awaited<ReturnType<typeof getInstanceHealthSummary>>,
+) {
+  if (action === "start") return health.actions.canStart;
+  if (action === "stop") return health.actions.canStop;
+  return health.actions.canRestart;
+}
+
+function skippedActionMessage(
+  action: InstanceBulkActionName,
+  health: Awaited<ReturnType<typeof getInstanceHealthSummary>>,
+) {
+  if (!health.preflight.ok && (action === "start" || action === "restart")) {
+    const error = health.preflight.issues.find(
+      (issue) => issue.level === "error",
+    );
+    return error?.message ?? "preflight must pass before starting";
+  }
+  if (health.status === "stale" && action !== "stop") {
+    return "stale process must be stopped before starting another";
+  }
+  if (action === "start") return "instance is not startable";
+  if (action === "stop") return "instance is not running";
+  return "instance is not restartable";
+}
+
+function actionErrorPayload(error: unknown): {
+  error: string;
+  issues: ProcessPreflightIssue[];
+  status: 400 | 404 | 409;
+} {
+  if (error instanceof ProcessPreflightError) {
+    return {
+      error: error.message || "preflight failed",
+      issues: error.result.issues,
+      status: 400,
+    };
+  }
+  if (error instanceof ProcessActionHttpError) {
+    return {
+      error: error.message,
+      issues: error.issues,
+      status: error.status,
+    };
+  }
+  return {
+    error: (error as Error).message,
+    issues: [],
+    status: 400,
+  };
+}
+
+async function startManagedInstance(instance: Instance): Promise<RuntimeState> {
   const staleConflict = staleProcessConflict(instance.id);
   if (staleConflict) {
-    return c.json({ error: staleConflict }, 409);
+    throw new ProcessActionHttpError(staleConflict, 409);
   }
   const preflight = await validateInstanceStartPreflight(instance, {
     peers: listInstances(),
   });
   if (!preflight.ok) {
-    return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
+    throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
   }
-  try {
-    return c.json({ data: supervisor.start(instance) });
-  } catch (error) {
-    if (error instanceof ProcessPreflightError) {
-      return c.json(
-        {
-          error: error.message || "preflight failed",
-          issues: error.result.issues,
-        },
+  return supervisor.start(instance);
+}
+
+async function stopManagedInstance(instanceId: string): Promise<RuntimeState> {
+  const state = supervisor.stop(instanceId);
+  if (state) {
+    return state;
+  }
+
+  const staleState = await stopStaleProcess(instanceId);
+  if (staleState) {
+    return staleState;
+  }
+
+  throw new ProcessActionHttpError("instance is not running", 404);
+}
+
+async function restartManagedInstance(
+  instance: Instance,
+): Promise<RuntimeState> {
+  const preflight = validateInstancePreflight(instance, {
+    peers: listInstances(),
+  });
+  if (!preflight.ok) {
+    throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
+  }
+
+  const staleState = await stopStaleProcess(instance.id);
+  if (staleState) {
+    const startPreflight = await validateInstanceStartPreflight(instance, {
+      peers: listInstances(),
+    });
+    if (!startPreflight.ok) {
+      throw new ProcessActionHttpError(
+        "preflight failed",
         400,
+        startPreflight.issues,
       );
     }
-    return c.json({ error: (error as Error).message }, 400);
+    return supervisor.start(instance);
+  }
+
+  return supervisor.restart(instance);
+}
+
+async function runInstanceAction(
+  instance: Instance,
+  action: InstanceBulkActionName,
+) {
+  if (action === "start") return startManagedInstance(instance);
+  if (action === "stop") return stopManagedInstance(instance.id);
+  return restartManagedInstance(instance);
+}
+
+app.post("/api/instances/actions", async (c) => {
+  const parsed = InstanceBulkActionRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const { action, instanceIds } = parsed.data;
+  const allInstances = listInstances();
+  const instancesById = new Map(
+    allInstances.map((instance) => [instance.id, instance]),
+  );
+  const targetIds = [
+    ...new Set(instanceIds ?? allInstances.map((instance) => instance.id)),
+  ];
+  const items: InstanceBulkActionItem[] = [];
+
+  for (const instanceId of targetIds) {
+    const instance = instancesById.get(instanceId);
+    if (!instance) {
+      items.push({
+        instanceId,
+        name: instanceId,
+        action,
+        ok: false,
+        skipped: false,
+        status: null,
+        error: "instance not found",
+        issues: [],
+      });
+      continue;
+    }
+
+    const health = await getInstanceHealthSummary(instance, {
+      peers: listInstances(),
+    });
+    if (!actionAllowed(action, health)) {
+      items.push({
+        instanceId: instance.id,
+        name: instance.name,
+        action,
+        ok: false,
+        skipped: true,
+        status: health.runtime,
+        error: skippedActionMessage(action, health),
+        issues: health.preflight.issues,
+      });
+      continue;
+    }
+
+    try {
+      items.push({
+        instanceId: instance.id,
+        name: instance.name,
+        action,
+        ok: true,
+        skipped: false,
+        status: await runInstanceAction(instance, action),
+        error: null,
+        issues: [],
+      });
+    } catch (error) {
+      const payload = actionErrorPayload(error);
+      items.push({
+        instanceId: instance.id,
+        name: instance.name,
+        action,
+        ok: false,
+        skipped: false,
+        status: null,
+        error: payload.error,
+        issues: payload.issues,
+      });
+    }
+  }
+
+  return c.json({
+    data: {
+      action,
+      requested: targetIds.length,
+      succeeded: items.filter((item) => item.ok).length,
+      failed: items.filter((item) => !item.ok && !item.skipped).length,
+      skipped: items.filter((item) => item.skipped).length,
+      items,
+    },
+  });
+});
+
+app.post("/api/instances/:id/start", async (c) => {
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+  try {
+    return c.json({ data: await startManagedInstance(instance) });
+  } catch (error) {
+    const payload = actionErrorPayload(error);
+    return c.json(
+      { error: payload.error, issues: payload.issues },
+      payload.status,
+    );
   }
 });
 
 app.post("/api/instances/:id/stop", async (c) => {
   const instanceId = c.req.param("id");
-  const state = supervisor.stop(instanceId);
-  if (!state) {
-    try {
-      const staleState = await stopStaleProcess(instanceId);
-      if (staleState) {
-        return c.json({ data: staleState });
-      }
-    } catch (error) {
-      return c.json({ error: (error as Error).message }, 400);
-    }
-    return c.json({ error: "instance is not running" }, 404);
+  try {
+    return c.json({ data: await stopManagedInstance(instanceId) });
+  } catch (error) {
+    const payload = actionErrorPayload(error);
+    return c.json(
+      { error: payload.error, issues: payload.issues },
+      payload.status,
+    );
   }
-  return c.json({ data: state });
 });
 
 app.post("/api/instances/:id/restart", async (c) => {
@@ -575,38 +808,14 @@ app.post("/api/instances/:id/restart", async (c) => {
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
-  const preflight = validateInstancePreflight(instance, {
-    peers: listInstances(),
-  });
-  if (!preflight.ok) {
-    return c.json({ error: "preflight failed", issues: preflight.issues }, 400);
-  }
   try {
-    const staleState = await stopStaleProcess(instance.id);
-    if (staleState) {
-      const startPreflight = await validateInstanceStartPreflight(instance, {
-        peers: listInstances(),
-      });
-      if (!startPreflight.ok) {
-        return c.json(
-          { error: "preflight failed", issues: startPreflight.issues },
-          400,
-        );
-      }
-      return c.json({ data: supervisor.start(instance) });
-    }
-    return c.json({ data: await supervisor.restart(instance) });
+    return c.json({ data: await restartManagedInstance(instance) });
   } catch (error) {
-    if (error instanceof ProcessPreflightError) {
-      return c.json(
-        {
-          error: error.message || "preflight failed",
-          issues: error.result.issues,
-        },
-        400,
-      );
-    }
-    return c.json({ error: (error as Error).message }, 400);
+    const payload = actionErrorPayload(error);
+    return c.json(
+      { error: payload.error, issues: payload.issues },
+      payload.status,
+    );
   }
 });
 

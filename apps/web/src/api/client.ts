@@ -7,13 +7,17 @@ import type {
   BuildSettings,
   ExternalLlamaProcessesResult,
   ExternalProcessKillResult,
+  FileSystemListResult,
   Instance,
+  InstanceBulkActionRequest,
+  InstanceBulkActionResult,
   InstanceCreate,
   InstanceHealthSummary,
   InstancePreflightPreview,
   InstanceUpdate,
   InstanceLogSummary,
   LlamaArgumentCatalog,
+  LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
   LlamaProbe,
@@ -149,6 +153,14 @@ export async function getSystemResources() {
   return request<{ data: SystemResources }>("/api/system/resources");
 }
 
+export async function listFilesystemDirectory(path?: string) {
+  const params = new URLSearchParams(path ? { path } : {});
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return request<{ data: FileSystemListResult }>(
+    `/api/filesystem/list${query}`,
+  );
+}
+
 export async function listExternalLlamaProcesses() {
   return request<{ data: ExternalLlamaProcessesResult }>(
     "/api/system/llama-processes",
@@ -172,6 +184,20 @@ export async function getLlamaArguments(binaryPath?: string, refresh = false) {
   });
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return request<{ data: LlamaArgumentCatalog }>(`/api/llama-args${query}`);
+}
+
+export async function getLlamaArgumentDoc(
+  primaryName: string,
+  binaryPath?: string,
+) {
+  const name = encodeURIComponent(primaryName);
+  const params = new URLSearchParams({
+    ...(binaryPath ? { binaryPath } : {}),
+  });
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return request<{ data: LlamaArgumentEngineeringDoc }>(
+    `/api/llama-args/docs/${name}${query}`,
+  );
 }
 
 export async function listLlamaArgumentOverrides() {
@@ -315,6 +341,13 @@ export async function instanceAction(
 ) {
   return request<{ data: unknown }>(`/api/instances/${id}/${action}`, {
     method: "POST",
+  });
+}
+
+export async function bulkInstanceAction(input: InstanceBulkActionRequest) {
+  return request<{ data: InstanceBulkActionResult }>("/api/instances/actions", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 
