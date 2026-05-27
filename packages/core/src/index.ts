@@ -123,18 +123,42 @@ export const LlamaApiProbeKindSchema = z.enum([
   "completion",
   "responses",
   "tokenize",
+  "detokenize",
+  "count-tokens",
   "apply-template",
 ]);
 
-export const LlamaApiProbeRequestSchema = z.object({
-  kind: LlamaApiProbeKindSchema,
-  model: z.string().trim().min(1).max(500).optional(),
-  prompt: z.string().min(1).max(20_000),
-  systemPrompt: z.string().max(4_000).optional(),
-  maxTokens: z.number().int().min(1).max(2_048).default(64),
-  temperature: z.number().min(0).max(2).default(0.2),
-  autoload: z.boolean().default(true),
-});
+export const LlamaApiProbeRequestSchema = z
+  .object({
+    kind: LlamaApiProbeKindSchema,
+    model: z.string().trim().min(1).max(500).optional(),
+    prompt: z.string().max(20_000).default(""),
+    systemPrompt: z.string().max(4_000).optional(),
+    tokens: z.array(z.number().int()).max(8_192).optional(),
+    maxTokens: z.number().int().min(1).max(2_048).default(64),
+    temperature: z.number().min(0).max(2).default(0.2),
+    autoload: z.boolean().default(true),
+  })
+  .superRefine((input, ctx) => {
+    if (input.kind === "detokenize") {
+      if (!input.tokens?.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tokens"],
+          message: "At least one token is required",
+        });
+      }
+      return;
+    }
+
+    if (!input.prompt.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["prompt"],
+        message: "Prompt is required",
+      });
+    }
+  });
 
 export const LlamaApiProbeResultSchema = z.object({
   kind: LlamaApiProbeKindSchema,

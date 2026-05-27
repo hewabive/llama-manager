@@ -319,6 +319,31 @@ function apiProbeRequestBody(input: LlamaApiProbeRequest): {
     };
   }
 
+  if (input.kind === "detokenize") {
+    return {
+      endpoint: "/detokenize",
+      body: withModel(
+        {
+          tokens: input.tokens ?? [],
+        },
+        input.model,
+      ),
+    };
+  }
+
+  if (input.kind === "count-tokens") {
+    return {
+      endpoint: "/v1/messages/count_tokens",
+      body: withModel(
+        {
+          ...(systemPrompt ? { system: systemPrompt } : {}),
+          messages: [{ role: "user", content: input.prompt }],
+        },
+        input.model,
+      ),
+    };
+  }
+
   if (input.kind === "apply-template") {
     return {
       endpoint: "/apply-template",

@@ -12,7 +12,6 @@ import {
   NumberInput,
   Paper,
   Select,
-  SegmentedControl,
   SimpleGrid,
   Stack,
   Switch,
@@ -101,6 +100,12 @@ function formatNumber(value: unknown) {
     : null;
 }
 
+function parseTokenInput(value: string) {
+  return (value.match(/-?\d+/g) ?? [])
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item));
+}
+
 function responseOutput(result: LlamaApiProbeResult) {
   const body = result.response.body;
   const record = objectRecord(body);
@@ -122,6 +127,15 @@ function responseOutput(result: LlamaApiProbeResult) {
       })
       .join("  ");
     return `${tokens.length} token${tokens.length === 1 ? "" : "s"}${preview ? `\n${preview}` : ""}`;
+  }
+
+  if (result.kind === "detokenize") {
+    return stringValue(record?.content) ?? "Detokenize returned no content";
+  }
+
+  if (result.kind === "count-tokens") {
+    const count = formatNumber(record?.input_tokens);
+    return count ? `${count} input tokens` : "Count returned no input_tokens";
   }
 
   if (result.kind === "apply-template") {
@@ -174,7 +188,16 @@ function kindNeedsGenerationControls(kind: LlamaApiProbeKind) {
 }
 
 function kindSupportsSystemPrompt(kind: LlamaApiProbeKind) {
-  return kind === "chat" || kind === "responses" || kind === "apply-template";
+  return (
+    kind === "chat" ||
+    kind === "responses" ||
+    kind === "apply-template" ||
+    kind === "count-tokens"
+  );
+}
+
+function kindUsesPrompt(kind: LlamaApiProbeKind) {
+  return kind !== "detokenize";
 }
 
 function ProbeResult(props: { result: LlamaApiProbeResult }) {
@@ -240,6 +263,7 @@ export function LlamaApiProbePanel(props: {
   const [kind, setKind] = useState<LlamaApiProbeKind>("chat");
   const [model, setModel] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
+  const [tokensText, setTokensText] = useState("7925 21485");
   const [systemPrompt, setSystemPrompt] = useState("Answer briefly.");
   const [maxTokens, setMaxTokens] = useState(64);
   const [temperature, setTemperature] = useState(0.2);
@@ -259,6 +283,9 @@ export function LlamaApiProbePanel(props: {
         ...(model ? { model } : {}),
         prompt,
         ...(systemPrompt.trim() ? { systemPrompt } : {}),
+        ...(kind === "detokenize"
+          ? { tokens: parseTokenInput(tokensText) }
+          : {}),
         maxTokens,
         temperature,
         autoload,
@@ -280,7 +307,11 @@ export function LlamaApiProbePanel(props: {
     },
   });
 
-  const canSubmit = prompt.trim().length > 0 && !probeMutation.isPending;
+  const canSubmit =
+    !probeMutation.isPending &&
+    (kind === "detokenize"
+      ? parseTokenInput(tokensText).length > 0
+      : prompt.trim().length > 0);
   const result = probeMutation.data?.data ?? null;
 
   return (
@@ -303,16 +334,23 @@ export function LlamaApiProbePanel(props: {
         </Group>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-          <SegmentedControl
-            fullWidth
+          <Select
+            label="Request"
             value={kind}
-            onChange={(value) => setKind(value as LlamaApiProbeKind)}
+            allowDeselect={false}
+            onChange={(value) => {
+              if (value) {
+                setKind(value as LlamaApiProbeKind);
+              }
+            }}
             data={[
               { value: "chat", label: "Chat" },
-              { value: "completion", label: "Comp" },
-              { value: "responses", label: "Resp" },
-              { value: "tokenize", label: "Tok" },
-              { value: "apply-template", label: "Tpl" },
+              { value: "completion", label: "Completion" },
+              { value: "responses", label: "Responses" },
+              { value: "tokenize", label: "Tokenize" },
+              { value: "detokenize", label: "Detokenize" },
+              { value: "count-tokens", label: "Count tokens" },
+              { value: "apply-template", label: "Apply template" },
             ]}
           />
           <Select
@@ -341,14 +379,26 @@ export function LlamaApiProbePanel(props: {
           />
         )}
 
-        <Textarea
-          label={kind === "tokenize" ? "Text" : "Prompt"}
-          autosize
-          minRows={3}
-          maxRows={8}
-          value={prompt}
-          onChange={(event) => setPrompt(event.currentTarget.value)}
-        />
+        {kindUsesPrompt(kind) ? (
+          <Textarea
+            label={kind === "tokenize" ? "Text" : "Prompt"}
+            autosize
+            minRows={3}
+            maxRows={8}
+            value={prompt}
+            onChange={(event) => setPrompt(event.currentTarget.value)}
+          />
+        ) : (
+          <Textarea
+            label="Tokens"
+            description="Paste token IDs separated by spaces, commas or new lines."
+            autosize
+            minRows={3}
+            maxRows={8}
+            value={tokensText}
+            onChange={(event) => setTokensText(event.currentTarget.value)}
+          />
+        )}
 
         <Group justify="space-between" align="flex-end" gap="sm">
           {kindNeedsGenerationControls(kind) ? (
