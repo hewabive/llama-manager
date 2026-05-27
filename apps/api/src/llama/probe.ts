@@ -1,10 +1,18 @@
-import type { Instance, InstanceArgValue, LlamaEndpointProbe, LlamaProbe } from "@llama-manager/core";
+import type {
+  Instance,
+  InstanceArgValue,
+  LlamaEndpointProbe,
+  LlamaProbe,
+} from "@llama-manager/core";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8080;
 const PROBE_TIMEOUT_MS = 1_500;
 
-function firstArg(args: Instance["args"], keys: string[]): InstanceArgValue | undefined {
+function firstArg(
+  args: Instance["args"],
+  keys: string[],
+): InstanceArgValue | undefined {
   for (const key of keys) {
     if (args[key] !== undefined) {
       return args[key];
@@ -13,7 +21,10 @@ function firstArg(args: Instance["args"], keys: string[]): InstanceArgValue | un
   return undefined;
 }
 
-function asString(value: InstanceArgValue | undefined, fallback: string): string {
+function asString(
+  value: InstanceArgValue | undefined,
+  fallback: string,
+): string {
   if (value === undefined || value === null || Array.isArray(value)) {
     return fallback;
   }
@@ -38,7 +49,9 @@ function apiPrefix(instance: Instance): string {
   if (!raw) {
     return "";
   }
-  return raw.startsWith("/") ? raw.replace(/\/$/, "") : `/${raw.replace(/\/$/, "")}`;
+  return raw.startsWith("/")
+    ? raw.replace(/\/$/, "")
+    : `/${raw.replace(/\/$/, "")}`;
 }
 
 export function llamaBaseUrl(instance: Instance): string {
@@ -87,7 +100,9 @@ async function probeJson(url: string): Promise<LlamaEndpointProbe> {
   }
 }
 
-export async function probeLlamaServer(instance: Instance): Promise<LlamaProbe> {
+export async function probeLlamaServer(
+  instance: Instance,
+): Promise<LlamaProbe> {
   const baseUrl = llamaBaseUrl(instance);
   if (!baseUrl) {
     const unsupported: LlamaEndpointProbe = {
@@ -102,13 +117,15 @@ export async function probeLlamaServer(instance: Instance): Promise<LlamaProbe> 
       health: unsupported,
       props: unsupported,
       slots: unsupported,
+      models: unsupported,
     };
   }
 
-  const [health, props, slots] = await Promise.all([
+  const [health, props, slots, models] = await Promise.all([
     probeJson(`${baseUrl}/health`),
     probeJson(`${baseUrl}/props`),
     probeJson(`${baseUrl}/slots`),
+    probeJson(`${baseUrl}/v1/models`),
   ]);
 
   return {
@@ -116,5 +133,6 @@ export async function probeLlamaServer(instance: Instance): Promise<LlamaProbe> 
     health,
     props,
     slots,
+    models,
   };
 }

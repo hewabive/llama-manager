@@ -99,6 +99,177 @@ function propsSummary(probe: LlamaProbe | undefined): Array<[string, unknown]> {
   return entries.filter(([, value]) => value !== undefined && value !== null);
 }
 
+type V1ModelInfo = {
+  id: string;
+  object: string | null;
+  ownedBy: string | null;
+  created: string | null;
+  extras: Array<[string, string]>;
+};
+
+function jsonValuePreview(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatModelCreated(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 0) return String(value);
+    return formatLocalDateTime(new Date(value * 1000).toISOString());
+  }
+  if (typeof value === "string" && value.trim()) {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) {
+      return formatModelCreated(asNumber);
+    }
+    return value;
+  }
+  return null;
+}
+
+function v1ModelsFromProbe(
+  probe: LlamaEndpointProbe | undefined,
+): V1ModelInfo[] {
+  const body = probe?.body;
+  const data = Array.isArray(body)
+    ? body
+    : body &&
+        typeof body === "object" &&
+        Array.isArray((body as { data?: unknown }).data)
+      ? (body as { data: unknown[] }).data
+      : [];
+
+  return data
+    .map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return {
+          id: String(item ?? `model-${index + 1}`),
+          object: null,
+          ownedBy: null,
+          created: null,
+          extras: [],
+        };
+      }
+
+      const record = item as Record<string, unknown>;
+      const reserved = new Set(["id", "object", "owned_by", "created"]);
+      return {
+        id: String(record.id ?? `model-${index + 1}`),
+        object:
+          typeof record.object === "string" && record.object
+            ? record.object
+            : null,
+        ownedBy:
+          typeof record.owned_by === "string" && record.owned_by
+            ? record.owned_by
+            : null,
+        created: formatModelCreated(record.created),
+        extras: Object.entries(record)
+          .filter(([key]) => !reserved.has(key))
+          .map(([key, value]) => [key, jsonValuePreview(value)] as const)
+          .filter((entry): entry is [string, string] => Boolean(entry[1])),
+      };
+    })
+    .filter((model) => model.id);
+}
+
+function V1ModelsPanel(props: { probe: LlamaEndpointProbe | undefined }) {
+  const models = v1ModelsFromProbe(props.probe);
+  const body = props.probe?.body;
+  const unexpectedBody =
+    props.probe?.ok &&
+    models.length === 0 &&
+    body !== undefined &&
+    body !== null
+      ? jsonValuePreview(body)
+      : null;
+
+  return (
+    <Paper withBorder p="sm" radius="sm">
+      <Group justify="space-between" mb="xs">
+        <Stack gap={2}>
+          <Text fw={600} size="sm">
+            v1/models
+          </Text>
+          <Text c="dimmed" size="xs">
+            OpenAI-compatible model list reported by this llama-server.
+          </Text>
+        </Stack>
+        <Badge color={probeColor(props.probe)} variant="light">
+          {props.probe?.ok
+            ? `${models.length} model${models.length === 1 ? "" : "s"}`
+            : (props.probe?.status ?? "offline")}
+        </Badge>
+      </Group>
+
+      {props.probe?.error && (
+        <Text c="red" size="xs" mb="xs">
+          {props.probe.error}
+        </Text>
+      )}
+
+      <Stack gap="xs">
+        {models.map((model) => (
+          <Paper key={model.id} withBorder p="xs" radius="sm">
+            <Group justify="space-between" gap="xs" wrap="nowrap">
+              <Code className="code-wrap">{model.id}</Code>
+              {model.object && (
+                <Badge variant="outline" color="gray">
+                  {model.object}
+                </Badge>
+              )}
+            </Group>
+            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing={4} mt={6}>
+              <Text c="dimmed" size="xs" lineClamp={1}>
+                owned_by: {model.ownedBy ?? "-"}
+              </Text>
+              <Text c="dimmed" size="xs" lineClamp={1}>
+                created: {model.created ?? "-"}
+              </Text>
+              <Text c="dimmed" size="xs" lineClamp={1}>
+                extras: {model.extras.length}
+              </Text>
+            </SimpleGrid>
+            {model.extras.length > 0 && (
+              <Stack gap={2} mt={6}>
+                {model.extras.slice(0, 6).map(([key, value]) => (
+                  <Text key={key} c="dimmed" size="xs" lineClamp={2}>
+                    {key}: {value}
+                  </Text>
+                ))}
+              </Stack>
+            )}
+          </Paper>
+        ))}
+
+        {!props.probe && (
+          <Text c="dimmed" size="sm">
+            Model list has not been probed yet.
+          </Text>
+        )}
+        {props.probe?.ok && models.length === 0 && !unexpectedBody && (
+          <Text c="dimmed" size="sm">
+            Server returned an empty model list.
+          </Text>
+        )}
+        {unexpectedBody && (
+          <Code block className="code-wrap">
+            {unexpectedBody}
+          </Code>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
 function startupStage(health: InstanceHealthSummary | undefined) {
   if (!health) {
     return {
@@ -524,10 +695,11 @@ export function InstanceDetails(props: {
           )}
         </Paper>
 
-        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
           <ProbeCard title="health" probe={llama?.health} />
           <ProbeCard title="props" probe={llama?.props} />
           <ProbeCard title="slots" probe={llama?.slots} />
+          <ProbeCard title="v1/models" probe={llama?.models} />
         </SimpleGrid>
 
         {showLaunchMonitor && (
@@ -569,6 +741,8 @@ export function InstanceDetails(props: {
             ))}
           </Stack>
         </SimpleGrid>
+
+        <V1ModelsPanel probe={llama?.models} />
 
         <Paper withBorder p="sm" radius="sm">
           <Group justify="space-between" mb="xs">

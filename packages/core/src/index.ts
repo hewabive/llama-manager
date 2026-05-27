@@ -94,6 +94,7 @@ export const LlamaProbeSchema = z.object({
   health: LlamaEndpointProbeSchema,
   props: LlamaEndpointProbeSchema,
   slots: LlamaEndpointProbeSchema,
+  models: LlamaEndpointProbeSchema,
 });
 
 export const LogTailSchema = z.object({
