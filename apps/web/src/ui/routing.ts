@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 export type AppRoute =
   | "status"
   | "instances"
+  | "diagnostics"
   | "args"
   | "models"
   | "presets"
@@ -26,6 +27,12 @@ export const appRoutes: {
     label: "Instances",
     title: "Instances",
     description: "Process control for local llama-server binaries",
+  },
+  {
+    id: "diagnostics",
+    label: "Diag",
+    title: "Diagnostics",
+    description: "Runtime state, llama-server probes and request checks",
   },
   {
     id: "args",

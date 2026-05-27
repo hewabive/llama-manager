@@ -24,13 +24,13 @@ import {
   logoutAdmin,
   updateInstance,
 } from "../api/client";
-import { InstanceDetails } from "./components/InstanceDetails";
 import { InstanceFormModal } from "./components/InstanceFormModal";
 import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { argsWithModel } from "./utils/models";
 import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
+import { DiagnosticsView } from "./views/DiagnosticsView";
 import { InstancesView } from "./views/InstancesView";
 import { LoginView } from "./views/LoginView";
 import { ModelsView } from "./views/ModelsView";
@@ -298,12 +298,28 @@ export function App() {
               healthByInstanceId={healthByInstanceId}
               onSelect={(instance) => setSelectedId(instance.id)}
               onEdit={setEditingInstance}
+              onOpenDiagnostics={(instance) => {
+                setSelectedId(instance.id);
+                setRoute("diagnostics");
+              }}
               onLaunchStarted={startLaunchMonitor}
               onLaunchStopped={clearLaunchMonitor}
             />
           )}
 
           {canUseAdmin && route === "build" && <BuildView />}
+
+          {canUseAdmin && route === "diagnostics" && (
+            <DiagnosticsView
+              instances={instances}
+              selectedInstance={selectedInstance}
+              selectedHealth={selectedHealth}
+              launchMonitor={selectedLaunchMonitor}
+              monitorNowMs={monitorNowMs}
+              onSelect={setSelectedId}
+              onLaunchStopped={clearLaunchMonitor}
+            />
+          )}
 
           {canUseAdmin && route === "args" && <ArgumentsView />}
 
@@ -328,16 +344,6 @@ export function App() {
           {canUseAdmin && route === "presets" && <PresetsView />}
 
           {canUseAdmin && route === "processes" && <ProcessesView />}
-
-          {canUseAdmin && route === "instances" && (
-            <InstanceDetails
-              instance={selectedInstance}
-              health={selectedHealth}
-              launchMonitor={selectedLaunchMonitor}
-              monitorNowMs={monitorNowMs}
-              onLaunchStopped={clearLaunchMonitor}
-            />
-          )}
         </Stack>
       </AppShell.Main>
 

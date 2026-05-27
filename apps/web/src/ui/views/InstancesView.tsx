@@ -280,6 +280,7 @@ export function InstancesView(props: {
   healthByInstanceId: Map<string, InstanceHealthSummary>;
   onSelect: (instance: Instance) => void;
   onEdit: (instance: Instance) => void;
+  onOpenDiagnostics: (instance: Instance) => void;
   onLaunchStarted: (
     instance: Instance,
     source: LaunchMonitor["source"],
@@ -319,6 +320,7 @@ export function InstancesView(props: {
                   instance={instance}
                   health={props.healthByInstanceId.get(instance.id)}
                   onEdit={() => props.onEdit(instance)}
+                  onOpenDiagnostics={() => props.onOpenDiagnostics(instance)}
                   onLaunchStarted={props.onLaunchStarted}
                   onLaunchStopped={props.onLaunchStopped}
                 />
@@ -402,6 +404,7 @@ export function InstancesView(props: {
                     instance={instance}
                     health={props.healthByInstanceId.get(instance.id)}
                     onEdit={() => props.onEdit(instance)}
+                    onOpenDiagnostics={() => props.onOpenDiagnostics(instance)}
                     onLaunchStarted={props.onLaunchStarted}
                     onLaunchStopped={props.onLaunchStopped}
                   />

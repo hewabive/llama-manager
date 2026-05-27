@@ -12,6 +12,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   ExternalLink,
   Pencil,
   RotateCcw,
@@ -73,6 +74,7 @@ export function InstanceActions(props: {
   instance: Instance;
   health: InstanceHealthSummary | undefined;
   onEdit: () => void;
+  onOpenDiagnostics?: () => void;
   onLaunchStarted: (instance: Instance, source: "start" | "restart") => void;
   onLaunchStopped: (instance: Instance) => void;
 }) {
@@ -183,6 +185,18 @@ export function InstanceActions(props: {
             <Pencil size={16} />
           </ActionIcon>
         </Tooltip>
+        {props.onOpenDiagnostics && (
+          <Tooltip label="Diagnostics">
+            <ActionIcon
+              aria-label="Open diagnostics"
+              variant="subtle"
+              color="cyan"
+              onClick={props.onOpenDiagnostics}
+            >
+              <Activity size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <Tooltip
           label={actionTooltip("start", health, actionMutation.isPending)}
         >
