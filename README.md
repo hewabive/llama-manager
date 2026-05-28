@@ -14,6 +14,19 @@ Default services:
 - API: `http://127.0.0.1:8787`
 - Web UI: `http://127.0.0.1:5173`
 
+## Runtime logs
+
+Managed `llama-server` launches write two log files:
+
+- `runtime/logs/<instance>-<timestamp>.log`: filtered working log used by the
+  app. Routine local GET/HEAD diagnostics such as `/health`, `/props`, `/slots`
+  and `/v1/models` are omitted to keep agent-readable logs compact.
+- `runtime/logs/<instance>-<timestamp>.raw.log`: full stdout/stderr stream with
+  no filtering.
+
+Set `LLAMA_MANAGER_FILTER_PROBE_LOGS=false` to disable filtering of the working
+log.
+
 ## Public/admin mode
 
 The default route is `/#/status`: a public, redacted diagnostics page. It shows

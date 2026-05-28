@@ -603,8 +603,14 @@ export async function llamaSlotAction(
   );
 }
 
-export async function getInstanceLogs(id: string, lines = 200) {
-  return request<{ data: LogTail }>(`/api/instances/${id}/logs?lines=${lines}`);
+export async function getInstanceLogs(
+  id: string,
+  lines = 200,
+  source: "filtered" | "raw" = "filtered",
+) {
+  return request<{ data: LogTail }>(
+    `/api/instances/${id}/logs?lines=${lines}&source=${source}`,
+  );
 }
 
 export async function getInstanceStatusSummary(id: string) {

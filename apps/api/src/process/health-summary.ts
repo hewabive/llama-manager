@@ -64,6 +64,7 @@ function durableRuntime(instance: Instance): RuntimeState {
     stoppedAt: latestRun?.stoppedAt ?? null,
     exitCode: exitCode === null || Number.isFinite(exitCode) ? exitCode : null,
     logPath: latestRun?.logPath ?? null,
+    rawLogPath: latestRun?.rawLogPath ?? null,
   };
 }
 

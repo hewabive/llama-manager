@@ -13,6 +13,10 @@ export const config = {
   dataDir: resolve(rootDir, "data"),
   runtimeDir: resolve(rootDir, "runtime"),
   logsDir: resolve(rootDir, "runtime", "logs"),
+  logs: {
+    filterRoutineProbeRequests:
+      process.env.LLAMA_MANAGER_FILTER_PROBE_LOGS !== "false",
+  },
   auth: {
     password: process.env.LLAMA_MANAGER_ADMIN_PASSWORD ?? null,
     passwordHash: process.env.LLAMA_MANAGER_ADMIN_PASSWORD_HASH ?? null,

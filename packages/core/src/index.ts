@@ -65,6 +65,7 @@ export const RuntimeStateSchema = z.object({
   stoppedAt: z.string().nullable(),
   exitCode: z.number().int().nullable(),
   logPath: z.string().nullable(),
+  rawLogPath: z.string().nullable(),
 });
 
 export const ProcessPreflightIssueSchema = z.object({
@@ -272,6 +273,7 @@ export const LlamaApiProbeHistoryEntrySchema = z.object({
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
+  rawLogPath: z.string().nullable(),
   lines: z.array(z.string()),
   truncated: z.boolean(),
 });

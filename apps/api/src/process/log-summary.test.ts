@@ -17,6 +17,7 @@ function runtime(logPath: string): RuntimeState {
     stoppedAt: null,
     exitCode: null,
     logPath,
+    rawLogPath: null,
   };
 }
 

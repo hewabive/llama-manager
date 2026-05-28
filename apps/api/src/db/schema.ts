@@ -22,6 +22,7 @@ export const processRuns = sqliteTable("process_runs", {
   stoppedAt: text("stopped_at"),
   exitCode: text("exit_code"),
   logPath: text("log_path").notNull(),
+  rawLogPath: text("raw_log_path"),
 });
 
 export const modelCache = sqliteTable("model_cache", {

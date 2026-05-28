@@ -12,6 +12,7 @@ export function createProcessRun(input: {
   status: string;
   startedAt: string;
   logPath: string;
+  rawLogPath: string | null;
 }) {
   const id = randomUUID();
   db.insert(processRuns)
@@ -24,6 +25,7 @@ export function createProcessRun(input: {
       stoppedAt: null,
       exitCode: null,
       logPath: input.logPath,
+      rawLogPath: input.rawLogPath,
     })
     .run();
   return id;
@@ -40,10 +42,14 @@ export function updateProcessRun(
 ) {
   db.update(processRuns)
     .set({
-      ...(input.pid !== undefined ? { pid: input.pid === null ? null : String(input.pid) } : {}),
+      ...(input.pid !== undefined
+        ? { pid: input.pid === null ? null : String(input.pid) }
+        : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.stoppedAt !== undefined ? { stoppedAt: input.stoppedAt } : {}),
-      ...(input.exitCode !== undefined ? { exitCode: input.exitCode === null ? null : String(input.exitCode) } : {}),
+      ...(input.exitCode !== undefined
+        ? { exitCode: input.exitCode === null ? null : String(input.exitCode) }
+        : {}),
     })
     .where(eq(processRuns.id, id))
     .run();
@@ -65,7 +71,9 @@ export function listOpenProcessRuns(): ProcessRun[] {
   return db
     .select()
     .from(processRuns)
-    .where(sql`${processRuns.stoppedAt} IS NULL AND ${processRuns.status} IN ('starting', 'running', 'stopping', 'stale')`)
+    .where(
+      sql`${processRuns.stoppedAt} IS NULL AND ${processRuns.status} IN ('starting', 'running', 'stopping', 'stale')`,
+    )
     .orderBy(desc(processRuns.startedAt))
     .all();
 }

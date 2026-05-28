@@ -42,9 +42,17 @@ export function migrate() {
       started_at TEXT NOT NULL,
       stopped_at TEXT,
       exit_code TEXT,
-      log_path TEXT NOT NULL
+      log_path TEXT NOT NULL,
+      raw_log_path TEXT
     )
   `);
+
+  if (!columnExists("process_runs", "raw_log_path")) {
+    db.run(sql`
+      ALTER TABLE process_runs
+      ADD COLUMN raw_log_path TEXT
+    `);
+  }
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS model_cache (

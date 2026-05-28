@@ -7,14 +7,20 @@ export function tailInstanceLog(input: {
   instanceId: string;
   runtime: RuntimeState | undefined;
   lines: number;
+  source?: "filtered" | "raw";
 }): LogTail {
   const requestedLines = Math.max(1, Math.min(input.lines, 1_000));
-  const logPath = input.runtime?.logPath ?? latestProcessRun(input.instanceId)?.logPath ?? null;
+  const latestRun = latestProcessRun(input.instanceId);
+  const filteredLogPath = input.runtime?.logPath ?? latestRun?.logPath ?? null;
+  const rawLogPath = input.runtime?.rawLogPath ?? latestRun?.rawLogPath ?? null;
+  const logPath =
+    input.source === "raw" ? (rawLogPath ?? filteredLogPath) : filteredLogPath;
 
   if (!logPath) {
     return {
       instanceId: input.instanceId,
       logPath: null,
+      rawLogPath,
       lines: [],
       truncated: false,
     };
@@ -25,6 +31,7 @@ export function tailInstanceLog(input: {
     return {
       instanceId: input.instanceId,
       logPath,
+      rawLogPath,
       lines: tail.lines,
       truncated: tail.truncated,
     };
@@ -32,6 +39,7 @@ export function tailInstanceLog(input: {
     return {
       instanceId: input.instanceId,
       logPath,
+      rawLogPath,
       lines: [`Unable to read log file: ${(error as Error).message}`],
       truncated: false,
     };

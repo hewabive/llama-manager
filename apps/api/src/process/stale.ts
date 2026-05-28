@@ -70,5 +70,6 @@ export async function stopStaleProcess(
     stoppedAt,
     exitCode: null,
     logPath: latestRun.logPath,
+    rawLogPath: latestRun.rawLogPath,
   };
 }

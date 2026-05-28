@@ -473,6 +473,7 @@ app.get("/api/instances/:id/runtime", (c) => {
           ? null
           : Number(latestRun.exitCode),
       logPath: latestRun?.logPath ?? null,
+      rawLogPath: latestRun?.rawLogPath ?? null,
     },
   });
 });
@@ -509,11 +510,13 @@ app.get("/api/instances/:id/logs", (c) => {
   }
 
   const lines = Number(c.req.query("lines") ?? "200");
+  const source = c.req.query("source") === "raw" ? "raw" : "filtered";
   return c.json({
     data: tailInstanceLog({
       instanceId: instance.id,
       runtime: supervisor.getState(instance.id),
       lines: Number.isFinite(lines) ? lines : 200,
+      source,
     }),
   });
 });

@@ -19,6 +19,7 @@ import {
   Paper,
   Progress,
   ScrollArea,
+  SegmentedControl,
   SimpleGrid,
   Stack,
   Text,
@@ -1447,6 +1448,7 @@ export function InstanceDetails(props: {
   onLaunchStopped: (instance: Instance) => void;
 }) {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
+  const [logSource, setLogSource] = useState<"filtered" | "raw">("filtered");
   const queryClient = useQueryClient();
   const id = props.instance?.id;
 
@@ -1491,8 +1493,8 @@ export function InstanceDetails(props: {
   });
 
   const logsQuery = useQuery({
-    queryKey: ["instance-logs", id],
-    queryFn: () => getInstanceLogs(id!, 200),
+    queryKey: ["instance-logs", id, logSource],
+    queryFn: () => getInstanceLogs(id!, 200, logSource),
     enabled: Boolean(id),
     refetchInterval: 3_000,
   });
@@ -1826,6 +1828,9 @@ export function InstanceDetails(props: {
             <Text size="sm" lineClamp={2}>
               Log: {runtime?.logPath ?? "-"}
             </Text>
+            <Text size="sm" lineClamp={2}>
+              Raw log: {runtime?.rawLogPath ?? "-"}
+            </Text>
           </Stack>
           <Stack gap={4}>
             <Text fw={600} size="sm">
@@ -1974,7 +1979,20 @@ export function InstanceDetails(props: {
             <Text fw={600} size="sm">
               Recent log
             </Text>
-            <Badge variant="light">{logTail?.lines.length ?? 0}</Badge>
+            <Group gap="xs">
+              <SegmentedControl
+                size="xs"
+                value={logSource}
+                data={[
+                  { value: "filtered", label: "Filtered" },
+                  { value: "raw", label: "Raw" },
+                ]}
+                onChange={(value) =>
+                  setLogSource(value === "raw" ? "raw" : "filtered")
+                }
+              />
+              <Badge variant="light">{logTail?.lines.length ?? 0}</Badge>
+            </Group>
           </Group>
           <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
             {logTail?.logPath ?? "No log file yet"}
