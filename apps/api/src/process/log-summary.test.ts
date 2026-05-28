@@ -128,6 +128,35 @@ test("summarizeInstanceLog parses per-device memory layout from buffer lines", (
       summary.memoryLayout.hostBytes,
       (cpuMapped?.totalBytes ?? 0) + (cpu?.totalBytes ?? 0),
     );
+    assert.equal(summary.memoryLayout.projectedHostBytes, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("summarizeInstanceLog parses projected host memory when exact buffers are absent", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "common_params_fit_impl: projected to use 940 MiB of host memory vs. 7917 MiB of total host memory",
+        "srv    load_model: loading model '/models/small.gguf'",
+      ].join("\n"),
+    );
+
+    const summary = summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.memoryLayout.totalBytes, 0);
+    assert.equal(summary.memoryLayout.projectedHostBytes, 940 * 1024 * 1024);
+    assert.equal(
+      summary.memoryLayout.projectedHostTotalBytes,
+      7917 * 1024 * 1024,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

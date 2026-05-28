@@ -1347,6 +1347,10 @@ function MemoryLayoutPanel(props: {
 }) {
   const layout = props.layout;
   const entries = layout?.entries ?? [];
+  const exactLayout = layout && layout.totalBytes > 0 ? layout : null;
+  const projectedHostBytes = layout?.projectedHostBytes ?? null;
+  const projectedHostTotalBytes = layout?.projectedHostTotalBytes ?? null;
+  const hasProjection = projectedHostBytes !== null && projectedHostBytes > 0;
 
   return (
     <Paper withBorder p="sm" radius="sm">
@@ -1360,18 +1364,20 @@ function MemoryLayoutPanel(props: {
           </Text>
         </Stack>
         <Badge variant="light">
-          {layout && layout.totalBytes > 0
-            ? formatMemoryBytes(layout.totalBytes)
-            : "no data"}
+          {exactLayout
+            ? formatMemoryBytes(exactLayout.totalBytes)
+            : hasProjection
+              ? `estimate ${formatMemoryBytes(projectedHostBytes ?? 0)}`
+              : "no data"}
         </Badge>
       </Group>
 
-      {layout && layout.totalBytes > 0 ? (
+      {exactLayout ? (
         <Stack gap="xs">
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
-            <MemoryMetric label="VRAM total" value={layout.deviceBytes} />
-            <MemoryMetric label="RAM total" value={layout.hostBytes} />
-            <MemoryMetric label="Other" value={layout.otherBytes} />
+            <MemoryMetric label="VRAM total" value={exactLayout.deviceBytes} />
+            <MemoryMetric label="RAM total" value={exactLayout.hostBytes} />
+            <MemoryMetric label="Other" value={exactLayout.otherBytes} />
           </SimpleGrid>
 
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
@@ -1410,6 +1416,29 @@ function MemoryLayoutPanel(props: {
               </Paper>
             ))}
           </SimpleGrid>
+        </Stack>
+      ) : hasProjection ? (
+        <Stack gap="xs">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
+            <MemoryMetric
+              label="Projected RAM"
+              value={projectedHostBytes ?? 0}
+            />
+            <MemoryMetric
+              label="Host total"
+              value={projectedHostTotalBytes ?? 0}
+            />
+            <Text size="xs">
+              Exact buffers:{" "}
+              <Text span c="dimmed">
+                -
+              </Text>
+            </Text>
+          </SimpleGrid>
+          <Text c="dimmed" size="xs">
+            llama.cpp did not emit per-buffer allocation lines for this run; the
+            host memory projection is shown instead.
+          </Text>
         </Stack>
       ) : (
         <Text c="dimmed" size="xs">
@@ -1894,6 +1923,8 @@ export function InstanceDetails(props: {
           <ProbeCard title="v1/models" probe={llama?.models} />
         </SimpleGrid>
 
+        <MemoryLayoutPanel layout={statusSummary?.memoryLayout} />
+
         {rootSlotRows.length > 0 && (
           <Paper withBorder p="sm" radius="sm">
             <Group justify="space-between" mb="xs">
@@ -2087,8 +2118,6 @@ export function InstanceDetails(props: {
             </Stack>
           )}
         </Paper>
-
-        <MemoryLayoutPanel layout={statusSummary?.memoryLayout} />
 
         <Divider />
 

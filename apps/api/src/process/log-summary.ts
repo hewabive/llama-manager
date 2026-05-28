@@ -199,6 +199,8 @@ function emptyMemoryLayout(): InstanceMemoryLayout {
     hostBytes: 0,
     otherBytes: 0,
     totalBytes: 0,
+    projectedHostBytes: null,
+    projectedHostTotalBytes: null,
   };
 }
 
@@ -249,10 +251,29 @@ function compareMemoryPlacements(
   );
 }
 
+function parseProjectedHostMemory(lines: string[]) {
+  const match = lastMatch(
+    lines,
+    /projected to use\s+([0-9]+(?:\.[0-9]+)?)\s+MiB of host memory vs\.\s+([0-9]+(?:\.[0-9]+)?)\s+MiB of total host memory/i,
+  );
+  if (!match) {
+    return {
+      projectedHostBytes: null,
+      projectedHostTotalBytes: null,
+    };
+  }
+
+  return {
+    projectedHostBytes: Math.round(Number(match[1]) * MIB),
+    projectedHostTotalBytes: Math.round(Number(match[2]) * MIB),
+  };
+}
+
 function parseMemoryLayout(lines: string[]): InstanceMemoryLayout {
   const placements = new Map<string, InstanceMemoryPlacement>();
   const bufferPattern =
     /:\s+(.+?)\s+(model|KV|RS|output|compute|LoRA)\s+buffer size\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*MiB\b/i;
+  const projected = parseProjectedHostMemory(lines);
 
   for (const line of lines) {
     const match = bufferPattern.exec(line);
@@ -288,6 +309,8 @@ function parseMemoryLayout(lines: string[]): InstanceMemoryLayout {
       .filter((entry) => entry.kind === "other")
       .reduce((sum, entry) => sum + entry.totalBytes, 0),
     totalBytes: entries.reduce((sum, entry) => sum + entry.totalBytes, 0),
+    projectedHostBytes: projected.projectedHostBytes,
+    projectedHostTotalBytes: projected.projectedHostTotalBytes,
   };
 }
 

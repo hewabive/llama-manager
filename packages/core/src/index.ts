@@ -343,6 +343,8 @@ export const InstanceMemoryLayoutSchema = z.object({
   hostBytes: z.number().int().nonnegative(),
   otherBytes: z.number().int().nonnegative(),
   totalBytes: z.number().int().nonnegative(),
+  projectedHostBytes: z.number().int().nonnegative().nullable(),
+  projectedHostTotalBytes: z.number().int().nonnegative().nullable(),
 });
 
 export const InstanceLogSummarySchema = z.object({
