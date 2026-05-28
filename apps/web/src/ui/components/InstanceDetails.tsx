@@ -1,6 +1,8 @@
 import type {
   Instance,
   InstanceHealthSummary,
+  InstanceMemoryLayout,
+  InstanceMemoryPlacement,
   LlamaEndpointProbe,
   LlamaModelDiagnostics,
   LlamaModelActionName,
@@ -264,6 +266,10 @@ function formatBytes(value: number | null) {
     unit += 1;
   }
   return `${scaled.toFixed(unit === 0 ? 0 : 2)} ${units[unit]}`;
+}
+
+function formatMemoryBytes(value: number) {
+  return value > 0 ? (formatBytes(value) ?? "-") : "-";
 }
 
 function modelMetaFromRecord(value: unknown): V1ModelMeta | null {
@@ -1313,6 +1319,108 @@ function isLaunchTerminalStatus(
   );
 }
 
+function memoryKindLabel(kind: InstanceMemoryPlacement["kind"]) {
+  if (kind === "device") return "VRAM";
+  if (kind === "host") return "RAM";
+  return "Other";
+}
+
+function memoryKindColor(kind: InstanceMemoryPlacement["kind"]) {
+  if (kind === "device") return "blue";
+  if (kind === "host") return "green";
+  return "gray";
+}
+
+function MemoryMetric(props: { label: string; value: number }) {
+  return (
+    <Text size="xs">
+      {props.label}:{" "}
+      <Text span c="dimmed">
+        {formatMemoryBytes(props.value)}
+      </Text>
+    </Text>
+  );
+}
+
+function MemoryLayoutPanel(props: {
+  layout: InstanceMemoryLayout | undefined;
+}) {
+  const layout = props.layout;
+  const entries = layout?.entries ?? [];
+
+  return (
+    <Paper withBorder p="sm" radius="sm">
+      <Group justify="space-between" mb="xs">
+        <Stack gap={2}>
+          <Text fw={600} size="sm">
+            Memory layout
+          </Text>
+          <Text c="dimmed" size="xs">
+            Parsed from llama.cpp buffer allocation log lines.
+          </Text>
+        </Stack>
+        <Badge variant="light">
+          {layout && layout.totalBytes > 0
+            ? formatMemoryBytes(layout.totalBytes)
+            : "no data"}
+        </Badge>
+      </Group>
+
+      {layout && layout.totalBytes > 0 ? (
+        <Stack gap="xs">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
+            <MemoryMetric label="VRAM total" value={layout.deviceBytes} />
+            <MemoryMetric label="RAM total" value={layout.hostBytes} />
+            <MemoryMetric label="Other" value={layout.otherBytes} />
+          </SimpleGrid>
+
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+            {entries.map((entry) => (
+              <Paper key={entry.label} withBorder p="xs" radius="sm">
+                <Stack gap={6}>
+                  <Group justify="space-between" gap="xs" wrap="nowrap">
+                    <Text fw={600} size="sm" lineClamp={1}>
+                      {entry.label}
+                    </Text>
+                    <Group gap={4} wrap="nowrap">
+                      <Badge
+                        color={memoryKindColor(entry.kind)}
+                        variant="light"
+                        size="xs"
+                      >
+                        {memoryKindLabel(entry.kind)}
+                      </Badge>
+                      <Badge variant="outline" size="xs">
+                        {formatMemoryBytes(entry.totalBytes)}
+                      </Badge>
+                    </Group>
+                  </Group>
+                  <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={4}>
+                    <MemoryMetric label="Model" value={entry.modelBytes} />
+                    <MemoryMetric
+                      label="KV/context"
+                      value={entry.contextBytes}
+                    />
+                    <MemoryMetric label="Compute" value={entry.computeBytes} />
+                    <MemoryMetric label="Output" value={entry.outputBytes} />
+                    <MemoryMetric label="Adapters" value={entry.adapterBytes} />
+                    <MemoryMetric label="Other" value={entry.otherBytes} />
+                  </SimpleGrid>
+                </Stack>
+              </Paper>
+            ))}
+          </SimpleGrid>
+        </Stack>
+      ) : (
+        <Text c="dimmed" size="xs">
+          No memory buffer lines parsed yet. Start or restart the instance; the
+          data appears while llama.cpp initializes model and context buffers.
+        </Text>
+      )}
+    </Paper>
+  );
+}
+
 function LaunchMonitorPanel(props: {
   health: InstanceHealthSummary | undefined;
   runtime: InstanceHealthSummary["runtime"] | undefined;
@@ -1979,6 +2087,8 @@ export function InstanceDetails(props: {
             </Stack>
           )}
         </Paper>
+
+        <MemoryLayoutPanel layout={statusSummary?.memoryLayout} />
 
         <Divider />
 

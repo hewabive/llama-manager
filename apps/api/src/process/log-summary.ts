@@ -1,6 +1,8 @@
 import type {
   InstanceLoadProgress,
   InstanceLogSummary,
+  InstanceMemoryLayout,
+  InstanceMemoryPlacement,
   RuntimeState,
 } from "@llama-manager/core";
 
@@ -8,6 +10,15 @@ import { latestProcessRun } from "./runs-repository.js";
 import { readTailLines } from "../utils/log-tail.js";
 
 const MAX_SUMMARY_LINES = 1_000;
+const MIB = 1024 * 1024;
+
+type MemoryByteField =
+  | "modelBytes"
+  | "contextBytes"
+  | "computeBytes"
+  | "outputBytes"
+  | "adapterBytes"
+  | "otherBytes";
 
 function nowIso() {
   return new Date().toISOString();
@@ -121,6 +132,122 @@ function loadProgress(
   estimated = true,
 ): InstanceLoadProgress {
   return { stage, percent, message, estimated };
+}
+
+function emptyMemoryPlacement(
+  label: string,
+  kind: InstanceMemoryPlacement["kind"],
+): InstanceMemoryPlacement {
+  return {
+    label,
+    kind,
+    modelBytes: 0,
+    contextBytes: 0,
+    computeBytes: 0,
+    outputBytes: 0,
+    adapterBytes: 0,
+    otherBytes: 0,
+    totalBytes: 0,
+  };
+}
+
+function emptyMemoryLayout(): InstanceMemoryLayout {
+  return {
+    entries: [],
+    deviceBytes: 0,
+    hostBytes: 0,
+    otherBytes: 0,
+    totalBytes: 0,
+  };
+}
+
+function classifyMemoryPlacement(
+  label: string,
+): InstanceMemoryPlacement["kind"] {
+  const normalized = label.toUpperCase();
+  if (
+    normalized === "HOST" ||
+    normalized.startsWith("CPU") ||
+    normalized.includes("_HOST") ||
+    normalized.includes(" HOST") ||
+    normalized.includes("MAPPED")
+  ) {
+    return "host";
+  }
+  if (
+    /\b(CUDA|ROCM|HIP|METAL|VULKAN|SYCL|MUSA|CANN|KOMPUTE|OPENCL|GPU)\d*\b/i.test(
+      label,
+    )
+  ) {
+    return "device";
+  }
+  return "other";
+}
+
+function memoryFieldFromBufferKind(kind: string): MemoryByteField {
+  const normalized = kind.toLowerCase();
+  if (normalized === "model") return "modelBytes";
+  if (normalized === "kv" || normalized === "rs") return "contextBytes";
+  if (normalized === "compute") return "computeBytes";
+  if (normalized === "output") return "outputBytes";
+  if (normalized === "lora") return "adapterBytes";
+  return "otherBytes";
+}
+
+function compareMemoryPlacements(
+  left: InstanceMemoryPlacement,
+  right: InstanceMemoryPlacement,
+) {
+  const order = { device: 0, host: 1, other: 2 };
+  return (
+    order[left.kind] - order[right.kind] ||
+    left.label.localeCompare(right.label, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  );
+}
+
+function parseMemoryLayout(lines: string[]): InstanceMemoryLayout {
+  const placements = new Map<string, InstanceMemoryPlacement>();
+  const bufferPattern =
+    /:\s+(.+?)\s+(model|KV|RS|output|compute|LoRA)\s+buffer size\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*MiB\b/i;
+
+  for (const line of lines) {
+    const match = bufferPattern.exec(line);
+    if (!match) {
+      continue;
+    }
+
+    const label = match[1]!.trim().replace(/\s+/g, " ");
+    const field = memoryFieldFromBufferKind(match[2]!);
+    const bytes = Math.round(Number(match[3]) * MIB);
+    if (!label || !Number.isFinite(bytes) || bytes < 0) {
+      continue;
+    }
+
+    const placement =
+      placements.get(label) ??
+      emptyMemoryPlacement(label, classifyMemoryPlacement(label));
+    placement[field] += bytes;
+    placement.totalBytes += bytes;
+    placements.set(label, placement);
+  }
+
+  const entries = [...placements.values()].sort(compareMemoryPlacements);
+  return {
+    entries,
+    deviceBytes: entries
+      .filter((entry) => entry.kind === "device")
+      .reduce((sum, entry) => sum + entry.totalBytes, 0),
+    hostBytes: entries
+      .filter((entry) => entry.kind === "host")
+      .reduce((sum, entry) => sum + entry.totalBytes, 0),
+    otherBytes: entries
+      .filter((entry) => entry.kind === "other")
+      .reduce((sum, entry) => sum + entry.totalBytes, 0),
+    totalBytes: entries.reduce((sum, entry) => sum + entry.totalBytes, 0),
+  };
 }
 
 function pendingLoadProgress() {
@@ -256,6 +383,7 @@ export function summarizeInstanceLog(input: {
       errors: [],
       notices: [],
       loadProgress: pendingLoadProgress(),
+      memoryLayout: emptyMemoryLayout(),
       updatedAt: nowIso(),
     };
   }
@@ -280,6 +408,7 @@ export function summarizeInstanceLog(input: {
         10,
       ),
       loadProgress: parseLoadProgress(lines),
+      memoryLayout: parseMemoryLayout(lines),
       updatedAt: nowIso(),
     };
   } catch (error) {
@@ -302,6 +431,7 @@ export function summarizeInstanceLog(input: {
         `Unable to parse log file: ${(error as Error).message}`,
         false,
       ),
+      memoryLayout: emptyMemoryLayout(),
       updatedAt: nowIso(),
     };
   }

@@ -319,6 +319,32 @@ export const InstanceLoadProgressSchema = z.object({
   estimated: z.boolean(),
 });
 
+export const InstanceMemoryPlacementKindSchema = z.enum([
+  "device",
+  "host",
+  "other",
+]);
+
+export const InstanceMemoryPlacementSchema = z.object({
+  label: z.string(),
+  kind: InstanceMemoryPlacementKindSchema,
+  modelBytes: z.number().int().nonnegative(),
+  contextBytes: z.number().int().nonnegative(),
+  computeBytes: z.number().int().nonnegative(),
+  outputBytes: z.number().int().nonnegative(),
+  adapterBytes: z.number().int().nonnegative(),
+  otherBytes: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+});
+
+export const InstanceMemoryLayoutSchema = z.object({
+  entries: z.array(InstanceMemoryPlacementSchema),
+  deviceBytes: z.number().int().nonnegative(),
+  hostBytes: z.number().int().nonnegative(),
+  otherBytes: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+});
+
 export const InstanceLogSummarySchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -333,6 +359,7 @@ export const InstanceLogSummarySchema = z.object({
   errors: z.array(z.string()),
   notices: z.array(z.string()),
   loadProgress: InstanceLoadProgressSchema,
+  memoryLayout: InstanceMemoryLayoutSchema,
   updatedAt: z.string(),
 });
 
@@ -801,6 +828,10 @@ export type InstanceLoadProgressStage = z.infer<
   typeof InstanceLoadProgressStageSchema
 >;
 export type InstanceLoadProgress = z.infer<typeof InstanceLoadProgressSchema>;
+export type InstanceMemoryPlacement = z.infer<
+  typeof InstanceMemoryPlacementSchema
+>;
+export type InstanceMemoryLayout = z.infer<typeof InstanceMemoryLayoutSchema>;
 export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;
 export type InstanceHealthSummaryStatus = z.infer<
   typeof InstanceHealthSummaryStatusSchema

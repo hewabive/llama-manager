@@ -83,6 +83,56 @@ test("summarizeInstanceLog estimates tensor loading progress from loader dots", 
   }
 });
 
+test("summarizeInstanceLog parses per-device memory layout from buffer lines", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "llama_model_load: offloaded 29/29 layers to GPU",
+        "llama_model_load:        CUDA0 model buffer size =  3580.25 MiB",
+        "llama_model_load:   CPU_Mapped model buffer size =   512.50 MiB",
+        "llama_kv_cache_init:      CUDA0 KV buffer size =  2048.00 MiB",
+        "llama_init_from_model:    CUDA0  output buffer size =     0.50 MiB",
+        "llama_context:            CUDA0 compute buffer size =   256.00 MiB",
+        "llama_context:              CPU compute buffer size =    12.00 MiB",
+      ].join("\n"),
+    );
+
+    const summary = summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+    const cuda = summary.memoryLayout.entries.find(
+      (entry) => entry.label === "CUDA0",
+    );
+    const cpuMapped = summary.memoryLayout.entries.find(
+      (entry) => entry.label === "CPU_Mapped",
+    );
+    const cpu = summary.memoryLayout.entries.find(
+      (entry) => entry.label === "CPU",
+    );
+
+    assert.equal(cuda?.kind, "device");
+    assert.equal(cuda?.modelBytes, Math.round(3580.25 * 1024 * 1024));
+    assert.equal(cuda?.contextBytes, 2048 * 1024 * 1024);
+    assert.equal(cuda?.computeBytes, 256 * 1024 * 1024);
+    assert.equal(cuda?.outputBytes, Math.round(0.5 * 1024 * 1024));
+    assert.equal(cpuMapped?.kind, "host");
+    assert.equal(cpuMapped?.modelBytes, Math.round(512.5 * 1024 * 1024));
+    assert.equal(cpu?.kind, "host");
+    assert.equal(cpu?.computeBytes, 12 * 1024 * 1024);
+    assert.equal(summary.memoryLayout.deviceBytes, cuda?.totalBytes);
+    assert.equal(
+      summary.memoryLayout.hostBytes,
+      (cpuMapped?.totalBytes ?? 0) + (cpu?.totalBytes ?? 0),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("summarizeInstanceLog reports warmup as late loading stage", () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
