@@ -26,7 +26,14 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Copy, RefreshCw, Save, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Copy,
+  RefreshCw,
+  Save,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -129,6 +136,36 @@ function findDefault(
 ) {
   const key = argumentDefaultFromOption(option, scope).key;
   return defaults[scope].find((item) => item.key === key) ?? null;
+}
+
+function defaultScopeLabel(
+  defaults: LlamaArgumentDefaults,
+  option: LlamaArgumentOption,
+) {
+  const scopes = [
+    findDefault(defaults, "instance", option) ? "new instances" : null,
+    findDefault(defaults, "preset", option) ? "new model presets" : null,
+  ].filter(Boolean);
+
+  return scopes.length > 0 ? `Default for ${scopes.join(" and ")}` : null;
+}
+
+function ArgumentDefaultMarker(props: {
+  defaults: LlamaArgumentDefaults;
+  option: LlamaArgumentOption;
+}) {
+  const label = defaultScopeLabel(props.defaults, props.option);
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <Tooltip label={label}>
+      <span className="argument-default-marker" aria-label={label}>
+        <Star size={14} fill="currentColor" strokeWidth={2.4} />
+      </span>
+    </Tooltip>
+  );
 }
 
 function upsertDefault(
@@ -641,7 +678,15 @@ export function ArgumentsView() {
                   }
                   onClick={() => selectArgument(option)}
                 >
-                  <Code>{option.primaryName}</Code>
+                  <Group className="argument-list-entry" gap="xs" wrap="nowrap">
+                    <Code className="argument-list-code">
+                      {option.primaryName}
+                    </Code>
+                    <ArgumentDefaultMarker
+                      defaults={argumentDefaults}
+                      option={option}
+                    />
+                  </Group>
                 </Paper>
               ))}
               {filteredOptions.length === 0 && (
@@ -674,9 +719,19 @@ export function ArgumentsView() {
                       onClick={() => selectArgument(option)}
                     >
                       <Table.Td>
-                        <div className="argument-name">
-                          <Code>{option.primaryName}</Code>
-                        </div>
+                        <Group
+                          className="argument-list-entry"
+                          gap="xs"
+                          wrap="nowrap"
+                        >
+                          <Code className="argument-list-code">
+                            {option.primaryName}
+                          </Code>
+                          <ArgumentDefaultMarker
+                            defaults={argumentDefaults}
+                            option={option}
+                          />
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
                   ))}

@@ -172,6 +172,25 @@ code {
   min-width: 0;
 }
 
+.argument-list-entry {
+  min-width: 0;
+}
+
+.argument-list-code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.argument-default-marker {
+  color: var(--mantine-color-yellow-6);
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+
 .argument-value-hint {
   max-width: 100%;
 }
