@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  getLlamaArgumentDefaults,
   getModelScanSettings,
   scanModels,
   updateModelPreset,
@@ -54,6 +55,12 @@ export function ModelsView(props: {
     queryKey: ["model-scan-settings"],
     queryFn: getModelScanSettings,
   });
+  const argumentDefaultsQuery = useQuery({
+    queryKey: ["llama-arg-defaults"],
+    queryFn: getLlamaArgumentDefaults,
+    staleTime: 60_000,
+  });
+  const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
   const modelsQuery = useQuery({
     queryKey: [
       "models",
@@ -143,7 +150,10 @@ export function ModelsView(props: {
       });
       return;
     }
-    const entries = [...existingEntries, presetEntryFromModel(model)];
+    const entries = [
+      ...existingEntries,
+      presetEntryFromModel(model, presetDefaultArgs),
+    ];
     updateModelPreset({
       entries,
       path: current?.data.path,

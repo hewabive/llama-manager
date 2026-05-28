@@ -59,31 +59,35 @@ export function getArgumentDefaults(): LlamaArgumentDefaults {
   });
 }
 
-function replaceScope(scope: DefaultScope, defaults: LlamaArgumentDefault[]) {
-  const timestamp = nowIso();
-  db.delete(llamaArgumentDefaults)
-    .where(eq(llamaArgumentDefaults.scope, scope))
-    .run();
-
-  for (const item of sanitizeDefaults(defaults)) {
-    db.insert(llamaArgumentDefaults)
-      .values({
-        scope,
-        key: item.key,
-        value: item.value,
-        valueType: item.valueType,
-        updatedAt: timestamp,
-      })
-      .run();
-  }
-}
-
 export function saveArgumentDefaults(
   input: LlamaArgumentDefaults,
 ): LlamaArgumentDefaults {
   const parsed = LlamaArgumentDefaultsSchema.parse(input);
-  replaceScope("instance", parsed.instance);
-  replaceScope("preset", parsed.preset);
+  const timestamp = nowIso();
+
+  db.transaction((tx) => {
+    for (const [scope, defaults] of [
+      ["instance", parsed.instance],
+      ["preset", parsed.preset],
+    ] as const) {
+      tx.delete(llamaArgumentDefaults)
+        .where(eq(llamaArgumentDefaults.scope, scope))
+        .run();
+
+      for (const item of sanitizeDefaults(defaults)) {
+        tx.insert(llamaArgumentDefaults)
+          .values({
+            scope,
+            key: item.key,
+            value: item.value,
+            valueType: item.valueType,
+            updatedAt: timestamp,
+          })
+          .run();
+      }
+    }
+  });
+
   return getArgumentDefaults();
 }
 

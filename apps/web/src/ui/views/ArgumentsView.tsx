@@ -43,6 +43,11 @@ import { argumentDefaultFromOption } from "../utils/argument-defaults";
 import { formatLocalDateTime } from "../utils/time";
 
 const allFilterValue = "__all__";
+const emptyArgumentDefaults: LlamaArgumentDefaults = {
+  instance: [],
+  preset: [],
+  updatedAt: null,
+};
 
 function optionSearchText(option: LlamaArgumentOption) {
   return [
@@ -136,6 +141,24 @@ function upsertDefault(
   );
 }
 
+function defaultDraftKey(scope: "instance" | "preset", key: string) {
+  return `${scope}:${key}`;
+}
+
+function defaultNeedsValue(valueType: LlamaArgumentDefault["valueType"]) {
+  return valueType !== "flag" && valueType !== "null";
+}
+
+function validateArgumentDefault(input: LlamaArgumentDefault) {
+  if (defaultNeedsValue(input.valueType) && !input.value.trim()) {
+    return "Default value is required for this argument";
+  }
+  if (input.valueType === "number" && !Number.isFinite(Number(input.value))) {
+    return "Default value must be a number";
+  }
+  return null;
+}
+
 export function ArgumentsView() {
   const queryClient = useQueryClient();
   const [binaryPath, setBinaryPath] = useState(defaultBinaryPath);
@@ -147,6 +170,9 @@ export function ArgumentsView() {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [helpRuDraft, setHelpRuDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
+  const [defaultValueDrafts, setDefaultValueDrafts] = useState<
+    Record<string, string>
+  >({});
 
   const activeBinaryPathKey = activeBinaryPath.trim() || undefined;
   const argsCatalogQuery = useQuery({
@@ -208,11 +234,8 @@ export function ArgumentsView() {
     queryFn: getLlamaArgumentDefaults,
     staleTime: 60_000,
   });
-  const argumentDefaults = argumentDefaultsQuery.data?.data ?? {
-    instance: [],
-    preset: [],
-    updatedAt: null,
-  };
+  const argumentDefaults =
+    argumentDefaultsQuery.data?.data ?? emptyArgumentDefaults;
   const selectedInstanceDefault = selectedOption
     ? findDefault(argumentDefaults, "instance", selectedOption)
     : null;
@@ -240,6 +263,29 @@ export function ArgumentsView() {
     selectedOption?.helpRu,
     selectedOption?.notes,
     selectedOption?.primaryName,
+  ]);
+
+  useEffect(() => {
+    if (!selectedOption) {
+      return;
+    }
+
+    setDefaultValueDrafts((current) => {
+      const next = { ...current };
+      for (const scope of ["instance", "preset"] as const) {
+        const suggested = argumentDefaultFromOption(selectedOption, scope);
+        const saved = findDefault(argumentDefaults, scope, selectedOption);
+        const key = defaultDraftKey(scope, suggested.key);
+        next[key] = saved?.value ?? current[key] ?? suggested.value;
+      }
+      return next;
+    });
+  }, [
+    selectedOption?.primaryName,
+    selectedInstanceDefault?.value,
+    selectedInstanceDefault?.valueType,
+    selectedPresetDefault?.value,
+    selectedPresetDefault?.valueType,
   ]);
 
   const refreshArgsMutation = useMutation({
@@ -362,6 +408,18 @@ export function ArgumentsView() {
     const base = argumentDefaultFromOption(selectedOption, scope);
     const current = findDefault(argumentDefaults, scope, selectedOption);
     const nextDefault = { ...base, ...current, ...patch };
+    const validationError = enabled
+      ? validateArgumentDefault(nextDefault)
+      : null;
+    if (validationError) {
+      notifications.show({
+        color: "red",
+        title: "Default argument is incomplete",
+        message: validationError,
+      });
+      return;
+    }
+
     const nextScope = enabled
       ? upsertDefault(argumentDefaults[scope], nextDefault)
       : argumentDefaults[scope].filter((item) => item.key !== base.key);
@@ -383,7 +441,9 @@ export function ArgumentsView() {
     const suggested = argumentDefaultFromOption(selectedOption, scope);
     const value = current?.value ?? suggested.value;
     const valueType = current?.valueType ?? suggested.valueType;
-    const needsValue = valueType !== "flag" && valueType !== "null";
+    const needsValue = defaultNeedsValue(valueType);
+    const draftKey = defaultDraftKey(scope, suggested.key);
+    const draftValue = defaultValueDrafts[draftKey] ?? value;
 
     return (
       <Group justify="space-between" align="flex-end" gap="xs" wrap="wrap">
@@ -392,7 +452,10 @@ export function ArgumentsView() {
           checked={Boolean(current)}
           disabled={defaultsMutation.isPending}
           onChange={(event) =>
-            saveArgumentDefault(scope, event.currentTarget.checked)
+            saveArgumentDefault(scope, event.currentTarget.checked, {
+              value: draftValue,
+              valueType,
+            })
           }
         />
         <Group gap="xs" align="flex-end" wrap="wrap">
@@ -402,10 +465,16 @@ export function ArgumentsView() {
               key={`${scope}-${selectedOption.primaryName}-${current?.value ?? "default"}`}
               aria-label={`${label} value`}
               label="Default value"
-              defaultValue={value}
-              disabled={!current || defaultsMutation.isPending}
+              value={draftValue}
+              disabled={defaultsMutation.isPending}
               size="xs"
               w={180}
+              onChange={(event) =>
+                setDefaultValueDrafts((drafts) => ({
+                  ...drafts,
+                  [draftKey]: event.currentTarget.value,
+                }))
+              }
               onBlur={(event) =>
                 current &&
                 saveArgumentDefault(scope, true, {

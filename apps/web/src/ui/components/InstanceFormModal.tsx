@@ -33,7 +33,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RefreshCw, Triangle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createInstance,
@@ -181,6 +181,10 @@ export function InstanceFormModal(props: {
 }) {
   const queryClient = useQueryClient();
   const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
+  const initializedFormKeyRef = useRef<string | null>(null);
+  const [initializedFormKey, setInitializedFormKey] = useState<string | null>(
+    null,
+  );
   const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
   const [argumentPickerKey, setArgumentPickerKey] = useState(0);
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
@@ -367,8 +371,20 @@ export function InstanceFormModal(props: {
 
   useEffect(() => {
     if (!props.opened) {
+      initializedFormKeyRef.current = null;
+      setInitializedFormKey(null);
       return;
     }
+
+    const formKey = `${props.instance?.id ?? "new"}:${props.initialModelPath ?? ""}`;
+    if (initializedFormKeyRef.current === formKey) {
+      return;
+    }
+    if (!props.instance && argumentDefaultsQuery.isLoading) {
+      return;
+    }
+    initializedFormKeyRef.current = formKey;
+    setInitializedFormKey(formKey);
 
     if (props.instance) {
       const modelPath = argString(props.instance.args, "--model") || null;
@@ -407,6 +423,7 @@ export function InstanceFormModal(props: {
     setSelectedKnownArg(null);
     setArgumentPickerKey((key) => key + 1);
   }, [
+    argumentDefaultsQuery.isLoading,
     instanceDefaultArgs,
     props.opened,
     props.instance?.id,
@@ -734,13 +751,36 @@ export function InstanceFormModal(props: {
     }
   }
 
+  const waitingForInitialDefaults =
+    props.opened &&
+    !props.instance &&
+    initializedFormKey === null &&
+    argumentDefaultsQuery.isLoading;
+  const modalTitle = isEdit
+    ? "Edit llama-server instance"
+    : "New llama-server instance";
+
+  if (waitingForInitialDefaults) {
+    return (
+      <Modal
+        opened={props.opened}
+        onClose={props.onClose}
+        title={modalTitle}
+        size="lg"
+        scrollAreaComponent={ScrollArea.Autosize}
+      >
+        <Text c="dimmed" size="sm">
+          Loading default arguments...
+        </Text>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       opened={props.opened}
       onClose={props.onClose}
-      title={
-        isEdit ? "Edit llama-server instance" : "New llama-server instance"
-      }
+      title={modalTitle}
       size="lg"
       scrollAreaComponent={ScrollArea.Autosize}
     >
