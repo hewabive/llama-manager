@@ -13,10 +13,35 @@ export const InstanceEnvSchema = z.record(z.string(), z.string());
 
 const InstanceNameSchema = z.string().min(1).max(80);
 const InstancePathSchema = z.string().min(1);
+const PathCatalogIdSchema = z.string().min(1);
+
+export const PathCatalogKindSchema = z.enum(["binary", "preset"]);
+
+export const PathCatalogEntrySchema = z.object({
+  id: z.string(),
+  kind: PathCatalogKindSchema,
+  name: z.string().min(1).max(80),
+  path: z.string().min(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const PathCatalogCreateSchema = z.object({
+  kind: PathCatalogKindSchema,
+  name: z.string().min(1).max(80),
+  path: z.string().min(1),
+});
+
+export const PathCatalogUpdateSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  path: z.string().min(1).optional(),
+});
 
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
   binaryPath: InstancePathSchema,
+  binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
+  modelsPresetPathRefId: PathCatalogIdSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
@@ -29,6 +54,8 @@ export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
 export const InstanceUpdateSchema = z.object({
   name: InstanceNameSchema.optional(),
   binaryPath: InstancePathSchema.optional(),
+  binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
+  modelsPresetPathRefId: PathCatalogIdSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.optional(),
   env: InstanceEnvSchema.optional(),
@@ -788,6 +815,8 @@ export const ModelPresetPreviewSchema = z.object({
 export const RouterInstanceCreateSchema = z.object({
   name: z.string().min(1).max(80),
   binaryPath: z.string().min(1),
+  binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
+  modelsPresetPathRefId: PathCatalogIdSchema.nullable().optional(),
   cwd: z.string().min(1).optional(),
   host: z.string().min(1).default("127.0.0.1"),
   port: z.number().int().positive().max(65535).default(8080),
@@ -799,6 +828,10 @@ export const RouterInstanceCreateSchema = z.object({
 export type InstanceArgValue = z.infer<typeof InstanceArgValueSchema>;
 export type InstanceArgs = z.infer<typeof InstanceArgsSchema>;
 export type InstanceEnv = z.infer<typeof InstanceEnvSchema>;
+export type PathCatalogKind = z.infer<typeof PathCatalogKindSchema>;
+export type PathCatalogEntry = z.infer<typeof PathCatalogEntrySchema>;
+export type PathCatalogCreate = z.infer<typeof PathCatalogCreateSchema>;
+export type PathCatalogUpdate = z.infer<typeof PathCatalogUpdateSchema>;
 export type InstanceCreate = z.infer<typeof InstanceCreateSchema>;
 export type InstancePreflightPreview = z.infer<
   typeof InstancePreflightPreviewSchema

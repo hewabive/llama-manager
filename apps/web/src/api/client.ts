@@ -38,6 +38,10 @@ import type {
   ModelScanSettings,
   ModelScanResult,
   NetworkInterfacesResult,
+  PathCatalogCreate,
+  PathCatalogEntry,
+  PathCatalogKind,
+  PathCatalogUpdate,
   ProcessPreflightResult,
   PublicStatus,
   RouterInstanceCreate,
@@ -169,6 +173,35 @@ export async function listFilesystemDirectory(path?: string) {
   return request<{ data: FileSystemListResult }>(
     `/api/filesystem/list${query}`,
   );
+}
+
+export async function listPathCatalog(kind?: PathCatalogKind) {
+  const params = new URLSearchParams(kind ? { kind } : {});
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return request<{ data: PathCatalogEntry[] }>(`/api/path-catalog${query}`);
+}
+
+export async function createPathCatalogEntry(input: PathCatalogCreate) {
+  return request<{ data: PathCatalogEntry }>("/api/path-catalog", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updatePathCatalogEntry(
+  id: string,
+  input: PathCatalogUpdate,
+) {
+  return request<{ data: PathCatalogEntry }>(`/api/path-catalog/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deletePathCatalogEntry(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/path-catalog/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function listExternalLlamaProcesses() {

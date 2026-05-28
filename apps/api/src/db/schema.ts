@@ -4,9 +4,20 @@ export const instances = sqliteTable("instances", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
   binaryPath: text("binary_path").notNull(),
+  binaryPathRefId: text("binary_path_ref_id"),
+  modelsPresetPathRefId: text("models_preset_path_ref_id"),
   cwd: text("cwd"),
   argsJson: text("args_json").notNull(),
   envJson: text("env_json").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const pathCatalog = sqliteTable("path_catalog", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  path: text("path").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

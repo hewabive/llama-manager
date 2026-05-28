@@ -25,12 +25,44 @@ export function migrate() {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL UNIQUE,
       binary_path TEXT NOT NULL,
+      binary_path_ref_id TEXT,
+      models_preset_path_ref_id TEXT,
       cwd TEXT,
       args_json TEXT NOT NULL,
       env_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
+  `);
+
+  if (!columnExists("instances", "binary_path_ref_id")) {
+    db.run(sql`
+      ALTER TABLE instances
+      ADD COLUMN binary_path_ref_id TEXT
+    `);
+  }
+
+  if (!columnExists("instances", "models_preset_path_ref_id")) {
+    db.run(sql`
+      ALTER TABLE instances
+      ADD COLUMN models_preset_path_ref_id TEXT
+    `);
+  }
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS path_catalog (
+      id TEXT PRIMARY KEY NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      path TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS path_catalog_kind_name_idx
+    ON path_catalog (kind, name)
   `);
 
   db.run(sql`

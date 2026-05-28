@@ -5,6 +5,7 @@ export type AppRoute =
   | "instances"
   | "diagnostics"
   | "args"
+  | "paths"
   | "models"
   | "presets"
   | "build"
@@ -39,6 +40,12 @@ export const appRoutes: {
     label: "Args",
     title: "Arguments",
     description: "Searchable llama-server argument reference",
+  },
+  {
+    id: "paths",
+    label: "Paths",
+    title: "Path Catalog",
+    description: "Shared binary and preset paths for instances",
   },
   {
     id: "models",

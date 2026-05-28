@@ -33,6 +33,7 @@ import {
   getModelPreset,
   getModelPresetPreview,
   getModelScanSettings,
+  listPathCatalog,
   scanModels,
   updateModelPreset,
   writeModelPreset,
@@ -414,6 +415,12 @@ export function PresetsView() {
   const queryClient = useQueryClient();
   const [routerName, setRouterName] = useState("llama-router");
   const [routerBinaryPath, setRouterBinaryPath] = useState(defaultBinaryPath);
+  const [routerBinaryPathRefId, setRouterBinaryPathRefId] = useState<
+    string | null
+  >(null);
+  const [routerPresetPathRefId, setRouterPresetPathRefId] = useState<
+    string | null
+  >(null);
   const [routerCwd, setRouterCwd] = useState("/home/maxim/llama");
   const [routerHost, setRouterHost] = useState("127.0.0.1");
   const [routerPort, setRouterPort] = useState(8080);
@@ -441,7 +448,42 @@ export function PresetsView() {
     queryFn: getLlamaArgumentDefaults,
     staleTime: 60_000,
   });
+  const pathCatalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog(),
+    staleTime: 60_000,
+  });
   const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
+  const binaryCatalogEntries = useMemo(
+    () =>
+      (pathCatalogQuery.data?.data ?? []).filter(
+        (entry) => entry.kind === "binary",
+      ),
+    [pathCatalogQuery.data?.data],
+  );
+  const presetCatalogEntries = useMemo(
+    () =>
+      (pathCatalogQuery.data?.data ?? []).filter(
+        (entry) => entry.kind === "preset",
+      ),
+    [pathCatalogQuery.data?.data],
+  );
+  const binaryCatalogOptions = useMemo(
+    () =>
+      binaryCatalogEntries.map((entry) => ({
+        value: entry.id,
+        label: entry.name,
+      })),
+    [binaryCatalogEntries],
+  );
+  const presetCatalogOptions = useMemo(
+    () =>
+      presetCatalogEntries.map((entry) => ({
+        value: entry.id,
+        label: entry.name,
+      })),
+    [presetCatalogEntries],
+  );
   const modelDirectory =
     modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
@@ -526,6 +568,8 @@ export function PresetsView() {
       createRouterInstance({
         name: routerName,
         binaryPath: routerBinaryPath,
+        binaryPathRefId: routerBinaryPathRefId,
+        modelsPresetPathRefId: routerPresetPathRefId,
         cwd: routerCwd || undefined,
         host: routerHost,
         port: routerPort,
@@ -564,6 +608,34 @@ export function PresetsView() {
       return;
     }
     saveMutation.mutate({ entries, path: preset.path });
+  }
+
+  function applyPresetCatalogPath(refId: string | null) {
+    const entry =
+      presetCatalogEntries.find((item) => item.id === refId) ?? null;
+    if (!entry || !preset) {
+      return;
+    }
+    saveMutation.mutate({
+      entries: preset.entries,
+      path: entry.path,
+    });
+  }
+
+  function applyRouterBinaryPathRef(refId: string | null) {
+    setRouterBinaryPathRefId(refId);
+    const entry =
+      binaryCatalogEntries.find((item) => item.id === refId) ?? null;
+    if (entry) {
+      setRouterBinaryPath(entry.path);
+    }
+  }
+
+  function applyRouterPresetPathRef(refId: string | null) {
+    setRouterPresetPathRefId(refId);
+    if (refId) {
+      setRouterWritePreset(false);
+    }
   }
 
   function updateEntry(entry: ModelPresetEntry) {
@@ -650,6 +722,21 @@ export function PresetsView() {
               </Button>
             </Group>
           </Group>
+
+          <Select
+            label="Preset catalog"
+            placeholder={
+              pathCatalogQuery.isFetching
+                ? "Loading catalog..."
+                : "Select managed preset path"
+            }
+            searchable
+            clearable
+            value={null}
+            onChange={applyPresetCatalogPath}
+            data={presetCatalogOptions}
+            nothingFoundMessage="No preset paths in catalog"
+          />
 
           <PathPickerInput
             label="Preset path"
@@ -891,12 +978,43 @@ export function PresetsView() {
                   value={routerName}
                   onChange={(event) => setRouterName(event.currentTarget.value)}
                 />
+                <Select
+                  label="Binary catalog"
+                  placeholder={
+                    pathCatalogQuery.isFetching
+                      ? "Loading catalog..."
+                      : "Select managed binary"
+                  }
+                  searchable
+                  clearable
+                  value={routerBinaryPathRefId}
+                  onChange={applyRouterBinaryPathRef}
+                  data={binaryCatalogOptions}
+                  nothingFoundMessage="No binary paths in catalog"
+                />
                 <PathPickerInput
                   label="Binary"
                   mode="file"
                   filter="binary"
                   value={routerBinaryPath}
-                  onChange={setRouterBinaryPath}
+                  onChange={(value) => {
+                    setRouterBinaryPathRefId(null);
+                    setRouterBinaryPath(value);
+                  }}
+                />
+                <Select
+                  label="Router preset catalog"
+                  placeholder={
+                    pathCatalogQuery.isFetching
+                      ? "Loading catalog..."
+                      : "Use generated preset path"
+                  }
+                  searchable
+                  clearable
+                  value={routerPresetPathRefId}
+                  onChange={applyRouterPresetPathRef}
+                  data={presetCatalogOptions}
+                  nothingFoundMessage="No preset paths in catalog"
                 />
                 <PathPickerInput
                   label="Working dir"

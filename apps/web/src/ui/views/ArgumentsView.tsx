@@ -41,6 +41,7 @@ import {
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArguments,
+  listPathCatalog,
   updateLlamaArgumentDefaults,
   updateLlamaArgumentOverride,
 } from "../../api/client";
@@ -199,6 +200,7 @@ function validateArgumentDefault(input: LlamaArgumentDefault) {
 export function ArgumentsView() {
   const queryClient = useQueryClient();
   const [binaryPath, setBinaryPath] = useState(defaultBinaryPath);
+  const [binaryPathRefId, setBinaryPathRefId] = useState<string | null>(null);
   const [activeBinaryPath, setActiveBinaryPath] = useState(defaultBinaryPath);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState(allFilterValue);
@@ -217,6 +219,11 @@ export function ArgumentsView() {
     queryFn: () => getLlamaArguments(activeBinaryPathKey),
     retry: false,
   });
+  const pathCatalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog("binary"),
+    staleTime: 60_000,
+  });
 
   const argsCatalog = argsCatalogQuery.data?.data;
   const options = argsCatalog?.options ?? [];
@@ -233,6 +240,14 @@ export function ArgumentsView() {
         (left, right) => left.localeCompare(right),
       ),
     [options],
+  );
+  const binaryCatalogOptions = useMemo(
+    () =>
+      (pathCatalogQuery.data?.data ?? []).map((entry) => ({
+        value: entry.id,
+        label: entry.name,
+      })),
+    [pathCatalogQuery.data?.data],
   );
   const filteredOptions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -409,6 +424,16 @@ export function ArgumentsView() {
     setActiveBinaryPath(binaryPath.trim());
   }
 
+  function applyBinaryPathRef(refId: string | null) {
+    setBinaryPathRefId(refId);
+    const entry =
+      pathCatalogQuery.data?.data.find((item) => item.id === refId) ?? null;
+    if (entry) {
+      setBinaryPath(entry.path);
+      setActiveBinaryPath(entry.path);
+    }
+  }
+
   function selectArgument(option: LlamaArgumentOption) {
     setSelectedName(option.primaryName);
   }
@@ -559,13 +584,32 @@ export function ArgumentsView() {
           </Group>
 
           <Group align="flex-end" gap="xs" wrap="wrap">
+            <Select
+              aria-label="Binary catalog"
+              label="Binary catalog"
+              placeholder={
+                pathCatalogQuery.isFetching
+                  ? "Loading catalog..."
+                  : "Select managed binary"
+              }
+              searchable
+              clearable
+              value={binaryPathRefId}
+              onChange={applyBinaryPathRef}
+              data={binaryCatalogOptions}
+              w={220}
+              nothingFoundMessage="No binary paths in catalog"
+            />
             <PathPickerInput
               aria-label="llama-server binary path"
               label="Binary"
               mode="file"
               filter="binary"
               value={binaryPath}
-              onChange={setBinaryPath}
+              onChange={(value) => {
+                setBinaryPathRefId(null);
+                setBinaryPath(value);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   loadFromBinaryPath();

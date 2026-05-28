@@ -10,6 +10,9 @@ import {
   LlamaApiProbeRequestSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
+  PathCatalogCreateSchema,
+  PathCatalogKindSchema,
+  PathCatalogUpdateSchema,
   type Instance,
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
@@ -89,6 +92,13 @@ import {
   saveModelPreset,
   writeModelPresetFile,
 } from "./presets/repository.js";
+import {
+  createPathCatalogEntry,
+  deletePathCatalogEntry,
+  getPathCatalogEntry,
+  listPathCatalogEntries,
+  updatePathCatalogEntry,
+} from "./path-catalog/repository.js";
 import { getPublicStatus } from "./public-status.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
 import {
@@ -110,6 +120,42 @@ import { listNetworkInterfaceAddresses } from "./system/network.js";
 import { getSystemResources } from "./system/resources.js";
 
 export const app = new Hono();
+
+function resolveInstancePathRefs(instance: Instance): Instance {
+  const binaryRef = instance.binaryPathRefId
+    ? getPathCatalogEntry(instance.binaryPathRefId)
+    : null;
+  const modelsPresetRef = instance.modelsPresetPathRefId
+    ? getPathCatalogEntry(instance.modelsPresetPathRefId)
+    : null;
+  const args = { ...instance.args };
+  if (modelsPresetRef) {
+    args["--models-preset"] = modelsPresetRef.path;
+  }
+
+  return {
+    ...instance,
+    binaryPath: binaryRef?.path ?? instance.binaryPath,
+    args,
+  };
+}
+
+function validateInstancePathRefs(input: {
+  binaryPathRefId?: string | null | undefined;
+  modelsPresetPathRefId?: string | null | undefined;
+}) {
+  if (input.binaryPathRefId) {
+    const entry = getPathCatalogEntry(input.binaryPathRefId);
+    if (!entry) return "binary path catalog entry not found";
+    if (entry.kind !== "binary") return "binary path reference is not a binary";
+  }
+  if (input.modelsPresetPathRefId) {
+    const entry = getPathCatalogEntry(input.modelsPresetPathRefId);
+    if (!entry) return "preset path catalog entry not found";
+    if (entry.kind !== "preset") return "preset path reference is not a preset";
+  }
+  return null;
+}
 
 app.use(
   "*",
@@ -181,6 +227,64 @@ app.get("/api/filesystem/list", (c) => {
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
+});
+
+app.get("/api/path-catalog", (c) => {
+  const kindInput = c.req.query("kind");
+  const kindResult = kindInput
+    ? PathCatalogKindSchema.safeParse(kindInput)
+    : null;
+  if (kindResult && !kindResult.success) {
+    return c.json({ error: kindResult.error.flatten() }, 400);
+  }
+  const kind = kindResult?.data;
+  return c.json({ data: listPathCatalogEntries(kind) });
+});
+
+app.post("/api/path-catalog", async (c) => {
+  const parsed = PathCatalogCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  try {
+    return c.json({ data: createPathCatalogEntry(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/path-catalog/:id", async (c) => {
+  const parsed = PathCatalogUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  try {
+    const entry = updatePathCatalogEntry(c.req.param("id"), parsed.data);
+    if (!entry) {
+      return c.json({ error: "path catalog entry not found" }, 404);
+    }
+    return c.json({ data: entry });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/path-catalog/:id", (c) => {
+  const id = c.req.param("id");
+  const usedBy = listInstances().filter(
+    (instance) =>
+      instance.binaryPathRefId === id || instance.modelsPresetPathRefId === id,
+  );
+  if (usedBy.length > 0) {
+    return c.json(
+      {
+        error: `path catalog entry is used by ${usedBy.length} instance(s)`,
+      },
+      400,
+    );
+  }
+  const deleted = deletePathCatalogEntry(id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.get("/api/system/llama-processes", async (c) => {
@@ -398,11 +502,19 @@ app.post("/api/model-preset/router-instance", async (c) => {
   }
 
   const input = parsed.data;
+  const refError = validateInstancePathRefs(input);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+  const presetRef = input.modelsPresetPathRefId
+    ? getPathCatalogEntry(input.modelsPresetPathRefId)
+    : null;
   const preset = input.writePreset ? writeModelPresetFile() : getModelPreset();
+  const presetPath = presetRef?.path ?? preset.path;
   const args = {
     "--host": input.host,
     "--port": input.port,
-    "--models-preset": preset.path,
+    "--models-preset": presetPath,
     ...(input.modelsMax === null ? {} : { "--models-max": input.modelsMax }),
     ...(input.modelsAutoload
       ? { "--models-autoload": true }
@@ -415,6 +527,8 @@ app.post("/api/model-preset/router-instance", async (c) => {
         data: createInstance({
           name: input.name,
           binaryPath: input.binaryPath,
+          binaryPathRefId: input.binaryPathRefId ?? null,
+          modelsPresetPathRefId: input.modelsPresetPathRefId ?? null,
           cwd: input.cwd,
           args,
           env: {},
@@ -432,6 +546,10 @@ app.post("/api/instances", async (c) => {
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
+  const refError = validateInstancePathRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
   return c.json({ data: createInstance(parsed.data) }, 201);
 });
 
@@ -440,25 +558,32 @@ app.post("/api/instances/preflight", async (c) => {
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
+  const refError = validateInstancePathRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
 
   const timestamp = new Date().toISOString();
   const preview = parsed.data;
+  const instance = resolveInstancePathRefs({
+    id: preview.id ?? "preview",
+    name: preview.name,
+    binaryPath: preview.binaryPath,
+    binaryPathRefId: preview.binaryPathRefId ?? null,
+    modelsPresetPathRefId: preview.modelsPresetPathRefId ?? null,
+    cwd: preview.cwd,
+    args: preview.args,
+    env: preview.env,
+    status: "stopped",
+    pid: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
   return c.json({
-    data: await validateInstanceStartPreflight(
-      {
-        id: preview.id ?? "preview",
-        name: preview.name,
-        binaryPath: preview.binaryPath,
-        cwd: preview.cwd,
-        args: preview.args,
-        env: preview.env,
-        status: "stopped",
-        pid: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      },
-      { peers: listInstances(), allowActiveSelfPort: Boolean(preview.id) },
-    ),
+    data: await validateInstanceStartPreflight(instance, {
+      peers: listInstances(),
+      allowActiveSelfPort: Boolean(preview.id),
+    }),
   });
 });
 
@@ -1140,6 +1265,10 @@ app.patch("/api/instances/:id", async (c) => {
   const parsed = InstanceUpdateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateInstancePathRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
   }
   const instance = updateInstance(c.req.param("id"), parsed.data);
   if (!instance) {

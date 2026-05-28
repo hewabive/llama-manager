@@ -1,9 +1,14 @@
-import type { Instance, InstanceCreate, InstanceUpdate } from "@llama-manager/core";
+import type {
+  Instance,
+  InstanceCreate,
+  InstanceUpdate,
+} from "@llama-manager/core";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "../db/index.js";
 import { instances } from "../db/schema.js";
+import { getPathCatalogEntry } from "../path-catalog/repository.js";
 import { latestProcessRun } from "../process/runs-repository.js";
 import { supervisor } from "../process/supervisor.js";
 
@@ -15,8 +20,19 @@ function nowIso() {
 
 function latestStatus(id: string): Pick<Instance, "status" | "pid"> {
   const latestRun = latestProcessRun(id);
-  const knownStatuses = new Set<Instance["status"]>(["stopped", "starting", "running", "stopping", "exited", "stale", "error"]);
-  const status = latestRun && knownStatuses.has(latestRun.status as Instance["status"]) ? (latestRun.status as Instance["status"]) : "stopped";
+  const knownStatuses = new Set<Instance["status"]>([
+    "stopped",
+    "starting",
+    "running",
+    "stopping",
+    "exited",
+    "stale",
+    "error",
+  ]);
+  const status =
+    latestRun && knownStatuses.has(latestRun.status as Instance["status"])
+      ? (latestRun.status as Instance["status"])
+      : "stopped";
   const pid = latestRun?.pid ? Number(latestRun.pid) : null;
   return {
     status,
@@ -27,13 +43,25 @@ function latestStatus(id: string): Pick<Instance, "status" | "pid"> {
 function toInstance(row: InstanceRow): Instance {
   const processState = supervisor.getState(row.id);
   const durableState = latestStatus(row.id);
+  const args = JSON.parse(row.argsJson) as Instance["args"];
+  const binaryRef = row.binaryPathRefId
+    ? getPathCatalogEntry(row.binaryPathRefId)
+    : null;
+  const modelsPresetRef = row.modelsPresetPathRefId
+    ? getPathCatalogEntry(row.modelsPresetPathRefId)
+    : null;
+  if (modelsPresetRef) {
+    args["--models-preset"] = modelsPresetRef.path;
+  }
 
   return {
     id: row.id,
     name: row.name,
-    binaryPath: row.binaryPath,
+    binaryPath: binaryRef?.path ?? row.binaryPath,
+    binaryPathRefId: row.binaryPathRefId ?? null,
+    modelsPresetPathRefId: row.modelsPresetPathRefId ?? null,
     cwd: row.cwd ?? undefined,
-    args: JSON.parse(row.argsJson) as Instance["args"],
+    args,
     env: JSON.parse(row.envJson) as Instance["env"],
     status: processState?.status ?? durableState.status,
     pid: processState?.pid ?? durableState.pid,
@@ -60,6 +88,8 @@ export function createInstance(input: InstanceCreate): Instance {
       id,
       name: input.name,
       binaryPath: input.binaryPath,
+      binaryPathRefId: input.binaryPathRefId ?? null,
+      modelsPresetPathRefId: input.modelsPresetPathRefId ?? null,
       cwd: input.cwd ?? null,
       argsJson: JSON.stringify(input.args),
       envJson: JSON.stringify(input.env),
@@ -75,7 +105,10 @@ export function createInstance(input: InstanceCreate): Instance {
   return created;
 }
 
-export function updateInstance(id: string, input: InstanceUpdate): Instance | null {
+export function updateInstance(
+  id: string,
+  input: InstanceUpdate,
+): Instance | null {
   const current = getInstance(id);
   if (!current) {
     return null;
@@ -85,6 +118,14 @@ export function updateInstance(id: string, input: InstanceUpdate): Instance | nu
     .set({
       name: input.name ?? current.name,
       binaryPath: input.binaryPath ?? current.binaryPath,
+      binaryPathRefId:
+        input.binaryPathRefId === undefined
+          ? current.binaryPathRefId
+          : input.binaryPathRefId,
+      modelsPresetPathRefId:
+        input.modelsPresetPathRefId === undefined
+          ? current.modelsPresetPathRefId
+          : input.modelsPresetPathRefId,
       cwd: input.cwd ?? current.cwd ?? null,
       argsJson: JSON.stringify(input.args ?? current.args),
       envJson: JSON.stringify(input.env ?? current.env),

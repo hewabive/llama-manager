@@ -34,6 +34,7 @@ import { DiagnosticsView } from "./views/DiagnosticsView";
 import { InstancesView } from "./views/InstancesView";
 import { LoginView } from "./views/LoginView";
 import { ModelsView } from "./views/ModelsView";
+import { PathCatalogView } from "./views/PathCatalogView";
 import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
 import { PublicStatusView } from "./views/PublicStatusView";
@@ -322,6 +323,8 @@ export function App() {
           )}
 
           {canUseAdmin && route === "args" && <ArgumentsView />}
+
+          {canUseAdmin && route === "paths" && <PathCatalogView />}
 
           {canUseAdmin && route === "models" && (
             <ModelsView
