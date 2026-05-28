@@ -5,7 +5,6 @@ import {
   Box,
   Group,
   NumberInput,
-  Paper,
   Popover,
   Select,
   Switch,
@@ -388,7 +387,7 @@ export function SmartArgRow(props: {
   }
 
   return (
-    <Paper withBorder p="xs" radius="sm">
+    <Box py={6}>
       <Group gap="xs" align="center" wrap="wrap">
         <Box style={{ minWidth: 150, flex: "1 1 180px" }}>
           <Group gap={6} wrap="nowrap">
@@ -462,7 +461,7 @@ export function SmartArgRow(props: {
           </Tooltip>
         </Group>
       </Group>
-    </Paper>
+    </Box>
   );
 }
 

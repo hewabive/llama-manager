@@ -12,10 +12,10 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   Group,
   JsonInput,
   Modal,
-  MultiSelect,
   NumberInput,
   Paper,
   ScrollArea,
@@ -331,6 +331,12 @@ export function InstanceFormModal(props: {
         : "specific"
       : "all";
   const selectedCudaDevices = splitCudaVisibleDevices(cudaVisibleDevices);
+  const singleCudaAccelerator =
+    cudaAccelerators.length === 1 ? cudaAccelerators[0] : null;
+  const singleCudaEnabled = singleCudaAccelerator
+    ? cudaMode === "all" ||
+      selectedCudaDevices.includes(singleCudaAccelerator.id)
+    : false;
   const cudaDeviceOptions = useMemo(() => {
     const options = cudaAccelerators.map((accelerator) => ({
       value: accelerator.id,
@@ -343,6 +349,10 @@ export function InstanceFormModal(props: {
     }
     return options;
   }, [cudaAccelerators, selectedCudaDevices]);
+  const visibleCudaDeviceIds =
+    cudaMode === "all"
+      ? cudaAccelerators.map((accelerator) => accelerator.id)
+      : selectedCudaDevices;
 
   useEffect(() => {
     if (!props.opened) {
@@ -631,26 +641,33 @@ export function InstanceFormModal(props: {
     }
   }
 
-  function applyCudaMode(mode: string) {
+  function applySingleCudaVisibility(enabled: boolean) {
     updateEnvironment((env) => {
-      if (mode === "all") {
+      if (enabled) {
         delete env.CUDA_VISIBLE_DEVICES;
         return env;
       }
-      if (mode === "none") {
-        env.CUDA_VISIBLE_DEVICES = "";
-        return env;
-      }
-
-      env.CUDA_VISIBLE_DEVICES =
-        selectedCudaDevices.join(",") || cudaAccelerators[0]?.id || "0";
+      env.CUDA_VISIBLE_DEVICES = "";
       return env;
     });
   }
 
   function applyCudaDevices(devices: string[]) {
     updateEnvironment((env) => {
-      env.CUDA_VISIBLE_DEVICES = devices.join(",");
+      const selected = devices.filter(Boolean);
+      const detectedIds = cudaAccelerators.map((accelerator) => accelerator.id);
+      const allDetectedSelected =
+        detectedIds.length > 0 &&
+        selected.length === detectedIds.length &&
+        detectedIds.every((id) => selected.includes(id));
+
+      if (selected.length === 0) {
+        env.CUDA_VISIBLE_DEVICES = "";
+      } else if (allDetectedSelected) {
+        delete env.CUDA_VISIBLE_DEVICES;
+      } else {
+        env.CUDA_VISIBLE_DEVICES = selected.join(",");
+      }
       return env;
     });
   }
@@ -1058,79 +1075,80 @@ export function InstanceFormModal(props: {
               )}
             </Stack>
           </Paper>
-          <Paper withBorder p="sm" radius="sm">
-            <Stack gap="xs">
-              <Group justify="space-between" align="flex-start" wrap="wrap">
-                <div>
-                  <Text fw={600} size="sm">
-                    CUDA visibility
-                  </Text>
-                  <Text c="dimmed" size="xs">
-                    Sets CUDA_VISIBLE_DEVICES for this llama-server process.
-                  </Text>
-                </div>
-                <Badge
-                  color={cudaAccelerators.length > 0 ? "green" : "gray"}
-                  variant="light"
-                >
-                  {systemResourcesQuery.isFetching
-                    ? "detecting"
-                    : cudaAccelerators.length > 0
-                      ? `${cudaAccelerators.length} GPU`
-                      : "no NVIDIA GPU"}
-                </Badge>
-              </Group>
-              <SegmentedControl
-                value={cudaMode}
-                onChange={applyCudaMode}
-                data={[
-                  { value: "all", label: "All GPUs" },
-                  {
-                    value: "specific",
-                    label: "Selected",
-                    disabled:
-                      cudaDeviceOptions.length === 0 &&
-                      selectedCudaDevices.length === 0,
-                  },
-                  { value: "none", label: "CPU only" },
-                ]}
-                fullWidth
-              />
-              {cudaMode === "specific" && (
-                <MultiSelect
-                  label="Visible CUDA devices"
-                  placeholder={
-                    cudaDeviceOptions.length > 0
-                      ? "Select GPUs"
-                      : "nvidia-smi did not report devices"
-                  }
-                  data={cudaDeviceOptions}
-                  value={selectedCudaDevices}
-                  onChange={applyCudaDevices}
-                  searchable
-                  clearable
-                />
-              )}
-              {cudaMode === "none" && (
-                <Text c="dimmed" size="xs">
-                  The environment variable is set to an empty string, so CUDA
-                  devices are hidden from the process.
-                </Text>
-              )}
-              {cudaMode === "all" && (
-                <Text c="dimmed" size="xs">
-                  CUDA_VISIBLE_DEVICES is not set here; the process inherits the
-                  manager environment and can see all GPUs available to it.
-                </Text>
-              )}
-              {systemResourcesQuery.isError && (
-                <Text c="yellow" size="xs">
-                  Unable to query system GPUs:{" "}
-                  {(systemResourcesQuery.error as Error).message}
-                </Text>
-              )}
-            </Stack>
-          </Paper>
+          {cudaAccelerators.length > 0 && (
+            <Paper withBorder p="sm" radius="sm">
+              <Stack gap="xs">
+                {singleCudaAccelerator ? (
+                  <>
+                    <Group justify="space-between" align="flex-start">
+                      <Box>
+                        <Text fw={600} size="sm">
+                          CUDA visibility
+                        </Text>
+                        <Text c="dimmed" size="xs">
+                          GPU {singleCudaAccelerator.id} ·{" "}
+                          {singleCudaAccelerator.name}
+                        </Text>
+                      </Box>
+                      <Switch
+                        label="Use GPU"
+                        checked={singleCudaEnabled}
+                        onChange={(event) =>
+                          applySingleCudaVisibility(event.currentTarget.checked)
+                        }
+                      />
+                    </Group>
+                    <Text c="dimmed" size="xs">
+                      {singleCudaEnabled
+                        ? "CUDA_VISIBLE_DEVICES is not set here; the process can use the detected GPU."
+                        : "CUDA_VISIBLE_DEVICES is empty; CUDA devices are hidden from this process."}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Group
+                      justify="space-between"
+                      align="flex-start"
+                      wrap="wrap"
+                    >
+                      <div>
+                        <Text fw={600} size="sm">
+                          CUDA visibility
+                        </Text>
+                        <Text c="dimmed" size="xs">
+                          Select GPUs visible to this llama-server process.
+                        </Text>
+                      </div>
+                      <Badge color="green" variant="light">
+                        {cudaAccelerators.length} GPU
+                      </Badge>
+                    </Group>
+                    <Checkbox.Group
+                      value={visibleCudaDeviceIds}
+                      onChange={applyCudaDevices}
+                    >
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                        {cudaDeviceOptions.map((option) => (
+                          <Checkbox
+                            key={option.value}
+                            value={option.value}
+                            label={option.label}
+                          />
+                        ))}
+                      </SimpleGrid>
+                    </Checkbox.Group>
+                    <Text c="dimmed" size="xs">
+                      {cudaMode === "none"
+                        ? "CUDA_VISIBLE_DEVICES is empty; CUDA devices are hidden from this process."
+                        : cudaMode === "all"
+                          ? "CUDA_VISIBLE_DEVICES is not set here; all detected GPUs are visible."
+                          : `CUDA_VISIBLE_DEVICES=${selectedCudaDevices.join(",")}`}
+                    </Text>
+                  </>
+                )}
+              </Stack>
+            </Paper>
+          )}
           <JsonInput
             label="Environment"
             minRows={4}
