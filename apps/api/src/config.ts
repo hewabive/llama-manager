@@ -17,6 +17,11 @@ export const config = {
     filterRoutineProbeRequests:
       process.env.LLAMA_MANAGER_FILTER_PROBE_LOGS !== "false",
   },
+  shutdown: {
+    stopManagedOnExit:
+      process.env.LLAMA_MANAGER_STOP_MANAGED_ON_EXIT !== "false",
+    timeoutMs: Number(process.env.LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS ?? 10_000),
+  },
   auth: {
     password: process.env.LLAMA_MANAGER_ADMIN_PASSWORD ?? null,
     passwordHash: process.env.LLAMA_MANAGER_ADMIN_PASSWORD_HASH ?? null,

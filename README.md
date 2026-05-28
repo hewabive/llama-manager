@@ -27,6 +27,21 @@ Managed `llama-server` launches write two log files:
 Set `LLAMA_MANAGER_FILTER_PROBE_LOGS=false` to disable filtering of the working
 log.
 
+## Shutdown
+
+Pressing `Ctrl+C` in the `pnpm dev` terminal sends `SIGINT` to the API. The API
+closes its HTTP server and then gracefully stops supervised `llama-server`
+processes. If a child process does not exit before the shutdown timeout, it is
+force-killed.
+
+Relevant environment variables:
+
+- `LLAMA_MANAGER_STOP_MANAGED_ON_EXIT=false`: leave supervised `llama-server`
+  processes running when the API exits; they will be reconciled as stale on the
+  next API start.
+- `LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS`: graceful stop timeout for managed
+  processes, default `10000`.
+
 ## Public/admin mode
 
 The default route is `/#/status`: a public, redacted diagnostics page. It shows

@@ -37,6 +37,13 @@ type RuntimeProcess = MutableProcessState & {
   forceKillTimer?: NodeJS.Timeout;
 };
 
+export type ProcessSupervisorShutdownResult = {
+  requested: number;
+  stopped: number;
+  forced: number;
+  skipped: number;
+};
+
 export class ProcessSupervisor extends EventEmitter {
   private readonly processes = new Map<string, RuntimeProcess>();
 
@@ -206,21 +213,51 @@ export class ProcessSupervisor extends EventEmitter {
       return null;
     }
 
-    if (runtime.status === "exited" || runtime.status === "stopped") {
-      return this.getState(instanceId)!;
-    }
-
-    runtime.status = "stopping";
-    updateProcessRun(runtime.runId, { status: "stopping" });
-    this.emitEvent("status", instanceId, "stopping");
-    runtime.child.kill("SIGTERM");
-    runtime.forceKillTimer = setTimeout(() => {
-      if (runtime.status === "stopping") {
-        runtime.child.kill("SIGKILL");
-      }
-    }, timeoutMs);
+    this.requestStop(runtime, timeoutMs);
 
     return this.getState(instanceId)!;
+  }
+
+  async shutdownAll(
+    timeoutMs = 10_000,
+  ): Promise<ProcessSupervisorShutdownResult> {
+    const effectiveTimeoutMs =
+      Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10_000;
+    const result: ProcessSupervisorShutdownResult = {
+      requested: 0,
+      stopped: 0,
+      forced: 0,
+      skipped: 0,
+    };
+    const runtimes = [...this.processes.values()];
+
+    await Promise.all(
+      runtimes.map(async (runtime) => {
+        if (this.isTerminal(runtime)) {
+          result.skipped += 1;
+          return;
+        }
+
+        result.requested += 1;
+        this.requestStop(runtime, effectiveTimeoutMs);
+        if (await this.waitForExit(runtime, effectiveTimeoutMs)) {
+          result.stopped += 1;
+          return;
+        }
+
+        try {
+          this.emitEvent("status", runtime.instanceId, "force killing");
+          runtime.child.kill("SIGKILL");
+          result.forced += 1;
+        } catch {
+          // The process may have exited between the timeout and SIGKILL.
+        }
+
+        await this.waitForExit(runtime, 1_000);
+      }),
+    );
+
+    return result;
   }
 
   async restart(instance: Instance): Promise<ProcessState> {
@@ -244,6 +281,62 @@ export class ProcessSupervisor extends EventEmitter {
     };
     this.emit("event", event);
     this.emit(`event:${instanceId}`, event);
+  }
+
+  private isTerminal(runtime: RuntimeProcess) {
+    return ["exited", "stopped", "error"].includes(runtime.status);
+  }
+
+  private requestStop(runtime: RuntimeProcess, timeoutMs: number) {
+    const effectiveTimeoutMs =
+      Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10_000;
+    if (this.isTerminal(runtime)) {
+      return;
+    }
+
+    if (runtime.status !== "stopping") {
+      runtime.status = "stopping";
+      updateProcessRun(runtime.runId, { status: "stopping" });
+      this.emitEvent("status", runtime.instanceId, "stopping");
+      try {
+        runtime.child.kill("SIGTERM");
+      } catch {
+        // The process may have exited between status polling and the signal.
+      }
+    }
+
+    if (!runtime.forceKillTimer) {
+      runtime.forceKillTimer = setTimeout(() => {
+        if (runtime.status === "stopping") {
+          this.emitEvent("status", runtime.instanceId, "force killing");
+          try {
+            runtime.child.kill("SIGKILL");
+          } catch {
+            // The process may have exited after the timeout check.
+          }
+        }
+      }, effectiveTimeoutMs);
+    }
+  }
+
+  private waitForExit(runtime: RuntimeProcess, timeoutMs: number) {
+    const effectiveTimeoutMs =
+      Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10_000;
+    if (this.isTerminal(runtime)) {
+      return Promise.resolve(true);
+    }
+
+    return new Promise<boolean>((resolveDone) => {
+      const timer = setTimeout(() => {
+        runtime.child.off("exit", onExit);
+        resolveDone(false);
+      }, effectiveTimeoutMs);
+      const onExit = () => {
+        clearTimeout(timer);
+        resolveDone(true);
+      };
+      runtime.child.once("exit", onExit);
+    });
   }
 
   private writeProcessOutput(runtime: RuntimeProcess, message: string) {
