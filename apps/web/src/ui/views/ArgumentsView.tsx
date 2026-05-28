@@ -56,6 +56,70 @@ const emptyArgumentDefaults: LlamaArgumentDefaults = {
   preset: [],
   updatedAt: null,
 };
+const argumentsBinarySelectionStorageKey =
+  "llama-manager:arguments-binary-selection";
+
+type ArgumentsBinarySelection =
+  | { source: "path"; path: string }
+  | { source: "catalog"; refId: string; path: string };
+
+function fallbackBinarySelection(): ArgumentsBinarySelection {
+  return { source: "path", path: defaultBinaryPath };
+}
+
+function readArgumentsBinarySelection(): ArgumentsBinarySelection {
+  if (typeof window === "undefined") {
+    return fallbackBinarySelection();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(argumentsBinarySelectionStorageKey);
+    if (!raw) {
+      return fallbackBinarySelection();
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return fallbackBinarySelection();
+    }
+
+    const record = parsed as Record<string, unknown>;
+    if (
+      record.source === "catalog" &&
+      typeof record.refId === "string" &&
+      record.refId.trim() &&
+      typeof record.path === "string" &&
+      record.path.trim()
+    ) {
+      return {
+        source: "catalog",
+        refId: record.refId,
+        path: record.path,
+      };
+    }
+    if (
+      record.source === "path" &&
+      typeof record.path === "string" &&
+      record.path.trim()
+    ) {
+      return { source: "path", path: record.path };
+    }
+  } catch {
+    return fallbackBinarySelection();
+  }
+
+  return fallbackBinarySelection();
+}
+
+function writeArgumentsBinarySelection(selection: ArgumentsBinarySelection) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    argumentsBinarySelectionStorageKey,
+    JSON.stringify(selection),
+  );
+}
 
 function optionSearchText(option: LlamaArgumentOption) {
   return [
@@ -199,9 +263,12 @@ function validateArgumentDefault(input: LlamaArgumentDefault) {
 
 export function ArgumentsView() {
   const queryClient = useQueryClient();
-  const [binaryPath, setBinaryPath] = useState(defaultBinaryPath);
-  const [binaryPathRefId, setBinaryPathRefId] = useState<string | null>(null);
-  const [activeBinaryPath, setActiveBinaryPath] = useState(defaultBinaryPath);
+  const [binarySelection, setBinarySelection] =
+    useState<ArgumentsBinarySelection>(() => readArgumentsBinarySelection());
+  const [binaryPath, setBinaryPath] = useState(binarySelection.path);
+  const [activeBinaryPath, setActiveBinaryPath] = useState(
+    binarySelection.path,
+  );
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState(allFilterValue);
   const [valueType, setValueType] = useState(allFilterValue);
@@ -241,14 +308,24 @@ export function ArgumentsView() {
       ),
     [options],
   );
-  const binaryCatalogOptions = useMemo(
-    () =>
-      (pathCatalogQuery.data?.data ?? []).map((entry) => ({
-        value: entry.id,
-        label: entry.name,
-      })),
-    [pathCatalogQuery.data?.data],
-  );
+  const binaryPathRefId =
+    binarySelection.source === "catalog" ? binarySelection.refId : null;
+  const binaryCatalogOptions = useMemo(() => {
+    const catalogOptions = (pathCatalogQuery.data?.data ?? []).map((entry) => ({
+      value: entry.id,
+      label: entry.name,
+    }));
+    if (
+      binarySelection.source === "catalog" &&
+      !catalogOptions.some((option) => option.value === binarySelection.refId)
+    ) {
+      catalogOptions.push({
+        value: binarySelection.refId,
+        label: `Missing catalog entry · ${binarySelection.path}`,
+      });
+    }
+    return catalogOptions;
+  }, [binarySelection, pathCatalogQuery.data?.data]);
   const filteredOptions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return options.filter((option) => {
@@ -340,6 +417,41 @@ export function ArgumentsView() {
     selectedPresetDefault?.valueType,
   ]);
 
+  useEffect(() => {
+    if (binarySelection.source !== "catalog") {
+      return;
+    }
+
+    const entry =
+      pathCatalogQuery.data?.data.find(
+        (item) => item.id === binarySelection.refId,
+      ) ?? null;
+    if (!entry) {
+      return;
+    }
+
+    if (binaryPath !== entry.path) {
+      setBinaryPath(entry.path);
+    }
+    if (activeBinaryPath !== entry.path) {
+      setActiveBinaryPath(entry.path);
+    }
+    if (binarySelection.path !== entry.path) {
+      const nextSelection: ArgumentsBinarySelection = {
+        source: "catalog",
+        refId: binarySelection.refId,
+        path: entry.path,
+      };
+      setBinarySelection(nextSelection);
+      writeArgumentsBinarySelection(nextSelection);
+    }
+  }, [
+    activeBinaryPath,
+    binaryPath,
+    binarySelection,
+    pathCatalogQuery.data?.data,
+  ]);
+
   const refreshArgsMutation = useMutation({
     mutationFn: () => {
       const nextBinaryPath = binaryPath.trim() || undefined;
@@ -421,17 +533,47 @@ export function ArgumentsView() {
   });
 
   function loadFromBinaryPath() {
-    setActiveBinaryPath(binaryPath.trim());
+    const nextPath = binaryPath.trim();
+    if (!nextPath) {
+      return;
+    }
+    setActiveBinaryPath(nextPath);
+    if (
+      binarySelection.source === "path" &&
+      binarySelection.path !== nextPath
+    ) {
+      const nextSelection: ArgumentsBinarySelection = {
+        source: "path",
+        path: nextPath,
+      };
+      setBinarySelection(nextSelection);
+      writeArgumentsBinarySelection(nextSelection);
+    }
   }
 
   function applyBinaryPathRef(refId: string | null) {
-    setBinaryPathRefId(refId);
     const entry =
       pathCatalogQuery.data?.data.find((item) => item.id === refId) ?? null;
     if (entry) {
+      const nextSelection: ArgumentsBinarySelection = {
+        source: "catalog",
+        refId: entry.id,
+        path: entry.path,
+      };
+      setBinarySelection(nextSelection);
+      writeArgumentsBinarySelection(nextSelection);
       setBinaryPath(entry.path);
       setActiveBinaryPath(entry.path);
+      return;
     }
+
+    const nextPath = binaryPath.trim() || defaultBinaryPath;
+    const nextSelection: ArgumentsBinarySelection = {
+      source: "path",
+      path: nextPath,
+    };
+    setBinarySelection(nextSelection);
+    writeArgumentsBinarySelection(nextSelection);
   }
 
   function selectArgument(option: LlamaArgumentOption) {
@@ -607,8 +749,17 @@ export function ArgumentsView() {
               filter="binary"
               value={binaryPath}
               onChange={(value) => {
-                setBinaryPathRefId(null);
                 setBinaryPath(value);
+                const nextPath = value.trim();
+                if (!nextPath) {
+                  return;
+                }
+                const nextSelection: ArgumentsBinarySelection = {
+                  source: "path",
+                  path: nextPath,
+                };
+                setBinarySelection(nextSelection);
+                writeArgumentsBinarySelection(nextSelection);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
