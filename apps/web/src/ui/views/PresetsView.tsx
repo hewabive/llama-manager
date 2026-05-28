@@ -39,6 +39,7 @@ import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
 import { createUiId } from "../utils/id";
 import {
+  compareModelTitles,
   formatBytes,
   isVocabModel,
   modelMatchesSearch,
@@ -305,8 +306,12 @@ export function PresetsView() {
   });
   const preset = presetQuery.data?.data;
   const preview = previewQuery.data?.data;
-  const scannedModels = (presetModelsQuery.data?.data.models ?? []).filter(
-    (model) => !model.isMmproj && !isVocabModel(model),
+  const scannedModels = useMemo(
+    () =>
+      (presetModelsQuery.data?.data.models ?? [])
+        .filter((model) => !model.isMmproj && !isVocabModel(model))
+        .sort(compareModelTitles),
+    [presetModelsQuery.data?.data.models],
   );
   const presetModels = scannedModels.filter((model) =>
     modelMatchesSearch(model, presetModelSearch),

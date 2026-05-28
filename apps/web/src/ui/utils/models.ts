@@ -21,6 +21,23 @@ export function modelTitle(model: GgufModel) {
   return model.metadata.name || model.name;
 }
 
+export function compareModelTitles(left: GgufModel, right: GgufModel) {
+  return (
+    modelTitle(left).localeCompare(modelTitle(right), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    left.name.localeCompare(right.name, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    left.path.localeCompare(right.path, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  );
+}
+
 export function pathBaseName(path: string) {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }

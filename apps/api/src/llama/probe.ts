@@ -175,6 +175,12 @@ function modelRecordsFromProbe(
     })
     .filter((item): item is { id: string; status: string | null } =>
       Boolean(item),
+    )
+    .sort((left, right) =>
+      left.id.localeCompare(right.id, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
     );
 }
 

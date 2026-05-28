@@ -373,6 +373,13 @@ function architectureModalities(value: unknown) {
   return `${input.join(", ") || "?"} -> ${output.join(", ") || "?"}`;
 }
 
+function compareV1ModelIds(left: { id: string }, right: { id: string }) {
+  return left.id.localeCompare(right.id, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 function v1ModelsFromProbe(
   probe: LlamaEndpointProbe | undefined,
 ): V1ModelInfo[] {
@@ -482,7 +489,8 @@ function v1ModelsFromProbe(
           .filter((entry): entry is [string, string] => Boolean(entry[1])),
       };
     })
-    .filter((model) => model.id);
+    .filter((model) => model.id)
+    .sort(compareV1ModelIds);
 }
 
 function isRouterModelStatus(status: string | null) {

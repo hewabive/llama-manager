@@ -52,6 +52,7 @@ import {
 } from "../../api/client";
 import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
 import {
+  compareModelTitles,
   formatBytes,
   instanceNameFromModelPath,
   isVocabModel,
@@ -248,8 +249,12 @@ export function InstanceFormModal(props: {
   const visibleKnownArgs = showDeprecatedArgs
     ? knownArgs
     : knownArgs.filter((option) => !option.deprecated);
-  const selectableModels = (formModelsQuery.data?.data.models ?? []).filter(
-    (model) => !model.isMmproj && !isVocabModel(model),
+  const selectableModels = useMemo(
+    () =>
+      (formModelsQuery.data?.data.models ?? [])
+        .filter((model) => !model.isMmproj && !isVocabModel(model))
+        .sort(compareModelTitles),
+    [formModelsQuery.data?.data.models],
   );
   const selectedModel =
     selectableModels.find((model) => model.path === selectedModelPath) ?? null;

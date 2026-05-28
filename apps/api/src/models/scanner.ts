@@ -145,6 +145,22 @@ function splitShardName(split: SplitInfo, index: number, count: number) {
   return `${split.prefix}-${indexText}-of-${countText}.gguf`;
 }
 
+function compareModelNames(
+  left: { name: string; path: string },
+  right: { name: string; path: string },
+) {
+  return (
+    left.name.localeCompare(right.name, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    left.path.localeCompare(right.path, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  );
+}
+
 function collapseSplitFiles(files: FoundFile[]): ModelFile[] {
   const splitGroups = new Map<
     string,
@@ -200,7 +216,7 @@ function collapseSplitFiles(files: FoundFile[]): ModelFile[] {
     });
   }
 
-  return collapsed.sort((left, right) => left.path.localeCompare(right.path));
+  return collapsed.sort(compareModelNames);
 }
 
 function readDirectoryErrorMessage(directory: string, error: unknown) {
@@ -306,7 +322,7 @@ export async function scanModels(input: {
 
   return {
     directory,
-    models,
+    models: models.sort(compareModelNames),
     scannedAt: new Date().toISOString(),
     cache: {
       hits: cacheHits,

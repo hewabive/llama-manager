@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   getModelScanSettings,
@@ -25,6 +25,7 @@ import {
 import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultModelsDirectory } from "../constants";
 import {
+  compareModelTitles,
   formatBytes,
   isVocabModel,
   modelMatchesSearch,
@@ -158,7 +159,10 @@ export function ModelsView(props: {
     });
   }
 
-  const models = modelsQuery.data?.data.models ?? [];
+  const models = useMemo(
+    () => [...(modelsQuery.data?.data.models ?? [])].sort(compareModelTitles),
+    [modelsQuery.data?.data.models],
+  );
   const filteredModels = models.filter((model) => {
     if (hideVocab && isVocabModel(model)) {
       return false;

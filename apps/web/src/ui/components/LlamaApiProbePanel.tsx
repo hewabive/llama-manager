@@ -97,11 +97,12 @@ function modelOptionsFromProbe(
       };
     })
     .filter((item): item is ModelOption => Boolean(item))
-    .sort((left, right) => {
-      const score = (status: string | null) =>
-        status === "loaded" ? 0 : status === "loading" ? 1 : 2;
-      return score(left.status) - score(right.status);
-    });
+    .sort((left, right) =>
+      left.value.localeCompare(right.value, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
 }
 
 function probeColor(probe: LlamaEndpointProbe | undefined) {

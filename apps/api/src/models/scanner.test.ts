@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -37,6 +37,9 @@ test("scanModels collapses split GGUF shards into a single model", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-scan-"));
 
   try {
+    const nested = join(dir, "aaa-nested");
+    mkdirSync(nested);
+    writeFileSync(join(nested, "zeta.gguf"), "eeeee");
     writeFileSync(join(dir, "alpha-00001-of-00003.gguf"), "a");
     writeFileSync(join(dir, "alpha-00002-of-00003.gguf"), "bb");
     writeFileSync(join(dir, "alpha-00003-of-00003.gguf"), "ccc");
@@ -46,7 +49,7 @@ test("scanModels collapses split GGUF shards into a single model", async () => {
 
     assert.deepEqual(
       result.models.map((model) => model.name),
-      ["alpha-00001-of-00003.gguf", "beta.gguf"],
+      ["alpha-00001-of-00003.gguf", "beta.gguf", "zeta.gguf"],
     );
     assert.equal(result.models[0]?.sizeBytes, 6);
   } finally {
