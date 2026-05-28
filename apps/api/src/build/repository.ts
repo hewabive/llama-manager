@@ -9,7 +9,6 @@ import {
 } from "@llama-manager/core";
 import { desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { availableParallelism } from "node:os";
 import { resolve } from "node:path";
 
 import { config } from "../config.js";
@@ -40,7 +39,7 @@ function defaultSettings(): BuildSettings {
     extraCmakeArgs: [],
     env: {},
     target: "llama-server",
-    parallelJobs: Math.max(1, Math.min(16, availableParallelism() - 1)),
+    parallelJobs: null,
   };
 }
 

@@ -86,14 +86,14 @@ export function BuildView() {
   const [buildType, setBuildType] =
     useState<BuildSettings["buildType"]>("Release");
   const [target, setTarget] = useState("llama-server");
-  const [parallelJobs, setParallelJobs] = useState<number | "">(8);
+  const [parallelJobs, setParallelJobs] = useState<number | "">("");
   const [cuda, setCuda] = useState(true);
   const [native, setNative] = useState(false);
   const [extraCmakeArgs, setExtraCmakeArgs] = useState("");
   const [buildEnvJson, setBuildEnvJson] = useState("{}");
   const [runPull, setRunPull] = useState(true);
   const [runUiInstall, setRunUiInstall] = useState(true);
-  const [runCleanBuildDir, setRunCleanBuildDir] = useState(true);
+  const [runCleanBuildDir, setRunCleanBuildDir] = useState(false);
   const [runConfigure, setRunConfigure] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
   const [startConfirmOpened, setStartConfirmOpened] = useState(false);
