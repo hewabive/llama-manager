@@ -143,7 +143,7 @@ code {
 
 .args-reference-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
   gap: var(--mantine-spacing-md);
   align-items: start;
 }
@@ -153,6 +153,13 @@ code {
 }
 
 .args-reference-detail {
+  position: sticky;
+  top: 74px;
+}
+
+.args-reference-list {
+  max-height: calc(100vh - 90px);
+  overflow: auto;
   position: sticky;
   top: 74px;
 }
@@ -200,8 +207,13 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .args-reference-list,
   .args-reference-detail {
     position: static;
+  }
+
+  .args-reference-list {
+    max-height: 45vh;
   }
 }
 

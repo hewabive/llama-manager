@@ -429,14 +429,14 @@ export function ArgumentsView() {
       </Paper>
 
       <div className="args-reference-layout">
-        <Paper withBorder p="md" radius="sm">
+        <Paper withBorder p="sm" radius="sm" className="args-reference-list">
           <Stack gap="sm">
             <Stack className="args-mobile-list" gap="xs">
               {filteredOptions.map((option) => (
                 <Paper
                   key={option.primaryName}
                   withBorder
-                  p="sm"
+                  p="xs"
                   radius="sm"
                   className={
                     selectedOption?.primaryName === option.primaryName
@@ -445,20 +445,7 @@ export function ArgumentsView() {
                   }
                   onClick={() => selectArgument(option)}
                 >
-                  <Stack gap="xs">
-                    <Group justify="space-between" align="flex-start" gap="xs">
-                      <div className="mobile-card__title">
-                        <Code>{option.primaryName}</Code>
-                        <Text c="dimmed" size="xs" lineClamp={1}>
-                          {option.names.slice(1).join(", ") || "canonical"}
-                        </Text>
-                      </div>
-                    </Group>
-                    <ArgumentBadges option={option} />
-                    <Text size="sm" lineClamp={3}>
-                      {option.helpRu}
-                    </Text>
-                  </Stack>
+                  <Code>{option.primaryName}</Code>
                 </Paper>
               ))}
               {filteredOptions.length === 0 && (
@@ -472,14 +459,11 @@ export function ArgumentsView() {
               )}
             </Stack>
 
-            <Table.ScrollContainer className="args-table" minWidth={760}>
-              <Table striped highlightOnHover verticalSpacing="sm">
+            <Table.ScrollContainer className="args-table" minWidth={220}>
+              <Table striped highlightOnHover verticalSpacing="xs">
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Argument</Table.Th>
-                    <Table.Th>Type</Table.Th>
-                    <Table.Th>Category</Table.Th>
-                    <Table.Th>Help</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -494,27 +478,15 @@ export function ArgumentsView() {
                       onClick={() => selectArgument(option)}
                     >
                       <Table.Td>
-                        <Stack gap={3} className="argument-name">
+                        <div className="argument-name">
                           <Code>{option.primaryName}</Code>
-                          <Text c="dimmed" size="xs" lineClamp={1}>
-                            {option.names.slice(1).join(", ") || "canonical"}
-                          </Text>
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge variant="outline">{option.valueType}</Badge>
-                      </Table.Td>
-                      <Table.Td>{option.category}</Table.Td>
-                      <Table.Td>
-                        <Text size="sm" lineClamp={2}>
-                          {option.helpRu}
-                        </Text>
+                        </div>
                       </Table.Td>
                     </Table.Tr>
                   ))}
                   {filteredOptions.length === 0 && (
                     <Table.Tr>
-                      <Table.Td colSpan={4}>
+                      <Table.Td>
                         <Text c="dimmed" ta="center" py="lg">
                           {argsCatalogQuery.isFetching
                             ? "Loading arguments..."
