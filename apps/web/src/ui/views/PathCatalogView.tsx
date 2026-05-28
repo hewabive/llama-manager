@@ -1,21 +1,35 @@
-import type { PathCatalogEntry, PathCatalogKind } from "@llama-manager/core";
+import type {
+  Instance,
+  PathCatalogEntry,
+  PathCatalogKind,
+} from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
   Button,
   Code,
   Group,
+  Modal,
   Paper,
+  SegmentedControl,
   Stack,
-  Table,
   Text,
   TextInput,
+  ThemeIcon,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Save, Trash2 } from "lucide-react";
+import {
+  Copy,
+  FileText,
+  Pencil,
+  Plus,
+  Save,
+  Server,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -26,6 +40,7 @@ import {
   updatePathCatalogEntry,
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
+import { pathBaseName } from "../utils/models";
 import { formatLocalDateTime } from "../utils/time";
 
 type Draft = {
@@ -33,29 +48,63 @@ type Draft = {
   path: string;
 };
 
+type EditorState =
+  | { mode: "create"; kind: PathCatalogKind; entry: null }
+  | { mode: "edit"; kind: PathCatalogKind; entry: PathCatalogEntry };
+
+type KindFilter = PathCatalogKind | "all";
+
 const emptyDraft: Draft = { name: "", path: "" };
+const pathKinds: PathCatalogKind[] = ["binary", "preset"];
 
 function kindTitle(kind: PathCatalogKind) {
   return kind === "binary" ? "Binary paths" : "Preset paths";
 }
 
-function kindDescription(kind: PathCatalogKind) {
-  return kind === "binary"
-    ? "Managed llama-server binaries. Instances linked to a row will use the current path after restart."
-    : "Managed --models-preset INI files. Router instances linked to a row will use the current path after restart.";
+function kindLabel(kind: PathCatalogKind) {
+  return kind === "binary" ? "binary" : "preset";
 }
 
 function pickerFilter(kind: PathCatalogKind) {
   return kind === "binary" ? "binary" : "preset";
 }
 
+function kindColor(kind: PathCatalogKind) {
+  return kind === "binary" ? "blue" : "teal";
+}
+
+function kindIcon(kind: PathCatalogKind) {
+  return kind === "binary" ? <Server size={18} /> : <FileText size={18} />;
+}
+
+function entryMatchesSearch(
+  entry: PathCatalogEntry,
+  usage: Instance[],
+  search: string,
+) {
+  const normalized = search.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return [
+    entry.name,
+    entry.path,
+    pathBaseName(entry.path),
+    entry.kind,
+    ...usage.map((instance) => instance.name),
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalized);
+}
+
 export function PathCatalogView() {
   const queryClient = useQueryClient();
-  const [newDrafts, setNewDrafts] = useState<Record<PathCatalogKind, Draft>>({
-    binary: emptyDraft,
-    preset: emptyDraft,
-  });
-  const [editDrafts, setEditDrafts] = useState<Record<string, Draft>>({});
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
 
   const catalogQuery = useQuery({
     queryKey: ["path-catalog"],
@@ -70,12 +119,50 @@ export function PathCatalogView() {
 
   const entries = catalogQuery.data?.data ?? [];
   const instances = instancesQuery.data?.data ?? [];
+  const usageByEntry = useMemo(() => {
+    const map = new Map<string, Instance[]>();
+    for (const entry of entries) {
+      map.set(
+        entry.id,
+        instances.filter((instance) =>
+          entry.kind === "binary"
+            ? instance.binaryPathRefId === entry.id
+            : instance.modelsPresetPathRefId === entry.id,
+        ),
+      );
+    }
+    return map;
+  }, [entries, instances]);
+  const counts = useMemo(
+    () => ({
+      binary: entries.filter((entry) => entry.kind === "binary").length,
+      preset: entries.filter((entry) => entry.kind === "preset").length,
+      linked: entries.filter(
+        (entry) => (usageByEntry.get(entry.id) ?? []).length > 0,
+      ).length,
+    }),
+    [entries, usageByEntry],
+  );
+  const filteredEntries = useMemo(
+    () =>
+      entries.filter((entry) => {
+        if (kindFilter !== "all" && entry.kind !== kindFilter) {
+          return false;
+        }
+        return entryMatchesSearch(
+          entry,
+          usageByEntry.get(entry.id) ?? [],
+          search,
+        );
+      }),
+    [entries, kindFilter, search, usageByEntry],
+  );
   const entriesByKind = useMemo(
     () => ({
-      binary: entries.filter((entry) => entry.kind === "binary"),
-      preset: entries.filter((entry) => entry.kind === "preset"),
+      binary: filteredEntries.filter((entry) => entry.kind === "binary"),
+      preset: filteredEntries.filter((entry) => entry.kind === "preset"),
     }),
-    [entries],
+    [filteredEntries],
   );
 
   async function invalidateCatalog() {
@@ -89,13 +176,15 @@ export function PathCatalogView() {
     ]);
   }
 
+  function closeEditor() {
+    setEditor(null);
+    setDraft(emptyDraft);
+  }
+
   const createMutation = useMutation({
     mutationFn: createPathCatalogEntry,
     onSuccess: async (result) => {
-      setNewDrafts((drafts) => ({
-        ...drafts,
-        [result.data.kind]: emptyDraft,
-      }));
+      closeEditor();
       await invalidateCatalog();
       notifications.show({
         title: "Path catalog entry created",
@@ -114,6 +203,7 @@ export function PathCatalogView() {
     mutationFn: (input: { id: string; draft: Draft }) =>
       updatePathCatalogEntry(input.id, input.draft),
     onSuccess: async (result) => {
+      closeEditor();
       await invalidateCatalog();
       notifications.show({
         title: "Path catalog entry saved",
@@ -145,235 +235,295 @@ export function PathCatalogView() {
       }),
   });
 
-  function usageFor(entry: PathCatalogEntry) {
-    return instances.filter((instance) =>
-      entry.kind === "binary"
-        ? instance.binaryPathRefId === entry.id
-        : instance.modelsPresetPathRefId === entry.id,
-    );
+  function openCreate(kind: PathCatalogKind) {
+    setDraft(emptyDraft);
+    setEditor({ mode: "create", kind, entry: null });
   }
 
-  function draftFor(entry: PathCatalogEntry) {
-    return editDrafts[entry.id] ?? { name: entry.name, path: entry.path };
+  function openEdit(entry: PathCatalogEntry) {
+    setDraft({ name: entry.name, path: entry.path });
+    setEditor({ mode: "edit", kind: entry.kind, entry });
   }
 
-  function updateNewDraft(kind: PathCatalogKind, patch: Partial<Draft>) {
-    setNewDrafts((drafts) => ({
-      ...drafts,
-      [kind]: { ...drafts[kind], ...patch },
-    }));
-  }
-
-  function updateEditDraft(id: string, patch: Partial<Draft>) {
-    setEditDrafts((drafts) => ({
-      ...drafts,
-      [id]: { ...(drafts[id] ?? emptyDraft), ...patch },
-    }));
-  }
-
-  function createEntry(kind: PathCatalogKind) {
-    const draft = newDrafts[kind];
-    createMutation.mutate({
-      kind,
+  function saveEditor() {
+    if (!editor) {
+      return;
+    }
+    const nextDraft = {
       name: draft.name.trim(),
       path: draft.path.trim(),
-    });
-  }
-
-  function saveEntry(entry: PathCatalogEntry) {
-    const draft = draftFor(entry);
+    };
+    if (editor.mode === "create") {
+      createMutation.mutate({
+        kind: editor.kind,
+        ...nextDraft,
+      });
+      return;
+    }
     updateMutation.mutate({
-      id: entry.id,
-      draft: {
-        name: draft.name.trim(),
-        path: draft.path.trim(),
-      },
+      id: editor.entry.id,
+      draft: nextDraft,
     });
   }
 
-  function renderKind(kind: PathCatalogKind) {
-    const newDraft = newDrafts[kind];
-    const kindEntries = entriesByKind[kind];
+  function copyPath(entry: PathCatalogEntry) {
+    navigator.clipboard
+      .writeText(entry.path)
+      .then(() =>
+        notifications.show({
+          title: "Path copied",
+          message: entry.name,
+        }),
+      )
+      .catch((error: unknown) =>
+        notifications.show({
+          color: "red",
+          title: "Copy failed",
+          message: (error as Error).message,
+        }),
+      );
+  }
+
+  function renderEntry(entry: PathCatalogEntry) {
+    const usage = usageByEntry.get(entry.id) ?? [];
+    const deleteDisabled = usage.length > 0;
 
     return (
-      <Paper withBorder p="md" radius="sm">
-        <Stack gap="sm">
-          <div className="section-heading">
-            <Title order={3}>{kindTitle(kind)}</Title>
-            <Text c="dimmed" size="sm">
-              {kindDescription(kind)}
-            </Text>
-          </div>
-
-          <Paper withBorder p="sm" radius="sm">
-            <Stack gap="xs">
-              <Text fw={600} size="sm">
-                New entry
-              </Text>
-              <TextInput
-                label="Name"
-                value={newDraft.name}
-                onChange={(event) =>
-                  updateNewDraft(kind, { name: event.currentTarget.value })
-                }
-              />
-              <PathPickerInput
-                label="Path"
-                mode="file"
-                filter={pickerFilter(kind)}
-                value={newDraft.path}
-                onChange={(path) => updateNewDraft(kind, { path })}
-              />
-              <Group justify="flex-end">
-                <Button
-                  leftSection={<Plus size={16} />}
-                  loading={createMutation.isPending}
-                  disabled={!newDraft.name.trim() || !newDraft.path.trim()}
-                  onClick={() => createEntry(kind)}
-                >
-                  Add
-                </Button>
+      <Paper
+        key={entry.id}
+        withBorder
+        p="sm"
+        radius="sm"
+        className="path-catalog-entry"
+      >
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <Group
+            gap="sm"
+            align="flex-start"
+            wrap="nowrap"
+            className="path-catalog-entry-main"
+          >
+            <ThemeIcon
+              color={kindColor(entry.kind)}
+              variant="light"
+              radius="sm"
+              size={34}
+            >
+              {kindIcon(entry.kind)}
+            </ThemeIcon>
+            <Stack gap={4} className="path-catalog-entry-body">
+              <Group gap="xs" wrap="wrap">
+                <Text fw={650}>{entry.name}</Text>
+                <Badge color={kindColor(entry.kind)} variant="light">
+                  {kindLabel(entry.kind)}
+                </Badge>
+                <Badge variant={usage.length > 0 ? "light" : "outline"}>
+                  {usage.length} used
+                </Badge>
               </Group>
+              <Group gap="xs" wrap="wrap">
+                <Code className="path-catalog-basename">
+                  {pathBaseName(entry.path)}
+                </Code>
+                <Text c="dimmed" size="xs">
+                  Updated {formatLocalDateTime(entry.updatedAt)}
+                </Text>
+              </Group>
+              <Code className="code-wrap path-catalog-path">{entry.path}</Code>
+              {usage.length > 0 && (
+                <Group gap={6} wrap="wrap">
+                  <Text c="dimmed" size="xs">
+                    Instances
+                  </Text>
+                  {usage.map((instance) => (
+                    <Badge key={instance.id} variant="outline" color="gray">
+                      {instance.name}
+                    </Badge>
+                  ))}
+                </Group>
+              )}
             </Stack>
-          </Paper>
-
-          <Table.ScrollContainer minWidth={620}>
-            <Table striped highlightOnHover verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Path</Table.Th>
-                  <Table.Th>Used</Table.Th>
-                  <Table.Th>Updated</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {kindEntries.map((entry) => {
-                  const draft = draftFor(entry);
-                  const usage = usageFor(entry);
-                  return (
-                    <Table.Tr key={entry.id}>
-                      <Table.Td>
-                        <TextInput
-                          aria-label={`${entry.name} catalog name`}
-                          value={draft.name}
-                          onChange={(event) =>
-                            updateEditDraft(entry.id, {
-                              name: event.currentTarget.value,
-                              path: draft.path,
-                            })
-                          }
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <PathPickerInput
-                          aria-label={`${entry.name} catalog path`}
-                          label="Path"
-                          mode="file"
-                          filter={pickerFilter(kind)}
-                          value={draft.path}
-                          onChange={(path) =>
-                            updateEditDraft(entry.id, {
-                              name: draft.name,
-                              path,
-                            })
-                          }
-                        />
-                        <Code className="code-wrap">{entry.path}</Code>
-                      </Table.Td>
-                      <Table.Td>
-                        <Tooltip
-                          label={
-                            usage.length > 0
-                              ? usage
-                                  .map((instance) => instance.name)
-                                  .join(", ")
-                              : "No linked instances"
-                          }
-                        >
-                          <Badge
-                            variant={usage.length > 0 ? "light" : "outline"}
-                          >
-                            {usage.length}
-                          </Badge>
-                        </Tooltip>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text c="dimmed" size="xs">
-                          {formatLocalDateTime(entry.updatedAt)}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs" justify="flex-end" wrap="nowrap">
-                          <Tooltip label="Save">
-                            <ActionIcon
-                              aria-label={`Save ${entry.name}`}
-                              variant="light"
-                              loading={updateMutation.isPending}
-                              disabled={
-                                !draft.name.trim() || !draft.path.trim()
-                              }
-                              onClick={() => saveEntry(entry)}
-                            >
-                              <Save size={16} />
-                            </ActionIcon>
-                          </Tooltip>
-                          <Tooltip label="Delete">
-                            <ActionIcon
-                              aria-label={`Delete ${entry.name}`}
-                              color="red"
-                              variant="subtle"
-                              loading={deleteMutation.isPending}
-                              disabled={usage.length > 0}
-                              onClick={() => deleteMutation.mutate(entry.id)}
-                            >
-                              <Trash2 size={16} />
-                            </ActionIcon>
-                          </Tooltip>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })}
-                {kindEntries.length === 0 && (
-                  <Table.Tr>
-                    <Table.Td colSpan={5}>
-                      <Text c="dimmed" ta="center" py="lg">
-                        {catalogQuery.isFetching
-                          ? "Loading catalog..."
-                          : "No paths added yet"}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
+          </Group>
+          <Group gap="xs" wrap="nowrap" className="path-catalog-entry-actions">
+            <Tooltip label="Copy path">
+              <ActionIcon
+                aria-label={`Copy ${entry.name} path`}
+                variant="subtle"
+                onClick={() => copyPath(entry)}
+              >
+                <Copy size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Edit">
+              <ActionIcon
+                aria-label={`Edit ${entry.name}`}
+                variant="light"
+                onClick={() => openEdit(entry)}
+              >
+                <Pencil size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip
+              label={
+                deleteDisabled ? "Used entries cannot be deleted" : "Delete"
+              }
+            >
+              <ActionIcon
+                aria-label={`Delete ${entry.name}`}
+                color="red"
+                variant="subtle"
+                loading={deleteMutation.isPending}
+                disabled={deleteDisabled}
+                onClick={() => deleteMutation.mutate(entry.id)}
+              >
+                <Trash2 size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Group>
       </Paper>
     );
   }
+
+  function renderKind(kind: PathCatalogKind) {
+    const kindEntries = entriesByKind[kind];
+
+    return (
+      <Stack key={kind} gap="xs">
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Group gap="xs" wrap="wrap">
+            <Title order={3}>{kindTitle(kind)}</Title>
+            <Badge variant="light">{kindEntries.length}</Badge>
+          </Group>
+          <Button
+            variant="light"
+            leftSection={<Plus size={16} />}
+            onClick={() => openCreate(kind)}
+          >
+            Add {kindLabel(kind)}
+          </Button>
+        </Group>
+
+        {kindEntries.length > 0 ? (
+          <Stack gap="xs">{kindEntries.map(renderEntry)}</Stack>
+        ) : (
+          <Paper withBorder p="lg" radius="sm">
+            <Text c="dimmed" ta="center">
+              {catalogQuery.isFetching
+                ? "Loading catalog..."
+                : `No ${kindLabel(kind)} paths found`}
+            </Text>
+          </Paper>
+        )}
+      </Stack>
+    );
+  }
+
+  const visibleKinds =
+    kindFilter === "all"
+      ? pathKinds
+      : pathKinds.filter((kind) => kind === kindFilter);
+  const editorBusy = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Stack gap="md">
       <Paper withBorder p="md" radius="sm">
         <Group justify="space-between" align="flex-start" wrap="wrap">
-          <div className="section-heading">
-            <Title order={2}>Path catalog</Title>
-            <Text c="dimmed" size="sm">
-              Manage shared binary and preset paths used by llama-server
-              instances.
-            </Text>
-          </div>
-          <Badge variant="light">{entries.length} paths</Badge>
+          <Group gap="xs" wrap="wrap">
+            <Badge variant="light">{counts.binary} binaries</Badge>
+            <Badge variant="light">{counts.preset} presets</Badge>
+            <Badge variant="outline">{counts.linked} linked</Badge>
+          </Group>
+          <Group gap="xs" wrap="wrap">
+            <Button
+              variant="light"
+              leftSection={<Plus size={16} />}
+              onClick={() => openCreate("binary")}
+            >
+              Add binary
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<Plus size={16} />}
+              onClick={() => openCreate("preset")}
+            >
+              Add preset
+            </Button>
+          </Group>
         </Group>
       </Paper>
 
-      <Stack gap="md">
-        {renderKind("binary")}
-        {renderKind("preset")}
-      </Stack>
+      <Paper withBorder p="md" radius="sm">
+        <Group align="flex-end" gap="xs" wrap="wrap">
+          <TextInput
+            label="Search"
+            placeholder="name, path, instance"
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+            className="search-input"
+          />
+          <SegmentedControl
+            value={kindFilter}
+            onChange={(value) => setKindFilter(value as KindFilter)}
+            data={[
+              { value: "all", label: "All" },
+              { value: "binary", label: "Binary" },
+              { value: "preset", label: "Preset" },
+            ]}
+          />
+        </Group>
+      </Paper>
+
+      <Stack gap="lg">{visibleKinds.map(renderKind)}</Stack>
+
+      <Modal
+        opened={Boolean(editor)}
+        onClose={closeEditor}
+        title={
+          editor?.mode === "edit"
+            ? `Edit ${editor.entry.name}`
+            : `Add ${editor ? kindLabel(editor.kind) : "path"}`
+        }
+        size="lg"
+      >
+        <Stack gap="sm">
+          <TextInput
+            label="Name"
+            value={draft.name}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                name: event.currentTarget.value,
+              }))
+            }
+          />
+          <PathPickerInput
+            label="Path"
+            mode="file"
+            filter={editor ? pickerFilter(editor.kind) : "any"}
+            value={draft.path}
+            onChange={(path) =>
+              setDraft((current) => ({
+                ...current,
+                path,
+              }))
+            }
+          />
+          <Group justify="flex-end" gap="xs">
+            <Button variant="subtle" onClick={closeEditor}>
+              Cancel
+            </Button>
+            <Button
+              leftSection={<Save size={16} />}
+              loading={editorBusy}
+              disabled={!draft.name.trim() || !draft.path.trim()}
+              onClick={saveEditor}
+            >
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

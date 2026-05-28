@@ -221,6 +221,30 @@ code {
   min-width: 0;
 }
 
+.path-catalog-entry-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.path-catalog-entry-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.path-catalog-entry-actions {
+  flex: 0 0 auto;
+}
+
+.path-catalog-basename {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path-catalog-path {
+  margin-top: 2px;
+}
+
 @media (max-width: 64em) {
   .args-reference-layout {
     grid-template-columns: 1fr;
@@ -242,6 +266,14 @@ code {
     flex-wrap: wrap;
     padding-top: 8px;
     padding-bottom: 8px;
+  }
+
+  .path-catalog-entry-main {
+    flex-basis: 100%;
+  }
+
+  .path-catalog-entry-actions {
+    margin-left: 48px;
   }
 
   .app-header__brand {
