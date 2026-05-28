@@ -2097,11 +2097,22 @@ export function InstanceDetails(props: {
           </SimpleGrid>
           {Boolean(
             (statusSummary?.errors.length ?? 0) +
+            (statusSummary?.warnings.length ?? 0) +
             (statusSummary?.notices.length ?? 0),
           ) && (
             <Stack gap={4} mt="xs">
               {(statusSummary?.errors ?? []).slice(-3).map((line, index) => (
                 <Text key={`error-${index}`} c="red" size="xs" lineClamp={2}>
+                  {line}
+                </Text>
+              ))}
+              {(statusSummary?.warnings ?? []).slice(-4).map((line, index) => (
+                <Text
+                  key={`warning-${index}`}
+                  c="yellow"
+                  size="xs"
+                  lineClamp={2}
+                >
                   {line}
                 </Text>
               ))}

@@ -198,9 +198,20 @@ function deriveStatus(input: {
       input.logWarnings > 0 ||
       input.preflightWarnings > 0
     ) {
+      const issues = [
+        input.logErrors > 0
+          ? `${input.logErrors} log error${input.logErrors === 1 ? "" : "s"}`
+          : null,
+        input.logWarnings > 0
+          ? `${input.logWarnings} log warning${input.logWarnings === 1 ? "" : "s"}`
+          : null,
+        input.preflightWarnings > 0
+          ? `${input.preflightWarnings} preflight warning${input.preflightWarnings === 1 ? "" : "s"}`
+          : null,
+      ].filter(Boolean);
       return {
         status: "degraded",
-        reason: `HTTP health is OK, with ${input.logErrors} log error(s), ${input.logWarnings} log warning(s), and ${input.preflightWarnings} preflight warning(s).`,
+        reason: `HTTP health is OK, but ${issues.join(", ")} detected.`,
       };
     }
 
