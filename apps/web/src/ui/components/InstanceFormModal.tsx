@@ -25,7 +25,6 @@ import {
   Stack,
   Switch,
   Text,
-  Textarea,
   TextInput,
   Tooltip,
 } from "@mantine/core";
@@ -33,12 +32,11 @@ import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Triangle } from "lucide-react";
+import { Plus, RefreshCw, Triangle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
   createInstance,
-  deleteLlamaArgumentOverride,
   getLlamaArguments,
   getModelPreset,
   getModelScanSettings,
@@ -47,7 +45,6 @@ import {
   previewInstancePreflight,
   scanModels,
   updateInstance,
-  updateLlamaArgumentOverride,
   writeModelPreset,
 } from "../../api/client";
 import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
@@ -161,6 +158,17 @@ function nextAvailablePort(instances: Instance[], currentId?: string) {
   return 8080;
 }
 
+const managedArgumentKeys = new Set([
+  "--host",
+  "--port",
+  "--model",
+  "--models-preset",
+]);
+
+function isManagedArgRow(row: ArgRow) {
+  return managedArgumentKeys.has(row.key.trim());
+}
+
 export function InstanceFormModal(props: {
   opened: boolean;
   onClose: () => void;
@@ -173,8 +181,7 @@ export function InstanceFormModal(props: {
   const queryClient = useQueryClient();
   const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
   const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
-  const [helpRuDraft, setHelpRuDraft] = useState("");
-  const [notesDraft, setNotesDraft] = useState("");
+  const [argumentPickerKey, setArgumentPickerKey] = useState(0);
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
   const [showRawArgs, setShowRawArgs] = useState(false);
   const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
@@ -243,12 +250,13 @@ export function InstanceFormModal(props: {
     }
     return map;
   }, [knownArgs]);
-  const selectedKnownOption = selectedKnownArg
-    ? knownArgByName.get(selectedKnownArg)
-    : null;
   const visibleKnownArgs = showDeprecatedArgs
     ? knownArgs
     : knownArgs.filter((option) => !option.deprecated);
+  const visibleArgRows = useMemo(
+    () => argRows.filter((row) => !isManagedArgRow(row)),
+    [argRows],
+  );
   const selectableModels = useMemo(
     () =>
       (formModelsQuery.data?.data.models ?? [])
@@ -371,16 +379,8 @@ export function InstanceFormModal(props: {
       setArgRows(defaultRows(modelPath ?? undefined, port));
     }
     setSelectedKnownArg(null);
+    setArgumentPickerKey((key) => key + 1);
   }, [props.opened, props.instance?.id, props.initialModelPath]);
-
-  useEffect(() => {
-    setHelpRuDraft(selectedKnownOption?.helpRu ?? "");
-    setNotesDraft(selectedKnownOption?.notes ?? "");
-  }, [
-    selectedKnownOption?.primaryName,
-    selectedKnownOption?.helpRu,
-    selectedKnownOption?.notes,
-  ]);
 
   useEffect(() => {
     if (
@@ -605,46 +605,6 @@ export function InstanceFormModal(props: {
       notifications.show({
         color: "red",
         title: "Argument refresh failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  const helpOverrideMutation = useMutation({
-    mutationFn: updateLlamaArgumentOverride,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["llama-args", form.values.binaryPath],
-      });
-      notifications.show({
-        title: "Argument help saved",
-        message: selectedKnownOption?.primaryName ?? "",
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Help save failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  const deleteHelpOverrideMutation = useMutation({
-    mutationFn: deleteLlamaArgumentOverride,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["llama-args", form.values.binaryPath],
-      });
-      notifications.show({
-        title: "Argument help reset",
-        message: selectedKnownOption?.primaryName ?? "",
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Help reset failed",
         message: (error as Error).message,
       });
     },
@@ -915,8 +875,9 @@ export function InstanceFormModal(props: {
               <Text fw={600} size="sm">
                 Arguments
               </Text>
-              <Group gap="lg">
+              <Group gap="xs">
                 <Switch
+                  size="sm"
                   label="Deprecated"
                   checked={showDeprecatedArgs}
                   onChange={(event) =>
@@ -924,7 +885,8 @@ export function InstanceFormModal(props: {
                   }
                 />
                 <Switch
-                  label="Raw"
+                  size="sm"
+                  label="Raw view"
                   checked={showRawArgs}
                   onChange={(event) =>
                     setShowRawArgs(event.currentTarget.checked)
@@ -933,6 +895,7 @@ export function InstanceFormModal(props: {
                 <Button
                   size="xs"
                   variant="light"
+                  leftSection={<Plus size={14} />}
                   onClick={() =>
                     setArgRows((rows) => [...rows, createArgRow()])
                   }
@@ -943,7 +906,8 @@ export function InstanceFormModal(props: {
             </Group>
             <Group align="flex-end" gap="xs" wrap="nowrap">
               <Select
-                label="Known argument"
+                key={argumentPickerKey}
+                label="Add argument"
                 placeholder={
                   argsCatalogQuery.isError
                     ? "Unable to read --help from this binary"
@@ -952,7 +916,18 @@ export function InstanceFormModal(props: {
                 searchable
                 clearable
                 value={selectedKnownArg}
-                onChange={setSelectedKnownArg}
+                onChange={(value) => {
+                  if (!value) {
+                    setSelectedKnownArg(null);
+                    return;
+                  }
+                  const option = knownArgByName.get(value);
+                  if (option) {
+                    setArgRows((rows) => replaceCanonicalRow(rows, option));
+                  }
+                  setSelectedKnownArg(null);
+                  setArgumentPickerKey((key) => key + 1);
+                }}
                 data={visibleKnownArgs.map((option) => ({
                   value: option.primaryName,
                   label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
@@ -965,20 +940,6 @@ export function InstanceFormModal(props: {
                 disabled={argsCatalogQuery.isError}
                 style={{ flex: 1 }}
               />
-              <Button
-                variant="light"
-                disabled={!selectedKnownOption}
-                onClick={() => {
-                  if (!selectedKnownOption) {
-                    return;
-                  }
-                  setArgRows((rows) =>
-                    replaceCanonicalRow(rows, selectedKnownOption),
-                  );
-                }}
-              >
-                Add known
-              </Button>
               <Tooltip label="Reload from binary --help">
                 <ActionIcon
                   aria-label="Reload arguments from binary help"
@@ -1011,96 +972,13 @@ export function InstanceFormModal(props: {
                 {(argsCatalogQuery.error as Error).message}
               </Text>
             )}
-            {selectedKnownOption && (
-              <Paper withBorder p="xs" radius="sm">
-                <Stack gap={4}>
-                  <Group gap="xs">
-                    <Badge variant="light">
-                      {selectedKnownOption.category}
-                    </Badge>
-                    <Badge variant="outline">
-                      {selectedKnownOption.valueType}
-                    </Badge>
-                    <Badge
-                      color={
-                        selectedKnownOption.helpRuSource === "override"
-                          ? "green"
-                          : "gray"
-                      }
-                      variant="outline"
-                    >
-                      {selectedKnownOption.helpRuSource}
-                    </Badge>
-                    {selectedKnownOption.env.map((env) => (
-                      <Badge key={env} variant="outline" color="gray">
-                        {env}
-                      </Badge>
-                    ))}
-                  </Group>
-                  <Text size="sm">{selectedKnownOption.helpRu}</Text>
-                  <Textarea
-                    label="Russian help overlay"
-                    minRows={2}
-                    value={helpRuDraft}
-                    onChange={(event) =>
-                      setHelpRuDraft(event.currentTarget.value)
-                    }
-                  />
-                  <TextInput
-                    label="Notes"
-                    value={notesDraft}
-                    onChange={(event) =>
-                      setNotesDraft(event.currentTarget.value)
-                    }
-                  />
-                  <Group justify="flex-end" gap="xs">
-                    <Button
-                      size="xs"
-                      variant="light"
-                      loading={helpOverrideMutation.isPending}
-                      disabled={!helpRuDraft.trim()}
-                      onClick={() =>
-                        helpOverrideMutation.mutate({
-                          primaryName: selectedKnownOption.primaryName,
-                          helpRu: helpRuDraft.trim(),
-                          notes: notesDraft.trim() || null,
-                        })
-                      }
-                    >
-                      Save help
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      color="red"
-                      loading={deleteHelpOverrideMutation.isPending}
-                      disabled={selectedKnownOption.helpRuSource !== "override"}
-                      onClick={() =>
-                        deleteHelpOverrideMutation.mutate(
-                          selectedKnownOption.primaryName,
-                        )
-                      }
-                    >
-                      Reset
-                    </Button>
-                  </Group>
-                  {selectedKnownOption.allowedValues.length > 0 && (
-                    <Text c="dimmed" size="xs">
-                      Values: {selectedKnownOption.allowedValues.join(", ")}
-                    </Text>
-                  )}
-                  {selectedKnownOption.notes && (
-                    <Text c="dimmed" size="xs">
-                      Notes: {selectedKnownOption.notes}
-                    </Text>
-                  )}
-                  <Text c="dimmed" size="xs">
-                    {selectedKnownOption.names.join(", ")}
-                  </Text>
-                </Stack>
-              </Paper>
+            {visibleArgRows.length === 0 && (
+              <Text c="dimmed" size="xs">
+                No extra arguments. Host, port, model and router preset are
+                configured above.
+              </Text>
             )}
-            {argRows.map((row, index) => {
+            {visibleArgRows.map((row, index) => {
               const option = canonicalOptionForRow(row, knownArgByName);
               const onChange = (nextRow: ArgRow) =>
                 setArgRows((rows) =>
@@ -1116,7 +994,7 @@ export function InstanceFormModal(props: {
                     row={row}
                     index={index}
                     option={option}
-                    canRemove={argRows.length > 1}
+                    canRemove
                     onChange={onChange}
                     onRemove={onRemove}
                   />
@@ -1128,7 +1006,7 @@ export function InstanceFormModal(props: {
                   key={row.id}
                   row={row}
                   index={index}
-                  canRemove={argRows.length > 1}
+                  canRemove
                   onChange={onChange}
                   onRemove={onRemove}
                 />

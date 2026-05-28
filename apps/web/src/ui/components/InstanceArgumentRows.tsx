@@ -6,15 +6,15 @@ import {
   Group,
   NumberInput,
   Paper,
+  Popover,
   Select,
-  Stack,
   Switch,
   Text,
   Textarea,
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { Trash2 } from "lucide-react";
+import { Info, Trash2 } from "lucide-react";
 
 import { createUiId } from "../utils/id";
 
@@ -294,26 +294,32 @@ export function SmartArgRow(props: {
     if (props.option.valueType === "boolean") {
       if (!props.option.valueHint && props.option.allowedValues.length === 0) {
         return (
-          <Switch
-            label="Value"
-            checked={props.row.value !== "false"}
-            onChange={(event) =>
-              updateValue(String(event.currentTarget.checked))
-            }
+          <Select
+            aria-label={`${props.option.primaryName} value`}
+            data={[
+              { value: "true", label: "true" },
+              { value: "false", label: "false" },
+            ]}
+            value={props.row.value || "true"}
+            allowDeselect={false}
+            onChange={(value) => updateValue(value ?? "true")}
+            w={110}
+            size="xs"
           />
         );
       }
 
       return (
         <Select
-          label="Value"
+          aria-label={`${props.option.primaryName} value`}
           data={booleanValueOptions(props.option)}
           value={props.row.value || defaultValueForArgument(props.option)}
           allowDeselect={false}
           onChange={(value) =>
             updateValue(value ?? defaultValueForArgument(props.option))
           }
-          w={140}
+          w={120}
+          size="xs"
         />
       );
     }
@@ -324,7 +330,7 @@ export function SmartArgRow(props: {
     ) {
       return (
         <Select
-          label="Value"
+          aria-label={`${props.option.primaryName} value`}
           data={props.option.allowedValues.map((value) => ({
             value,
             label: value,
@@ -332,7 +338,8 @@ export function SmartArgRow(props: {
           value={props.row.value || null}
           searchable
           onChange={(value) => updateValue(value ?? "")}
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 160 }}
+          size="xs"
         />
       );
     }
@@ -340,12 +347,13 @@ export function SmartArgRow(props: {
     if (props.option.valueType === "number") {
       return (
         <NumberInput
-          label="Value"
+          aria-label={`${props.option.primaryName} value`}
           value={props.row.value === "" ? "" : Number(props.row.value)}
           onChange={(value) =>
             updateValue(typeof value === "number" ? String(value) : "")
           }
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 110 }}
+          size="xs"
         />
       );
     }
@@ -353,18 +361,19 @@ export function SmartArgRow(props: {
     if (props.option.valueType === "json") {
       return (
         <Textarea
-          label="Value"
+          aria-label={`${props.option.primaryName} value`}
           minRows={2}
           value={props.row.value}
           onChange={(event) => updateValue(event.currentTarget.value)}
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 180 }}
+          size="xs"
         />
       );
     }
 
     return (
       <TextInput
-        label="Value"
+        aria-label={`${props.option.primaryName} value`}
         placeholder={
           props.option.valueType === "list"
             ? "a, b, c"
@@ -372,60 +381,90 @@ export function SmartArgRow(props: {
         }
         value={props.row.value}
         onChange={(event) => updateValue(event.currentTarget.value)}
-        style={{ flex: 1 }}
+        style={{ flex: 1, minWidth: 150 }}
+        size="xs"
       />
     );
   }
 
   return (
-    <Paper withBorder p="sm" radius="sm">
-      <Stack gap="xs">
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Box style={{ minWidth: 0, flex: 1 }}>
-            <Group gap="xs">
-              <Text fw={600} size="sm">
-                {props.option.primaryName}
-              </Text>
-              <Badge variant="light">{props.option.category}</Badge>
-              <Badge variant="outline">{props.option.valueType}</Badge>
-              {props.option.deprecated && (
-                <Badge color="red" variant="outline">
-                  deprecated
-                </Badge>
-              )}
-            </Group>
-            <Text c="dimmed" size="xs" lineClamp={2} mt={4}>
-              {props.option.helpRu}
+    <Paper withBorder p="xs" radius="sm">
+      <Group gap="xs" align="center" wrap="wrap">
+        <Box style={{ minWidth: 150, flex: "1 1 180px" }}>
+          <Group gap={6} wrap="nowrap">
+            <Text fw={600} size="sm" lineClamp={1}>
+              {props.option.primaryName}
             </Text>
-          </Box>
-          <Group gap="xs" wrap="nowrap">
+            {props.option.deprecated && (
+              <Badge color="red" variant="outline" size="xs">
+                deprecated
+              </Badge>
+            )}
+          </Group>
+          <Text c="dimmed" size="xs" lineClamp={1}>
+            {props.option.category} · {props.option.valueType}
+          </Text>
+        </Box>
+
+        {enabled && props.option.valueType !== "flag" && valueControl()}
+
+        <Group gap={4} wrap="nowrap" ml="auto">
+          <Tooltip label={enabled ? "Argument enabled" : "Argument disabled"}>
             <Switch
-              label="Enabled"
+              aria-label={`${props.option.primaryName} enabled`}
+              size="sm"
               checked={enabled}
               onChange={(event) => setEnabled(event.currentTarget.checked)}
             />
-            <Tooltip label="Remove">
+          </Tooltip>
+          <Popover width={340} position="bottom-end" withArrow shadow="md">
+            <Popover.Target>
               <ActionIcon
-                aria-label="Remove argument"
+                aria-label={`${props.option.primaryName} help`}
                 variant="subtle"
-                color="red"
-                disabled={!props.canRemove}
-                onClick={props.onRemove}
+                color="gray"
               >
-                <Trash2 size={16} />
+                <Info size={15} />
               </ActionIcon>
-            </Tooltip>
-          </Group>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <Group gap="xs" mb={4}>
+                <Badge variant="light" size="xs">
+                  {props.option.category}
+                </Badge>
+                <Badge variant="outline" size="xs">
+                  {props.option.valueType}
+                </Badge>
+              </Group>
+              <Text size="sm">{props.option.helpRu}</Text>
+              {props.option.allowedValues.length > 0 && (
+                <Text c="dimmed" size="xs" mt={6}>
+                  Values: {props.option.allowedValues.join(", ")}
+                </Text>
+              )}
+              {props.option.notes && (
+                <Text c="dimmed" size="xs" mt={6}>
+                  Notes: {props.option.notes}
+                </Text>
+              )}
+              <Text c="dimmed" size="xs" mt={6}>
+                {props.option.names.join(", ")}
+              </Text>
+            </Popover.Dropdown>
+          </Popover>
+          <Tooltip label="Remove">
+            <ActionIcon
+              aria-label="Remove argument"
+              variant="subtle"
+              color="red"
+              disabled={!props.canRemove}
+              onClick={props.onRemove}
+            >
+              <Trash2 size={15} />
+            </ActionIcon>
+          </Tooltip>
         </Group>
-        {enabled && props.option.valueType !== "flag" && (
-          <Group align="flex-end" gap="xs" wrap="nowrap">
-            {valueControl()}
-          </Group>
-        )}
-        <Text c="dimmed" size="xs" lineClamp={1}>
-          {props.option.names.join(", ")}
-        </Text>
-      </Stack>
+      </Group>
     </Paper>
   );
 }
@@ -438,18 +477,19 @@ export function RawArgRow(props: {
   onRemove: () => void;
 }) {
   return (
-    <Group gap="xs" align="flex-end" wrap="nowrap">
+    <Group gap="xs" align="center" wrap="wrap">
       <TextInput
-        label={props.index === 0 ? "Flag" : undefined}
+        aria-label="Raw argument name"
         placeholder="--port"
         value={props.row.key}
         onChange={(event) =>
           props.onChange({ ...props.row, key: event.currentTarget.value })
         }
-        style={{ flex: 1.1 }}
+        style={{ flex: "1 1 180px" }}
+        size="xs"
       />
       <Select
-        label={props.index === 0 ? "Type" : undefined}
+        aria-label="Raw argument type"
         data={[
           { value: "string", label: "string" },
           { value: "number", label: "number" },
@@ -466,11 +506,12 @@ export function RawArgRow(props: {
             valueType: (value ?? "string") as ArgRow["valueType"],
           })
         }
-        w={120}
+        w={115}
+        size="xs"
       />
       {props.row.valueType === "boolean" ? (
         <Select
-          label={props.index === 0 ? "Value" : undefined}
+          aria-label="Raw argument value"
           data={[
             { value: "true", label: "true" },
             { value: "false", label: "false" },
@@ -480,11 +521,12 @@ export function RawArgRow(props: {
           onChange={(value) =>
             props.onChange({ ...props.row, value: value ?? "true" })
           }
-          style={{ flex: 1 }}
+          style={{ flex: "1 1 120px" }}
+          size="xs"
         />
       ) : (
         <TextInput
-          label={props.index === 0 ? "Value" : undefined}
+          aria-label="Raw argument value"
           placeholder={
             props.row.valueType === "flag"
               ? "present"
@@ -501,7 +543,8 @@ export function RawArgRow(props: {
           onChange={(event) =>
             props.onChange({ ...props.row, value: event.currentTarget.value })
           }
-          style={{ flex: 1 }}
+          style={{ flex: "1 1 160px" }}
+          size="xs"
         />
       )}
       <Tooltip label="Remove">
