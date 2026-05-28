@@ -1,4 +1,8 @@
-import type { Instance, LlamaArgumentOption } from "@llama-manager/core";
+import type {
+  Instance,
+  LlamaArgumentDefault,
+  LlamaArgumentOption,
+} from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
@@ -16,6 +20,10 @@ import {
 import { Info, Trash2 } from "lucide-react";
 
 import { createUiId } from "../utils/id";
+import {
+  argumentAcceptsAutoAll,
+  defaultArgumentValue,
+} from "../utils/argument-defaults";
 
 export type ArgRow = {
   id: string;
@@ -29,16 +37,39 @@ const defaultArgRows: ArgRow[] = [
   { id: "port", key: "--port", value: "8080", valueType: "number" },
 ];
 
-export function defaultRows(modelPath?: string, port = 8080): ArgRow[] {
-  const defaults = defaultArgRows.map((row) =>
+function rowsFromDefaults(defaults: LlamaArgumentDefault[]): ArgRow[] {
+  return defaults.map((item) => ({
+    id: createUiId(),
+    key: item.key,
+    value: item.value,
+    valueType: item.valueType as ArgRow["valueType"],
+  }));
+}
+
+export function defaultRows(
+  modelPath?: string,
+  port = 8080,
+  defaults: LlamaArgumentDefault[] = [],
+): ArgRow[] {
+  const baseRows = defaultArgRows.map((row) =>
     row.key === "--port" ? { ...row, value: String(port) } : { ...row },
   );
-  return modelPath
+  const rows: ArgRow[] = modelPath
     ? [
-        ...defaults,
-        { id: "model", key: "--model", value: modelPath, valueType: "string" },
+        ...baseRows,
+        {
+          id: "model",
+          key: "--model",
+          value: modelPath,
+          valueType: "string",
+        },
       ]
-    : defaults;
+    : baseRows;
+  const existingKeys = new Set(rows.map((row) => row.key));
+  return [
+    ...rows,
+    ...rowsFromDefaults(defaults).filter((row) => !existingKeys.has(row.key)),
+  ];
 }
 
 export function createArgRow(): ArgRow {
@@ -130,6 +161,10 @@ export function rowsToArgsWithCatalog(
     }
 
     if (option.valueType === "number") {
+      if (argumentAcceptsAutoAll(option)) {
+        args[primaryName] = row.value;
+        continue;
+      }
       const parsed = Number(row.value);
       if (!Number.isFinite(parsed)) {
         throw new Error(`${primaryName}: value must be a number`);
@@ -186,23 +221,19 @@ export function rowValue(rows: ArgRow[], key: string) {
   return rows.find((row) => row.key === key)?.value ?? "";
 }
 
-function valueTypeFromArgument(
+export function valueTypeFromArgument(
   option: LlamaArgumentOption,
 ): ArgRow["valueType"] {
   if (option.valueType === "flag") return "flag";
   if (option.valueType === "boolean") return "boolean";
+  if (argumentAcceptsAutoAll(option)) return "string";
   if (option.valueType === "number") return "number";
   if (option.valueType === "list") return "list";
   return "string";
 }
 
-function defaultValueForArgument(option: LlamaArgumentOption) {
-  if (option.valueType === "boolean") {
-    return option.allowedValues.includes("auto")
-      ? "auto"
-      : option.allowedValues[0] || "true";
-  }
-  return "";
+export function defaultValueForArgument(option: LlamaArgumentOption) {
+  return defaultArgumentValue(option, "instance");
 }
 
 function rowFromArgument(option: LlamaArgumentOption): ArgRow {

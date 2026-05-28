@@ -100,6 +100,14 @@ export const llamaArgumentHelpOverrides = sqliteTable(
   },
 );
 
+export const llamaArgumentDefaults = sqliteTable("llama_argument_defaults", {
+  scope: text("scope").notNull(),
+  key: text("key").notNull(),
+  value: text("value").notNull(),
+  valueType: text("value_type").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const llamaApiProbeHistory = sqliteTable("llama_api_probe_history", {
   id: text("id").primaryKey(),
   instanceId: text("instance_id")

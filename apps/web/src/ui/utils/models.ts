@@ -1,6 +1,7 @@
 import type {
   GgufModel,
   Instance,
+  LlamaArgumentDefault,
   ModelPresetEntry,
 } from "@llama-manager/core";
 
@@ -92,16 +93,77 @@ function presetEntryNameFromModel(model: GgufModel) {
   return baseName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "model";
 }
 
-export function presetEntryFromModel(model: GgufModel): ModelPresetEntry {
-  return {
-    id: createUiId("preset"),
-    name: presetEntryNameFromModel(model),
-    modelPath: model.path,
-    ctxSize: model.metadata.contextLength,
-    nGpuLayers: "auto",
-    mmprojPath: model.mmprojPaths[0] ?? null,
-    loadOnStartup: false,
-    stopTimeout: 10,
-    extraArgs: {},
-  };
+function defaultPresetBoolean(value: string) {
+  return ["1", "on", "true", "yes"].includes(value.trim().toLowerCase());
+}
+
+function defaultPresetGpuLayers(value: string): ModelPresetEntry["nGpuLayers"] {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized === "auto" || normalized === "all") return normalized;
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function applyPresetDefaults(
+  entry: ModelPresetEntry,
+  defaults: LlamaArgumentDefault[],
+) {
+  const extraArgs: Record<string, string> = {};
+  let next = { ...entry };
+
+  for (const item of defaults) {
+    const key = item.key.trim().replace(/^-+/, "");
+    const value = item.value.trim();
+    if (!key || (!value && item.valueType !== "flag")) {
+      continue;
+    }
+
+    if (key === "ctx-size" || key === "c") {
+      const parsed = Number(value);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        next = { ...next, ctxSize: parsed };
+      }
+    } else if (
+      key === "n-gpu-layers" ||
+      key === "gpu-layers" ||
+      key === "ngl"
+    ) {
+      next = { ...next, nGpuLayers: defaultPresetGpuLayers(value) };
+    } else if (key === "mmproj") {
+      next = { ...next, mmprojPath: value || null };
+    } else if (key === "load-on-startup") {
+      next = { ...next, loadOnStartup: defaultPresetBoolean(value) };
+    } else if (key === "stop-timeout") {
+      const parsed = Number(value);
+      next = {
+        ...next,
+        stopTimeout: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
+      };
+    } else if (key !== "model") {
+      extraArgs[key] = item.valueType === "flag" ? "true" : value;
+    }
+  }
+
+  return { ...next, extraArgs };
+}
+
+export function presetEntryFromModel(
+  model: GgufModel,
+  defaults: LlamaArgumentDefault[] = [],
+): ModelPresetEntry {
+  return applyPresetDefaults(
+    {
+      id: createUiId("preset"),
+      name: presetEntryNameFromModel(model),
+      modelPath: model.path,
+      ctxSize: model.metadata.contextLength,
+      nGpuLayers: null,
+      mmprojPath: model.mmprojPaths[0] ?? null,
+      loadOnStartup: false,
+      stopTimeout: null,
+      extraArgs: {},
+    },
+    defaults,
+  );
 }

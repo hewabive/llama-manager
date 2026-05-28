@@ -581,6 +581,27 @@ export const LlamaArgumentHelpOverrideUpdateSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+export const LlamaArgumentDefaultValueTypeSchema = z.enum([
+  "string",
+  "number",
+  "boolean",
+  "flag",
+  "list",
+  "null",
+]);
+
+export const LlamaArgumentDefaultSchema = z.object({
+  key: z.string().min(1),
+  value: z.string().default(""),
+  valueType: LlamaArgumentDefaultValueTypeSchema.default("string"),
+});
+
+export const LlamaArgumentDefaultsSchema = z.object({
+  instance: z.array(LlamaArgumentDefaultSchema).default([]),
+  preset: z.array(LlamaArgumentDefaultSchema).default([]),
+  updatedAt: z.string().nullable().default(null),
+});
+
 export const LlamaArgumentEngineeringDocSchema = z.object({
   primaryName: z.string(),
   path: z.string(),
@@ -875,6 +896,11 @@ export type LlamaArgumentHelpOverride = z.infer<
 export type LlamaArgumentHelpOverrideUpdate = z.infer<
   typeof LlamaArgumentHelpOverrideUpdateSchema
 >;
+export type LlamaArgumentDefaultValueType = z.infer<
+  typeof LlamaArgumentDefaultValueTypeSchema
+>;
+export type LlamaArgumentDefault = z.infer<typeof LlamaArgumentDefaultSchema>;
+export type LlamaArgumentDefaults = z.infer<typeof LlamaArgumentDefaultsSchema>;
 export type LlamaArgumentEngineeringDoc = z.infer<
   typeof LlamaArgumentEngineeringDocSchema
 >;

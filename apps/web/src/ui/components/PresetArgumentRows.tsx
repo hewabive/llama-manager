@@ -14,6 +14,10 @@ import {
 } from "@mantine/core";
 import { Info, Trash2 } from "lucide-react";
 
+import {
+  argumentAcceptsAutoAll,
+  defaultArgumentValue,
+} from "../utils/argument-defaults";
 import { createUiId } from "../utils/id";
 import type { PresetExtraArgRow } from "../utils/preset-args";
 import { normalizePresetArgKey } from "../utils/preset-args";
@@ -22,12 +26,8 @@ const managedPresetKeys = new Set([
   "model",
   "ctx-size",
   "c",
-  "gpu-layers",
-  "n-gpu-layers",
-  "ngl",
   "mmproj",
   "load-on-startup",
-  "stop-timeout",
 ]);
 
 const globalPresetKeys = new Set([
@@ -54,8 +54,38 @@ const globalPresetKeys = new Set([
   "ui",
 ]);
 
+export const presetOnlyArgumentOptions: LlamaArgumentOption[] = [
+  {
+    primaryName: "stop-timeout",
+    names: ["stop-timeout"],
+    category: "Пресеты",
+    valueHint: "SECONDS",
+    valueType: "number",
+    env: ["LLAMA_ARG_PRESET_STOP_TIMEOUT"],
+    allowedValues: [],
+    help: "in server router mode, force-kill model instance after this many seconds of graceful shutdown",
+    helpRu:
+      "Таймаут остановки модели в router-режиме: после запроса на выгрузку llama-server ждёт указанное число секунд перед принудительным завершением процесса модели.",
+    helpRuSource: "builtin",
+    notes:
+      "Это preset-only ключ llama.cpp: он пишется в models-preset INI без ведущих дефисов и не является обычным CLI-аргументом.",
+    doc: {
+      status: "missing",
+      path: null,
+      summary: null,
+      updatedAt: null,
+      reviewedHelpHash: null,
+    },
+    deprecated: false,
+  },
+];
+
 export function presetKeyFromArgument(option: LlamaArgumentOption) {
-  return normalizePresetArgKey(option.primaryName);
+  const key = normalizePresetArgKey(option.primaryName);
+  if (key === "gpu-layers" || key === "ngl") {
+    return "n-gpu-layers";
+  }
+  return key;
 }
 
 export function isSelectablePresetArgument(option: LlamaArgumentOption) {
@@ -82,15 +112,10 @@ export function buildPresetArgOptionMap(options: LlamaArgumentOption[]) {
 }
 
 function defaultPresetValue(option: LlamaArgumentOption) {
-  if (option.valueType === "flag") {
-    return "true";
+  if (option.primaryName === "stop-timeout") {
+    return "10";
   }
-  if (option.valueType === "boolean") {
-    return option.allowedValues.includes("auto")
-      ? "auto"
-      : option.allowedValues[0] || "true";
-  }
-  return "";
+  return defaultArgumentValue(option, "preset");
 }
 
 export function optionForPresetRow(
@@ -201,7 +226,10 @@ export function PresetKnownArgRow(props: {
       );
     }
 
-    if (props.option.valueType === "number") {
+    if (
+      props.option.valueType === "number" &&
+      !argumentAcceptsAutoAll(props.option)
+    ) {
       return (
         <NumberInput
           aria-label={`${presetKey} value`}

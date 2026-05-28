@@ -21,6 +21,7 @@ import type {
   LlamaApiProbeHistoryEntry,
   LlamaApiProbeResult,
   LlamaArgumentCatalog,
+  LlamaArgumentDefaults,
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
@@ -235,6 +236,19 @@ export async function deleteLlamaArgumentOverride(primaryName: string) {
       method: "DELETE",
     },
   );
+}
+
+export async function getLlamaArgumentDefaults() {
+  return request<{ data: LlamaArgumentDefaults }>("/api/llama-args/defaults");
+}
+
+export async function updateLlamaArgumentDefaults(
+  input: LlamaArgumentDefaults,
+) {
+  return request<{ data: LlamaArgumentDefaults }>("/api/llama-args/defaults", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getBuildSettings() {

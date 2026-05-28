@@ -37,6 +37,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createInstance,
+  getLlamaArgumentDefaults,
   getLlamaArguments,
   getModelPreset,
   getModelScanSettings,
@@ -237,6 +238,16 @@ export function InstanceFormModal(props: {
     enabled: props.opened,
     staleTime: 10_000,
   });
+  const argumentDefaultsQuery = useQuery({
+    queryKey: ["llama-arg-defaults"],
+    queryFn: getLlamaArgumentDefaults,
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const instanceDefaultArgs = useMemo(
+    () => argumentDefaultsQuery.data?.data.instance ?? [],
+    [argumentDefaultsQuery.data?.data.instance],
+  );
 
   const argsCatalog = argsCatalogQuery.data?.data;
   const argsCatalogTooltip = argsCatalog
@@ -389,11 +400,18 @@ export function InstanceFormModal(props: {
       setLaunchMode("model");
       setWritePresetOnSave(true);
       setStartAfterCreate(false);
-      setArgRows(defaultRows(modelPath ?? undefined, port));
+      setArgRows(
+        defaultRows(modelPath ?? undefined, port, instanceDefaultArgs),
+      );
     }
     setSelectedKnownArg(null);
     setArgumentPickerKey((key) => key + 1);
-  }, [props.opened, props.instance?.id, props.initialModelPath]);
+  }, [
+    instanceDefaultArgs,
+    props.opened,
+    props.instance?.id,
+    props.initialModelPath,
+  ]);
 
   useEffect(() => {
     if (

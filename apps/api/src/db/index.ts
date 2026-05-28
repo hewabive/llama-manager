@@ -148,6 +148,17 @@ export function migrate() {
   `);
 
   db.run(sql`
+    CREATE TABLE IF NOT EXISTS llama_argument_defaults (
+      scope TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      value_type TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (scope, key)
+    )
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_api_probe_history (
       id TEXT PRIMARY KEY NOT NULL,
       instance_id TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE,

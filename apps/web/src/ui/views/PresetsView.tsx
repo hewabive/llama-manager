@@ -28,6 +28,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createRouterInstance,
+  getLlamaArgumentDefaults,
   getLlamaArguments,
   getModelPreset,
   getModelPresetPreview,
@@ -44,6 +45,7 @@ import {
   buildPresetArgOptionMap,
   isSelectablePresetArgument,
   optionForPresetRow,
+  presetOnlyArgumentOptions,
   presetKeyFromArgument,
   replacePresetArgRow,
 } from "../components/PresetArgumentRows";
@@ -60,9 +62,65 @@ import {
 import {
   type PresetExtraArgRow,
   extraArgsToRows,
+  normalizePresetArgKey,
   parseGpuLayersInput,
   rowsToExtraArgs,
 } from "../utils/preset-args";
+
+const gpuPresetKeys = new Set(["n-gpu-layers", "gpu-layers", "ngl"]);
+
+function presetRowsFromEntry(entry: ModelPresetEntry) {
+  const rows = extraArgsToRows(entry.extraArgs).filter(
+    (row) => row.key || row.value,
+  );
+  if (entry.nGpuLayers !== null) {
+    rows.unshift({
+      id: createUiId("preset-arg"),
+      key: "n-gpu-layers",
+      value: String(entry.nGpuLayers),
+    });
+  }
+  if (entry.stopTimeout !== null) {
+    rows.push({
+      id: createUiId("preset-arg"),
+      key: "stop-timeout",
+      value: String(entry.stopTimeout),
+    });
+  }
+  return rows.length > 0
+    ? rows
+    : [{ id: createUiId("preset-arg"), key: "", value: "" }];
+}
+
+function entryArgsFromRows(rows: PresetExtraArgRow[]) {
+  const args = rowsToExtraArgs(rows);
+  const gpuEntry = Object.entries(args).find(([key]) =>
+    gpuPresetKeys.has(normalizePresetArgKey(key)),
+  );
+  const stopTimeoutRaw = args["stop-timeout"];
+
+  for (const key of [...gpuPresetKeys, "stop-timeout"]) {
+    delete args[key];
+  }
+
+  const stopTimeout = stopTimeoutRaw ? Number(stopTimeoutRaw) : null;
+  return {
+    extraArgs: args,
+    nGpuLayers: gpuEntry ? parseGpuLayersInput(gpuEntry[1]) : null,
+    stopTimeout:
+      stopTimeout && Number.isInteger(stopTimeout) && stopTimeout > 0
+        ? stopTimeout
+        : null,
+  };
+}
+
+function presetArgumentCount(entry: ModelPresetEntry) {
+  return (
+    Object.keys(entry.extraArgs ?? {}).length +
+    (entry.nGpuLayers !== null ? 1 : 0) +
+    (entry.stopTimeout !== null ? 1 : 0)
+  );
+}
 
 function PresetEntryDetailModal(props: {
   opened: boolean;
@@ -85,7 +143,10 @@ function PresetEntryDetailModal(props: {
     retry: false,
   });
   const argsCatalog = argsCatalogQuery.data?.data;
-  const knownArgs = argsCatalog?.options ?? [];
+  const knownArgs = useMemo(
+    () => [...(argsCatalog?.options ?? []), ...presetOnlyArgumentOptions],
+    [argsCatalog?.options],
+  );
   const knownArgByPresetKey = useMemo(
     () => buildPresetArgOptionMap(knownArgs),
     [knownArgs],
@@ -100,7 +161,7 @@ function PresetEntryDetailModal(props: {
       return;
     }
     setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
-    setExtraRows(extraArgsToRows(props.entry.extraArgs));
+    setExtraRows(presetRowsFromEntry(props.entry));
     setSelectedKnownArg(null);
     setArgumentPickerKey((key) => key + 1);
   }, [props.entry, props.opened]);
@@ -140,12 +201,15 @@ function PresetEntryDetailModal(props: {
     if (!draft) {
       return;
     }
+    const parsedArgs = entryArgsFromRows(extraRows);
     props.onSave({
       ...draft,
       name: draft.name.trim() || "model",
       modelPath: draft.modelPath.trim(),
       mmprojPath: draft.mmprojPath?.trim() || null,
-      extraArgs: rowsToExtraArgs(extraRows),
+      nGpuLayers: parsedArgs.nGpuLayers,
+      stopTimeout: parsedArgs.stopTimeout,
+      extraArgs: parsedArgs.extraArgs,
     });
     props.onClose();
   }
@@ -185,32 +249,12 @@ function PresetEntryDetailModal(props: {
                 })
               }
             />
-            <TextInput
-              label="GPU layers"
-              placeholder="auto, all, 35"
-              value={draft.nGpuLayers === null ? "" : String(draft.nGpuLayers)}
-              onChange={(event) =>
-                updateDraft({
-                  nGpuLayers: parseGpuLayersInput(event.currentTarget.value),
-                })
-              }
-            />
             <PathPickerInput
               label="mmproj"
               mode="file"
               filter="model"
               value={draft.mmprojPath ?? ""}
               onChange={(value) => updateDraft({ mmprojPath: value || null })}
-            />
-            <NumberInput
-              label="Stop timeout"
-              min={1}
-              value={draft.stopTimeout ?? ""}
-              onChange={(value) =>
-                updateDraft({
-                  stopTimeout: typeof value === "number" ? value : null,
-                })
-              }
             />
           </SimpleGrid>
 
@@ -392,6 +436,12 @@ export function PresetsView() {
     queryKey: ["model-scan-settings"],
     queryFn: getModelScanSettings,
   });
+  const argumentDefaultsQuery = useQuery({
+    queryKey: ["llama-arg-defaults"],
+    queryFn: getLlamaArgumentDefaults,
+    staleTime: 60_000,
+  });
+  const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
   const modelDirectory =
     modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
@@ -551,7 +601,7 @@ export function PresetsView() {
       if (preset.entries.some((entry) => entry.modelPath === model.path)) {
         return;
       }
-      const entry = presetEntryFromModel(model);
+      const entry = presetEntryFromModel(model, presetDefaultArgs);
       updateEntries([...preset.entries, entry]);
       setSelectedPresetEntryId(entry.id);
       return;
@@ -963,22 +1013,6 @@ export function PresetsView() {
                         })
                       }
                     />
-                    <TextInput
-                      label="GPU layers"
-                      value={
-                        entry.nGpuLayers === null
-                          ? ""
-                          : String(entry.nGpuLayers)
-                      }
-                      placeholder="auto/all/N"
-                      onChange={(event) =>
-                        patchEntry(entry.id, {
-                          nGpuLayers: parseGpuLayersInput(
-                            event.currentTarget.value,
-                          ),
-                        })
-                      }
-                    />
                     <Switch
                       label="Load on startup"
                       checked={entry.loadOnStartup}
@@ -990,7 +1024,7 @@ export function PresetsView() {
                     />
                   </SimpleGrid>
                   <Badge variant="outline">
-                    {Object.keys(entry.extraArgs ?? {}).length} args
+                    {presetArgumentCount(entry)} args
                   </Badge>
                 </Stack>
               </Paper>
@@ -1006,7 +1040,7 @@ export function PresetsView() {
 
           <Table.ScrollContainer
             className="preset-entries-table"
-            minWidth={980}
+            minWidth={860}
           >
             <Table striped highlightOnHover verticalSpacing="sm">
               <Table.Thead>
@@ -1014,7 +1048,6 @@ export function PresetsView() {
                   <Table.Th>Name</Table.Th>
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Ctx</Table.Th>
-                  <Table.Th>GPU layers</Table.Th>
                   <Table.Th>Startup</Table.Th>
                   <Table.Th ta="right">Actions</Table.Th>
                 </Table.Tr>
@@ -1057,25 +1090,6 @@ export function PresetsView() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <TextInput
-                        aria-label={`GPU layers for ${entry.name}`}
-                        value={
-                          entry.nGpuLayers === null
-                            ? ""
-                            : String(entry.nGpuLayers)
-                        }
-                        placeholder="auto/all/N"
-                        onChange={(event) => {
-                          patchEntry(entry.id, {
-                            nGpuLayers: parseGpuLayersInput(
-                              event.currentTarget.value,
-                            ),
-                          });
-                        }}
-                        w={120}
-                      />
-                    </Table.Td>
-                    <Table.Td>
                       <Switch
                         aria-label={`Load ${entry.name} on startup`}
                         checked={entry.loadOnStartup}
@@ -1098,7 +1112,7 @@ export function PresetsView() {
                           </ActionIcon>
                         </Tooltip>
                         <Badge variant="outline">
-                          {Object.keys(entry.extraArgs ?? {}).length} args
+                          {presetArgumentCount(entry)} args
                         </Badge>
                         <Tooltip label="Remove">
                           <ActionIcon

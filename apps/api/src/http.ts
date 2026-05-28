@@ -15,6 +15,7 @@ import {
   type InstanceBulkActionName,
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
+  LlamaArgumentDefaultsSchema,
   LlamaArgumentHelpOverrideUpdateSchema,
   ModelPresetUpdateSchema,
   ModelScanSettingsSchema,
@@ -35,6 +36,10 @@ import {
   verifyAdminPassword,
 } from "./auth.js";
 import { getLlamaArgumentCatalog } from "./arguments/catalog.js";
+import {
+  getArgumentDefaults,
+  saveArgumentDefaults,
+} from "./arguments/defaults-repository.js";
 import { readArgumentEngineeringDoc } from "./arguments/docs.js";
 import {
   deleteArgumentHelpOverride,
@@ -266,6 +271,18 @@ app.delete("/api/llama-args/overrides/:primaryName", (c) => {
     decodeURIComponent(c.req.param("primaryName")),
   );
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
+});
+
+app.get("/api/llama-args/defaults", (c) => {
+  return c.json({ data: getArgumentDefaults() });
+});
+
+app.put("/api/llama-args/defaults", async (c) => {
+  const parsed = LlamaArgumentDefaultsSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  return c.json({ data: saveArgumentDefaults(parsed.data) });
 });
 
 app.get("/api/build/settings", (c) => {

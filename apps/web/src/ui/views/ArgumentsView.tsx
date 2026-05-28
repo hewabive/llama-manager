@@ -1,4 +1,6 @@
 import type {
+  LlamaArgumentDefault,
+  LlamaArgumentDefaults,
   LlamaArgumentDocStatus,
   LlamaArgumentOption,
 } from "@llama-manager/core";
@@ -29,12 +31,15 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   deleteLlamaArgumentOverride,
+  getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArguments,
+  updateLlamaArgumentDefaults,
   updateLlamaArgumentOverride,
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultBinaryPath } from "../constants";
+import { argumentDefaultFromOption } from "../utils/argument-defaults";
 import { formatLocalDateTime } from "../utils/time";
 
 const allFilterValue = "__all__";
@@ -112,6 +117,25 @@ function ArgumentNames(props: { option: LlamaArgumentOption }) {
   );
 }
 
+function findDefault(
+  defaults: LlamaArgumentDefaults,
+  scope: "instance" | "preset",
+  option: LlamaArgumentOption,
+) {
+  const key = argumentDefaultFromOption(option, scope).key;
+  return defaults[scope].find((item) => item.key === key) ?? null;
+}
+
+function upsertDefault(
+  defaults: LlamaArgumentDefault[],
+  nextDefault: LlamaArgumentDefault,
+) {
+  const rest = defaults.filter((item) => item.key !== nextDefault.key);
+  return [...rest, nextDefault].sort((left, right) =>
+    left.key.localeCompare(right.key),
+  );
+}
+
 export function ArgumentsView() {
   const queryClient = useQueryClient();
   const [binaryPath, setBinaryPath] = useState(defaultBinaryPath);
@@ -179,6 +203,22 @@ export function ArgumentsView() {
     retry: false,
   });
   const selectedDoc = selectedDocQuery.data?.data;
+  const argumentDefaultsQuery = useQuery({
+    queryKey: ["llama-arg-defaults"],
+    queryFn: getLlamaArgumentDefaults,
+    staleTime: 60_000,
+  });
+  const argumentDefaults = argumentDefaultsQuery.data?.data ?? {
+    instance: [],
+    preset: [],
+    updatedAt: null,
+  };
+  const selectedInstanceDefault = selectedOption
+    ? findDefault(argumentDefaults, "instance", selectedOption)
+    : null;
+  const selectedPresetDefault = selectedOption
+    ? findDefault(argumentDefaults, "preset", selectedOption)
+    : null;
 
   useEffect(() => {
     if (filteredOptions.length === 0) {
@@ -264,6 +304,24 @@ export function ArgumentsView() {
     },
   });
 
+  const defaultsMutation = useMutation({
+    mutationFn: updateLlamaArgumentDefaults,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["llama-arg-defaults"] });
+      notifications.show({
+        title: "Default arguments saved",
+        message: selectedOption?.primaryName,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Default arguments save failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
   function loadFromBinaryPath() {
     setActiveBinaryPath(binaryPath.trim());
   }
@@ -291,6 +349,75 @@ export function ArgumentsView() {
           message: (error as Error).message,
         }),
       );
+  }
+
+  function saveArgumentDefault(
+    scope: "instance" | "preset",
+    enabled: boolean,
+    patch?: Partial<LlamaArgumentDefault>,
+  ) {
+    if (!selectedOption) {
+      return;
+    }
+    const base = argumentDefaultFromOption(selectedOption, scope);
+    const current = findDefault(argumentDefaults, scope, selectedOption);
+    const nextDefault = { ...base, ...current, ...patch };
+    const nextScope = enabled
+      ? upsertDefault(argumentDefaults[scope], nextDefault)
+      : argumentDefaults[scope].filter((item) => item.key !== base.key);
+
+    defaultsMutation.mutate({
+      ...argumentDefaults,
+      [scope]: nextScope,
+    });
+  }
+
+  function defaultScopeControl(
+    scope: "instance" | "preset",
+    label: string,
+    current: LlamaArgumentDefault | null,
+  ) {
+    if (!selectedOption) {
+      return null;
+    }
+    const suggested = argumentDefaultFromOption(selectedOption, scope);
+    const value = current?.value ?? suggested.value;
+    const valueType = current?.valueType ?? suggested.valueType;
+    const needsValue = valueType !== "flag" && valueType !== "null";
+
+    return (
+      <Group justify="space-between" align="flex-end" gap="xs" wrap="wrap">
+        <Switch
+          label={label}
+          checked={Boolean(current)}
+          disabled={defaultsMutation.isPending}
+          onChange={(event) =>
+            saveArgumentDefault(scope, event.currentTarget.checked)
+          }
+        />
+        <Group gap="xs" align="flex-end" wrap="wrap">
+          <Badge variant="outline">{suggested.key}</Badge>
+          {needsValue && (
+            <TextInput
+              key={`${scope}-${selectedOption.primaryName}-${current?.value ?? "default"}`}
+              aria-label={`${label} value`}
+              label="Default value"
+              defaultValue={value}
+              disabled={!current || defaultsMutation.isPending}
+              size="xs"
+              w={180}
+              onBlur={(event) =>
+                current &&
+                saveArgumentDefault(scope, true, {
+                  value: event.currentTarget.value,
+                  valueType,
+                })
+              }
+            />
+          )}
+        </Group>
+      </Group>
+    );
   }
 
   const isLoading =
@@ -530,6 +657,38 @@ export function ArgumentsView() {
                 </Text>
                 <ArgumentNames option={selectedOption} />
               </Stack>
+
+              <Paper withBorder p="sm" radius="sm">
+                <Stack gap="xs">
+                  <Group justify="space-between" align="center" wrap="wrap">
+                    <div>
+                      <Text fw={600} size="sm">
+                        Defaults
+                      </Text>
+                      <Text c="dimmed" size="xs">
+                        Automatically add this argument to newly created
+                        instances or model presets.
+                      </Text>
+                    </div>
+                    {argumentDefaults.updatedAt && (
+                      <Text c="dimmed" size="xs">
+                        Updated{" "}
+                        {formatLocalDateTime(argumentDefaults.updatedAt)}
+                      </Text>
+                    )}
+                  </Group>
+                  {defaultScopeControl(
+                    "instance",
+                    "New instance",
+                    selectedInstanceDefault,
+                  )}
+                  {defaultScopeControl(
+                    "preset",
+                    "New model preset",
+                    selectedPresetDefault,
+                  )}
+                </Stack>
+              </Paper>
 
               {selectedOption.env.length > 0 && (
                 <Stack gap={4}>
