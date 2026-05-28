@@ -6,7 +6,10 @@ import test from "node:test";
 
 import type { BuildSettings } from "@llama-manager/core";
 
-import { buildProcessEnv } from "./runner.js";
+import {
+  buildProcessEnv,
+  validateBuildDirectoryCleanTarget,
+} from "./runner.js";
 
 function settings(env: Record<string, string>): BuildSettings {
   return {
@@ -54,4 +57,28 @@ test("buildProcessEnv preserves explicit CUDACXX", () => {
 
   assert.equal(env.CUDACXX, "/custom/cuda/bin/nvcc");
   assert.equal(env.PATH?.split(delimiter)[0], "/custom/cuda/bin");
+});
+
+test("validateBuildDirectoryCleanTarget rejects repository directory", () => {
+  assert.throws(
+    () =>
+      validateBuildDirectoryCleanTarget({
+        ...settings({}),
+        repoPath: "/tmp/llama.cpp",
+        buildDir: "/tmp/llama.cpp",
+      }),
+    /repository directory/,
+  );
+});
+
+test("validateBuildDirectoryCleanTarget requires build-like directory name", () => {
+  assert.throws(
+    () =>
+      validateBuildDirectoryCleanTarget({
+        ...settings({}),
+        repoPath: "/tmp/llama.cpp",
+        buildDir: "/tmp/output",
+      }),
+    /does not contain 'build'/,
+  );
 });

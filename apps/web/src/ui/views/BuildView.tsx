@@ -93,6 +93,7 @@ export function BuildView() {
   const [buildEnvJson, setBuildEnvJson] = useState("{}");
   const [runPull, setRunPull] = useState(true);
   const [runUiInstall, setRunUiInstall] = useState(true);
+  const [runCleanBuildDir, setRunCleanBuildDir] = useState(true);
   const [runConfigure, setRunConfigure] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
   const [startConfirmOpened, setStartConfirmOpened] = useState(false);
@@ -113,6 +114,7 @@ export function BuildView() {
   const selectedSteps = [
     ...(runPull ? ["git pull --ff-only"] : []),
     ...(runUiInstall ? ["npm install in tools/ui"] : []),
+    ...(runCleanBuildDir ? ["Clean build directory"] : []),
     ...(runConfigure ? ["Configure CMake"] : []),
     ...(runBuild ? [`Build ${target || "target"}`] : []),
   ];
@@ -176,6 +178,7 @@ export function BuildView() {
         settings: currentSettings(),
         pull: runPull,
         installUiDeps: runUiInstall,
+        cleanBuildDir: runCleanBuildDir,
         configure: runConfigure,
         build: runBuild,
       }),
@@ -329,6 +332,13 @@ export function BuildView() {
             label="npm install tools/ui"
             checked={runUiInstall}
             onChange={(event) => setRunUiInstall(event.currentTarget.checked)}
+          />
+          <Switch
+            label="Clean build directory"
+            checked={runCleanBuildDir}
+            onChange={(event) =>
+              setRunCleanBuildDir(event.currentTarget.checked)
+            }
           />
           <Switch
             label="Configure"
@@ -520,7 +530,8 @@ export function BuildView() {
             <AlertTriangle size={18} />
             <Text size="sm">
               This can run git, npm, CMake and compiler processes for a long
-              time and may modify the llama.cpp checkout and build directory.
+              time. If cleaning is enabled, the build directory will be removed
+              before CMake runs.
             </Text>
           </Group>
           <Stack gap={4}>
@@ -531,6 +542,7 @@ export function BuildView() {
             ))}
           </Stack>
           <Code className="code-wrap">{repoPath}</Code>
+          {runCleanBuildDir && <Code className="code-wrap">{buildDir}</Code>}
           <Group justify="flex-end" gap="xs">
             <Button
               variant="default"

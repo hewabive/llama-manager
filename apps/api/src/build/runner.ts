@@ -10,9 +10,20 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  rmSync,
   type WriteStream,
 } from "node:fs";
-import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  basename,
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+  parse,
+  resolve,
+  sep,
+} from "node:path";
+import { homedir } from "node:os";
 import type { Readable } from "node:stream";
 
 import { config } from "../config.js";
@@ -168,6 +179,10 @@ function buildSteps(
     steps.push(step("ui-install", ["npm", "install"]));
   }
 
+  if (input.cleanBuildDir) {
+    steps.push(step("clean-build-dir", ["clean-build-dir", settings.buildDir]));
+  }
+
   if (input.configure) {
     const cudaCompiler = settings.cuda ? findNvcc(env) : null;
     steps.push(
@@ -218,6 +233,49 @@ function commandCwd(settings: BuildSettings, stepName: BuildJobStepName) {
   return config.rootDir;
 }
 
+function isPathInside(parent: string, child: string) {
+  return child.startsWith(`${parent}${sep}`);
+}
+
+export function validateBuildDirectoryCleanTarget(settings: BuildSettings) {
+  const buildDir = resolve(settings.buildDir);
+  const repoPath = resolve(settings.repoPath);
+  const parentOfRepo = dirname(repoPath);
+  const root = parse(buildDir).root;
+  const home = homedir();
+
+  if (buildDir === root) {
+    throw new Error("refusing to clean filesystem root as build directory");
+  }
+  if (buildDir === home) {
+    throw new Error("refusing to clean user home as build directory");
+  }
+  if (buildDir === repoPath) {
+    throw new Error("refusing to clean llama.cpp repository directory");
+  }
+  if (buildDir === parentOfRepo || isPathInside(buildDir, repoPath)) {
+    throw new Error("refusing to clean a parent directory of llama.cpp");
+  }
+  if (!basename(buildDir).toLowerCase().includes("build")) {
+    throw new Error(
+      "refusing to clean build directory because its final path segment does not contain 'build'",
+    );
+  }
+
+  return buildDir;
+}
+
+function cleanBuildDirectory(settings: BuildSettings, logStream: WriteStream) {
+  const buildDir = validateBuildDirectoryCleanTarget(settings);
+  if (existsSync(buildDir)) {
+    logStream.write(`# removing build directory ${buildDir}\n`);
+    rmSync(buildDir, { recursive: true, force: true });
+  } else {
+    logStream.write(`# build directory does not exist: ${buildDir}\n`);
+  }
+  mkdirSync(buildDir, { recursive: true });
+}
+
 function validateSettings(settings: BuildSettings, steps: BuildJobStep[]) {
   if (!existsSync(resolve(settings.repoPath, "CMakeLists.txt"))) {
     throw new Error(`CMakeLists.txt not found in ${settings.repoPath}`);
@@ -237,7 +295,14 @@ function validateSettings(settings: BuildSettings, steps: BuildJobStep[]) {
     throw new Error(`tools/ui/package.json not found in ${settings.repoPath}`);
   }
 
-  mkdirSync(settings.buildDir, { recursive: true });
+  const cleanBuildDir = steps.some((item) => item.name === "clean-build-dir");
+  if (cleanBuildDir) {
+    validateBuildDirectoryCleanTarget(settings);
+  }
+
+  if (!cleanBuildDir) {
+    mkdirSync(settings.buildDir, { recursive: true });
+  }
 }
 
 function binaryCandidateName(target: string) {
@@ -356,12 +421,15 @@ export class LlamaBuildRunner {
         });
 
         logStream.write(`$ ${plannedStep.command.join(" ")}\n`);
-        const exitCode = await this.runCommand(
-          plannedStep.command,
-          commandCwd(job.settings, plannedStep.name),
-          logStream,
-          env,
-        );
+        const exitCode =
+          plannedStep.name === "clean-build-dir"
+            ? (cleanBuildDirectory(job.settings, logStream), 0)
+            : await this.runCommand(
+                plannedStep.command,
+                commandCwd(job.settings, plannedStep.name),
+                logStream,
+                env,
+              );
 
         if (this.running?.jobId === jobId && this.running.canceled) {
           this.markStep(jobId, plannedStep.name, {

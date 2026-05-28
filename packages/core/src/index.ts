@@ -416,6 +416,7 @@ export const BuildJobStatusSchema = z.enum([
 export const BuildJobStepNameSchema = z.enum([
   "git-pull",
   "ui-install",
+  "clean-build-dir",
   "configure",
   "build",
 ]);
@@ -454,6 +455,7 @@ export const BuildJobStartSchema = z.object({
   settings: BuildSettingsSchema.optional(),
   pull: z.boolean().default(true),
   installUiDeps: z.boolean().default(true),
+  cleanBuildDir: z.boolean().default(false),
   configure: z.boolean().default(true),
   build: z.boolean().default(true),
 });
