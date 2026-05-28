@@ -38,6 +38,7 @@ function defaultSettings(): BuildSettings {
     cuda: true,
     native: false,
     extraCmakeArgs: [],
+    env: {},
     target: "llama-server",
     parallelJobs: Math.max(1, Math.min(16, availableParallelism() - 1)),
   };
@@ -51,6 +52,7 @@ function toBuildSettings(row: BuildSettingsRow): BuildSettings {
     cuda: row.cuda === "true",
     native: row.native === "true",
     extraCmakeArgs: JSON.parse(row.extraCmakeArgsJson) as unknown,
+    env: JSON.parse(row.envJson) as unknown,
     target: row.target,
     parallelJobs: row.parallelJobs ? Number(row.parallelJobs) : null,
   });
@@ -64,8 +66,10 @@ function settingsValues(settings: BuildSettings) {
     cuda: String(settings.cuda),
     native: String(settings.native),
     extraCmakeArgsJson: JSON.stringify(settings.extraCmakeArgs),
+    envJson: JSON.stringify(settings.env),
     target: settings.target,
-    parallelJobs: settings.parallelJobs === null ? null : String(settings.parallelJobs),
+    parallelJobs:
+      settings.parallelJobs === null ? null : String(settings.parallelJobs),
     updatedAt: nowIso(),
   };
 }
@@ -79,7 +83,10 @@ function toBuildJob(row: BuildJobRow): BuildJob {
     currentStep: row.currentStep,
     startedAt: row.startedAt,
     finishedAt: row.finishedAt,
-    exitCode: row.exitCode === null || row.exitCode === undefined ? null : Number(row.exitCode),
+    exitCode:
+      row.exitCode === null || row.exitCode === undefined
+        ? null
+        : Number(row.exitCode),
     logPath: row.logPath,
     binaryPath: row.binaryPath,
     error: row.error,
@@ -87,19 +94,32 @@ function toBuildJob(row: BuildJobRow): BuildJob {
 }
 
 export function getBuildSettings(): BuildSettings {
-  const row = db.select().from(llamaBuildSettings).where(eq(llamaBuildSettings.id, SETTINGS_ID)).get();
+  const row = db
+    .select()
+    .from(llamaBuildSettings)
+    .where(eq(llamaBuildSettings.id, SETTINGS_ID))
+    .get();
   return row ? toBuildSettings(row) : defaultSettings();
 }
 
 export function saveBuildSettings(input: BuildSettings): BuildSettings {
   const settings = BuildSettingsSchema.parse(input);
-  const current = db.select().from(llamaBuildSettings).where(eq(llamaBuildSettings.id, SETTINGS_ID)).get();
+  const current = db
+    .select()
+    .from(llamaBuildSettings)
+    .where(eq(llamaBuildSettings.id, SETTINGS_ID))
+    .get();
   const values = settingsValues(settings);
 
   if (current) {
-    db.update(llamaBuildSettings).set(values).where(eq(llamaBuildSettings.id, SETTINGS_ID)).run();
+    db.update(llamaBuildSettings)
+      .set(values)
+      .where(eq(llamaBuildSettings.id, SETTINGS_ID))
+      .run();
   } else {
-    db.insert(llamaBuildSettings).values({ id: SETTINGS_ID, ...values }).run();
+    db.insert(llamaBuildSettings)
+      .values({ id: SETTINGS_ID, ...values })
+      .run();
   }
 
   return getBuildSettings();
@@ -158,8 +178,12 @@ export function updateBuildJob(
     .set({
       status: input.status ?? current.status,
       stepsJson: JSON.stringify(input.steps ?? current.steps),
-      currentStep: input.currentStep === undefined ? current.currentStep : input.currentStep,
-      finishedAt: input.finishedAt === undefined ? current.finishedAt : input.finishedAt,
+      currentStep:
+        input.currentStep === undefined
+          ? current.currentStep
+          : input.currentStep,
+      finishedAt:
+        input.finishedAt === undefined ? current.finishedAt : input.finishedAt,
       exitCode:
         input.exitCode === undefined
           ? current.exitCode === null
@@ -168,7 +192,8 @@ export function updateBuildJob(
           : input.exitCode === null
             ? null
             : String(input.exitCode),
-      binaryPath: input.binaryPath === undefined ? current.binaryPath : input.binaryPath,
+      binaryPath:
+        input.binaryPath === undefined ? current.binaryPath : input.binaryPath,
       error: input.error === undefined ? current.error : input.error,
     })
     .where(eq(llamaBuildJobs.id, id))
@@ -178,7 +203,11 @@ export function updateBuildJob(
 }
 
 export function getBuildJob(id: string): BuildJob | null {
-  const row = db.select().from(llamaBuildJobs).where(eq(llamaBuildJobs.id, id)).get();
+  const row = db
+    .select()
+    .from(llamaBuildJobs)
+    .where(eq(llamaBuildJobs.id, id))
+    .get();
   return row ? toBuildJob(row) : null;
 }
 

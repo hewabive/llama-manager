@@ -5,6 +5,7 @@ import {
   Button,
   Code,
   Group,
+  JsonInput,
   Modal,
   NumberInput,
   Paper,
@@ -57,6 +58,25 @@ function parseExtraCmakeArgs(value: string) {
     .filter(Boolean);
 }
 
+function parseJsonObject(value: string, field: string) {
+  try {
+    const parsed = JSON.parse(value || "{}") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(`${field} must be an object`);
+    }
+    return parsed;
+  } catch (error) {
+    throw new Error(`${field}: ${(error as Error).message}`);
+  }
+}
+
+function parseBuildEnv(value: string) {
+  const parsed = parseJsonObject(value, "build env");
+  return Object.fromEntries(
+    Object.entries(parsed).map(([key, envValue]) => [key, String(envValue)]),
+  );
+}
+
 export function BuildView() {
   const queryClient = useQueryClient();
   const [repoPath, setRepoPath] = useState("/home/maxim/llama/llama.cpp");
@@ -70,6 +90,7 @@ export function BuildView() {
   const [cuda, setCuda] = useState(true);
   const [native, setNative] = useState(false);
   const [extraCmakeArgs, setExtraCmakeArgs] = useState("");
+  const [buildEnvJson, setBuildEnvJson] = useState("{}");
   const [runPull, setRunPull] = useState(true);
   const [runUiInstall, setRunUiInstall] = useState(true);
   const [runConfigure, setRunConfigure] = useState(true);
@@ -117,6 +138,7 @@ export function BuildView() {
     setCuda(settings.cuda);
     setNative(settings.native);
     setExtraCmakeArgs(settings.extraCmakeArgs.join("\n"));
+    setBuildEnvJson(JSON.stringify(settings.env, null, 2));
   }, [settingsQuery.data?.data]);
 
   function currentSettings(): BuildSettings {
@@ -127,6 +149,7 @@ export function BuildView() {
       cuda,
       native,
       extraCmakeArgs: parseExtraCmakeArgs(extraCmakeArgs),
+      env: parseBuildEnv(buildEnvJson),
       target,
       parallelJobs: typeof parallelJobs === "number" ? parallelJobs : null,
     };
@@ -285,6 +308,16 @@ export function BuildView() {
             onChange={(event) => setExtraCmakeArgs(event.currentTarget.value)}
           />
         </SimpleGrid>
+
+        <JsonInput
+          label="Build environment"
+          description="Applied to git, npm, CMake and compiler processes."
+          minRows={3}
+          formatOnBlur
+          value={buildEnvJson}
+          onChange={setBuildEnvJson}
+          placeholder='{"CUDACXX": "/usr/local/cuda/bin/nvcc"}'
+        />
 
         <Group gap="lg" wrap="wrap">
           <Switch

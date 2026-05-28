@@ -12,7 +12,7 @@ import {
   mkdirSync,
   type WriteStream,
 } from "node:fs";
-import { resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
 
 import { config } from "../config.js";
@@ -49,9 +49,114 @@ function uiDirectory(settings: BuildSettings) {
   return resolve(settings.repoPath, "tools", "ui");
 }
 
+function executableName(name: string) {
+  if (process.platform === "win32" && !/\.(?:bat|cmd|exe)$/i.test(name)) {
+    return `${name}.exe`;
+  }
+  return name;
+}
+
+function findExecutableInPath(name: string, pathValue: string | undefined) {
+  if (!pathValue) {
+    return null;
+  }
+
+  for (const directory of pathValue.split(delimiter)) {
+    if (!directory) {
+      continue;
+    }
+    const candidate = resolve(directory, executableName(name));
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function resolveExecutable(value: string, env: NodeJS.ProcessEnv) {
+  if (isAbsolute(value)) {
+    return existsSync(value) ? value : null;
+  }
+  if (value.includes("/") || value.includes("\\")) {
+    const candidate = resolve(value);
+    return existsSync(candidate) ? candidate : null;
+  }
+  return findExecutableInPath(value, env.PATH);
+}
+
+function envPath(env: NodeJS.ProcessEnv, key: string) {
+  const value = env[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function findNvcc(env: NodeJS.ProcessEnv) {
+  const explicit = envPath(env, "CUDACXX");
+  if (explicit) {
+    return resolveExecutable(explicit, env) ?? explicit;
+  }
+
+  const fromPath = findExecutableInPath("nvcc", env.PATH);
+  if (fromPath) {
+    return fromPath;
+  }
+
+  const cudaRoots = [
+    envPath(env, "CUDA_HOME"),
+    envPath(env, "CUDA_PATH"),
+    "/usr/local/cuda",
+    "/opt/cuda",
+  ].filter((item): item is string => Boolean(item));
+
+  for (const root of cudaRoots) {
+    const candidate = join(root, "bin", executableName("nvcc"));
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function prependPathEntry(pathValue: string | undefined, entry: string) {
+  const current = pathValue?.split(delimiter).filter(Boolean) ?? [];
+  if (current.includes(entry)) {
+    return current.join(delimiter);
+  }
+  return [entry, ...current].join(delimiter);
+}
+
+function hasCmakeDefinition(args: string[], name: string) {
+  return args.some(
+    (arg) =>
+      arg === `-D${name}` ||
+      arg.startsWith(`-D${name}=`) ||
+      arg.startsWith(`-D${name}:`),
+  );
+}
+
+export function buildProcessEnv(settings: BuildSettings): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...settings.env };
+
+  if (!settings.cuda) {
+    return env;
+  }
+
+  const nvcc = findNvcc(env);
+  if (!nvcc) {
+    return env;
+  }
+
+  if (!env.CUDACXX) {
+    env.CUDACXX = nvcc;
+  }
+  env.PATH = prependPathEntry(env.PATH, dirname(nvcc));
+  return env;
+}
+
 function buildSteps(
   settings: BuildSettings,
   input: BuildJobStart,
+  env: NodeJS.ProcessEnv,
 ): BuildJobStep[] {
   const steps: BuildJobStep[] = [];
 
@@ -64,6 +169,7 @@ function buildSteps(
   }
 
   if (input.configure) {
+    const cudaCompiler = settings.cuda ? findNvcc(env) : null;
     steps.push(
       step("configure", [
         "cmake",
@@ -74,6 +180,10 @@ function buildSteps(
         `-DCMAKE_BUILD_TYPE=${settings.buildType}`,
         `-DGGML_CUDA=${settings.cuda ? "ON" : "OFF"}`,
         `-DGGML_NATIVE=${settings.native ? "ON" : "OFF"}`,
+        ...(cudaCompiler &&
+        !hasCmakeDefinition(settings.extraCmakeArgs, "CMAKE_CUDA_COMPILER")
+          ? [`-DCMAKE_CUDA_COMPILER=${cudaCompiler}`]
+          : []),
         ...settings.extraCmakeArgs,
       ]),
     );
@@ -149,11 +259,23 @@ function detectBinaryPath(settings: BuildSettings) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-function writeHeader(stream: WriteStream, job: BuildJob) {
+function writeHeader(
+  stream: WriteStream,
+  job: BuildJob,
+  env: NodeJS.ProcessEnv,
+) {
   stream.write(`# llama-manager build job ${job.id}\n`);
   stream.write(`# started ${job.startedAt}\n`);
   stream.write(`# repo ${job.settings.repoPath}\n`);
-  stream.write(`# build ${job.settings.buildDir}\n\n`);
+  stream.write(`# build ${job.settings.buildDir}\n`);
+  if (job.settings.cuda) {
+    stream.write(`# CUDA compiler ${env.CUDACXX ?? "not detected"}\n`);
+  }
+  const envKeys = Object.keys(job.settings.env).sort();
+  if (envKeys.length > 0) {
+    stream.write(`# build env overrides ${envKeys.join(", ")}\n`);
+  }
+  stream.write("\n");
 }
 
 export class LlamaBuildRunner {
@@ -171,7 +293,8 @@ export class LlamaBuildRunner {
     const settings = input.settings
       ? saveBuildSettings(input.settings)
       : getBuildSettings();
-    const steps = buildSteps(settings, input);
+    const env = buildProcessEnv(settings);
+    const steps = buildSteps(settings, input, env);
     if (steps.length === 0) {
       throw new Error("at least one build step must be enabled");
     }
@@ -216,7 +339,8 @@ export class LlamaBuildRunner {
     }
 
     const logStream = createWriteStream(job.logPath, { flags: "a" });
-    writeHeader(logStream, job);
+    const env = buildProcessEnv(job.settings);
+    writeHeader(logStream, job, env);
 
     try {
       for (const plannedStep of job.steps) {
@@ -236,6 +360,7 @@ export class LlamaBuildRunner {
           plannedStep.command,
           commandCwd(job.settings, plannedStep.name),
           logStream,
+          env,
         );
 
         if (this.running?.jobId === jobId && this.running.canceled) {
@@ -328,11 +453,12 @@ export class LlamaBuildRunner {
     command: string[],
     cwd: string,
     logStream: WriteStream,
+    env: NodeJS.ProcessEnv,
   ): Promise<number> {
     return new Promise((resolveDone, reject) => {
       const child = spawn(command[0]!, command.slice(1), {
         cwd,
-        env: process.env,
+        env,
         stdio: ["ignore", "pipe", "pipe"],
       });
       let settled = false;

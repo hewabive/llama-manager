@@ -402,6 +402,7 @@ export const BuildSettingsSchema = z.object({
   cuda: z.boolean(),
   native: z.boolean(),
   extraCmakeArgs: z.array(z.string()),
+  env: z.record(z.string(), z.string()).default({}),
   target: z.string().min(1),
   parallelJobs: z.number().int().positive().max(256).nullable(),
 });

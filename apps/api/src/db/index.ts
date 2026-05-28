@@ -12,6 +12,13 @@ sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
 
+function columnExists(table: string, column: string) {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  return rows.some((row) => row.name === column);
+}
+
 export function migrate() {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS instances (
@@ -81,11 +88,19 @@ export function migrate() {
       cuda TEXT NOT NULL,
       native TEXT NOT NULL,
       extra_cmake_args_json TEXT NOT NULL,
+      env_json TEXT NOT NULL DEFAULT '{}',
       target TEXT NOT NULL,
       parallel_jobs TEXT,
       updated_at TEXT NOT NULL
     )
   `);
+
+  if (!columnExists("llama_build_settings", "env_json")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}'
+    `);
+  }
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_build_jobs (

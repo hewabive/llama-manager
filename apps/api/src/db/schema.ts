@@ -59,6 +59,7 @@ export const llamaBuildSettings = sqliteTable("llama_build_settings", {
   cuda: text("cuda").notNull(),
   native: text("native").notNull(),
   extraCmakeArgsJson: text("extra_cmake_args_json").notNull(),
+  envJson: text("env_json").notNull(),
   target: text("target").notNull(),
   parallelJobs: text("parallel_jobs"),
   updatedAt: text("updated_at").notNull(),
