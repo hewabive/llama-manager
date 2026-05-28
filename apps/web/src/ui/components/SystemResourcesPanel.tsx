@@ -42,6 +42,17 @@ function memoryColor(usedRatio: number | undefined) {
   return "green";
 }
 
+function acceleratorMemoryLabel(
+  accelerator: SystemResources["accelerators"][number],
+) {
+  if (accelerator.totalMemoryBytes === null) {
+    return "memory unknown";
+  }
+  const usedRatio = accelerator.memoryUsedRatio ?? 0;
+  const usedBytes = Math.round(accelerator.totalMemoryBytes * usedRatio);
+  return `${formatBytes(usedBytes)} / ${formatBytes(accelerator.totalMemoryBytes)}`;
+}
+
 function ResourceMetric(props: { label: string; value: string }) {
   return (
     <div>
@@ -70,7 +81,7 @@ export function SystemResourcesPanel(props: {
               System resources
             </Text>
             <Text c="dimmed" size="sm">
-              RAM now, accelerator inventory later
+              RAM and accelerator inventory
             </Text>
           </div>
           <Badge color={props.fetching ? "blue" : "gray"} variant="light">
@@ -105,22 +116,68 @@ export function SystemResourcesPanel(props: {
           />
         </SimpleGrid>
 
-        <Group gap="xs">
-          <Text c="dimmed" size="sm">
-            Accelerators
-          </Text>
-          {accelerators.length === 0 ? (
-            <Badge variant="outline" color="gray">
-              none detected
+        <Stack gap="xs">
+          <Group gap="xs">
+            <Text c="dimmed" size="sm">
+              Accelerators
+            </Text>
+            <Badge
+              variant="outline"
+              color={accelerators.length ? "green" : "gray"}
+            >
+              {accelerators.length
+                ? `${accelerators.length} detected`
+                : "none detected"}
             </Badge>
+          </Group>
+          {accelerators.length === 0 ? (
+            <Text c="dimmed" size="xs">
+              No CUDA devices reported by nvidia-smi.
+            </Text>
           ) : (
-            accelerators.map((accelerator) => (
-              <Badge key={accelerator.id} variant="light">
-                {accelerator.name}
-              </Badge>
-            ))
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+              {accelerators.map((accelerator) => (
+                <Paper key={accelerator.id} withBorder p="xs" radius="sm">
+                  <Stack gap={6}>
+                    <Group justify="space-between" gap="xs" wrap="nowrap">
+                      <Text fw={600} size="sm" lineClamp={1}>
+                        GPU {accelerator.id}: {accelerator.name}
+                      </Text>
+                      <Badge variant="light">
+                        {accelerator.vendor ?? accelerator.source}
+                      </Badge>
+                    </Group>
+                    <Progress
+                      value={Math.round(
+                        (accelerator.memoryUsedRatio ?? 0) * 100,
+                      )}
+                      color={memoryColor(
+                        accelerator.memoryUsedRatio ?? undefined,
+                      )}
+                      size="sm"
+                      radius="xs"
+                    />
+                    <Group gap="md" wrap="wrap">
+                      <Text c="dimmed" size="xs">
+                        VRAM {acceleratorMemoryLabel(accelerator)}
+                      </Text>
+                      {accelerator.utilizationPercent !== null && (
+                        <Text c="dimmed" size="xs">
+                          GPU {accelerator.utilizationPercent}%
+                        </Text>
+                      )}
+                      {accelerator.temperatureC !== null && (
+                        <Text c="dimmed" size="xs">
+                          {accelerator.temperatureC}C
+                        </Text>
+                      )}
+                    </Group>
+                  </Stack>
+                </Paper>
+              ))}
+            </SimpleGrid>
           )}
-        </Group>
+        </Stack>
       </Stack>
     </Paper>
   );

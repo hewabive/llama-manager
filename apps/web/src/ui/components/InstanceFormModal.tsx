@@ -15,6 +15,7 @@ import {
   Group,
   JsonInput,
   Modal,
+  MultiSelect,
   NumberInput,
   Paper,
   ScrollArea,
@@ -41,6 +42,7 @@ import {
   getLlamaArguments,
   getModelPreset,
   getModelScanSettings,
+  getSystemResources,
   instanceAction,
   previewInstancePreflight,
   scanModels,
@@ -86,6 +88,24 @@ function parseJsonObject(value: string, field: string) {
   } catch (error) {
     throw new Error(`${field}: ${(error as Error).message}`);
   }
+}
+
+function parseEnvJson(value: string) {
+  return InstanceEnvSchema.parse(parseJsonObject(value, "env"));
+}
+
+function hasOwnKey(record: Record<string, string>, key: string) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function splitCudaVisibleDevices(value: string | undefined) {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function argString(args: Instance["args"], key: string) {
@@ -203,6 +223,12 @@ export function InstanceFormModal(props: {
     staleTime: 60_000,
     retry: false,
   });
+  const systemResourcesQuery = useQuery({
+    queryKey: ["system-resources"],
+    queryFn: getSystemResources,
+    enabled: props.opened,
+    staleTime: 10_000,
+  });
 
   const argsCatalog = argsCatalogQuery.data?.data;
   const knownArgs = argsCatalog?.options ?? [];
@@ -267,6 +293,40 @@ export function InstanceFormModal(props: {
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
+  const envDraft = useMemo(() => {
+    try {
+      return parseEnvJson(form.values.envJson);
+    } catch {
+      return null;
+    }
+  }, [form.values.envJson]);
+  const cudaAccelerators = (
+    systemResourcesQuery.data?.data.accelerators ?? []
+  ).filter(
+    (accelerator) =>
+      accelerator.kind === "gpu" &&
+      (accelerator.vendor === "NVIDIA" || accelerator.source === "nvidia-smi"),
+  );
+  const cudaVisibleDevices = envDraft?.CUDA_VISIBLE_DEVICES;
+  const cudaMode =
+    envDraft && hasOwnKey(envDraft, "CUDA_VISIBLE_DEVICES")
+      ? cudaVisibleDevices === ""
+        ? "none"
+        : "specific"
+      : "all";
+  const selectedCudaDevices = splitCudaVisibleDevices(cudaVisibleDevices);
+  const cudaDeviceOptions = useMemo(() => {
+    const options = cudaAccelerators.map((accelerator) => ({
+      value: accelerator.id,
+      label: `GPU ${accelerator.id} · ${accelerator.name}`,
+    }));
+    for (const id of selectedCudaDevices) {
+      if (!options.some((option) => option.value === id)) {
+        options.push({ value: id, label: `GPU ${id} · custom` });
+      }
+    }
+    return options;
+  }, [cudaAccelerators, selectedCudaDevices]);
 
   useEffect(() => {
     if (!props.opened) {
@@ -334,9 +394,7 @@ export function InstanceFormModal(props: {
       const args = InstanceArgsSchema.parse(
         rowsToArgsWithCatalog(argRows, knownArgByName),
       );
-      const env = InstanceEnvSchema.parse(
-        parseJsonObject(form.values.envJson, "env"),
-      );
+      const env = parseEnvJson(form.values.envJson);
       const input: InstancePreflightPreview = {
         ...(props.instance?.id ? { id: props.instance.id } : {}),
         name: form.values.name,
@@ -587,6 +645,48 @@ export function InstanceFormModal(props: {
     },
   });
 
+  function updateEnvironment(
+    mutator: (env: Record<string, string>) => Record<string, string>,
+  ) {
+    try {
+      const current = parseEnvJson(form.values.envJson);
+      form.setFieldValue(
+        "envJson",
+        JSON.stringify(mutator({ ...current }), null, 2),
+      );
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Environment JSON is invalid",
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  function applyCudaMode(mode: string) {
+    updateEnvironment((env) => {
+      if (mode === "all") {
+        delete env.CUDA_VISIBLE_DEVICES;
+        return env;
+      }
+      if (mode === "none") {
+        env.CUDA_VISIBLE_DEVICES = "";
+        return env;
+      }
+
+      env.CUDA_VISIBLE_DEVICES =
+        selectedCudaDevices.join(",") || cudaAccelerators[0]?.id || "0";
+      return env;
+    });
+  }
+
+  function applyCudaDevices(devices: string[]) {
+    updateEnvironment((env) => {
+      env.CUDA_VISIBLE_DEVICES = devices.join(",");
+      return env;
+    });
+  }
+
   function submit(values: typeof form.values) {
     try {
       if (launchMode === "router" && !effectivePresetPath) {
@@ -618,7 +718,7 @@ export function InstanceFormModal(props: {
         name: values.name,
         binaryPath: values.binaryPath,
         args,
-        env: InstanceEnvSchema.parse(parseJsonObject(values.envJson, "env")),
+        env: parseEnvJson(values.envJson),
         ...(values.cwd ? { cwd: values.cwd } : {}),
       };
       mutation.mutate(input);
@@ -1082,6 +1182,79 @@ export function InstanceFormModal(props: {
               {preflightPreviewQuery.isError && (
                 <Text c="red" size="xs">
                   {(preflightPreviewQuery.error as Error).message}
+                </Text>
+              )}
+            </Stack>
+          </Paper>
+          <Paper withBorder p="sm" radius="sm">
+            <Stack gap="xs">
+              <Group justify="space-between" align="flex-start" wrap="wrap">
+                <div>
+                  <Text fw={600} size="sm">
+                    CUDA visibility
+                  </Text>
+                  <Text c="dimmed" size="xs">
+                    Sets CUDA_VISIBLE_DEVICES for this llama-server process.
+                  </Text>
+                </div>
+                <Badge
+                  color={cudaAccelerators.length > 0 ? "green" : "gray"}
+                  variant="light"
+                >
+                  {systemResourcesQuery.isFetching
+                    ? "detecting"
+                    : cudaAccelerators.length > 0
+                      ? `${cudaAccelerators.length} GPU`
+                      : "no NVIDIA GPU"}
+                </Badge>
+              </Group>
+              <SegmentedControl
+                value={cudaMode}
+                onChange={applyCudaMode}
+                data={[
+                  { value: "all", label: "All GPUs" },
+                  {
+                    value: "specific",
+                    label: "Selected",
+                    disabled:
+                      cudaDeviceOptions.length === 0 &&
+                      selectedCudaDevices.length === 0,
+                  },
+                  { value: "none", label: "CPU only" },
+                ]}
+                fullWidth
+              />
+              {cudaMode === "specific" && (
+                <MultiSelect
+                  label="Visible CUDA devices"
+                  placeholder={
+                    cudaDeviceOptions.length > 0
+                      ? "Select GPUs"
+                      : "nvidia-smi did not report devices"
+                  }
+                  data={cudaDeviceOptions}
+                  value={selectedCudaDevices}
+                  onChange={applyCudaDevices}
+                  searchable
+                  clearable
+                />
+              )}
+              {cudaMode === "none" && (
+                <Text c="dimmed" size="xs">
+                  The environment variable is set to an empty string, so CUDA
+                  devices are hidden from the process.
+                </Text>
+              )}
+              {cudaMode === "all" && (
+                <Text c="dimmed" size="xs">
+                  CUDA_VISIBLE_DEVICES is not set here; the process inherits the
+                  manager environment and can see all GPUs available to it.
+                </Text>
+              )}
+              {systemResourcesQuery.isError && (
+                <Text c="yellow" size="xs">
+                  Unable to query system GPUs:{" "}
+                  {(systemResourcesQuery.error as Error).message}
                 </Text>
               )}
             </Stack>
