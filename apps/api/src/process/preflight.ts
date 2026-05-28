@@ -2,13 +2,23 @@ import type {
   Instance,
   ProcessPreflightIssue,
   ProcessPreflightResult,
+  SystemAccelerator,
 } from "@llama-manager/core";
-import { accessSync, constants, existsSync, statSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 
+import { getSystemResources } from "../system/resources.js";
+
 type PreflightOptions = {
   peers?: Instance[] | undefined;
+  accelerators?: SystemAccelerator[] | undefined;
 };
 
 type StartPreflightOptions = PreflightOptions & {
@@ -83,6 +93,29 @@ function hasConfiguredArg(instance: Instance, key: string) {
     return value.length > 0;
   }
   return true;
+}
+
+function argValueIsGpuLayerRequest(value: unknown) {
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some(argValueIsGpuLayerRequest);
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized || normalized === "0" || normalized === "false") {
+    return false;
+  }
+  return true;
+}
+
+const gpuLayerArgKeys = ["--n-gpu-layers", "--gpu-layers", "--ngl", "-ngl"];
+
+function configuredGpuLayerArg(instance: Instance) {
+  return gpuLayerArgKeys.find((key) =>
+    argValueIsGpuLayerRequest(instance.args[key]),
+  );
 }
 
 function validateBinary(instance: Instance, issues: ProcessPreflightIssue[]) {
@@ -239,6 +272,10 @@ const activePortStatuses = new Set<Instance["status"]>([
   "stale",
 ]);
 
+let acceleratorCache:
+  | { checkedAtMs: number; accelerators: SystemAccelerator[] }
+  | undefined;
+
 function isActivePortOwner(instance: Instance) {
   return activePortStatuses.has(instance.status);
 }
@@ -284,6 +321,29 @@ function hasActiveSelfPort(instance: Instance, peers: Instance[]) {
       isActivePortOwner(peer) &&
       parsedPort(peer) === port &&
       hostsOverlap(host, normalizedHost(peer)),
+  );
+}
+
+function currentAccelerators(options: PreflightOptions) {
+  if (options.accelerators) {
+    return options.accelerators;
+  }
+
+  const now = Date.now();
+  if (acceleratorCache && now - acceleratorCache.checkedAtMs < 5_000) {
+    return acceleratorCache.accelerators;
+  }
+
+  const accelerators = getSystemResources().accelerators;
+  acceleratorCache = { checkedAtMs: now, accelerators };
+  return accelerators;
+}
+
+function hasCudaAccelerator(options: PreflightOptions) {
+  return currentAccelerators(options).some(
+    (accelerator) =>
+      accelerator.kind === "gpu" &&
+      (accelerator.vendor === "NVIDIA" || accelerator.source === "nvidia-smi"),
   );
 }
 
@@ -365,6 +425,101 @@ function validateKnownPathArgs(
   }
 }
 
+function parseModelsPresetGpuLayerRequests(path: string) {
+  const requests: Array<{ section: string; key: string; value: string }> = [];
+  const contents = readFileSync(path, "utf8");
+  let section = "";
+
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith(";") || line.startsWith("#")) {
+      continue;
+    }
+
+    const sectionMatch = /^\[([^\]]+)]$/.exec(line);
+    if (sectionMatch) {
+      section = sectionMatch[1]!.trim();
+      continue;
+    }
+
+    const keyValueMatch = /^([^=:#]+)\s*[=:]\s*(.*?)\s*$/.exec(line);
+    if (!keyValueMatch) {
+      continue;
+    }
+
+    const key = keyValueMatch[1]!.trim().replace(/^-+/, "").toLowerCase();
+    const value = keyValueMatch[2]!.trim();
+    if (
+      ["n-gpu-layers", "gpu-layers", "ngl"].includes(key) &&
+      argValueIsGpuLayerRequest(value)
+    ) {
+      requests.push({
+        section: section || "(root)",
+        key,
+        value,
+      });
+    }
+  }
+
+  return requests;
+}
+
+function formatPresetSections(sections: string[]) {
+  const unique = [...new Set(sections)];
+  if (unique.length <= 3) {
+    return unique.join(", ");
+  }
+  return `${unique.slice(0, 3).join(", ")} and ${unique.length - 3} more`;
+}
+
+function validateGpuLayerRequests(
+  instance: Instance,
+  issues: ProcessPreflightIssue[],
+  options: PreflightOptions,
+) {
+  if (hasCudaAccelerator(options)) {
+    return;
+  }
+
+  const directGpuLayerArg = configuredGpuLayerArg(instance);
+  if (directGpuLayerArg) {
+    issues.push({
+      level: "warning",
+      field: `args.${directGpuLayerArg}`,
+      message:
+        "GPU layers are requested, but no NVIDIA GPU was detected by nvidia-smi; llama.cpp will likely ignore this option.",
+    });
+  }
+
+  const presetPath = localPathCandidate(instance.args["--models-preset"]);
+  if (!presetPath || !existsSync(presetPath)) {
+    return;
+  }
+
+  try {
+    if (!statSync(presetPath).isFile()) {
+      return;
+    }
+
+    const presetRequests = parseModelsPresetGpuLayerRequests(presetPath);
+    if (presetRequests.length === 0) {
+      return;
+    }
+
+    issues.push({
+      level: "warning",
+      field: "args.--models-preset",
+      message: `Models preset requests GPU layers for ${formatPresetSections(presetRequests.map((request) => request.section))}, but no NVIDIA GPU was detected by nvidia-smi; child llama-server processes will likely ignore n-gpu-layers.`,
+    });
+  } catch (error) {
+    issues.push({
+      level: "warning",
+      field: "args.--models-preset",
+      message: `Unable to inspect models preset GPU-layer settings: ${(error as Error).message}`,
+    });
+  }
+}
+
 export function validateInstancePreflight(
   instance: Instance,
   options: PreflightOptions = {},
@@ -394,6 +549,7 @@ export function validateInstancePreflight(
   validatePort(instance, issues);
   validatePortConflicts(instance, issues, options.peers ?? []);
   validateKnownPathArgs(instance, issues);
+  validateGpuLayerRequests(instance, issues, options);
 
   return {
     instanceId: instance.id,

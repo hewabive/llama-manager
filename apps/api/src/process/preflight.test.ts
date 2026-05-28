@@ -161,3 +161,130 @@ test("validateInstanceStartPreflight blocks occupied host ports", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("validateInstancePreflight warns when direct GPU layers are requested without CUDA devices", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  try {
+    writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(binaryPath, 0o755);
+    writeFileSync(modelPath, "");
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--model": modelPath,
+          "--n-gpu-layers": "auto",
+        },
+      }),
+      { accelerators: [] },
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.--n-gpu-layers"),
+      {
+        level: "warning",
+        field: "args.--n-gpu-layers",
+        message:
+          "GPU layers are requested, but no NVIDIA GPU was detected by nvidia-smi; llama.cpp will likely ignore this option.",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateInstancePreflight warns when models preset requests GPU layers without CUDA devices", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const presetPath = join(dir, "models.ini");
+  try {
+    writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(binaryPath, 0o755);
+    writeFileSync(
+      presetPath,
+      [
+        "[Gemma]",
+        "model = /models/gemma.gguf",
+        "n-gpu-layers = auto",
+        "",
+        "[Qwen]",
+        "model = /models/qwen.gguf",
+        "gpu-layers = 0",
+      ].join("\n"),
+    );
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--models-preset": presetPath,
+        },
+      }),
+      { accelerators: [] },
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.--models-preset"),
+      {
+        level: "warning",
+        field: "args.--models-preset",
+        message:
+          "Models preset requests GPU layers for Gemma, but no NVIDIA GPU was detected by nvidia-smi; child llama-server processes will likely ignore n-gpu-layers.",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateInstancePreflight accepts GPU layers when an NVIDIA device is visible", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  try {
+    writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(binaryPath, 0o755);
+    writeFileSync(modelPath, "");
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--model": modelPath,
+          "--n-gpu-layers": "auto",
+        },
+      }),
+      {
+        accelerators: [
+          {
+            id: "0",
+            name: "NVIDIA Test GPU",
+            vendor: "NVIDIA",
+            kind: "gpu",
+            totalMemoryBytes: null,
+            availableMemoryBytes: null,
+            memoryUsedRatio: null,
+            utilizationPercent: null,
+            temperatureC: null,
+            source: "nvidia-smi",
+          },
+        ],
+      },
+    );
+
+    assert.equal(
+      result.issues.some((issue) => issue.field === "args.--n-gpu-layers"),
+      false,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
