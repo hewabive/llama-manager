@@ -11,6 +11,7 @@ import {
   NumberInput,
   Paper,
   ScrollArea,
+  Select,
   SimpleGrid,
   Stack,
   Switch,
@@ -22,11 +23,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
   createRouterInstance,
+  getLlamaArguments,
   getModelPreset,
   getModelPresetPreview,
   getModelScanSettings,
@@ -36,6 +38,15 @@ import {
 } from "../../api/client";
 import { HostPicker } from "../components/HostPicker";
 import { PathPickerInput } from "../components/PathPickerInput";
+import {
+  PresetKnownArgRow,
+  PresetRawArgRow,
+  buildPresetArgOptionMap,
+  isSelectablePresetArgument,
+  optionForPresetRow,
+  presetKeyFromArgument,
+  replacePresetArgRow,
+} from "../components/PresetArgumentRows";
 import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
 import { createUiId } from "../utils/id";
 import {
@@ -49,7 +60,6 @@ import {
 import {
   type PresetExtraArgRow,
   extraArgsToRows,
-  normalizePresetArgKey,
   parseGpuLayersInput,
   rowsToExtraArgs,
 } from "../utils/preset-args";
@@ -58,11 +68,32 @@ function PresetEntryDetailModal(props: {
   opened: boolean;
   entry: ModelPresetEntry | null;
   model: GgufModel | null;
+  binaryPath: string;
   onClose: () => void;
   onSave: (entry: ModelPresetEntry) => void;
 }) {
+  const queryClient = useQueryClient();
   const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
   const [extraRows, setExtraRows] = useState<PresetExtraArgRow[]>([]);
+  const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
+  const [argumentPickerKey, setArgumentPickerKey] = useState(0);
+  const argsCatalogQuery = useQuery({
+    queryKey: ["llama-args", props.binaryPath],
+    queryFn: () => getLlamaArguments(props.binaryPath),
+    enabled: props.opened && Boolean(props.binaryPath),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const argsCatalog = argsCatalogQuery.data?.data;
+  const knownArgs = argsCatalog?.options ?? [];
+  const knownArgByPresetKey = useMemo(
+    () => buildPresetArgOptionMap(knownArgs),
+    [knownArgs],
+  );
+  const selectablePresetArgs = useMemo(
+    () => knownArgs.filter(isSelectablePresetArgument),
+    [knownArgs],
+  );
 
   useEffect(() => {
     if (!props.opened || !props.entry) {
@@ -70,10 +101,39 @@ function PresetEntryDetailModal(props: {
     }
     setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
     setExtraRows(extraArgsToRows(props.entry.extraArgs));
+    setSelectedKnownArg(null);
+    setArgumentPickerKey((key) => key + 1);
   }, [props.entry, props.opened]);
+
+  const refreshArgsMutation = useMutation({
+    mutationFn: () => getLlamaArguments(props.binaryPath, true),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["llama-args", props.binaryPath], result);
+      notifications.show({
+        title: "Argument catalog refreshed",
+        message: `${result.data.options.length} options`,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Argument refresh failed",
+        message: (error as Error).message,
+      });
+    },
+  });
 
   function updateDraft(update: Partial<ModelPresetEntry>) {
     setDraft((current) => (current ? { ...current, ...update } : current));
+  }
+
+  function removeExtraRow(rowId: string) {
+    setExtraRows((rows) => {
+      const next = rows.filter((item) => item.id !== rowId);
+      return next.length > 0
+        ? next
+        : [{ id: createUiId("preset-arg"), key: "", value: "" }];
+    });
   }
 
   function save() {
@@ -195,60 +255,98 @@ function PresetEntryDetailModal(props: {
                 Add arg
               </Button>
             </Group>
-            {extraRows.map((row) => (
-              <Group key={row.id} gap="xs" align="flex-end" wrap="nowrap">
-                <TextInput
-                  label="Key"
-                  placeholder="chat-template"
-                  value={row.key}
-                  onChange={(event) =>
-                    setExtraRows((rows) =>
-                      rows.map((item) =>
-                        item.id === row.id
-                          ? {
-                              ...item,
-                              key: normalizePresetArgKey(
-                                event.currentTarget.value,
-                              ),
-                            }
-                          : item,
-                      ),
-                    )
+            <Group align="flex-end" gap="xs" wrap="nowrap">
+              <Select
+                key={argumentPickerKey}
+                label="Add INI argument"
+                placeholder={
+                  argsCatalogQuery.isError
+                    ? "Unable to read --help from router binary"
+                    : "Search llama-server args"
+                }
+                searchable
+                clearable
+                value={selectedKnownArg}
+                onChange={(value) => {
+                  if (!value) {
+                    setSelectedKnownArg(null);
+                    return;
                   }
-                  style={{ flex: 1 }}
-                />
-                <TextInput
-                  label="Value"
-                  placeholder="chatml"
-                  value={row.value}
-                  onChange={(event) =>
+                  const option = knownArgByPresetKey.get(value);
+                  if (option) {
                     setExtraRows((rows) =>
-                      rows.map((item) =>
-                        item.id === row.id
-                          ? { ...item, value: event.currentTarget.value }
-                          : item,
-                      ),
-                    )
+                      replacePresetArgRow(rows, option, knownArgByPresetKey),
+                    );
                   }
-                  style={{ flex: 1.4 }}
+                  setSelectedKnownArg(null);
+                  setArgumentPickerKey((key) => key + 1);
+                }}
+                data={selectablePresetArgs.map((option) => {
+                  const key = presetKeyFromArgument(option);
+                  return {
+                    value: key,
+                    label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
+                  };
+                })}
+                nothingFoundMessage={
+                  argsCatalogQuery.isFetching
+                    ? "Loading..."
+                    : "No preset arguments found"
+                }
+                disabled={argsCatalogQuery.isError}
+                style={{ flex: 1 }}
+              />
+              <Tooltip label="Reload from router binary --help">
+                <ActionIcon
+                  aria-label="Reload preset arguments from router binary help"
+                  variant="subtle"
+                  loading={
+                    argsCatalogQuery.isFetching || refreshArgsMutation.isPending
+                  }
+                  onClick={() => refreshArgsMutation.mutate()}
+                >
+                  <RefreshCw size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            {argsCatalogQuery.isError && (
+              <Text c="red" size="xs">
+                {(argsCatalogQuery.error as Error).message}
+              </Text>
+            )}
+            {extraRows.map((row) => {
+              const option = optionForPresetRow(row, knownArgByPresetKey);
+              const onChange = (nextRow: PresetExtraArgRow) =>
+                setExtraRows((rows) =>
+                  rows.map((item) => (item.id === row.id ? nextRow : item)),
+                );
+              const onRemove = () => removeExtraRow(row.id);
+              const canRemove =
+                extraRows.length > 1 || Boolean(row.key || row.value);
+
+              if (option) {
+                return (
+                  <PresetKnownArgRow
+                    key={row.id}
+                    row={row}
+                    option={option}
+                    canRemove={canRemove}
+                    onChange={onChange}
+                    onRemove={onRemove}
+                  />
+                );
+              }
+
+              return (
+                <PresetRawArgRow
+                  key={row.id}
+                  row={row}
+                  canRemove={canRemove}
+                  onChange={onChange}
+                  onRemove={onRemove}
                 />
-                <Tooltip label="Remove">
-                  <ActionIcon
-                    aria-label="Remove extra argument"
-                    variant="subtle"
-                    color="red"
-                    disabled={extraRows.length <= 1}
-                    onClick={() =>
-                      setExtraRows((rows) =>
-                        rows.filter((item) => item.id !== row.id),
-                      )
-                    }
-                  >
-                    <Trash2 size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-            ))}
+              );
+            })}
           </Stack>
 
           <Group justify="flex-end">
@@ -1034,6 +1132,7 @@ export function PresetsView() {
         opened={Boolean(selectedPresetEntry)}
         entry={selectedPresetEntry}
         model={selectedPresetModel}
+        binaryPath={routerBinaryPath}
         onClose={() => setSelectedPresetEntryId(null)}
         onSave={updateEntry}
       />
