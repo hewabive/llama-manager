@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--gpt-oss-20b-default"
 title: "--gpt-oss-20b-default"
-summary: "Черновая инженерная справка по --gpt-oss-20b-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет для gpt-oss-20b MXFP4. Задает HF repo/file, порт 8013, большой контекст, Jinja и sampling defaults."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,26 @@ aliases:
   - "--gpt-oss-20b-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--port"
+  - "--batch-size"
+  - "--ubatch-size"
+  - "--parallel"
+  - "--ctx-size"
+  - "--jinja"
+  - "--temp"
+  - "--top-p"
+  - "--top-k"
+  - "--min-p"
 ---
 
 # --gpt-oss-20b-default
 
 ## Кратко
 
-Черновая инженерная справка по --gpt-oss-20b-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--gpt-oss-20b-default` применяет встроенный пресет для `gpt-oss-20b` и задает параметры server, sampling и Jinja template mode. Флаг может скачать веса из Hugging Face.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +43,90 @@ use gpt-oss-20b (note: can download weights from the internet)
 ## Паспорт аргумента
 
 - Основное имя: `--gpt-oss-20b-default`
-- Алиасы: `--gpt-oss-20b-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до загрузки модели и chat template
+- Область: `llama-server`, `llama-cli`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/gpt-oss-20b-GGUF"`
+- `params.model.hf_file = "gpt-oss-20b-mxfp4.gguf"`
+- `params.port = 8013`
+- `params.n_ubatch = 2048`
+- `params.n_batch = 32768`
+- `params.n_parallel = 2`
+- `params.n_ctx = 131072 * params.n_parallel`, то есть `262144`
+- `params.sampling.temp = 1.0`
+- `params.sampling.top_p = 1.0`
+- `params.sampling.top_k = 0`
+- `params.sampling.min_p = 0.01`
+- `params.use_jinja = true`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+```bash
+llama-server --gpt-oss-20b-default
+```
+
+INI:
+
+```ini
+[gpt-oss-20b]
+gpt-oss-20b-default = true
+alias = gpt-oss
+tags = chat,gpt-oss
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для быстрого запуска gpt-oss-20b с теми sampling и context defaults, которые зашиты в llama.cpp. Это shortcut для chat/instruct сценариев, где нужен Jinja template engine.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+`n_ctx = 262144`, `n_batch = 32768` и `n_parallel = 2` могут заметно увеличить память под KV-cache и batch buffers. Если сервер падает по памяти, первым делом уменьшайте `--ctx-size` и `--batch-size`.
+
+`top_k = 0`, `top_p = 1.0`, `temp = 1.0`, `min_p = 0.01` меняют качество/стохастику генерации, но не загрузку весов.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Флаг задает `--jinja`, поэтому если нужен другой template режим, укажите явные chat-template/Jinja аргументы и проверьте итоговый лог.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+Для router mode задавайте alias/tags в `--models-preset`. Не смешивайте этот shortcut с другим `--hf-repo` или `--model` в одной секции.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+```ini
+[gpt-oss-20b]
+gpt-oss-20b-default = true
+alias = gpt-oss-20b
+load-on-startup = false
+stop-timeout = 30
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+При большом context этот preset лучше держать за `--no-models-autoload` и загружать явно.
+
+## Типовые проблемы и диагностика
+
+- OOM на старте или первом запросе: уменьшите `--ctx-size`, `--batch-size`, `--parallel` или offload.
+- Порт `8013` занят: задайте `--port`.
+- Непривычная генерация: проверьте sampling defaults, особенно `top_k = 0` и `min_p = 0.01`.
+- Скачивается `gpt-oss-20b-mxfp4.gguf`: это точный `hf_file`, заданный preset.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --gpt-oss-20b-default
+llama-server --gpt-oss-20b-default --ctx-size 65536 --port 8083
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --models-preset /srv/llama/gpt-oss.ini --no-models-autoload
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--gpt-oss-20b-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--gpt-oss-20b-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--gpt-oss-20b-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--gpt-oss-20b-default`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `/home/maxim/llama/llama.cpp/common/preset.cpp`: INI shortcut handling.

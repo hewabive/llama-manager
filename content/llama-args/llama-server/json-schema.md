@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--json-schema"
 title: "--json-schema"
-summary: "Черновая инженерная справка по --json-schema из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Принимает inline JSON Schema, парсит ее на старте и конвертирует в grammar для constrained JSON generation. Для external `$ref` текущая справка llama.cpp рекомендует заранее конвертировать schema в grammar."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "string"
 valueHint: "SCHEMA"
@@ -14,93 +14,157 @@ aliases:
   - "--json-schema"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--json-schema-file"
+  - "--grammar"
+  - "--grammar-file"
+  - "--backend-sampling"
+  - "--logit-bias"
 ---
 
 # --json-schema
 
 ## Кратко
 
-Черновая инженерная справка по --json-schema из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--json-schema` задает JSON Schema как строку CLI-аргумента. llama.cpp парсит JSON, конвертирует schema в grammar и использует grammar-based constrained generation.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Минимальный пример `{}` означает любой JSON object по help llama.cpp.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-JSON schema to constrain generations (https://json-schema.org/), e.g. `{}` for any JSON object For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead
+JSON schema to constrain generations (https://json-schema.org/), e.g. `{}` for any JSON object
+For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--json-schema`
 - Алиасы: `-j`, `--json-schema`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `SCHEMA`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип CLI-значения: строка `SCHEMA`
+- Поле в `common_params_sampling`: `grammar`
+- Тип grammar: `COMMON_GRAMMAR_TYPE_OUTPUT_FORMAT`
+- HTTP-поле: `json_schema`
+- OpenAI-compatible path: также может прийти через `response_format`
+- Значение по умолчанию: JSON schema отсутствует
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-обработчик выполняет `json::parse(value)`, затем `json_schema_to_grammar(...)`, затем записывает результат в `params.sampling.grammar` как output-format grammar. Если JSON невалиден, сервер не стартует.
 
-Для точного описания механики нужно проверить:
+В server request path поле `json_schema` конвертируется в grammar только если в том же task нет `grammar`. При ошибке конвертации task получает ошибку с префиксом `"json_schema": ...`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+В OpenAI-compatible обработке `response_format` поддерживает `{"type": "json_object"}` и `{"type": "json_schema", ...}`: эти варианты превращаются в `json_schema` до загрузки task params. Если одновременно заданы `json_schema` и непустая `grammar`, этот path бросает `Cannot use both json_schema and grammar`.
+
+## Значения и формат
+
+Значение должно быть валидным JSON, а не YAML и не JavaScript object literal.
+
+Примеры schema:
+
+```json
+{}
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "answer": { "type": "string" },
+    "score": { "type": "number" }
+  },
+  "required": ["answer"],
+  "additionalProperties": false
+}
+```
+
+Поддержка конкретных возможностей schema определяется `common/json-schema-to-grammar.cpp` и тестами `tests/test-json-schema-to-grammar.cpp`: там покрыты object/array/string/number/integer/boolean/null, `enum`, `const`, `anyOf`, `oneOf`, часть `allOf`, `additionalProperties`, internal `$ref` и другие случаи. Для external `$ref` следуйте предупреждению help: заранее конвертируйте schema в grammar и передайте через `--grammar` или `--grammar-file`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+Используйте `--json-schema`, если серверный default должен всегда отвечать JSON определенной формы. Для per-request разных схем чаще передавайте `json_schema` в HTTP body, чтобы не запускать отдельный процесс на каждую schema.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для больших schema и production-конфигов удобнее `--json-schema-file`, чтобы не бороться с shell quoting.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На старте или при разборе request есть стоимость парсинга JSON и конвертации schema в grammar. Во время генерации работает grammar sampler: он не меняет KV-cache и память модели, но добавляет CPU-side фильтрацию токенов и может увеличить sampling latency.
+
+Если сборка включает `LLAMA_USE_LLGUIDANCE`, `json_schema_to_grammar` может вернуть `%llguidance` JSON grammar path; без llguidance используется GBNF builder.
+
+`--backend-sampling` несовместим с grammar: при активной schema grammar backend sampling отключается с warning.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--json-schema-file`: то же преобразование, но schema читается из файла.
+- `--grammar` и `--grammar-file`: альтернативные constraint sources. Не задавайте одновременно несколько глобальных constraints, если не хотите зависеть от порядка CLI.
+- `--logit-bias`: не может разрешить токен, запрещенный schema-derived grammar.
+- `--mirostat`, `--temp`, `--samplers`: выбирают токены внутри пространства, разрешенного grammar.
+- `--backend-sampling`: отключается при grammar.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--json-schema` является sampling option и разрешен в `--models-preset`, но inline JSON в INI легко сломать кавычками. Для постоянных preset-ов обычно надежнее `--json-schema-file`.
 
-## Типовые проблемы
+```ini
+[model.json]
+json-schema = {"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+HTTP request `json_schema` или OpenAI-style `response_format` может переопределить default grammar для отдельной задачи.
+
+## Типовые проблемы и диагностика
+
+- Сервер не стартует: schema невалидна как JSON или содержит неподдержанную конструкцию converter-а.
+- Клиент получает `"json_schema": ...`: ошибка возникла при разборе или конвертации request schema.
+- Ответ не соответствует ожидаемому формату prompt-а: schema ограничивает только генерацию; prompt все равно должен просить модель вывести нужный JSON.
+- Одновременно заданы `grammar` и `json_schema`: в OpenAI-compatible path это ошибка, в `/completion` task path `grammar` имеет приоритет над `json_schema`.
+
+В debug логах request path печатает `JSON schema:` и `Converted grammar:`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --json-schema value
+llama-server --model /models/model.gguf --json-schema '{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"],"additionalProperties":false}'
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```json
+{
+  "prompt": "Верни JSON с полем answer",
+  "json_schema": {
+    "type": "object",
+    "properties": {
+      "answer": { "type": "string" }
+    },
+    "required": ["answer"],
+    "additionalProperties": false
+  }
+}
+```
 
-## Что проверить агенту перед переводом в current
+OpenAI-compatible `response_format`:
 
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "messages": [{ "role": "user", "content": "Верни JSON с полем answer" }],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "schema": {
+        "type": "object",
+        "properties": { "answer": { "type": "string" } },
+        "required": ["answer"]
+      }
+    }
+  }
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--json-schema&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--json-schema
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--json-schema
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `-j`/`--json-schema` и CLI conversion.
+- `/home/maxim/llama/llama.cpp/common/json-schema-to-grammar.cpp`: converter и llguidance/GBNF paths.
+- `/home/maxim/llama/llama.cpp/tests/test-json-schema-to-grammar.cpp`: покрытые schema features.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: request поле `json_schema` и conversion diagnostics.
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: `response_format` и конфликт `json_schema` с `grammar`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.

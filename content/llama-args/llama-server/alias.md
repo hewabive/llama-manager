@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--alias"
 title: "--alias"
-summary: "Псевдоним модели, который будет виден в API."
-docStatus: draft
+summary: "Задает одно или несколько API-имен модели. В router-режиме алиасы используются для поиска модели и должны быть уникальны."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "list"
 valueHint: "STRING"
@@ -16,19 +16,20 @@ allowedValues: []
 env:
   - "LLAMA_ARG_ALIAS"
 related:
-  - "--lora"
   - "--model"
+  - "--hf-repo"
   - "--models-dir"
   - "--models-preset"
+  - "--tags"
 ---
 
 # --alias
 
 ## Кратко
 
-Псевдоним модели, который будет виден в API.
+`--alias` добавляет модели одно или несколько имен, которые видны в API. Значение разбирается как comma-separated список; пробелы вокруг элементов удаляются, пустые элементы игнорируются.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+В одиночном server mode первый alias из внутреннего `std::set` становится `id` модели в `/models` и `/v1/models`. В router-режиме алиасы дополнительно работают как имена маршрутизации: запрос с `"model": "alias"` попадет в соответствующую модель.
 
 ## Оригинальная справка llama.cpp
 
@@ -39,76 +40,100 @@ set model name aliases, comma-separated (to be used by API)
 ## Паспорт аргумента
 
 - Основное имя: `--alias`
-- Алиасы: `-a`, `--alias`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `STRING`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_ALIAS`
-- Значение по умолчанию из `--help`: `не указано`
+- Алиасы CLI: `-a`, `--alias`
+- Тип: `STRING`, comma-separated list
+- Переменная окружения: `LLAMA_ARG_ALIAS`
+- Поле `common_params`: `model_alias`
+- Внутренний тип: `std::set<std::string>`
+- Этап применения: парсинг CLI/env, затем публикация metadata и router lookup
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Парсер делит значение по запятым, применяет `string_strip()` к каждому элементу и добавляет непустые строки в `params.model_alias`.
 
-Для точного описания механики нужно проверить:
+В single-model mode:
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `server_context` сохраняет все aliases в `model_aliases`;
+- если aliases не пусты, `model_name` берется из первого элемента `std::set`, то есть фактически в лексикографическом порядке;
+- `/models` и `/v1/models` возвращают `id` из `model_name` и массив `aliases`.
+
+В router mode:
+
+- aliases читаются из модельного preset до запуска дочернего процесса;
+- router проверяет конфликты alias с именами моделей и aliases других моделей;
+- `get_meta()` ищет модель по canonical name или alias;
+- дочернему `llama-server` router перезаписывает `--alias` canonical name модели.
+
+## Значения и формат
+
+```bash
+llama-server --model /srv/models/qwen.gguf --alias qwen-coder
+```
+
+```bash
+llama-server --model /srv/models/qwen.gguf --alias qwen-coder,coder,code
+```
+
+Регистр не нормализуется: `Coder` и `coder` являются разными строками. Запятые внутри alias не поддерживаются, потому что запятая является разделителем списка.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте `--alias`, чтобы клиенты не зависели от пути к GGUF, HF repo или имени секции INI. Это особенно полезно для OpenAI-compatible клиентов, где поле `model` часто ожидает короткое стабильное имя.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+В router mode задавайте alias в `--models-preset`, а не в глобальном CLI, если разные модели должны иметь разные имена.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На inference, RAM, VRAM, KV-cache и batch параметры не влияет. В router mode alias влияет только на lookup и на содержимое `/models`.
+
+Косвенный эффект возможен при конфликте имен: router может отказаться стартовать или пропустить конфликтующий alias при reload, из-за чего клиентский запрос по старому имени перестанет находить модель.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--tags` похож по формату, но tags не участвуют в маршрутизации.
 
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+`--models-preset` является основным местом для alias в router:
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[qwen2.5-coder-7b-q8_0]
+model = /srv/models/qwen2.5-coder-7b-q8_0.gguf
+alias = coder,qwen-coder
+tags = code,local
+```
 
-## Типовые проблемы
+Если `--alias` задан глобально в CLI router-процесса, он попадает в base preset и может быть слит со всеми модельными пресетами до того, как router перезапишет alias дочернему процессу. Для multi-model конфигурации это обычно нежелательно.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## INI-пресеты и router-режим
+
+В INI ключ пишется как `alias = ...` или `LLAMA_ARG_ALIAS = ...`.
+
+При первой загрузке router останавливается на конфликте alias с существующим именем модели или alias другой модели. При reload конфликтующий alias логируется предупреждением `(reload) alias ... conflicts ... skipping` и не добавляется.
+
+## Типовые проблемы и диагностика
+
+- `/models` показывает неожиданный `id`: при нескольких aliases single-model server берет первый элемент отсортированного `std::set`, а не первый элемент исходной строки.
+- Router отвечает `model 'x' not found`: проверьте, что alias есть в JSON `/models` и не был пропущен из-за конфликта.
+- Старт router падает на конфликте: alias совпал с именем другой модели или чужим alias.
+- Клиенты используют путь к модели вместо alias: задайте короткое имя и используйте его в JSON поле `model`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --alias value1,value2
+llama-server --model /srv/models/qwen.gguf --alias coder
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --models-preset /srv/llama/models.ini
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+curl -s http://127.0.0.1:8080/models
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--alias&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--alias
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--alias
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: парсинг `--alias`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `model_alias`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: выбор `model_name`, поля `/models`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router aliases, conflict validation, lookup.
+- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_basic.py`: проверка aliases/tags и порядка `id`.

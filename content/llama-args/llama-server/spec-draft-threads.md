@@ -2,20 +2,22 @@
 schema: 1
 primaryName: "--spec-draft-threads"
 title: "--spec-draft-threads"
-summary: "Черновая инженерная справка по --spec-draft-threads из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает число CPU-потоков, с которым draft-контекст speculative decoding выполняет generation. Если не задано, после постобработки наследует итоговое значение `--threads`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "number"
+valueHint: "N"
 aliases:
-  - "--spec-draft-threads"
   - "-td"
-  - "--threads-dra"
+  - "--threads-draft"
 allowedValues: []
 env: []
 related:
+  - "--spec-draft-model"
+  - "--spec-type"
+  - "--spec-draft-threads-batch"
   - "--threads"
   - "--threads-batch"
   - "--threads-http"
@@ -25,88 +27,89 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-threads из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-draft-threads` управляет CPU-потоками draft-модели в speculative decoding. Это отдельная настройка от `--threads`: target-модель продолжает использовать основной CPU-профиль, а draft-контекст получает свое число потоков при загрузке draft-модели.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ft N number of threads to use during generation (default: same as --threads)
+number of threads to use during generation (default: same as --threads)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-threads`
-- Алиасы: `--spec-draft-threads`, `-td`, `--threads-dra`
+- Алиасы: `-td`, `--threads-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `same as --threads`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `same as --threads`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик CLI записывает значение в `params.speculative.draft.cpuparams.n_threads`. Если передано `0` или отрицательное число, обработчик сразу заменяет его на `std::thread::hardware_concurrency()`.
 
-Для точного описания механики нужно проверить:
+После разбора аргументов `postprocess_cpu_params()` дополняет draft CPU-профиль из основного `params.cpuparams`, если draft-профиль остался незаданным. В `tools/server/server-context.cpp` при загрузке draft-модели создается `params_dft = params_base`; если `params.speculative.draft.cpuparams.n_threads > 0`, сервер копирует `n_threads` в `params_dft.cpuparams.n_threads`. Затем `common_context_params_to_llama()` переносит это значение в `llama_context_params.n_threads` draft-контекста.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Аргумент имеет смысл только когда используется draft-контекст: например, задан `--spec-draft-model` или включен draft/MTP speculative type, который реально создает draft-контекст. Ngram-only speculative decoding не использует этот параметр как отдельную draft-модель.
+
+## Значения и формат
+
+`N` - целое число. Положительное значение фиксирует число CPU-потоков draft generation. Явно переданные `0`, `-1` и другие отрицательные значения превращаются в `std::thread::hardware_concurrency()`, а полностью незаданное значение наследует итоговый `--threads` через постобработку.
+
+Практически полезные значения обычно меньше, чем для target-модели: draft-модель должна быть дешевой и не должна отбирать все CPU у проверки токенов target-моделью.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Настраивайте `--spec-draft-threads`, если draft-модель считает заметную часть графа на CPU, а speculative decoding не ускоряет сервер из-за конкуренции потоков. На CPU-only сервере часто выгодно дать draft-модели несколько ядер, а target оставить основной пул. На GPU-heavy draft-модели параметр может почти не влиять.
 
 ## Влияние на производительность и память
 
-- Влияет на загрузку CPU. Больше потоков не всегда быстрее из-за конкуренции за cache, NUMA и фоновых процессов.
-- Для серверного режима отдельно оценивайте потоки генерации, batch-обработки и HTTP-обработки.
+Память модели, VRAM и KV-cache напрямую не меняются. Меняется CPU latency draft-step и конкуренция с target generation, prompt processing и HTTP worker threads. Слишком большое значение может снизить acceptance benefit speculative decoding: draft быстро генерирует кандидаты, но target и серверные потоки начинают ждать CPU.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-threads-batch` задает batch/prompt CPU-потоки draft-контекста; если он не задан, через постобработку наследуется draft generation-профиль.
+- `--threads` является fallback для draft CPU-профиля, когда `--spec-draft-threads` не задан.
+- `--threads-batch` является fallback для `--spec-draft-threads-batch`, если batch-профиль draft не задан.
+- `--spec-draft-cpu-mask`, `--spec-draft-cpu-strict`, `--spec-draft-prio` и `--spec-draft-poll` парсятся в draft CPU-профиль, но в текущем `server-context.cpp` при загрузке draft-модели явно копируются только thread counts. Для affinity/priority/polling проверяйте фактическое поведение на вашей сборке.
+- Старые `--draft`, `--draft-n`, `--draft-max` удалены и не заменяют этот параметр; для числа draft-токенов используйте `--spec-draft-n-max`.
 
-- `--threads`
-- `--threads-batch`
-- `--threads-http`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` аргумент можно задавать как CLI-ключ без ведущих дефисов. `common_preset::to_args()` рендерит последнюю форму алиаса, поэтому канонический ключ для пресета - `threads-draft = 4`.
 
-## Типовые проблемы
+Router удаляет сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_ALIAS`, `LLAMA_ARG_HF_REPO`; draft CPU-параметры не входят в список reserved args и могут передаваться дочернему `llama-server`.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Если speculative decoding не активен, параметр будет разобран, но отдельного draft-контекста не появится. Ищите в логах `loading draft model`, `creating MTP draft context` и `speculative decoding context initialized`.
+- Если `N` слишком велик, возможен рост latency из-за конкуренции с `--threads`, `--threads-batch` и `--threads-http`.
+- Если `--spec-draft-threads-batch` не задан, batch-профиль draft наследует draft generation-профиль после постобработки.
+- Для общей проверки CPU-профиля смотрите `system_info: n_threads = ...`; draft-specific thread count отдельно в server log не печатается в проверенном коде.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-threads value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --threads 12 --spec-draft-threads 3 --threads-http 4
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-threads&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-threads
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-threads
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--spec-draft-threads`, обработчик CLI и постобработка CPU-профилей.
+- `/home/maxim/llama/llama.cpp/common/common.h` - `common_cpu_params` и поля `common_params_speculative`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - `postprocess_cpu_params()` и перенос thread counts в `llama_context_params`.
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp` - инициализация speculative implementations.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование draft thread counts.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - актуальная строка help и пример `model-draft` в presets.

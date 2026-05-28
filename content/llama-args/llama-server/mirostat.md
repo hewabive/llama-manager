@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--mirostat"
 title: "--mirostat"
-summary: "Черновая инженерная справка по --mirostat из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает Mirostat sampling: `0` выключено, `1` Mirostat, `2` Mirostat 2.0. При включении обычная sampler chain с `top_k`, `top_p`, `typ_p`, `penalties` и `dry` не используется."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"
@@ -13,93 +13,116 @@ aliases:
   - "--mirostat"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--mirostat-lr"
+  - "--mirostat-ent"
+  - "--temp"
+  - "--samplers"
 ---
 
 # --mirostat
 
 ## Кратко
 
-Черновая инженерная справка по --mirostat из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--mirostat` переключает sampling в режим Mirostat, который пытается удерживать целевую энтропию генерации. В текущем коде поддерживаются режимы `0`, `1` и `2`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Default: `0`, Mirostat выключен.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-use Mirostat sampling. Top K, Nucleus and Locally Typical samplers are ignored if used. (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)
+use Mirostat sampling.
+Top K, Nucleus and Locally Typical samplers are ignored if used.
+(default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--mirostat`
 - Алиасы: `--mirostat`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0`
+- Тип CLI-значения: целое число `N`
+- Поле в `common_params_sampling`: `mirostat`
+- HTTP-поле: `mirostat`
+- Значение по умолчанию: `0`
+- Поддерживаемые значения по help и `sampling.cpp`: `0`, `1`, `2`
+- Явной CLI-проверки диапазона нет; неизвестная версия приводит к assert `unknown mirostat version` при инициализации sampler.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При `--mirostat 0` llama.cpp строит обычную цепочку `params.samplers`: `penalties`, `dry`, `top_n_sigma`, `top_k`, `typ_p`, `top_p`, `min_p`, `xtc`, `temperature`, затем `dist`.
 
-Для точного описания механики нужно проверить:
+При `--mirostat 1` цепочка меняется на `temperature` плюс `llama_sampler_init_mirostat(..., mirostat_tau, mirostat_eta, 100)`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+При `--mirostat 2` цепочка меняется на `temperature` плюс `llama_sampler_init_mirostat_v2(..., mirostat_tau, mirostat_eta)`.
+
+`logit_bias`, grammar и reasoning budget обрабатываются отдельно от этой ветки, поэтому они могут продолжать влиять на генерацию.
+
+## Значения и формат
+
+- `0`: выключить Mirostat, использовать обычную sampler chain.
+- `1`: включить Mirostat v1.
+- `2`: включить Mirostat 2.0.
+- Другие значения не используйте: код не имеет мягкого fallback и может завершить процесс assert-ом.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Mirostat имеет смысл для экспериментов с более стабильной "surprise"/энтропией длинной генерации, когда обычная комбинация `--temp`, `--top-p` и `--min-p` дает слишком резкие переходы между скучным и хаотичным текстом.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для production endpoint с предсказуемыми форматами сначала проверьте, что отключение обычных `penalties` и DRY вам подходит. Mirostat может ухудшить контроль повторов, если вы рассчитывали на `--repeat-penalty` или `--dry-multiplier`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+KV-cache, RAM модели и VRAM не меняются. Стоимость находится в CPU-side sampling. Обычно она мала, но сравнивайте latency на той же модели, потому что при `mirostat != 0` меняется вся sampler chain.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--mirostat-lr`: learning rate `eta`.
+- `--mirostat-ent`: target entropy `tau`.
+- `--temp`: все еще применяется перед Mirostat sampler.
+- `--top-k`, `--top-p`, `--typical-p`, `--min-p`, `--xtc-*`, `--top-nsigma`: не добавляются в chain при `mirostat != 0`.
+- `--repeat-penalty`, `--presence-penalty`, `--frequency-penalty`, `--dry-*`: default `penalties` и `dry` тоже не добавляются при `mirostat != 0`.
+- `--logit-bias` и `--grammar`: применяются вне обычной sampler chain и остаются релевантными.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--mirostat` является sampling option и разрешен в `--models-preset`:
 
-## Типовые проблемы
+```ini
+[model.experimental]
+mirostat = 2
+mirostat-ent = 5.0
+mirostat-lr = 0.1
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+HTTP-запрос может переопределить default через поле `mirostat`.
+
+## Типовые проблемы и диагностика
+
+- `--top-p` и `--top-k` "не работают": при Mirostat это ожидаемо, обычные вероятностные samplers не используются.
+- Повторов стало больше: Mirostat отключил default `penalties`/DRY chain; верните `--mirostat 0` или контролируйте повторы другим способом.
+- Процесс падает при странном значении: используйте только `0`, `1` или `2`.
+
+В trace/debug логах `sampler params` печатает `mirostat`, `mirostat_lr` и `mirostat_ent`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --mirostat 1
+llama-server --model /models/model.gguf --mirostat 2 --mirostat-ent 5.0 --mirostat-lr 0.1
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "prompt": "Напиши длинный связный текст",
+  "mirostat": 2,
+  "mirostat_tau": 5.0,
+  "mirostat_eta": 0.1
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--mirostat&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--mirostat
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--mirostat
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--mirostat`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: default `mirostat = 0`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: ветки Mirostat v1/v2 и обычной sampler chain.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.

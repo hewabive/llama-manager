@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--checkpoint-min-step"
 title: "--checkpoint-min-step"
-summary: "Черновая инженерная справка по --checkpoint-min-step из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Минимальное расстояние между context checkpoints в токенах. `0` снимает ограничение, отрицательные значения запрещены парсером."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"
@@ -15,16 +15,19 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_CHECKPOINT_MIN_SPACING_NT"
-related: []
+related:
+  - "--ctx-checkpoints"
+  - "--cache-ram"
+  - "--cache-prompt"
 ---
 
 # --checkpoint-min-step
 
 ## Кратко
 
-Черновая инженерная справка по --checkpoint-min-step из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--checkpoint-min-step` задает `common_params::checkpoint_min_step`: минимальный разрыв в токенах между context checkpoints одного слота.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию `256`; `0` означает "без минимального разрыва".
 
 ## Оригинальная справка llama.cpp
 
@@ -36,72 +39,60 @@ minimum spacing between context checkpoints in tokens (default: 256, 0 = no mini
 
 - Основное имя: `--checkpoint-min-step`
 - Алиасы: `-cms`, `--checkpoint-min-step`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CHECKPOINT_MIN_SPACING_NT`
-- Значение по умолчанию из `--help`: `256, 0 = no minimum`
+- Значение по умолчанию: `256`
+- Переменная окружения: `LLAMA_ARG_CHECKPOINT_MIN_SPACING_NT`
+- Поле llama.cpp: `common_params::checkpoint_min_step`
+- Валидация: `value < 0` выбрасывает `checkpoint-min-step must be non-negative`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При prompt processing checkpoint создается только если текущая позиция дальше предыдущего checkpoint больше чем `checkpoint_min_step`. Условие выглядит как `n_tokens_start > last_checkpoint.n_tokens + checkpoint_min_step`.
 
-Для точного описания механики нужно проверить:
+Если `--ctx-checkpoints 0`, этот параметр фактически не используется.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `0`: разрешить checkpoints без минимального интервала.
+- Положительное число: минимальный интервал в токенах.
+- Отрицательное число: ошибка парсинга.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Увеличивайте, если checkpoints создаются слишком часто и RAM растет. Уменьшайте, если часто видите full prompt re-processing из-за отсутствия подходящего checkpoint.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Меньшее значение создает больше checkpoints: больше RAM и overhead, но выше шанс быстрого восстановления. Большее значение экономит память, но может привести к повторной обработке большего prompt suffix.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--ctx-checkpoints`: включает/задает максимум checkpoints.
+- `--cache-ram`: хранит prompt states и checkpoints в RAM.
+- `--cache-prompt`: использует восстановленное состояние при reuse.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `checkpoint-min-step = 256` или `LLAMA_ARG_CHECKPOINT_MIN_SPACING_NT`. В router-режиме применяется к дочернему процессу модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Ошибка запуска `checkpoint-min-step must be non-negative` означает отрицательное значение.
+- Лог `context checkpoints enabled, max = ..., min spacing = ...` показывает фактический параметр.
+- Логи `created context checkpoint` и `erasing old context checkpoint` помогают подобрать баланс.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --checkpoint-min-step 1
+llama-server --model /models/model.gguf --ctx-checkpoints 32 --checkpoint-min-step 128
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --ctx-checkpoints 16 --checkpoint-min-step 512
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--checkpoint-min-step&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--checkpoint-min-step
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--checkpoint-min-step
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

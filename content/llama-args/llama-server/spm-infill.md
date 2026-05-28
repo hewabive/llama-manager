@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spm-infill"
 title: "--spm-infill"
-summary: "Черновая инженерная справка по --spm-infill из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Переключает порядок FIM prompt для `/infill` с Prefix/Suffix/Middle на Suffix/Prefix/Middle. Нужен отдельным infill-моделям, обученным на SPM pattern."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,19 @@ aliases:
   - "--spm-infill"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--fim-qwen-1.5b-default"
+  - "--fim-qwen-3b-default"
+  - "--fim-qwen-7b-default"
 ---
 
 # --spm-infill
 
 ## Кратко
 
-Черновая инженерная справка по --spm-infill из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spm-infill` ставит `common_params::spm_infill = true`. В endpoint `/infill` это меняет порядок частей FIM prompt: вместо prefix затем suffix server подает suffix затем prefix перед `FIM_MID`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Флаг влияет только на infill formatting, а не на обычный chat/completion.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +36,64 @@ use Suffix/Prefix/Middle pattern for infill (instead of Prefix/Suffix/Middle) as
 ## Паспорт аргумента
 
 - Основное имя: `--spm-infill`
-- Алиасы: `--spm-infill`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `disabled`
+- Тип: флаг без значения
+- Поле `common_params`: `spm_infill`
+- По умолчанию: disabled
+- Этап применения: formatting `/infill` request
+- Env: не задан
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `format_prompt_infill()` server tokenizes `input_prefix` и `input_suffix`, добавляет FIM tokens и затем выбирает:
 
-Для точного описания механики нужно проверить:
+- default: `embd_inp = tokens_prefix`, `embd_end = tokens_suffix`;
+- с `--spm-infill`: `embd_inp = tokens_suffix`, `embd_end = tokens_prefix`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+После этого добавляется `FIM_MID`. Если tokenizer имеет repo-level FIM tokens, extra context добавляется перед FIM prefix по README pattern.
+
+## Значения и формат
+
+Флаг без значения:
+
+```bash
+llama-server --model /models/infill.gguf --spm-infill
+```
+
+Отрицательной формы в `arg.cpp` нет; чтобы выключить, уберите флаг.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только с моделями, для которых известно, что они ожидают Suffix/Prefix/Middle порядок. Если модель обучена на стандартном Prefix/Suffix/Middle, включение `--spm-infill` ухудшит infill.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На память и скорость почти не влияет: меняется порядок уже токенизированных частей prompt. Качество и вероятность корректного заполнения могут измениться существенно.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- FIM default presets могут требовать отдельного подбора этого флага.
+- `--batch-size`, `--ctx-size`, `--predict`: влияют на то, сколько prefix/suffix/extra context попадет в infill prompt.
+- `/infill` request fields `input_prefix`, `input_suffix`, `input_extra`, `prompt` определяют содержимое частей.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `spm-infill = true` в секции infill-модели. В router mode не включайте глобально для всех моделей: порядок FIM является model-specific.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Infill вставляет нерелевантный код: проверьте, соответствует ли `--spm-infill` training pattern модели.
+- Endpoint `/infill` отвечает `Infill is not supported by this model`: проблема не в `--spm-infill`, а в отсутствии нужных FIM tokens/поддержки.
+- Смотрите debug log `n_prefix_take`, `n_suffix_take`, `total` для проверки, сколько контекста попало в prompt.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spm-infill
+llama-server --model /models/qwen-infill.gguf --spm-infill
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spm-infill&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spm-infill
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spm-infill
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--spm-infill`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::spm_infill`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: `format_prompt_infill()`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: `/infill` prompt pattern.

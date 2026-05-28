@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--n-cpu-moe"
 title: "--n-cpu-moe"
-summary: "Черновая инженерная справка по --n-cpu-moe из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Оставляет MoE expert weights первых `N` блоков на CPU. `0` не добавляет overrides, отрицательные значения запрещены парсером."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"
@@ -15,16 +15,19 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_N_CPU_MOE"
-related: []
+related:
+  - "--cpu-moe"
+  - "--gpu-layers"
+  - "--override-tensor"
+  - "--fit"
+  - "--device"
 ---
 
 # --n-cpu-moe
 
 ## Кратко
 
-Черновая инженерная справка по --n-cpu-moe из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--n-cpu-moe N` размещает MoE expert weights первых `N` layers на CPU. Это более мягкая версия `--cpu-moe`: можно разгрузить VRAM частично, не перенося всех experts на CPU.
 
 ## Оригинальная справка llama.cpp
 
@@ -37,71 +40,79 @@ keep the Mixture of Experts (MoE) weights of the first N layers in the CPU
 - Основное имя: `--n-cpu-moe`
 - Алиасы: `-ncmoe`, `--n-cpu-moe`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_N_CPU_MOE`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип значения в llama-manager: `number`
+- Формат: целое число `N`
+- Переменная окружения: `LLAMA_ARG_N_CPU_MOE`
+- Поле в `common_params`: `tensor_buft_overrides`
+- Этап применения: парсинг CLI/env, загрузка модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common/arg.cpp` обработчик запрещает `value < 0`. Для каждого `i` от `0` до `N - 1` он добавляет override pattern вида:
 
-Для точного описания механики нужно проверить:
+```text
+blk.<i>\.ffn_(up|down|gate|gate_up)_(ch|)exps
+```
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+с CPU buffer type. Эти overrides передаются loader-у модели через `llama_model_params::tensor_buft_overrides`.
+
+## Значения и формат
+
+- `0`: не добавляет ни одного override; фактически выключено.
+- Положительное целое: число первых blocks/layers, чьи MoE experts остаются на CPU.
+- Отрицательное значение вызывает `invalid value`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Нужно сэкономить часть VRAM, но полный `--cpu-moe` слишком медленный.
+- Требуется подобрать баланс VRAM/latency для конкретной MoE-модели.
+- Первые layers дают достаточную экономию для запуска нужного `--ctx-size` или `--parallel`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Чем больше `N`, тем больше MoE expert tensors уходит в RAM и тем меньше VRAM нужно. Latency обычно растет постепенно вместе с `N`. Подбирайте значение ступенчато и измеряйте не только старт, но и реальную генерацию.
+
+Как и `--cpu-moe`, этот параметр добавляет tensor buffer overrides и может конфликтовать с auto fit: при ошибке `model_params::tensor_buft_overrides already set by user, abort` повторите запуск с `--fit off` для проверки.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--cpu-moe` сильнее: переносит все MoE expert tensors на CPU.
+- `--gpu-layers` задает общий offload, `--n-cpu-moe` уточняет размещение expert tensors первых blocks.
+- `--override-tensor` может использоваться для ручных patterns; не дублируйте те же tensors двумя способами.
+- Для draft-модели есть отдельный `--spec-draft-n-cpu-moe`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[moe-model]
+gpu-layers = all
+n-cpu-moe = 8
+```
 
-## Типовые проблемы
+В router mode задавайте `n-cpu-moe` per-model. Разные MoE-модели могут иметь разное число layers и разный VRAM/latency баланс.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `invalid value`: `N` не может быть отрицательным.
+- Нет экономии VRAM: проверьте, что выбранные первые blocks действительно содержат MoE expert tensors.
+- Слишком медленно: уменьшайте `N` или используйте больше GPU offload.
+- Fit падает до загрузки модели: проверьте конфликт с tensor buffer overrides.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --n-cpu-moe 1
+llama-server --model /models/moe.gguf --gpu-layers all --n-cpu-moe 8
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+LLAMA_ARG_N_CPU_MOE=4 llama-server --model /models/moe.gguf --gpu-layers 99
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--n-cpu-moe&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--n-cpu-moe
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--n-cpu-moe
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/fit.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

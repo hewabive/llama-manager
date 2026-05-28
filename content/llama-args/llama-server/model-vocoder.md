@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--model-vocoder"
 title: "--model-vocoder"
-summary: "Черновая инженерная справка по --model-vocoder из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает локальный GGUF-файл vocoder-модели для audio generation/TTS. Это отдельная модель от основного `--model` и от multimodal projector `--mmproj`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "FNAME"
@@ -15,20 +15,20 @@ aliases:
 allowedValues: []
 env: []
 related:
-  - "--alias"
-  - "--lora"
+  - "--hf-repo-v"
+  - "--hf-file-v"
+  - "--hf-token"
+  - "--tts-use-guide-tokens"
   - "--model"
-  - "--models-dir"
-  - "--models-preset"
 ---
 
 # --model-vocoder
 
 ## Кратко
 
-Черновая инженерная справка по --model-vocoder из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--model-vocoder` задает локальный путь к vocoder GGUF для аудио generation/TTS. Значение записывается в `common_params.vocoder.model.path` и обрабатывается через общий механизм `common_params_handle_model()` вместе с HF/URL вариантами vocoder model.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это не основной LLM и не `mmproj`: `--model` отвечает за text/multimodal backbone, `--mmproj` - за projector для multimodal input, а vocoder - за аудио-выход в TTS pipeline.
 
 ## Оригинальная справка llama.cpp
 
@@ -41,75 +41,71 @@ vocoder model for audio generation (default: unused)
 - Основное имя: `--model-vocoder`
 - Алиасы: `-mv`, `--model-vocoder`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
+- Тип значения в llama-manager: `path`
 - Подсказка формата из `--help`: `FNAME`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `unused`
+- Переменные окружения: не указаны
+- Значение по умолчанию: не используется
+- Внутреннее поле: `common_params.vocoder.model.path`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На парсинге CLI путь сохраняется в `params.vocoder.model.path`. При `common_params_handle_models()` vocoder обрабатывается отдельным вызовом `common_params_handle_model(params.vocoder.model, params.hf_token, params.offline)`.
 
-Для точного описания механики нужно проверить:
+Если задан только локальный путь, он остается как есть. Если вместе с vocoder HF repo используются `--hf-repo-v`/`--hf-file-v`, downloader может заменить путь на файл из HF cache.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Ожидается путь к локальному GGUF-файлу vocoder model. Для управляемого сервиса используйте абсолютный путь и проверьте права чтения.
+
+Если vocoder хранится в HF repo, используйте `--hf-repo-v` и при необходимости `--hf-file-v`, а не прямой локальный путь.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
+Используйте `--model-vocoder`, когда vocoder уже подготовлен локально и запуск должен быть независим от сети. Это предпочтительно для production и offline-развертываний.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не добавляйте vocoder к обычному text-only серверу без TTS/audio generation сценария: это лишняя модель, память и время старта.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Vocoder увеличивает memory footprint и может добавить время старта. Runtime-влияние проявляется на аудио generation/TTS запросах; обычные text completions не становятся быстрее от наличия vocoder.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--hf-repo-v`/`--hf-file-v`: удаленный вариант выбора vocoder.
+- `--hf-token`: используется, если vocoder скачивается из HF.
+- `--offline`: для HF vocoder требует cache; для локального `--model-vocoder` сетевых обращений нет.
+- `--tts-use-guide-tokens`: отдельная настройка TTS accuracy, может применяться вместе с vocoder.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI:
 
-## Типовые проблемы
+```ini
+[tts_local]
+model = /srv/models/text.gguf
+model-vocoder = /srv/models/vocoder.gguf
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В router-режиме убедитесь, что путь доступен дочернему процессу и одинаково интерпретируется относительно его CWD. Абсолютные пути предпочтительнее.
+
+## Типовые проблемы и диагностика
+
+- Сервер не стартует: проверьте, что vocoder файл существует и является GGUF.
+- Аудио/TTS endpoint падает, text работает: проверьте наличие vocoder и совместимость с выбранным TTS pipeline.
+- В логе путь vocoder отличается от ожидаемого: проверьте, не задан ли `--hf-repo-v`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --model-vocoder /path/to/value
+llama-server --model /srv/models/text.gguf --model-vocoder /srv/models/vocoder.gguf
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --hf-repo owner/text-GGUF:Q4_K_M --model-vocoder /srv/models/vocoder.gguf
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--model-vocoder&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--model-vocoder
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--model-vocoder
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

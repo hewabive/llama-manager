@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--control-vector-layer-range"
 title: "--control-vector-layer-range"
-summary: "Черновая инженерная справка по --control-vector-layer-range из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Ограничивает inclusive диапазон слоев, к которым применяется control vector. Если диапазон не задан, используется `1..n_layer`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "START END"
@@ -13,16 +13,19 @@ aliases:
   - "--control-vector-layer-range"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--control-vector"
+  - "--control-vector-scaled"
+  - "--model"
 ---
 
 # --control-vector-layer-range
 
 ## Кратко
 
-Черновая инженерная справка по --control-vector-layer-range из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--control-vector-layer-range` задает inclusive диапазон слоев для применения control vector. Обработчик читает два аргумента `START` и `END`, сохраняет их в `common_params.control_vector_layer_start` и `common_params.control_vector_layer_end`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Если control vectors есть, но диапазон не задан или значения `<= 0`, llama.cpp заменяет start на `1`, end на `llama_model_n_layer(model)`.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,71 +38,75 @@ layer range to apply the control vector(s) to, start and end inclusive
 - Основное имя: `--control-vector-layer-range`
 - Алиасы: `--control-vector-layer-range`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `string` (строка)
+- Тип значения в llama-manager: `string`
 - Подсказка формата из `--help`: `START END`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Переменные окружения: не указаны
+- Значение по умолчанию: `1..n_layer` при наличии control vectors
+- Внутренние поля: `common_params.control_vector_layer_start`, `common_params.control_vector_layer_end`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При наличии control vectors диапазон передается в:
 
-Для точного описания механики нужно проверить:
+```text
+llama_set_adapter_cvec(ctx, data, size, n_embd, start, end)
+```
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Диапазон inclusive, то есть `4 28` включает и layer 4, и layer 28. Tensor data в vector хранится для layers `[1, n_layer]`; layer `0` не используется.
+
+## Значения и формат
+
+CLI требует два отдельных значения:
+
+```text
+--control-vector-layer-range 4 28
+```
+
+Оба значения парсятся через `std::stoi`. В `arg.cpp` нет явной проверки, что start <= end или что end не больше числа слоев; некорректный диапазон проявится при применении adapter или в качестве результата.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте диапазон, когда control vector слишком сильно влияет на всю модель или был рассчитан для определенной части слоев. Без необходимости оставляйте default: весь диапазон слоев модели.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Диапазон меняет область применения vector, а не размер загружаемого файла. Узкий диапазон может уменьшить вычислительное влияние adapter и изменить качество steering, но не обязан заметно снизить memory footprint, потому что vector data уже загружен.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--control-vector` и `--control-vector-scaled`: диапазон имеет смысл только если задан хотя бы один vector.
+- `--model`: число слоев и `n_embd` берутся из базовой модели.
+- `--lora`: может использоваться вместе, но эффекты adapters накладываются.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[cvec_middle_layers]
+model = /srv/models/base.gguf
+control-vector = /srv/cvec/helpful.gguf
+control-vector-layer-range = 4 28
+```
 
-## Типовые проблемы
+В preset значение должно сохранять два числа как аргументы одного параметра. Проверьте, как llama-manager сериализует multi-value параметры в argv.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- CLI ошибка парсинга: передано не два числа.
+- Steering не ощущается: диапазон слишком узкий или не включает слои, где vector содержит directions.
+- Генерация деградирует: сузьте диапазон или уменьшите scale через `--control-vector-scaled`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --control-vector-layer-range value
+llama-server --model /srv/models/base.gguf --control-vector /srv/cvec/helpful.gguf --control-vector-layer-range 4 28
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/base.gguf --control-vector-scaled /srv/cvec/helpful.gguf:0.5 --control-vector-layer-range 1 16
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--control-vector-layer-range&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--control-vector-layer-range
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--control-vector-layer-range
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`

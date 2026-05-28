@@ -2,30 +2,31 @@
 schema: 1
 primaryName: "--draft"
 title: "--draft"
-summary: "Черновая инженерная справка по --draft из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Legacy-аргумент удален из llama.cpp: передача `--draft`, `--draft-n` или `--draft-max` завершает парсинг ошибкой. Для draft-модели используйте `--spec-draft-n-max`, для ngram-mod - `--spec-ngram-mod-n-max`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ", N"
+valueType: "number"
+valueHint: "N"
 aliases:
-  - "--draft"
   - "--draft-n"
   - "--draft-max"
 allowedValues: []
 env:
   - "LLAMA_ARG_DRAFT_MAX"
-related: []
+related:
+  - "--spec-draft-n-max"
+  - "--spec-ngram-mod-n-max"
+  - "--spec-draft-model"
+  - "--spec-type"
 ---
 
 # --draft
 
 ## Кратко
 
-Черновая инженерная справка по --draft из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--draft` больше не является рабочим параметром speculative decoding. В текущем llama.cpp он оставлен только как removed stub, чтобы запуск завершался понятной ошибкой и подсказывал новые аргументы.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,73 +37,74 @@ the argument has been removed. use --spec-draft-n-max or --spec-ngram-mod-n-max
 ## Паспорт аргумента
 
 - Основное имя: `--draft`
-- Алиасы: `--draft`, `--draft-n`, `--draft-max`
+- Алиасы: `--draft-n`, `--draft-max`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `, N`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не применимо, аргумент удален`
 - Переменные окружения: `LLAMA_ARG_DRAFT_MAX`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение по умолчанию: `не применимо`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Ничего не настраивает. В `common/arg.cpp` обработчик вызывает `arg_removed("use --spec-draft-n-max or --spec-ngram-mod-n-max")`, а `arg_removed()` бросает `std::invalid_argument` с текстом `the argument has been removed...`. Сервер не доходит до загрузки модели.
 
-Для точного описания механики нужно проверить:
+Переменная окружения `LLAMA_ARG_DRAFT_MAX` тоже привязана к removed stub: если она используется как источник значения для этого аргумента, запуск должен завершиться той же ошибкой.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Формально help показывает `N`, но любые значения бесполезны: `--draft 4`, `--draft-n 4` и `--draft-max 4` все ведут к ошибке парсинга. Не храните этот параметр в конфигурациях llama-manager и INI-пресетах.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Не использовать. При миграции старых конфигураций выбирайте новый аргумент по типу speculative decoding:
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- `--spec-draft-n-max` - максимум draft tokens для draft-модели (`draft-simple`/draft context);
+- `--spec-ngram-mod-n-max` - максимум токенов для ngram-mod speculative decoding.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Параметр не влияет на производительность или память, потому что сервер завершается на этапе разбора аргументов.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-n-max` заменяет legacy `--draft` для draft-модели.
+- `--spec-ngram-mod-n-max` заменяет legacy `--draft` для ngram-mod.
+- `--spec-draft-model` и `--spec-type` определяют, какой speculative mechanism активен; сам `--draft` больше не участвует.
+- `--draft-min` удален отдельно и заменяется `--spec-draft-n-min` или `--spec-ngram-mod-n-min`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Не добавляйте `draft`, `draft-n`, `draft-max` или `LLAMA_ARG_DRAFT_MAX` в `--models-preset`. Router передает нерезервированные параметры дочернему `llama-server`, и removed stub остановит дочерний процесс при загрузке модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Ошибка запуска с текстом `the argument has been removed. use --spec-draft-n-max or --spec-ngram-mod-n-max` означает, что в argv, env или preset остался legacy-параметр.
+- Проверьте systemd unit, docker args, llama-manager instance config и `--models-preset`.
+- Если migration target неочевиден, посмотрите `--spec-type`: для draft-модели используйте `--spec-draft-n-max`, для ngram-mod - `--spec-ngram-mod-n-max`.
 
 ## Примеры
 
+Старую форму удалите:
+
 ```bash
-llama-server --model /models/example.gguf --draft value1,value2
+llama-server --model /models/target.gguf --draft 5
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+Для draft-модели используйте:
 
-## Что проверить агенту перед переводом в current
+```bash
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-n-max 5
+```
 
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+Для ngram-mod используйте:
+
+```bash
+llama-server --model /models/target.gguf --spec-type ngram-mod --spec-ngram-mod-n-max 64
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--draft&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--draft
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--draft
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - removed stub для `--draft`, `--draft-n`, `--draft-max`, env `LLAMA_ARG_DRAFT_MAX` и `arg_removed()`.
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp` - выбор draft/ngram speculative implementations.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка removed аргумента.

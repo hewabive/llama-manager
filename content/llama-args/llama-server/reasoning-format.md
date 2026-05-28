@@ -2,105 +2,112 @@
 schema: 1
 primaryName: "--reasoning-format"
 title: "--reasoning-format"
-summary: "Формат обработки thought-тегов и поля reasoning_content."
-docStatus: draft
+summary: "Выбирает, как server распознает и возвращает thought/reasoning теги в ответе. `none` оставляет все в content, `deepseek` выносит мысли в `reasoning_content`, `deepseek-legacy` дублирует legacy `<think>` в content."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "string"
+valueType: "enum"
 valueHint: "FORMAT"
 aliases:
   - "--reasoning-format"
-allowedValues: []
+allowedValues:
+  - "none"
+  - "auto"
+  - "deepseek"
+  - "deepseek-legacy"
 env:
   - "LLAMA_ARG_THINK"
-related: []
+related:
+  - "--reasoning"
+  - "--reasoning-budget"
+  - "--skip-chat-parsing"
+  - "--jinja"
 ---
 
 # --reasoning-format
 
 ## Кратко
 
-Формат обработки thought-тегов и поля reasoning_content.
+`--reasoning-format` записывает `common_params::reasoning_format`. Это настройка parser/output: она определяет, извлекать ли thought tags из generated text и в каком поле возвращать reasoning.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Она не заставляет модель думать. Для этого используйте `--reasoning`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-controls whether thought tags are allowed and/or extracted from the response, and in which format they're returned; one of: - none: leaves thoughts unparsed in `message.content` - deepseek: puts thoughts in `message.reasoning_content` - deepseek-legacy: keeps `<think>` tags in `message.content` while also populating `message.reasoning_content` (default: auto)
+controls whether thought tags are allowed and/or extracted from the response, and in which format they're returned; one of:
+- none: leaves thoughts unparsed in `message.content`
+- deepseek: puts thoughts in `message.reasoning_content`
+- deepseek-legacy: keeps `<think>` tags in `message.content` while also populating `message.reasoning_content`
+(default: auto)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--reasoning-format`
-- Алиасы: `--reasoning-format`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `FORMAT`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_THINK`
-- Значение по умолчанию из `--help`: `auto`
+- Значения: `none`, `auto`, `deepseek`, `deepseek-legacy`
+- Поле `common_params`: `reasoning_format`
+- Переменная окружения: `LLAMA_ARG_THINK`
+- Этап применения: startup default и per-request parser params
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Значение попадает в `common_chat_templates_inputs::reasoning_format` при prompt formatting и в `common_chat_parser_params::reasoning_format` при разборе ответа. Клиент может переопределить его в JSON body полем `reasoning_format`.
 
-Для точного описания механики нужно проверить:
+Для streaming `deepseek-legacy` server ставит `reasoning_in_content = true`, поэтому `<think>`-совместимый content сохраняется, но `reasoning_content` также заполняется.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `none`: не извлекать reasoning; теги остаются обычным текстом.
+- `auto`: автоопределение формата по template/parser.
+- `deepseek`: выносить мысли в `message.reasoning_content`.
+- `deepseek-legacy`: сохранять legacy `<think>` tags в `message.content` и одновременно заполнять `reasoning_content`.
+
+Неизвестное значение приводит к `Unknown reasoning format: <value>`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- `auto`: default для современных templates.
+- `none`: нужна сырая совместимость со старым клиентом, который ожидает весь текст в `content`.
+- `deepseek`: OpenAI-compatible клиенты, где reasoning должно быть отделено от user-visible answer.
+- `deepseek-legacy`: клиенты или UI, которые все еще ожидают `<think>...</think>` в content.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Влияние небольшое: parser разбирает generated text и формирует поля ответа. Косвенно формат может включить reasoning-aware parser и stop/grammar поведение из template. На модель, VRAM и KV-cache напрямую не влияет.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--reasoning`: управляет генерацией thinking, а не parsing.
+- `--reasoning-budget`: требует start/end thinking tags, которые приходят из chat template params.
+- `--skip-chat-parsing`: принудительно выключает структурное извлечение reasoning/tool calls.
+- `--jinja` и `--chat-template`: определяют, есть ли у parser информация о thinking tags.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `reasoning-format = deepseek` или другое допустимое значение. В router mode формат лучше задавать per-model: разные templates используют разные thinking delimiters.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `reasoning_content` пустой: модель не сгенерировала tags, template не поддерживает thinking или включен `--skip-chat-parsing`.
+- В content видны `<think>` tags при `deepseek`: проверьте, не переопределил ли клиент `reasoning_format` в body.
+- Ошибка `Unknown reasoning format`: значение вне списка `none`, `auto`, `deepseek`, `deepseek-legacy`.
+- Для потоковых ответов сравните поля delta: server-task отдельно отправляет reasoning deltas.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --reasoning-format value
+llama-server --model /models/reasoning.gguf --reasoning on --reasoning-format deepseek
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/reasoning.gguf --reasoning-format none
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--reasoning-format&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--reasoning-format
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--reasoning-format
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--reasoning-format`.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: `common_reasoning_format_from_name()`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: parser params и streaming deltas.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание форматов.

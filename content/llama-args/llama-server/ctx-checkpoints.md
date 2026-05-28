@@ -2,116 +2,104 @@
 schema: 1
 primaryName: "--ctx-checkpoints"
 title: "--ctx-checkpoints"
-summary: "Черновая инженерная справка по --ctx-checkpoints из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Максимум context checkpoints на слот. Нужен для восстановления cache при SWA/hybrid/recurrent memory и для некоторых speculative paths."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "list"
-valueHint: ","
+valueType: "number"
+valueHint: "N"
 aliases:
   - "-ctxcp"
   - "--ctx-checkpoints"
-  - "--swa-checkpo"
+  - "--swa-checkpoints"
 allowedValues: []
 env:
   - "LLAMA_ARG_CTX_CHECKPOINTS"
 related:
-  - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
+  - "--checkpoint-min-step"
+  - "--cache-prompt"
+  - "--cache-ram"
+  - "--swa-full"
   - "--ctx-size"
-  - "--parallel"
 ---
 
 # --ctx-checkpoints
 
 ## Кратко
 
-Черновая инженерная справка по --ctx-checkpoints из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--ctx-checkpoints` задает `common_params::n_ctx_checkpoints`: максимум context checkpoints, которые сервер хранит на слот.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию `32`. Значение `0` отключает создание checkpoints.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ints N max number of context checkpoints to create per slot (default: 32)[(more info)](https://github.com/ggml-org/llama.cpp/pull/15293)
+max number of context checkpoints to create per slot (default: 32)
+[(more info)](https://github.com/ggml-org/llama.cpp/pull/15293)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--ctx-checkpoints`
-- Алиасы: `-ctxcp`, `--ctx-checkpoints`, `--swa-checkpo`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CTX_CHECKPOINTS`
-- Значение по умолчанию из `--help`: `32`
+- Алиасы: `-ctxcp`, `--ctx-checkpoints`, `--swa-checkpoints`
+- Значение по умолчанию: `32`
+- Переменная окружения: `LLAMA_ARG_CTX_CHECKPOINTS`
+- Поле llama.cpp: `common_params::n_ctx_checkpoints`
+- Этап применения: инициализация server context и prompt processing
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Если `n_ctx_checkpoints > 0`, сервер пишет `context checkpoints enabled, max = ..., min spacing = ...`. Checkpoints создаются для completion tasks, когда context memory нельзя просто откатить частичным sequence removal: full removal, bounded recurrent state или SWA.
 
-Для точного описания механики нужно проверить:
+Когда checkpoints переполняют лимит, самый старый удаляется. Checkpoints также сохраняются в `server_prompt_cache` вместе с prompt state.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `0`: отключить checkpoints.
+- Положительное число: максимум checkpoints на слот.
+- Отрицательные значения не описаны как валидные; не используйте.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте дефолт для современных моделей с SWA/hybrid/recurrent memory, если используете prompt caching. Уменьшайте, если RAM usage от prompt cache/checkpoints слишком высокий. Ставьте `0` только после проверки, что cache restore не приводит к полному re-processing.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+Checkpoints занимают RAM/state memory и добавляют работу при создании/восстановлении, но могут предотвращать дорогой full prompt re-processing. В логах видны размер checkpoint в MiB и сообщения `restored context checkpoint`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--checkpoint-min-step`: минимальный интервал между checkpoints.
+- `--cache-prompt`: основной потребитель восстановленного cache.
+- `--cache-ram`: сохраняет prompt states вместе с checkpoints.
+- `--swa-full`: может убрать необходимость в части SWA checkpoint behavior ценой большего SWA cache.
 
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--parallel`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `ctx-checkpoints = 32` или `swa-checkpoints = 32`. В router-режиме применяется к дочернему процессу модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `context checkpoints disabled` означает `--ctx-checkpoints 0`.
+- `forcing full prompt re-processing due to lack of cache data` часто указывает, что checkpoint не хватило или он был invalidated.
+- `erasing old context checkpoint` означает достижение лимита.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --ctx-checkpoints value1,value2
+llama-server --model /models/model.gguf --ctx-checkpoints 32 --checkpoint-min-step 256
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --ctx-checkpoints 0
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--ctx-checkpoints&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--ctx-checkpoints
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--ctx-checkpoints
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.h`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- https://github.com/ggml-org/llama.cpp/pull/15293

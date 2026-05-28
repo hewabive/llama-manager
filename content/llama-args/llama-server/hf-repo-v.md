@@ -2,13 +2,13 @@
 schema: 1
 primaryName: "--hf-repo-v"
 title: "--hf-repo-v"
-summary: "Черновая инженерная справка по --hf-repo-v из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Выбирает Hugging Face repo для vocoder-модели, используемой аудио/TTS функциональностью. Формат и cache-поведение такие же, как у `--hf-repo`, но значение пишется в `params.vocoder.model`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ", <user>/<model>"
+valueType: "string"
+valueHint: "<user>/<model>[:quant]"
 aliases:
   - "-hfv"
   - "-hfrv"
@@ -16,21 +16,25 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_HF_REPO_V"
-related: []
+related:
+  - "--hf-file-v"
+  - "--hf-token"
+  - "--model-vocoder"
+  - "--offline"
 ---
 
 # --hf-repo-v
 
 ## Кратко
 
-Черновая инженерная справка по --hf-repo-v из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--hf-repo-v` задает HF repository для vocoder model. Значение записывается в `common_params.vocoder.model.hf_repo`, а затем обрабатывается тем же `common_params_handle_model()`, что и основная модель.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Суффикс `-v` означает vocoder, а не verbose и не vision. Для основного LLM используйте `--hf-repo`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-[:quant] Hugging Face model repository for the vocoder model (default: unused)
+Hugging Face model repository for the vocoder model (default: unused)
 ```
 
 ## Паспорт аргумента
@@ -38,71 +42,75 @@ related: []
 - Основное имя: `--hf-repo-v`
 - Алиасы: `-hfv`, `-hfrv`, `--hf-repo-v`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `, <user>/<model>`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `string`
+- Подсказка формата из `--help`: `<user>/<model>[:quant]`
 - Переменные окружения: `LLAMA_ARG_HF_REPO_V`
-- Значение по умолчанию из `--help`: `unused`
+- Значение по умолчанию: не используется
+- Внутреннее поле: `common_params.vocoder.model.hf_repo`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При `common_params_handle_models()` vocoder model обрабатывается после основной модели, `mmproj` и speculative draft model:
 
-Для точного описания механики нужно проверить:
+```text
+common_params_handle_model(params.vocoder.model, params.hf_token, params.offline)
+```
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Это означает тот же механизм HF cache, token, offline и выбора файла, но результат попадает в `params.vocoder.model.path`, а не в основной `params.model.path`.
+
+## Значения и формат
+
+Формат такой же, как у `--hf-repo`: `<user>/<model>[:quant]`. Если `--hf-file-v` не задан, downloader выбирает GGUF по quant tag или fallback-эвристике `Q4_K_M`, затем `Q8_0`, затем первый подходящий GGUF.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте `--hf-repo-v`, если vocoder GGUF распространяется через HF и должен скачиваться автоматически. Для уже скачанного локального файла используйте `--model-vocoder`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не путайте vocoder model с `mmproj`: `mmproj` нужен для multimodal projector, vocoder - для аудио generation/TTS pipeline.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Vocoder - дополнительная модель. Она увеличивает время старта и потребление памяти относительно обычного text-only сервера. Размер и quant выбранного vocoder GGUF влияют на latency аудио-генерации.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--hf-file-v`: выбирает точный файл внутри vocoder repo и переопределяет quant tag.
+- `--hf-token`: используется для приватных/gated vocoder repo.
+- `--model-vocoder`: локальная альтернатива HF repo; если задан HF repo, путь vocoder может быть заполнен скачанной копией.
+- `--offline`: требует, чтобы vocoder файлы уже были в HF cache.
+- `--tts-use-guide-tokens`: отдельный TTS-флаг, который может использоваться вместе с vocoder.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI:
 
-## Типовые проблемы
+```ini
+[tts_model]
+hf-repo = owner/text-model-GGUF:Q4_K_M
+hf-repo-v = owner/vocoder-GGUF:Q4_K_M
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Для router-режима учитывайте, что дочерний процесс должен иметь доступ к HF cache и `HF_TOKEN`, если repo закрытый.
+
+## Типовые проблемы и диагностика
+
+- `invalid HF repo format`: проверьте формат `owner/repo`.
+- `no GGUF files found in repository`: vocoder repo не содержит подходящего GGUF или cache пустой при `--offline`.
+- Аудио endpoint не работает: проверьте, что TTS/аудио pipeline действительно требует vocoder, а не только `mmproj` для audio input.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --hf-repo-v value1,value2
+llama-server --model /srv/models/text.gguf --hf-repo-v owner/vocoder-GGUF:Q4_K_M
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --hf-repo owner/text-GGUF:Q4_K_M --hf-repo-v owner/vocoder-GGUF --hf-file-v vocoder-Q8_0.gguf
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--hf-repo-v&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--hf-repo-v
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--hf-repo-v
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

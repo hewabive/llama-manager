@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--adaptive-target"
 title: "--adaptive-target"
-summary: "Черновая инженерная справка по --adaptive-target из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Целевая вероятность для experimental `adaptive_p` sampler-а. Отрицательное значение отключает адаптацию; sampler начинает работать только если явно добавить `adaptive_p` в `--samplers` или `a` в `--sampler-seq`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,18 @@ aliases:
   - "--adaptive-target"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--adaptive-decay"
+  - "--samplers"
+  - "--sampler-seq"
+  - "--seed"
 ---
 
 # --adaptive-target
 
 ## Кратко
 
-Черновая инженерная справка по --adaptive-target из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--adaptive-target` задает вероятность, рядом с которой `adaptive_p` старается выбирать токены. Это не обычный фильтр: `adaptive_p` сам выбирает финальный токен и заменяет автоматический `dist`, если включен в sampler sequence.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +35,69 @@ adaptive-p: select tokens near this probability (valid range 0.0 to 1.0; negativ
 ## Паспорт аргумента
 
 - Основное имя: `--adaptive-target`
-- Алиасы: `--adaptive-target`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `-1.00`
+- Поле в `common_params`: `params.sampling.adaptive_target`
+- HTTP-поле: `adaptive_target`
+- Значение по умолчанию: `-1.00`
+- Отключение: отрицательное значение.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-парсер только записывает float. Чтобы `adaptive_target` реально использовался, sampler-цепочка должна содержать `adaptive_p` (`--samplers`) или `a` (`--sampler-seq`). При обнаружении `adaptive_p` llama.cpp не вставляет обычный финальный `dist`, а добавляет `llama_sampler_init_adaptive_p(target, decay, seed)` в конец цепочки.
 
-Для точного описания механики нужно проверить:
+Если target отрицательный, `adaptive_p` становится близок к обычному sampling from distribution: он делает softmax и выбирает токен своим RNG без adaptive transform.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `-1` - дефолт, адаптация отключена.
+- `0.0`-`1.0` - документированный диапазон.
+- Значения вне диапазона CLI принимает; implementation clamp-ит target в `[0, 1]` во время transform, кроме отрицательных значений, которые считаются no-op.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Для исследовательских экспериментов с распределением выбора токенов.
+- Когда нужно явно заменить финальный `dist` на adaptive sampler.
+- Не включайте незаметно в публичном сервере: эффект существенно меняет стиль и пока помечен в help как дополнительная/экспериментальная логика через PR.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память модели не меняется. Sampler хранит EMA-состояние и массив исходных probabilities для текущих кандидатов; это небольшая per-slot память. Backend hooks для `adaptive_p` отсутствуют, поэтому активный `adaptive_p` ограничивает пользу `--backend-sampling`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--adaptive-decay` управляет EMA истории выбранных вероятностей.
+- `--seed` инициализирует RNG adaptive sampler-а.
+- `adaptive_p` должен быть последним по смыслу: код все равно добавляет его в конец после обхода `params.samplers`.
+- Фильтры до него (`top_k`, `top_p`, `min_p`) формируют распределение, которое adaptive sampler трансформирует.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Ключ INI:
 
-## Типовые проблемы
+```ini
+[adaptive]
+samplers = penalties;dry;top_k;top_p;min_p;temperature;adaptive_p
+adaptive-target = 0.2
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+HTTP API принимает `"adaptive_target"` и `"samplers": ["top_k", "top_p", "temperature", "adaptive_p"]`.
+
+## Типовые проблемы и диагностика
+
+- Задали `--adaptive-target`, но эффекта нет: в цепочке нет `adaptive_p`/`a`.
+- Ответы перестали быть воспроизводимыми: target активен, но `--seed -1` оставляет случайный seed.
+- В trace `sampler chain` должен показывать `adaptive-p`; обычного `dist` при этом быть не должно.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --adaptive-target 1
+llama-server --model /models/model.gguf --samplers "top_k;top_p;min_p;temperature;adaptive_p" --adaptive-target 0.2 --adaptive-decay 0.9 --seed 42
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--adaptive-target&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--adaptive-target
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--adaptive-target
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp`
+- `/home/maxim/llama/llama.cpp/include/llama.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`

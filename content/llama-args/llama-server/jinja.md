@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--jinja"
 title: "--jinja"
-summary: "Включить или отключить Jinja template engine."
-docStatus: draft
+summary: "Включает или отключает Jinja engine для chat templates. По умолчанию в server Jinja включен; `--no-jinja` оставляет только legacy/built-in templates и ограничивает поддержку tools/reasoning."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
@@ -15,16 +15,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_JINJA"
-related: []
+related:
+  - "--chat-template"
+  - "--chat-template-file"
+  - "--chat-template-kwargs"
+  - "--reasoning"
+  - "--skip-chat-parsing"
 ---
 
 # --jinja
 
 ## Кратко
 
-Включить или отключить Jinja template engine.
+`--jinja` управляет `common_params::use_jinja`. В `llama-server` default включен, поэтому обычный запуск использует Jinja template engine для chat formatting, tools, multimodal content parts и parser generation.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--no-jinja` полезен как совместимость или диагностика, но с ним произвольный Jinja template не поддерживается.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,73 +40,67 @@ whether to use jinja template engine for chat (default: enabled)
 ## Паспорт аргумента
 
 - Основное имя: `--jinja`
-- Алиасы: `--jinja`, `--no-jinja`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_JINJA`
-- Значение по умолчанию из `--help`: `enabled`
+- Отрицательная форма: `--no-jinja`
+- Поле `common_params`: `use_jinja`
+- Переменная окружения: `LLAMA_ARG_JINJA`
+- По умолчанию: enabled
+- Этап применения: startup, при построении chat templates и parser
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При старте server строит `common_chat_templates` и затем передает `params_base.use_jinja` в `common_chat_format_example()` и runtime chat formatting. Если Jinja включен, `common_chat_templates_apply()` использует Jinja path, capabilities template, tool-use variant и autoparser.
 
-Для точного описания механики нужно проверить:
+Если Jinja выключен, server работает через legacy route для известных шаблонов. Проверка `common_chat_verify_template()` ограничивает `--chat-template` списком commonly used templates.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Аргумент boolean-pair:
+
+- `--jinja` включает;
+- `--no-jinja` отключает;
+- через env используйте `LLAMA_ARG_JINJA=true` или `LLAMA_ARG_JINJA=false`.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
+Оставляйте `--jinja` включенным для современных instruct/chat моделей, особенно если нужны tool calls, reasoning parsing, `chat_template_kwargs`, vision/audio chat parts или templates из metadata.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте `--no-jinja`, когда текущий Jinja parser не принимает template модели, а вы готовы явно выбрать legacy template, например `--no-jinja --chat-template chatml`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Jinja добавляет небольшую CPU-работу при подготовке запроса и генерации parser. На RAM/VRAM модели, KV-cache и batch sizes напрямую не влияет. Основной риск производительности косвенный: другой template может заметно изменить число prompt tokens.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--chat-template` и `--chat-template-file`: произвольные Jinja templates требуют включенного `--jinja`.
+- `--chat-template-kwargs`: имеет смысл только когда template читает extra context.
+- `--reasoning`: auto-detect thinking работает только если Jinja включен и template supports thinking.
+- `--skip-chat-parsing`: может использоваться вместе с Jinja, чтобы оставить template rendering, но отключить структурный parser ответа.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI положительная форма обычно пишется `jinja = true`, отрицательная `no-jinja = true`. Для router mode настройка должна быть задана в секции конкретной модели, если разные модели требуют разные template engines.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `chat template parsing error`: попробуйте обновить template или временно запустить `--no-jinja --chat-template <built-in>`.
+- `template supports tool calls but does not natively describe tools`: template распознан, но tool schema будет fallback; проверьте `--verbose` и prompt.
+- `chat template, thinking = 0`: Jinja выключен или template не поддерживает thinking.
+- Смотрите `/props`: `chat_template_caps` показывает обнаруженные возможности.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --jinja true
+llama-server --model /models/model.gguf --jinja
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-jinja --chat-template chatml
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--jinja&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--jinja
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--jinja
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--jinja`, `--no-jinja`.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: Jinja path, legacy route, template capabilities.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: startup инициализация chat templates.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: справка server.

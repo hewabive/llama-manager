@@ -2,12 +2,12 @@
 schema: 1
 primaryName: "--mmproj-offload"
 title: "--mmproj-offload"
-summary: "Черновая инженерная справка по --mmproj-offload из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает или отключает GPU offload для multimodal projector. По умолчанию включено; `--no-mmproj-offload` держит projector-вычисления на CPU."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "boolean"
+valueType: "flag"
 valueHint: null
 aliases:
   - "--mmproj-offload"
@@ -16,20 +16,20 @@ allowedValues: []
 env:
   - "LLAMA_ARG_MMPROJ_OFFLOAD"
 related:
-  - "--alias"
-  - "--lora"
-  - "--model"
-  - "--models-dir"
-  - "--models-preset"
+  - "--mmproj"
+  - "--mmproj-url"
+  - "--mmproj-auto"
+  - "--gpu-layers"
+  - "--device"
 ---
 
 # --mmproj-offload
 
 ## Кратко
 
-Черновая инженерная справка по --mmproj-offload из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--mmproj-offload` управляет тем, будет ли multimodal projector использовать GPU backend. Значение записывается в `common_params.mmproj_use_gpu` и затем передается в `mtmd_context_params.use_gpu`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию включено. Отрицательная форма `--no-mmproj-offload` отключает GPU offload projector.
 
 ## Оригинальная справка llama.cpp
 
@@ -40,77 +40,78 @@ whether to enable GPU offloading for multimodal projector (default: enabled)
 ## Паспорт аргумента
 
 - Основное имя: `--mmproj-offload`
-- Алиасы: `--mmproj-offload`, `--no-mmproj-offload`
+- Положительная форма: `--mmproj-offload`
+- Отрицательная форма: `--no-mmproj-offload`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `flag`
 - Переменные окружения: `LLAMA_ARG_MMPROJ_OFFLOAD`
-- Значение по умолчанию из `--help`: `enabled`
+- Значение по умолчанию: enabled
+- Внутреннее поле: `common_params.mmproj_use_gpu`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `server_context::load_model()` при наличии `mmproj.path` server создает `mtmd_context_params` и выставляет:
 
-Для точного описания механики нужно проверить:
+```text
+mparams.use_gpu = params_base.mmproj_use_gpu
+```
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Дальше эти параметры используются при `mtmd_init_from_file()`. Если projector не загружается, флаг не оказывает runtime-эффекта.
+
+## Значения и формат
+
+В CLI это флаг без отдельного значения:
+
+- `--mmproj-offload` - включить GPU offload;
+- `--no-mmproj-offload` - отключить GPU offload.
+
+В INI/preset используйте boolean-значение или отрицательный ключ `no-mmproj-offload`, следуя правилам preset parser.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте включенным, если VRAM хватает и multimodal latency важна. Отключайте при ошибках выделения VRAM, нестабильном GPU backend или когда основной LLM должен получить приоритет по памяти.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Включение offload обычно снижает latency multimodal preprocessing, но увеличивает VRAM usage. При `--fit` server оценивает worst-case memory usage `mmproj` и добавляет ее к fit targets, поэтому этот флаг влияет на планирование памяти.
+
+Выключение переносит нагрузку на CPU; это может замедлить обработку изображений/аудио, но уменьшить давление на GPU.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--mmproj`/`--mmproj-url`/auto `mmproj`: флаг действует только при loaded projector.
+- `--gpu-layers` и `--device`: управляют основной моделью/GPU устройствами; projector offload использует mtmd backend параметры отдельно.
+- `--flash-attn`: значение `flash_attn_type` также передается в mtmd context params.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[vision_cpu_projector]
+model = /srv/models/vision.gguf
+mmproj = /srv/models/mmproj-F16.gguf
+no-mmproj-offload = true
+```
 
-## Типовые проблемы
+Для router с несколькими multimodal моделями настройка полезна как per-preset способ разгрузить VRAM.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- OOM при старте vision модели: попробуйте `--no-mmproj-offload` и уменьшение `--gpu-layers`.
+- Multimodal работает медленно: проверьте, не отключен ли offload.
+- Флаг не меняет поведение: убедитесь, что projector действительно загружен, ищите `loaded multimodal model`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --mmproj-offload true
+llama-server --model /srv/models/vision.gguf --mmproj /srv/models/mmproj-F16.gguf --no-mmproj-offload
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0 --mmproj-offload
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--mmproj-offload&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--mmproj-offload
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--mmproj-offload
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

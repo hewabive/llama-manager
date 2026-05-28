@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--embd-gemma-default"
 title: "--embd-gemma-default"
-summary: "Черновая инженерная справка по --embd-gemma-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет для EmbeddingGemma 300M QAT Q4_0. Настраивает HF repo/file, embedding mode, порт 8011 и параметры batch/parallel/context."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,23 @@ aliases:
   - "--embd-gemma-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--embedding"
+  - "--hf-repo"
+  - "--hf-file"
+  - "--port"
+  - "--batch-size"
+  - "--ubatch-size"
+  - "--parallel"
+  - "--ctx-size"
+  - "--verbose"
 ---
 
 # --embd-gemma-default
 
 ## Кратко
 
-Черновая инженерная справка по --embd-gemma-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--embd-gemma-default` применяет встроенный пресет для EmbeddingGemma и переводит server в embedding use case. Флаг может скачать веса из Hugging Face, если модель еще не находится в cache.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +40,96 @@ use default EmbeddingGemma model (note: can download weights from the internet)
 ## Паспорт аргумента
 
 - Основное имя: `--embd-gemma-default`
-- Алиасы: `--embd-gemma-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Поле `common_params`: несколько полей `model`, server и embedding настроек
+- Этап применения: парсинг CLI, до загрузки модели
+- Область: `llama-server`, `llama-embedding`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/embeddinggemma-300M-qat-q4_0-GGUF"`
+- `params.model.hf_file = "embeddinggemma-300M-qat-Q4_0.gguf"`
+- `params.port = 8011`
+- `params.n_ubatch = 2048`
+- `params.n_batch = 2048`
+- `params.n_parallel = 32`
+- `params.n_ctx = 2048 * params.n_parallel`, то есть `65536`
+- `params.verbose_prompt = true`
+- `params.embedding = true`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Это не alias и не router catalog entry. Это shortcut, который заполняет те же поля, что можно было бы задать обычными аргументами.
+
+## Значения и формат
+
+Флаг не принимает значение:
+
+```bash
+llama-server --embd-gemma-default
+```
+
+В INI-пресете router его можно записать как boolean:
+
+```ini
+[embeddinggemma]
+embd-gemma-default = true
+alias = embeddings
+tags = embedding,gemma
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+Используйте для быстрого запуска EmbeddingGemma endpoint без ручного подбора `--hf-repo`, `--embedding`, `--batch-size`, `--ubatch-size`, `--parallel` и `--ctx-size`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте этот флаг для chat/completions: он включает embedding-only режим, предназначенный для embedding endpoint и embedding-моделей.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+`n_parallel = 32` и `n_ctx = 65536` рассчитаны на параллельную обработку embedding запросов. Это может увеличить память под контекст по сравнению с маленьким single-slot сервером, но embedding-модель сама по себе небольшая.
+
+`n_batch = n_ubatch = 2048` избегает предупреждения server о том, что embeddings требуют обработать batch в одном ubatch.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Флаг задает `--hf-repo`, `--hf-file`, `--port`, `--embedding`, `--batch-size`, `--ubatch-size`, `--parallel`, `--ctx-size` и `--verbose`. Если нужны другие значения, задавайте явные аргументы после пресета в CLI и проверяйте итоговый argv в логах.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+В router mode лучше задавать alias/tags в `--models-preset`; сам router при запуске дочернего процесса перезапишет `--alias` canonical name.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В `--models-preset` этот флаг может описывать модель:
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+```ini
+[embeddinggemma]
+embd-gemma-default = true
+load-on-startup = true
+stop-timeout = 20
+```
+
+Если нужно точно переопределять параметры batch/context внутри того же INI, надежнее не смешивать shortcut и переопределения, а записать развернутый набор ключей вручную.
+
+## Типовые проблемы и диагностика
+
+- Сервер скачивает модель: это ожидаемо при отсутствии cache и доступной сети.
+- Chat endpoint ведет себя не как chat-модель: включен `--embedding`.
+- Порт занят: пресет ставит `8011`; задайте другой `--port` после флага.
+- В router модель не загружается при старте: добавьте `load-on-startup = true` в модельную секцию.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --embd-gemma-default
+llama-server --embd-gemma-default --port 8081
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --models-preset /srv/llama/embeddings.ini --models-max 1
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--embd-gemma-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--embd-gemma-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--embd-gemma-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--embd-gemma-default`.
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`: проверка batch для embeddings.
+- `/home/maxim/llama/llama.cpp/common/preset.cpp`: boolean flag в INI и рендеринг `to_args`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help-строка встроенного пресета.

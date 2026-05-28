@@ -2,108 +2,116 @@
 schema: 1
 primaryName: "--direct-io"
 title: "--direct-io"
-summary: "Черновая инженерная справка по --direct-io из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Просит loader читать GGUF через Direct I/O, если платформа и файл это поддерживают. По умолчанию отключен и конфликтует с mmap."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ","
+valueType: "boolean"
+valueHint: null
 aliases:
   - "-dio"
   - "--direct-io"
   - "-ndio"
-  - "--no-direct-i"
+  - "--no-direct-io"
 allowedValues: []
 env:
   - "LLAMA_ARG_DIO"
-related: []
+related:
+  - "--mmap"
+  - "--no-mmap"
 ---
 
 # --direct-io
 
 ## Кратко
 
-Черновая инженерная справка по --direct-io из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--direct-io` включает Direct I/O при чтении model files, если оно доступно. Это низкоуровневый storage-флаг для обхода обычного page cache на поддерживаемых системах.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-o use DirectIO if available. (default: disabled)
+use DirectIO if available. (default: disabled)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--direct-io`
-- Алиасы: `-dio`, `--direct-io`, `-ndio`, `--no-direct-i`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_DIO`
-- Значение по умолчанию из `--help`: `disabled`
+- Алиасы: `-dio`, `--direct-io`, `-ndio`, `--no-direct-io`
+- Переменная окружения: `LLAMA_ARG_DIO`
+- Поле `common_params`: `use_direct_io`
+- Поле `llama_model_params`: `use_direct_io`
+- Значение по умолчанию: disabled
+- Этап применения: открытие и чтение GGUF-файлов
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг передается в `llama_file` при открытии GGUF. На платформах, где Direct I/O реально включился, loader отключает mmap и пишет warning `direct I/O is enabled, disabling mmap`.
 
-Для точного описания механики нужно проверить:
+Если Direct I/O недоступен, loader предупреждает `direct I/O is not available, using mmap`, отключает `use_direct_io` и переоткрывает файл обычным путем для mmap.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI-формы без значения: `--direct-io` и `--no-direct-io`. Через env `LLAMA_ARG_DIO` принимает boolean values как остальные bool-аргументы.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Пробуйте на больших моделях и быстрых NVMe/RAID, если хотите уменьшить влияние page cache или отделить I/O модели от остальной памяти системы. Не включайте как универсальную оптимизацию: выигрыш зависит от filesystem, alignment, storage и backend upload path.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Direct I/O может снизить загрязнение page cache, но требует aligned reads. В loader для aligned чтений используется staging buffer до `64 MiB + alignment`; при обычном чтении без alignment - 1 MiB.
+
+Так как mmap отключается при доступном Direct I/O, старт и загрузка весов могут вести себя заметно иначе.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--mmap` и реально включенный `--direct-io` несовместимы; Direct I/O выигрывает и отключает mmap.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--no-mmap` делает поведение более явным, если вы специально тестируете Direct I/O.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--check-tensors` может отключить async upload path, потому что loader возвращает `nullptr` для upload backend при `use_mmap || check_tensors`.
 
-## Типовые проблемы
+## INI-пресеты и router-режим
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В INI:
+
+```ini
+direct-io = true
+```
+
+Для отключения:
+
+```ini
+no-direct-io = true
+```
+
+В router-режиме задавайте осторожно: одновременная загрузка нескольких моделей может создать сильную нагрузку на storage.
+
+## Типовые проблемы и диагностика
+
+- Видите `direct I/O is not available, using mmap`: платформа или файл не поддержали Direct I/O.
+- Старт стал медленнее: сравните с `--mmap` и без `--direct-io`.
+- Нужна точная проверка активного режима: смотрите строку `loading model tensors ... (mmap = ..., direct_io = ...)`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --direct-io value1,value2
+llama-server --model /models/model.gguf --direct-io
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --direct-io --no-mmap
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-direct-io
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--direct-io&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--direct-io
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--direct-io
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-mmap.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

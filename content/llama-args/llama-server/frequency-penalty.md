@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--frequency-penalty"
 title: "--frequency-penalty"
-summary: "Черновая инженерная справка по --frequency-penalty из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Добавляет штраф, зависящий от частоты появления токена в окне `--repeat-last-n`. `0.0` отключает frequency penalty."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,20 @@ aliases:
   - "--frequency-penalty"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--repeat-last-n"
+  - "--repeat-penalty"
+  - "--presence-penalty"
+  - "--samplers"
 ---
 
 # --frequency-penalty
 
 ## Кратко
 
-Черновая инженерная справка по --frequency-penalty из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--frequency-penalty` штрафует токен сильнее, если он встречался много раз в недавней истории. Это полезно против навязчивых слов и коротких циклов, но может мешать форматам, где повторение ожидаемо.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Default: `0.00`. Значение `0.0` отключает параметр.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,72 +38,80 @@ repeat alpha frequency penalty (default: 0.00, 0.0 = disabled)
 
 - Основное имя: `--frequency-penalty`
 - Алиасы: `--frequency-penalty`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `0.00, 0.0 = disabled`
+- Тип CLI-значения: float `N`
+- Поле в `common_params_sampling`: `penalty_freq`
+- HTTP-поле: `frequency_penalty`
+- Значение по умолчанию: `0.00`
+- CLI-парсер использует `std::stof`; отдельной проверки диапазона в `arg.cpp` нет.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI default записывается в `params.sampling.penalty_freq`. На уровне запроса `server-task.cpp` читает JSON-поле `frequency_penalty`.
 
-Для точного описания механики нужно проверить:
+Значение применяется в `llama_sampler_init_penalties` вместе с `--repeat-last-n`, `--repeat-penalty` и `--presence-penalty`. В default chain `penalties` стоит перед DRY и вероятностными фильтрами, поэтому frequency penalty влияет на распределение до `top_k`/`top_p`/`min_p`/`temperature`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `0.0`: disabled.
+- Положительное число: штраф растет с количеством появлений токена в окне.
+- Малые значения обычно безопаснее для production; большие значения быстро ломают повторяемые структуры.
+- Отрицательные значения parser принимает, но они будут поощрять частые токены, что редко нужно для обычного сервера.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Включайте `--frequency-penalty`, если модель не просто возвращается к теме, а многократно использует одно и то же слово, маркер списка или короткую фразу. Для единичного "не повторять уже сказанное" чаще подходит `--presence-penalty`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для constrained generation, JSON и кода сначала проверьте на реальных схемах: структурные токены могут быть частыми по необходимости.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Параметр не влияет на RAM, VRAM и KV-cache. Дополнительная работа относится к CPU sampling и зависит от `--repeat-last-n` и числа активных генераций.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--repeat-last-n`: задает окно подсчета частот; `0` отключает эффект.
+- `--presence-penalty`: штрафует сам факт присутствия токена; вместе с `--frequency-penalty` усиливает запрет.
+- `--repeat-penalty`: еще один штраф в том же `penalties` sampler.
+- `--samplers`: должен содержать `penalties`.
+- `--mirostat`: при `--mirostat 1/2` default chain с `penalties` не используется.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Аргумент является sampling option и может находиться в `--models-preset`:
 
-## Типовые проблемы
+```ini
+[model.default]
+frequency-penalty = 0.2
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+JSON-поле `frequency_penalty` в запросе переопределяет preset/default только для этой задачи.
+
+## Типовые проблемы и диагностика
+
+- Модель избегает нужных повторов в списках: снижайте `--frequency-penalty` или уменьшайте `--repeat-last-n`.
+- Штраф не работает: проверьте `--samplers`, `--mirostat` и `repeat_last_n` в фактических task params.
+- Поведение меняется от клиента к клиенту: проверьте, отправляет ли клиент OpenAI-compatible `frequency_penalty`.
+
+В trace/debug логах смотрите строку `sampler params` и значение `frequency_penalty`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --frequency-penalty 1
+llama-server --model /models/model.gguf --repeat-last-n 256 --frequency-penalty 0.2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "prompt": "Напиши разнообразный список вариантов",
+  "frequency_penalty": 0.25,
+  "repeat_last_n": 256
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--frequency-penalty&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--frequency-penalty
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--frequency-penalty
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--frequency-penalty`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: default `penalty_freq = 0.00f`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_penalties`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `frequency_penalty`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.

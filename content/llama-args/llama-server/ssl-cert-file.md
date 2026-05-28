@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--ssl-cert-file"
 title: "--ssl-cert-file"
-summary: "PEM-файл SSL-сертификата."
-docStatus: draft
+summary: "PEM-файл сертификата для встроенного HTTPS listener. Должен использоваться вместе с `--ssl-key-file`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "FNAME"
@@ -18,21 +18,15 @@ related:
   - "--api-key"
   - "--api-key-file"
   - "--host"
-  - "--metrics"
   - "--port"
-  - "--slots"
   - "--ssl-key-file"
-  - "--threads-http"
-  - "--timeout"
 ---
 
 # --ssl-cert-file
 
 ## Кратко
 
-PEM-файл SSL-сертификата.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--ssl-cert-file` записывает путь в `common_params::ssl_file_cert`. HTTPS включается только при наличии и сертификата, и приватного ключа.
 
 ## Оригинальная справка llama.cpp
 
@@ -43,81 +37,53 @@ path to file a PEM-encoded SSL certificate
 ## Паспорт аргумента
 
 - Основное имя: `--ssl-cert-file`
-- Алиасы: `--ssl-cert-file`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
-- Подсказка формата из `--help`: `FNAME`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SSL_CERT_FILE`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение: путь к PEM certificate
+- Переменная окружения: `LLAMA_ARG_SSL_CERT_FILE`
+- Поле в `common_params`: `ssl_file_cert`
+- Значение по умолчанию: пустая строка
+- Этап применения: создание `httplib::SSLServer`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В сборке с OpenSSL сервер создает HTTPS listener и формирует `listening_address` со схемой `https://`. Если указан только сертификат без ключа, сервер остается HTTP, потому что условие требует оба файла. Если OpenSSL в бинарнике отсутствует, пара SSL-файлов приводит к ошибке и остановке init.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Файл должен быть PEM-encoded сертификатом или цепочкой, которую принимает `cpp-httplib`/OpenSSL. Он должен соответствовать ключу из `--ssl-key-file`.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, если хотите, чтобы сам `llama-server` принимал HTTPS. В production чаще проще и гибче вынести TLS termination в reverse proxy, особенно если нужны автоматическое обновление сертификатов, HTTP/2, rate limiting и дополнительные access logs.
 
 ## Влияние на производительность и память
 
-- Почти не влияет на скорость инференса, но влияет на безопасность, наблюдаемость и доступность HTTP API.
-- Для публичного доступа нельзя полагаться только на bind address; нужен reverse proxy, TLS и ограничение опасных операций.
+Влияет только на HTTP-шифрование. На загрузку модели, RAM/VRAM и скорость токенов не влияет.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- Требует `--ssl-key-file`.
+- Дополняет, но не заменяет `--api-key` и сетевую изоляцию.
+- С `--host 0.0.0.0` публикует HTTPS listener на все интерфейсы.
 
-- `--api-key`
-- `--api-key-file`
-- `--host`
-- `--metrics`
-- `--port`
-- `--slots`
-- `--ssl-key-file`
-- `--threads-http`
-- `--timeout`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI: `ssl-cert-file = /etc/llama/tls.crt`. В router-режиме задавайте сертификат у router-процесса; дочерние модельные процессы получают локальные порты и не должны обслуживать внешний TLS.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- URL в логе остался `http://`: не задан `--ssl-key-file`.
+- Ошибка сборки без SSL: используйте reverse proxy или сборку с OpenSSL.
+- Браузер ругается на сертификат: self-signed сертификат не доверен клиенту.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --ssl-cert-file /path/to/value
+llama-server --model /models/model.gguf --ssl-cert-file /etc/llama/tls.crt --ssl-key-file /etc/llama/tls.key
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--ssl-cert-file&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--ssl-cert-file
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--ssl-cert-file
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

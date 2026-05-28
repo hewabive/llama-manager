@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--cache-prompt"
 title: "--cache-prompt"
-summary: "Включить кэширование промпта."
-docStatus: draft
+summary: "Включает reuse KV-cache для общего prefix между запросами в слоте. По умолчанию включено и может быть переопределено в JSON-запросе `cache_prompt`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
@@ -17,19 +17,18 @@ env:
   - "LLAMA_ARG_CACHE_PROMPT"
 related:
   - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
+  - "--cache-ram"
+  - "--slot-prompt-similarity"
   - "--ctx-size"
-  - "--parallel"
 ---
 
 # --cache-prompt
 
 ## Кратко
 
-Включить кэширование промпта.
+`--cache-prompt` задает `common_params::cache_prompt`: default для HTTP-параметра `cache_prompt`. Если включено, сервер сравнивает новый prompt с уже сохраненными токенами слота и переоценивает только несовпадающий suffix.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это не дисковый cache и не то же самое, что `--cache-ram`. Базовый reuse живет в KV-состоянии слота.
 
 ## Оригинальная справка llama.cpp
 
@@ -41,76 +40,65 @@ whether to enable prompt caching (default: enabled)
 
 - Основное имя: `--cache-prompt`
 - Алиасы: `--cache-prompt`, `--no-cache-prompt`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CACHE_PROMPT`
-- Значение по умолчанию из `--help`: `enabled`
+- Значение по умолчанию: enabled
+- Переменная окружения: `LLAMA_ARG_CACHE_PROMPT`
+- Поле llama.cpp: `common_params::cache_prompt`, затем `task_params::cache_prompt`
+- Этап применения: обработка каждого completion task
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При старте prompt processing сервер вычисляет longest common prefix между `slot.prompt.tokens` и новым input. Совпавшие токены считаются cached (`n_prompt_tokens_cache`), а в batch попадает только оставшаяся часть.
 
-Для точного описания механики нужно проверить:
+Если `cache_prompt` выключен, сервер сбрасывает `n_past = 0` и удаляет предыдущие токены слота перед новой обработкой.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI использует флаги:
+
+- `--cache-prompt`: включить.
+- `--no-cache-prompt`: выключить.
+
+В JSON `/completion` можно передать `cache_prompt: true` или `false` для конкретного запроса.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте включенным для chat, agents и повторяющихся system prompts. Выключайте для тестов воспроизводимости, потому что README предупреждает: разные batch sizes для prompt processing и token generation не гарантируют bit-for-bit одинаковые logits.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+При совпадающем prefix сильно снижает prompt evaluation time и TTFT. Память KV слота при этом сохраняется дольше; при большом `--parallel` это может держать больше старого контекста.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--cache-reuse`: работает только при включенном prompt caching и дополнительно ищет совпадающие chunks не только в prefix.
+- `--cache-ram`: может сохранять state вытесняемого prompt в RAM.
+- `--slot-prompt-similarity`: помогает выбрать слот с похожим prompt.
+- `--ctx-checkpoints`: помогает восстановить usable cache для SWA/hybrid/recurrent memory.
 
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--parallel`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `cache-prompt = true` или `no-cache-prompt = true`. В router-режиме применяется в дочернем процессе модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- В ответе смотрите `n_prompt_tokens_cache` и `n_tokens_cached`.
+- При `LLAMA_SERVER_SLOTS_DEBUG=1` сервер печатает токены вокруг mismatch prefix.
+- Для строгих benchmark-сравнений запускайте `--no-cache-prompt`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --cache-prompt true
+llama-server --model /models/model.gguf --cache-prompt
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-cache-prompt
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--cache-prompt&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--cache-prompt
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--cache-prompt
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

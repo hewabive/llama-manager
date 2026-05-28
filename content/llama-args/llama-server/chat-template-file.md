@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--chat-template-file"
 title: "--chat-template-file"
-summary: "Загрузить Jinja-шаблон чата из файла."
-docStatus: draft
+summary: "Читает chat template из файла и передает его как override вместо metadata модели. Подходит для длинных или многострочных Jinja templates, которые неудобно хранить прямо в argv."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "JINJA_TEMPLATE_FILE"
@@ -14,16 +14,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_CHAT_TEMPLATE_FILE"
-related: []
+related:
+  - "--chat-template"
+  - "--jinja"
+  - "--chat-template-kwargs"
+  - "--reasoning"
+  - "--skip-chat-parsing"
 ---
 
 # --chat-template-file
 
 ## Кратко
 
-Загрузить Jinja-шаблон чата из файла.
+`--chat-template-file` открывает файл на этапе парсинга CLI, читает его целиком через `read_file(value)` и записывает содержимое в `common_params::chat_template`. Дальше сервер работает так же, как с `--chat-template`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Файл должен быть доступен пользователю, от имени которого запускается `llama-server`. Ошибка чтения происходит до загрузки модели.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +39,65 @@ set custom jinja chat template file (default: template taken from model's metada
 ## Паспорт аргумента
 
 - Основное имя: `--chat-template-file`
-- Алиасы: `--chat-template-file`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
-- Подсказка формата из `--help`: `JINJA_TEMPLATE_FILE`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CHAT_TEMPLATE_FILE`
-- Значение по умолчанию из `--help`: `template taken from model's metadata`
+- Значение: путь к файлу `JINJA_TEMPLATE_FILE`
+- Поле `common_params`: `chat_template`, после чтения файла
+- Переменная окружения: `LLAMA_ARG_CHAT_TEMPLATE_FILE`
+- По умолчанию: template из metadata модели
+- Этап применения: парсинг CLI до инициализации модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Аргумент не хранит путь в runtime-конфигурации; он подставляет содержимое файла в то же поле, что и `--chat-template`. Поэтому при диагностике в `/props` вы увидите сам template, а не имя файла.
 
-Для точного описания механики нужно проверить:
+После чтения содержимое проверяется общей проверкой chat template. При включенном `--jinja` это Jinja template. При отключенном Jinja допустимы только встроенные legacy templates.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Указывайте обычный путь к текстовому файлу с Jinja template. Для управляемого сервера предпочтителен абсолютный путь, чтобы не зависеть от working directory subprocess.
+
+Файл читается полностью. Если в нем есть trailing newline, она становится частью template. Обычно это не проблема для Jinja, но при ручных минимальных templates стоит проверить фактический `example_format` в логе.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Template занимает много строк.
+- Нужно версионировать template отдельно от конфигурации llama-manager.
+- Один и тот же template используется несколькими моделями или router preset секциями.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Чтение файла происходит один раз на старте и не влияет на inference. Runtime-эффекты такие же, как у `--chat-template`: другой template меняет длину prompt, parser ответа, stop sequences, tool call grammar и thinking-разметку.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--chat-template`: пишет то же поле; порядок аргументов определяет итоговое значение.
+- `--jinja`: должен быть включен для произвольного Jinja.
+- `--chat-template-kwargs`: передает дополнительные переменные в template context.
+- `--reasoning`, `--reasoning-format`, `--skip-chat-parsing`: зависят от capabilities выбранного template.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `chat-template-file = /srv/llama/templates/model.jinja`. В router mode путь должен быть доступен из окружения router subprocess. Если models запускаются в контейнере, проверяйте путь внутри контейнера, а не на host.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `failed to open file`: путь неверен или нет прав на чтение.
+- `chat template parsing error`: файл прочитан, но содержимое невалидно для выбранного `--jinja` режима.
+- Несовпадает поведение после правки файла: `llama-server` не перечитывает template на лету, нужен перезапуск модели/subprocess.
+- Для проверки смотрите стартовый лог `chat template, example_format: ...` и `/props`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --chat-template-file /path/to/value
+llama-server --model /models/model.gguf --chat-template-file /srv/llama/templates/chatml.jinja
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --jinja --chat-template-file /srv/llama/templates/gpt-oss.jinja
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--chat-template-file&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--chat-template-file
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--chat-template-file
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: обработчик `--chat-template-file`, `read_file(value)`.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: применение Jinja template и parser generation.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: логирование `example_format` и `/props`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание server аргумента.

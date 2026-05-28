@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-ngram-simple-size-m"
 title: "--spec-ngram-simple-size-m"
-summary: "Черновая инженерная справка по --spec-ngram-simple-size-m из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Длина m-gram продолжения, которое `ngram-simple` копирует после найденного совпадения. Чем больше значение, тем длиннее потенциальный draft и тем выше цена неверного совпадения."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,18 @@ aliases:
   - "--spec-ngram-simple-size-m"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-type"
+  - "--spec-ngram-simple-size-n"
+  - "--spec-ngram-simple-min-hits"
+  - "--spec-draft-n-max"
 ---
 
 # --spec-ngram-simple-size-m
 
 ## Кратко
 
-Черновая инженерная справка по --spec-ngram-simple-size-m из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-ngram-simple-size-m` задает, сколько токенов после найденного n-gram совпадения `ngram-simple` пытается скопировать в speculative draft. В коде это `common_ngram_simple_config.size_mgram`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +35,65 @@ ngram size M for ngram-simple speculative decoding, length of draft m-gram (defa
 ## Паспорт аргумента
 
 - Основное имя: `--spec-ngram-simple-size-m`
-- Алиасы: `--spec-ngram-simple-size-m`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `48`
+- Алиасы: нет
+- Значение по умолчанию: `48`
+- Допустимый диапазон: `1..1024`
+- Переменные окружения: нет
+- Внутреннее поле: `common_params.speculative.ngram_simple.size_m`
+- Применяется: при runtime draft generation для `ngram-simple`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+После нахождения предыдущего совпадения длины `--spec-ngram-simple-size-n` алгоритм копирует до `M` следующих токенов из истории. Если после совпадения доступно меньше `size_n` токенов, `ngram-simple` возвращает пустой draft.
 
-Для точного описания механики нужно проверить:
+Итоговая длина может быть меньше `M`, потому что сервер затем обрезает draft по `dp.n_max`, который вычисляется из доступного контекста, оставшихся токенов генерации и общего `--spec-draft-n-max`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `1..1024` принимаются.
+- `0`, отрицательные значения и значения больше `1024` отклоняются с ошибкой `ngram size M must be between 1 and 1024 inclusive`.
+- Это число токенов в draft m-gram.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Увеличивайте `M` для длинных повторяющихся блоков, например при рефакторинге похожих участков кода. Уменьшайте, если accepted/generated ratio низкий или ответы короткие.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память существенно не меняется. Большее `M` может дать хороший throughput при полном принятии черновиков, но при ложных совпадениях увеличивает объем batch-проверки и откатов.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-type ngram-simple` включает алгоритм.
+- `--spec-ngram-simple-size-n` определяет ключ поиска; `size_m` только задает длину продолжения.
+- `--spec-ngram-simple-min-hits` сейчас не влияет на `ngram-simple`.
+- `--spec-draft-n-max` может обрезать draft ниже `M`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+spec-type = ngram-simple
+spec-ngram-simple-size-m = 48
+```
 
-## Типовые проблемы
+В router-пресетах ключ задается без `--` и не относится к router-controlled параметрам.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Много rejected draft tokens: уменьшите `size_m` или увеличьте `size_n`.
+- Draft не появляется на коротких запросах: нужен достаточно длинный контекст с уже встречавшимся продолжением.
+- Проверяйте строки `statistics ngram_simple` и `draft acceptance = ...`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-ngram-simple-size-m 1
+llama-server --model /models/model.gguf --spec-type ngram-simple --spec-ngram-simple-size-n 16 --spec-ngram-simple-size-m 32
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-ngram-simple-size-m&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-ngram-simple-size-m
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-ngram-simple-size-m
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

@@ -2,29 +2,30 @@
 schema: 1
 primaryName: "--escape"
 title: "--escape"
-summary: "Черновая инженерная справка по --escape из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает или отключает обработку escape-последовательностей в prompt-related CLI строках. По умолчанию включено; `--no-escape` оставляет `\\n`, `\\t` и похожие последовательности буквальным текстом."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ","
+valueType: "boolean"
+valueHint: null
 aliases:
   - "-e"
   - "--escape"
   - "--no-escape"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--reverse-prompt"
 ---
 
 # --escape
 
 ## Кратко
 
-Черновая инженерная справка по --escape из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--escape` управляет `common_params::escape`. Если включено, после CLI parsing llama.cpp вызывает `string_process_escapes()` для `prompt`, `input_prefix`, `input_suffix`, каждого `antiprompt` и `sampler.dry_sequence_breakers`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+В server чаще всего заметно для `--reverse-prompt`: строка `\n### User:` может стать stop sequence с реальным переводом строки.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,73 +36,61 @@ whether to process escapes sequences (\n, \r, \t, \', \", \\) (default: true)
 ## Паспорт аргумента
 
 - Основное имя: `--escape`
-- Алиасы: `-e`, `--escape`, `--no-escape`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `true`
+- Алиас: `-e`
+- Отрицательная форма: `--no-escape`
+- Поле `common_params`: `escape`
+- По умолчанию: `true`
+- Env: не задан
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Это preprocessing CLI-строк до старта server runtime. Аргумент не обрабатывает JSON body входящих HTTP запросов и не меняет escaping внутри `--chat-template-kwargs` или `--reasoning-budget-message`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Boolean-pair:
+
+- `--escape`: включить обработку;
+- `--no-escape`: отключить.
+
+Поддерживаемые escape sequences перечислены в справке: `\n`, `\r`, `\t`, `\'`, `\"`, `\\`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте default включенным, если задаете multiline prompt или stop strings через CLI. Используйте `--no-escape`, если обратный слеш должен попасть в модель буквально, например в code/test prompts.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Нет runtime-влияния на inference. Обработка выполняется один раз после парсинга аргументов.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--reverse-prompt`: escapes применяются к каждому antiprompt.
+- `--in-prefix` и `--in-suffix`: escapes применяются к prefix/suffix, хотя это больше относится к completion/infill режимам.
+- `--chat-template`, `--chat-template-file`, `--chat-template-kwargs`: этим аргументом не обрабатываются.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `escape = true` или `no-escape = true`. Для router mode настройка применяется к argv subprocess и влияет на CLI defaults этой модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Stop sequence `\n` не срабатывает: проверьте, не был ли задан `--no-escape`.
+- В prompt видны буквальные `\n`: escape processing отключен или строка пришла через JSON body, где это отдельная JSON-ответственность клиента.
+- Нужен literal backslash: используйте `--no-escape` или экранируйте `\\` с учетом shell/INI слоя.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --escape value1,value2
+llama-server --model /models/model.gguf --reverse-prompt "\n### User:"
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-escape --reverse-prompt "\n### User:"
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--escape&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--escape
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--escape
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--escape`, `--no-escape`, post-processing строк.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: `string_process_escapes()`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::escape`.

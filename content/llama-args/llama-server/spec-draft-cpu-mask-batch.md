@@ -2,23 +2,24 @@
 schema: 1
 primaryName: "--spec-draft-cpu-mask-batch"
 title: "--spec-draft-cpu-mask-batch"
-summary: "Черновая инженерная справка по --spec-draft-cpu-mask-batch из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Парсит hex-маску CPU affinity для batch/prompt профиля draft-модели. По help наследует основной `--cpu-mask`, но в текущем server load path draft affinity batch-профиля не копируется явно в draft runtime."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "string"
+valueHint: "M"
 aliases:
-  - "--spec-draft-cpu-mask-batch"
   - "-Cbd"
-  - "--cpu"
+  - "--cpu-mask-batch-draft"
 allowedValues: []
 env: []
 related:
+  - "--spec-draft-threads-batch"
+  - "--spec-draft-cpu-strict-batch"
+  - "--spec-draft-cpu-mask"
+  - "--cpu-mask-batch"
   - "--batch-size"
-  - "--flash-attn"
-  - "--threads-batch"
   - "--ubatch-size"
 ---
 
@@ -26,89 +27,79 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-cpu-mask-batch из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-draft-cpu-mask-batch` задает CPU affinity mask для batch/prompt CPU-профиля draft-модели. Это отдельная настройка от `--spec-draft-cpu-mask`, который относится к generation-профилю draft.
 
 ## Оригинальная справка llama.cpp
 
 ```text
--mask-batch-draft M Draft model CPU affinity mask. Complements cpu-range-draft (default: same as --cpu-mask)
+Draft model CPU affinity mask. Complements cpu-range-draft (default: same as --cpu-mask)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-cpu-mask-batch`
-- Алиасы: `--spec-draft-cpu-mask-batch`, `-Cbd`, `--cpu`
+- Алиасы: `-Cbd`, `--cpu-mask-batch-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `same as --cpu-mask`
+- Тип значения в llama-manager: `string`
+- Подсказка формата: `M`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `same as --cpu-mask` в help; фактическая постобработка batch-профиля draft наследует `params.cpuparams_batch`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик выставляет `params.speculative.draft.cpuparams_batch.mask_valid = true` и вызывает `parse_cpu_mask()` для batch CPU-профиля draft. Затем `postprocess_cpu_params(params.speculative.draft.cpuparams_batch, &params.cpuparams_batch)` наследует batch CPU-профиль target, если draft batch-профиль не задан.
 
-Для точного описания механики нужно проверить:
+В `server-context.cpp` при загрузке draft-модели копируются только `params_spec.cpuparams.n_threads` и `params_spec.cpuparams_batch.n_threads`. Mask batch-профиля не копируется явно, поэтому фактическое применение `--spec-draft-cpu-mask-batch` к draft runtime на проверенном commit не подтверждено.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Формат такой же, как у `--cpu-mask`: hex-строка с опциональным `0x`, максимум 128 hex-цифр. `0x3` выбирает CPU `0` и `1`; `0xf0` выбирает CPU `4-7`. Неверный символ вызывает `invalid cpumask`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только после проверки, что ваша сборка применяет draft batch affinity. Цель параметра - отделить CPU prefill/batch draft-контекста от target batch-профиля, например при длинных prompts и CPU-bound draft model.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Память не меняется. При работающей affinity маска может улучшить locality batch/prompt фазы, но слишком узкая mask при большом `--spec-draft-threads-batch` ухудшит throughput и вызовет предупреждение о нехватке set bits.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-threads-batch` должен помещаться в выбранную mask.
+- `--spec-draft-cpu-strict-batch` определяет strict placement для этой mask.
+- `--spec-draft-cpu-range-batch` дополняет тот же batch mask.
+- `--cpu-mask-batch` является fallback batch-профиля target.
+- `--spec-draft-cpu-mask` относится к generation-профилю draft и не заменяет batch mask.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` используйте ключ `cpu-mask-batch-draft = 0x0f`. Router не удаляет этот параметр из дочернего argv, но применение к draft runtime нужно проверять.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `invalid cpumask` означает неверный hex-формат.
+- `Not enough set bits in CPU mask ...` означает, что mask уже, чем `--spec-draft-threads-batch`.
+- Если batch affinity не видна в системных инструментах, проверьте ограничение `server-context.cpp`: batch mask draft-профиля не копируется явно.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-cpu-mask-batch value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4 --spec-draft-threads-batch 8 --spec-draft-cpu-mask-batch 0xff
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+threads-batch-draft = 8
+cpu-mask-batch-draft = 0xff
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-cpu-mask-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-cpu-mask-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-cpu-mask-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-mask-batch`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - `parse_cpu_mask()` и `postprocess_cpu_params()`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование только thread counts.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - runtime affinity в ggml threadpool.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.

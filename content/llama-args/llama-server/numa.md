@@ -2,33 +2,45 @@
 schema: 1
 primaryName: "--numa"
 title: "--numa"
-summary: "Черновая инженерная справка по --numa из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает NUMA-стратегию CPU backend: `distribute`, `isolate` или `numactl`. По умолчанию NUMA-оптимизации выключены; пустое значение в обработчике соответствует `distribute`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "TYPE"
 aliases:
-  - "--numa"
-allowedValues: []
+allowedValues:
+  - "distribute"
+  - "isolate"
+  - "numactl"
 env:
   - "LLAMA_ARG_NUMA"
-related: []
+related:
+  - "--threads"
+  - "--threads-batch"
+  - "--cpu-mask"
+  - "--cpu-range"
+  - "--cpu-strict"
+  - "--cpu-mask-batch"
+  - "--cpu-range-batch"
 ---
 
 # --numa
 
 ## Кратко
 
-Черновая инженерная справка по --numa из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--numa` включает NUMA-aware размещение потоков CPU backend. Это низкоуровневая настройка для многосокетных Linux-систем и машин с выраженной NUMA-топологией; на обычном desktop без NUMA она обычно не нужна.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-attempt optimizations that help on some NUMA systems - distribute: spread execution evenly over all nodes - isolate: only spawn threads on CPUs on the node that execution started on - numactl: use the CPU map provided by numactl if run without this previously, it is recommended to drop the system page cache before using this see https://github.com/ggml-org/llama.cpp/issues/1437
+attempt optimizations that help on some NUMA systems
+- distribute: spread execution evenly over all nodes
+- isolate: only spawn threads on CPUs on the node that execution started on
+- numactl: use the CPU map provided by numactl
+if run without this previously, it is recommended to drop the system page cache before using this
+see https://github.com/ggml-org/llama.cpp/issues/1437
 ```
 
 ## Паспорт аргумента
@@ -36,71 +48,70 @@ attempt optimizations that help on some NUMA systems - distribute: spread execut
 - Основное имя: `--numa`
 - Алиасы: `--numa`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `TYPE`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `string`
+- Подсказка формата: `TYPE`
+- Допустимые значения: `distribute`, `isolate`, `numactl`
 - Переменные окружения: `LLAMA_ARG_NUMA`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение по умолчанию: `disabled`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик записывает enum в `params.numa`: `GGML_NUMA_STRATEGY_DISTRIBUTE`, `GGML_NUMA_STRATEGY_ISOLATE` или `GGML_NUMA_STRATEGY_NUMACTL`. В `server.cpp` после `llama_backend_init()` вызывается `llama_numa_init(params.numa)`, который передает стратегию в CPU backend через `ggml_backend_cpu_numa_init`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `distribute` распределяет execution по NUMA nodes.
+- `isolate` ограничивает потоки CPU node, на котором стартовало выполнение.
+- `numactl` использует CPU map, уже заданную внешним `numactl`/cpuset.
+
+Пустая строка в обработчике также выбирает `distribute`, но в CLI llama-manager лучше задавать явное значение. Любое другое значение вызывает `invalid value`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте на многосокетных серверах, где память модели и CPU threads могут оказаться на разных NUMA nodes. `numactl` полезен, когда размещение процесса уже задается systemd, Kubernetes cpuset или ручной командой `numactl`. `isolate` подходит для закрепления экземпляра на node запуска.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Может уменьшить remote memory access и улучшить throughput CPU inference, но при неправильной стратегии может ухудшить результат. Размер модели, KV-cache и VRAM не меняет. Help llama.cpp отдельно предупреждает, что после запуска без NUMA перед повторным запуском с NUMA может быть полезно сбросить page cache, потому что mmap/page placement уже могли закрепиться неудачно.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--threads` и `--threads-batch` определяют количество CPU worker threads, на которые влияет NUMA placement.
+- `--cpu-mask`/`--cpu-range` и batch affinity могут конфликтовать с выбранной NUMA-стратегией; измеряйте итоговую комбинацию, а не отдельные флаги.
+- `--mmap` влияет на то, как страницы модели попадают в память ОС; именно поэтому page cache важен для NUMA-экспериментов.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `numa = isolate`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
-## Типовые проблемы
+Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+
+## Типовые проблемы и диагностика
+
+- Если после `--numa` производительность ухудшилась, проверьте topology через `numactl --hardware`, cpuset процесса и фактические CPU в affinity mask.
+- Предупреждения `pthread_setaffinity_np() failed` означают, что backend не смог применить NUMA affinity.
+- Для честного сравнения перезапускайте сервер и прогревайте одинаковым prompt; NUMA и page cache делают одиночные измерения шумными.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --numa value
+llama-server --model /models/model.gguf --numa distribute --threads 32
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --numa numactl
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+numa = isolate
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--numa&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--numa
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--numa
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--numa` и допустимые значения.
+- `/home/maxim/llama/llama.cpp/common/common.h` - default `GGML_NUMA_STRATEGY_DISABLED`.
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp` - вызов `llama_numa_init(params.numa)`.
+- `/home/maxim/llama/llama.cpp/src/llama.cpp` и `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - передача NUMA-стратегии в CPU backend и применение affinity.

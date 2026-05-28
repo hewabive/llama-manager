@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--dry-sequence-breaker"
 title: "--dry-sequence-breaker"
-summary: "Черновая инженерная справка по --dry-sequence-breaker из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Добавляет строку-разделитель для DRY и при первом использовании очищает default breakers. Значение `none` на CLI оставляет DRY без sequence breakers."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "string"
 valueHint: "STRING"
@@ -13,16 +13,20 @@ aliases:
   - "--dry-sequence-breaker"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--dry-multiplier"
+  - "--dry-base"
+  - "--dry-allowed-length"
+  - "--dry-penalty-last-n"
 ---
 
 # --dry-sequence-breaker
 
 ## Кратко
 
-Черновая инженерная справка по --dry-sequence-breaker из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--dry-sequence-breaker` настраивает строки, которые DRY считает границами последовательностей. Default breakers в `common.h`: newline, `:`, `"`, `*`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+На CLI первое использование `--dry-sequence-breaker` очищает default список, затем добавляет переданное значение. Аргумент можно повторять.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,72 +38,91 @@ add sequence breaker for DRY sampling, clearing out default breakers ('\n', ':',
 
 - Основное имя: `--dry-sequence-breaker`
 - Алиасы: `--dry-sequence-breaker`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `STRING`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип CLI-значения: строка `STRING`
+- Поле в `common_params_sampling`: `dry_sequence_breakers`
+- HTTP-поле: `dry_sequence_breakers`
+- Значение по умолчанию: `["\n", ":", "\"", "*"]`
+- CLI special value: `none` очищает список и не добавляет breaker.
+- HTTP: если поле `dry_sequence_breakers` передано, оно должно быть непустым массивом строк.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Список строк преобразуется в массив `const char *` и передается в `llama_sampler_init_dry`. Breakers влияют только на DRY sampler и не меняют обычные `penalties`.
 
-Для точного описания механики нужно проверить:
+CLI-обработчик использует состояние "defaults cleared": первый `--dry-sequence-breaker` очищает default breakers, последующие добавляют значения в уже очищенный список. Поэтому для набора из двух breakers указывайте аргумент два раза.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `--dry-sequence-breaker "\n"`: использовать перевод строки как breaker.
+- `--dry-sequence-breaker ":"`: использовать двоеточие.
+- `--dry-sequence-breaker none`: очистить список breakers.
+- Повтор аргумента: добавить еще одну строку после первого очищения default.
+
+В JSON request формат другой:
+
+```json
+{
+  "dry_sequence_breakers": ["\n", ":"]
+}
+```
+
+Пустой массив в HTTP task отклоняется: `Error: dry_sequence_breakers must be a non-empty array of strings`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+Меняйте breakers, если DRY неправильно связывает повторы через границы абзацев, markdown-списков, JSON ключей или строк кода. Default набор ориентирован на типичные текстовые и разметочные границы.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+`none` полезен только для экспериментов: без breakers DRY может связывать повторы через большие структурные границы и становиться более агрессивным.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память модели и KV-cache не меняются. Количество breakers небольшое; основной overhead DRY задается окном `--dry-penalty-last-n`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--dry-multiplier`: при `0` breakers не имеют практического эффекта.
+- `--dry-allowed-length` и `--dry-base`: задают, когда и насколько штрафовать продолжения последовательности.
+- `--dry-penalty-last-n`: задает окно поиска повторов.
+- `--samplers`: должен содержать `dry`.
+- `--mirostat`: при `--mirostat 1/2` default DRY sampler не создается.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Аргумент является sampling option и может использоваться в `--models-preset`. Из-за повторяемости CLI-аргумента убедитесь, что ваш INI/preset tooling поддерживает несколько значений одного ключа. Если поддерживается только одно значение, задавайте один breaker или используйте per-request JSON `dry_sequence_breakers`.
 
-## Типовые проблемы
+```ini
+[model.default]
+dry-sequence-breaker = "\n"
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Ожидали добавить breaker к default, но default исчез: это нормальная CLI-семантика. Первый `--dry-sequence-breaker` очищает default список.
+- HTTP-запрос с пустым массивом падает: в server task пустой `dry_sequence_breakers` запрещен.
+- DRY стал слишком агрессивным после `none`: верните хотя бы newline breaker.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --dry-sequence-breaker value
+llama-server --model /models/model.gguf --dry-multiplier 0.8 --dry-sequence-breaker "\n" --dry-sequence-breaker ":"
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --dry-multiplier 0.8 --dry-sequence-breaker none
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "prompt": "Сгенерируй markdown",
+  "dry_multiplier": 0.8,
+  "dry_sequence_breakers": ["\n", ":", "*"]
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--dry-sequence-breaker&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--dry-sequence-breaker
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--dry-sequence-breaker
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: CLI-семантика очистки default breakers и `none`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: default `dry_sequence_breakers`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: передача breakers в `llama_sampler_init_dry`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `dry_sequence_breakers` и запрет пустого массива.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание CLI и request-поля.

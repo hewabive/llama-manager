@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--vision-gemma-4b-default"
 title: "--vision-gemma-4b-default"
-summary: "Черновая инженерная справка по --vision-gemma-4b-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет для Gemma 3 4B IT QAT vision. Задает HF repo, порт 8014, auto context и включает Jinja."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,23 @@ aliases:
   - "--vision-gemma-4b-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--mmproj"
+  - "--mmproj-auto"
+  - "--port"
+  - "--ctx-size"
+  - "--jinja"
+  - "--image-min-tokens"
+  - "--image-max-tokens"
 ---
 
 # --vision-gemma-4b-default
 
 ## Кратко
 
-Черновая инженерная справка по --vision-gemma-4b-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--vision-gemma-4b-default` применяет встроенный пресет для `gemma-3-4b-it-qat-GGUF`. Он включает Jinja и оставляет context size автоматическим.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +40,83 @@ use Gemma 3 4B QAT (note: can download weights from the internet)
 ## Паспорт аргумента
 
 - Основное имя: `--vision-gemma-4b-default`
-- Алиасы: `--vision-gemma-4b-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до загрузки модели и multimodal projector
+- Область: `llama-server`, `llama-cli`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/gemma-3-4b-it-qat-GGUF"`
+- `params.port = 8014`
+- `params.n_ctx = 0`
+- `params.use_jinja = true`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`hf_file` и `mmproj` напрямую не задаются. Для `--hf-repo` в llama.cpp действует общая логика выбора файла и автоматической загрузки `mmproj`, если он доступен и не отключен `--no-mmproj`.
+
+## Значения и формат
+
+```bash
+llama-server --vision-gemma-4b-default
+```
+
+INI:
+
+```ini
+[gemma-vision-4b]
+vision-gemma-4b-default = true
+alias = vision-small
+tags = vision,gemma
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для multimodal Gemma 3 4B сервера, когда нужна более легкая vision модель. Это быстрый shortcut для проверки image-capable endpoint.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+4B QAT легче 12B варианта, но multimodal запросы требуют память под text model, `mmproj` и image tokens. `n_ctx = 0` может выбрать контекст автоматически; ограничивайте `--ctx-size`, если нужно контролировать KV-cache.
+
+`--image-min-tokens` и `--image-max-tokens` могут влиять на token budget для vision моделей с dynamic resolution.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--mmproj-auto`/default HF behavior важны для image input. Если projector не найден, модель может появиться без vision capability. В router `/models` поле `architecture.input_modalities` покажет наличие `image`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+Флаг включает `--jinja`; если задаете `--chat-template`, проверяйте совместимость с Gemma.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+```ini
+[gemma-vision-4b]
+vision-gemma-4b-default = true
+alias = vision
+tags = vision,small
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+При `GET /models` router пытается определить multimodal capability offline по модели и `mmproj`.
+
+## Типовые проблемы и диагностика
+
+- В `/models` нет `image` в `input_modalities`: проверьте загрузку `mmproj`.
+- Скачался не тот файл: shortcut задает repo, но не `hf_file`; зафиксируйте `hf-file`.
+- Порт `8014` занят: задайте `--port`.
+- Vision запрос занимает слишком много контекста: настройте image token limits и `--ctx-size`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --vision-gemma-4b-default
+llama-server --vision-gemma-4b-default --port 8084
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --vision-gemma-4b-default --ctx-size 32768 --image-max-tokens 1024
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--vision-gemma-4b-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--vision-gemma-4b-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--vision-gemma-4b-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--vision-gemma-4b-default`, help `--hf-repo`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router multimodal capability detection.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: multimodal API note и built-in preset help.

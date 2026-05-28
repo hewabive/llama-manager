@@ -2,12 +2,12 @@
 schema: 1
 primaryName: "--spec-draft-p-split"
 title: "--spec-draft-p-split"
-summary: "Черновая инженерная справка по --spec-draft-p-split из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Записывает split probability draft speculative decoding в `common_params.speculative.draft.p_split`. В проверенном commit значение парсится и хранится, но не используется в активной server/speculative логике."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "string"
+valueType: "number"
 valueHint: "P"
 aliases:
   - "--spec-draft-p-split"
@@ -16,20 +16,19 @@ allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_P_SPLIT"
 related:
-  - "--flash-attn"
-  - "--main-gpu"
-  - "--n-gpu-layers"
-  - "--split-mode"
-  - "--tensor-split"
+  - "--spec-draft-p-min"
+  - "--spec-draft-n-max"
+  - "--spec-type"
+  - "--spec-draft-model"
 ---
 
 # --spec-draft-p-split
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-p-split из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-p-split` парсит float-значение и записывает его в `common_params.speculative.draft.p_split`. Значение по умолчанию - `0.10`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+В commit `751ebd17a58a8a513994509214373bb9e6a3d66c` поле `p_split` объявлено и заполняется, но поиск по `common/speculative.cpp`, `tools/server/server-context.cpp` и `tools/server/server-task.cpp` не показывает активного использования этого поля. Поэтому менять параметр для production-тюнинга сейчас не имеет подтвержденного эффекта на server runtime.
 
 ## Оригинальная справка llama.cpp
 
@@ -41,76 +40,53 @@ speculative decoding split probability (default: 0.10)
 
 - Основное имя: `--spec-draft-p-split`
 - Алиасы: `--spec-draft-p-split`, `--draft-p-split`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `P`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_P_SPLIT`
-- Значение по умолчанию из `--help`: `0.10`
+- Значение: float-строка, парсится через `std::stof()`
+- Структура llama.cpp: `common_params.speculative.draft.p_split`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_P_SPLIT`
+- Значение по умолчанию: `0.10`
+- Подтвержденное применение в server runtime: не найдено в проверенном commit
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На этапе парсинга аргумент меняет поле `p_split`. Дальше server-context при загрузке draft-модели копирует другие draft параметры вроде модели, устройств, KV-cache и tensor overrides, но активная speculative draft логика использует `n_max`, `n_min`, `p_min` и `backend_sampling`; `p_split` там не читается.
 
-Для точного описания механики нужно проверить:
+Это может быть задел под экспериментальную/будущую реализацию, но текущая справка должна считать его stored-only параметром.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Практически указывайте число с точкой: `0.10`, `0.25`. Код не валидирует диапазон, но как probability значение должно быть в диапазоне `0.0` до `1.0`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только для совместимости с конфигурациями или экспериментов при сверке с конкретной веткой llama.cpp. Для реального тюнинга текущего server используйте `--spec-draft-p-min`, `--spec-draft-n-max` и `--spec-draft-n-min`.
 
 ## Влияние на производительность и память
 
-- Затрагивает распределение вычислений между CPU/GPU и может менять как latency, так и объем занятой VRAM.
-- После изменения проверяйте лог старта: llama.cpp обычно печатает, какие слои и буферы реально попали на GPU.
+В проверенном server runtime влияния не найдено. Память, VRAM, acceptance и latency не должны меняться от одного этого аргумента, пока downstream-код не начнет читать `p_split`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Связан концептуально с `--spec-draft-p-min`, но фактически `p_min` используется в draft loop, а `p_split` нет. Если после обновления llama.cpp поле начнет использоваться, нужно заново проверить взаимодействие с `--spec-draft-backend-sampling` и MTP/draft-simple реализациями.
 
-- `--flash-attn`
-- `--main-gpu`
-- `--n-gpu-layers`
-- `--split-mode`
-- `--tensor-split`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI возможны `spec-draft-p-split = 0.10` или `draft-p-split = 0.10`, но для текущего commit это не дает подтвержденного runtime-эффекта. Не добавляйте в preset без причины.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- "Я поменял `p_split`, но ничего не изменилось": это ожидаемо для проверенного commit, поле не используется активной speculative логикой server.
+- Ошибка парсинга: значение не распознается `std::stof()`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-p-split value
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-type draft-simple --spec-draft-p-split 0.10
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-p-split&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-p-split
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-p-split
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`

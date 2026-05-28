@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--chat-template-kwargs"
 title: "--chat-template-kwargs"
-summary: "Черновая инженерная справка по --chat-template-kwargs из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Передает дополнительные JSON-параметры в Jinja chat template context. Используйте для template-specific переменных; `enable_thinking` через этот путь deprecated в пользу `--reasoning`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "STRING"
@@ -13,17 +13,21 @@ aliases:
   - "--chat-template-kwargs"
 allowedValues: []
 env:
-  - "LLAMA_CHAT_TEMPLATE_KWARGS"
-related: []
+  - "LLAMA_ARG_CHAT_TEMPLATE_KWARGS"
+related:
+  - "--chat-template"
+  - "--chat-template-file"
+  - "--jinja"
+  - "--reasoning"
 ---
 
 # --chat-template-kwargs
 
 ## Кратко
 
-Черновая инженерная справка по --chat-template-kwargs из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--chat-template-kwargs` принимает строку с JSON object, разбирает ее через `json::parse()` и добавляет пары в `common_params::default_template_kwargs`. Значения сохраняются как JSON dumps, а при применении template снова разбираются и попадают в `params.extra_context`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это не настройка sampling. Аргумент влияет только на rendering chat template.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +38,71 @@ sets additional params for the json template parser, must be a valid json object
 ## Паспорт аргумента
 
 - Основное имя: `--chat-template-kwargs`
-- Алиасы: `--chat-template-kwargs`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `STRING`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_CHAT_TEMPLATE_KWARGS`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение: JSON object в одной строке
+- Поле `common_params`: `default_template_kwargs`
+- Переменная окружения: `LLAMA_ARG_CHAT_TEMPLATE_KWARGS`
+- Этап применения: CLI parse, затем merge с request-level `chat_template_kwargs`
+- Требует Jinja template для практического эффекта
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При каждом chat-запросе server сначала берет defaults из CLI, затем поверх них накладывает поле JSON body `chat_template_kwargs`, если клиент его передал. Это значит, что request-level kwargs имеют приоритет над CLI defaults.
 
-Для точного описания механики нужно проверить:
+Ключ `enable_thinking` отдельно распознается сервером. Если он равен JSON boolean `true` или `false`, он переопределяет `inputs.enable_thinking`. Если он передан строкой, сервер бросает ошибку типа `invalid type for "enable_thinking"`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Значение обязано быть JSON object:
+
+```json
+{"reasoning_effort":"high","custom_flag":true}
+```
+
+Строки, числа, boolean, массивы и объекты внутри значения допустимы как JSON. Невалидный JSON завершит запуск ошибкой парсинга.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+- Template ожидает нестандартную переменную, например `reasoning_effort`.
+- Нужно задать default для всех клиентов, но оставить возможность переопределить его в body запроса.
+- Вы поддерживаете кастомный Jinja template и хотите избежать fork исходников.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для включения/отключения thinking используйте `--reasoning on`, `--reasoning off` или `--reasoning auto`, а не `{"enable_thinking":...}`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Влияние ограничено JSON parsing и rendering template. На KV-cache и веса модели аргумент не влияет. Косвенно kwargs могут изменить prompt, если template по ним добавляет секции, tokens или специальные инструкции.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--chat-template` и `--chat-template-file`: template должен реально читать эти kwargs.
+- `--jinja`: legacy non-Jinja templates не используют произвольный Jinja context.
+- `--reasoning`: предпочтительный способ управлять `enable_thinking`.
+- `--skip-chat-parsing`: не отменяет rendering kwargs, но меняет parser ответа.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` значение нужно писать как JSON string, например `chat-template-kwargs = {"reasoning_effort":"high"}`. Для router mode это per-model default; клиенты все равно могут передать `chat_template_kwargs` в конкретном запросе.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Сервер не стартует: проверьте, что значение является JSON object, а не shell-подобной строкой.
+- `Setting 'enable_thinking' via --chat-template-kwargs is deprecated`: замените на `--reasoning`.
+- `invalid type for "enable_thinking"`: передан `"false"` как строка, нужен boolean `false`.
+- Template не реагирует: проверьте, что выбранный Jinja template обращается к такому ключу.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --chat-template-kwargs value
+llama-server --model /models/model.gguf --chat-template-kwargs '{"reasoning_effort":"high"}'
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --reasoning off --chat-template-kwargs '{"custom_mode":true}'
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--chat-template-kwargs&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--chat-template-kwargs
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--chat-template-kwargs
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: JSON parsing и warning для `enable_thinking`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: merge CLI kwargs с request kwargs.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: добавление kwargs в Jinja `extra_context`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server help table.

@@ -2,115 +2,111 @@
 schema: 1
 primaryName: "--cont-batching"
 title: "--cont-batching"
-summary: "Черновая инженерная справка по --cont-batching из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает continuous batching: новые задачи могут добавляться в batch на лету, пока сервер уже обрабатывает другие слоты. По умолчанию включено."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "list"
-valueHint: ","
+valueType: "boolean"
+valueHint: null
 aliases:
   - "-cb"
   - "--cont-batching"
   - "-nocb"
-  - "--no-cont"
+  - "--no-cont-batching"
 allowedValues: []
 env:
   - "LLAMA_ARG_CONT_BATCHING"
 related:
   - "--batch-size"
-  - "--flash-attn"
-  - "--threads-batch"
   - "--ubatch-size"
+  - "--parallel"
+  - "--threads-batch"
 ---
 
 # --cont-batching
 
 ## Кратко
 
-Черновая инженерная справка по --cont-batching из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--cont-batching` управляет `common_params::cont_batching`. Когда включено, `update_slots()` может подмешивать prompt tokens новых задач в batch, пока другие слоты уже генерируют или обрабатывают prompt.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это флаг-переключатель: включение `--cont-batching`, отключение `--no-cont-batching` или `-nocb`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
--batching whether to enable continuous batching (a.k.a dynamic batching) (default: enabled)
+whether to enable continuous batching (a.k.a dynamic batching) (default: enabled)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--cont-batching`
-- Алиасы: `-cb`, `--cont-batching`, `-nocb`, `--no-cont`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CONT_BATCHING`
-- Значение по умолчанию из `--help`: `enabled`
+- Алиасы включения: `-cb`, `--cont-batching`
+- Алиасы выключения: `-nocb`, `--no-cont-batching`
+- Значение по умолчанию: enabled
+- Переменная окружения: `LLAMA_ARG_CONT_BATCHING`
+- Поле llama.cpp: `common_params::cont_batching`
+- Этап применения: runtime scheduler loop в `server-context.cpp`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В scheduler loop новые prompts добавляются, если `params_base.cont_batching || batch.n_tokens == 0`. Поэтому при отключении continuous batching сервер все еще может начать prompt, когда текущий batch пуст, но не будет так агрессивно смешивать новую работу с уже активным batch.
 
-Для точного описания механики нужно проверить:
+Слоты батчатся вместе только если совместимы по типу задачи и LoRA-состоянию (`can_batch_with`).
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI-форма не принимает отдельное значение:
+
+- `--cont-batching`: включить.
+- `--no-cont-batching`: выключить.
+- В INI boolean значения разбираются через truthy/falsey; для отрицательного ключа значение инвертируется.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Оставляйте включенным для API-сервера и нескольких слотов: это основной путь к хорошему throughput.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Отключайте для диагностики latency, воспроизводимости проблем batch scheduler или если важнее предсказуемость одиночного запроса, чем суммарная пропускная способность.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Включение повышает utilization backend и throughput при конкурентных запросах. Цена: отдельный запрос может получать более вариативную latency, потому что batch формируется динамически.
+
+Память напрямую не увеличивается как отдельный буфер, но continuous batching повышает шанс одновременно держать больше активных prompt/generation состояний в KV.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--parallel`: без нескольких слотов эффект ограничен.
+- `--batch-size`: верхний лимит токенов, которые scheduler может собрать.
+- `--ubatch-size`: физический размер micro-batch после логического batching.
+- `--threads-batch`: CPU-потоки для prompt/batch phase.
+- `--cache-prompt`: reused prefix уменьшает объем токенов, попадающих в batch.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `cont-batching = true` или `no-cont-batching = true`. Ключ `LLAMA_ARG_CONT_BATCHING` также распознается.
 
-## Типовые проблемы
+В router-режиме применяется в дочернем процессе конкретной модели.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Включите verbose/trace logging, чтобы видеть `decoding batch, n_tokens = ...` и переходы slot state.
+- Если маленькие запросы имеют нестабильную latency под нагрузкой, сравните запуск с `--no-cont-batching`.
+- Если batch часто пустой и есть `no tokens to decode`, проблема обычно не в этом флаге, а в состоянии очереди/слотов.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --cont-batching value1,value2
+llama-server --model /models/model.gguf --parallel 4 --cont-batching
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --parallel 1 --no-cont-batching
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--cont-batching&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--cont-batching
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--cont-batching
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

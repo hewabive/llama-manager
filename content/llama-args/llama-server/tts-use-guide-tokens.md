@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--tts-use-guide-tokens"
 title: "--tts-use-guide-tokens"
-summary: "Черновая инженерная справка по --tts-use-guide-tokens из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает guide tokens для TTS vocoder pipeline, чтобы улучшить word recall. Имеет смысл только в TTS-сценариях с vocoder/model setup, не влияет на обычный chat или embeddings."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,17 @@ aliases:
   - "--tts-use-guide-tokens"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--model-vocoder"
 ---
 
 # --tts-use-guide-tokens
 
 ## Кратко
 
-Черновая инженерная справка по --tts-use-guide-tokens из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--tts-use-guide-tokens` ставит `common_params::vocoder.use_guide_tokens = true`. В TTS tool path это заставляет подготовить guide tokens из очищенного prompt text перед генерацией voice codes.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Для обычных `/v1/chat/completions`, `/completion`, `/embedding` и `/reranking` флаг не является meaningful knob.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +34,63 @@ Use guide tokens to improve TTS word recall
 ## Паспорт аргумента
 
 - Основное имя: `--tts-use-guide-tokens`
-- Алиасы: `--tts-use-guide-tokens`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: флаг без значения
+- Поле `common_params`: `vocoder.use_guide_tokens`
+- По умолчанию: disabled
+- Env: не задан
+- Связанный режим: TTS/vocoder
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `arg.cpp` флаг только выставляет поле vocoder params. Реальное использование найдено в `tools/tts/tts.cpp`: при подготовке prompt, после `process_text(params.prompt, tts_version)`, код вызывает `prepare_guide_tokens(vocab, prompt_clean, tts_version)`, если `use_guide_tokens` включен.
 
-Для точного описания механики нужно проверить:
+В server этот аргумент доступен в help, потому что server может работать с TTS-facing параметрами и vocoder model, но обычный текстовый inference path не читает guide tokens.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Флаг без значения:
+
+```bash
+llama-server --model /models/tts.gguf --model-vocoder /models/vocoder.gguf --tts-use-guide-tokens
+```
+
+Отрицательной формы в `arg.cpp` нет.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- TTS модель пропускает или искажает слова из prompt.
+- Вы используете OuteTTS-compatible workflow, где guide tokens поддерживаются.
+- Есть vocoder model и TTS route/tooling, а не обычная chat модель.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Guide tokens добавляют preprocessing/tokenization work в TTS path и могут увеличить prompt/control data для generation. На chat/embedding server modes не влияют.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--model-vocoder`: практически обязательный сосед для TTS audio generation.
+- TTS speaker/audio аргументы влияют на тот же vocoder pipeline.
+- `--chat-template`, `--embedding`, `--rerank`: независимые режимы, не используют guide tokens.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `tts-use-guide-tokens = true` только в секции TTS-модели. В router mode не смешивайте TTS alias с chat/embedding alias, потому что у клиентов разные endpoint expectations.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Флаг не меняет chat output: это ожидаемо, он относится к TTS.
+- Нет эффекта в TTS: проверьте, что используется vocoder/TTS path, а не обычный text completion.
+- Ошибки вокруг vocoder model не исправляются этим флагом; сначала проверьте `--model-vocoder`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --tts-use-guide-tokens
+llama-server --model /models/tts.gguf --model-vocoder /models/vocoder.gguf --tts-use-guide-tokens
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--tts-use-guide-tokens&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--tts-use-guide-tokens
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--tts-use-guide-tokens
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--tts-use-guide-tokens`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params_vocoder::use_guide_tokens`.
+- `/home/maxim/llama/llama.cpp/tools/tts/tts.cpp`: `prepare_guide_tokens()` usage in TTS prompt construction.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server help table includes TTS-facing argument.

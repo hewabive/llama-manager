@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--split-mode"
 title: "--split-mode"
-summary: "Стратегия распределения модели по нескольким GPU."
-docStatus: draft
+summary: "Выбирает стратегию распределения модели между несколькими GPU: один GPU, послойное распределение, row split или экспериментальный tensor parallelism."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "enum"
 valueHint: "{none,layer,row,tensor}"
@@ -20,9 +20,11 @@ allowedValues:
 env:
   - "LLAMA_ARG_SPLIT_MODE"
 related:
+  - "--device"
   - "--flash-attn"
+  - "--fit"
+  - "--gpu-layers"
   - "--main-gpu"
-  - "--n-gpu-layers"
   - "--tensor-split"
 ---
 
@@ -30,89 +32,98 @@ related:
 
 ## Кратко
 
-Стратегия распределения модели по нескольким GPU.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--split-mode` определяет, как llama.cpp распределяет модель между несколькими устройствами. По умолчанию используется `layer`: слои и KV распределяются между GPU, а scheduler может включить pipeline parallelism при полной выгрузке.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-how to split the model across multiple GPUs, one of: - none: use one GPU only - layer (default): split layers and KV across GPUs (pipelined) - row: split weight across GPUs by rows (parallelized) - tensor: split weights and KV across GPUs (parallelized, EXPERIMENTAL)
+how to split the model across multiple GPUs, one of:
+- none: use one GPU only
+- layer (default): split layers and KV across GPUs (pipelined)
+- row: split weight across GPUs by rows (parallelized)
+- tensor: split weights and KV across GPUs (parallelized, EXPERIMENTAL)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--split-mode`
 - Алиасы: `-sm`, `--split-mode`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `enum` (одно значение из фиксированного набора)
-- Подсказка формата из `--help`: `{none,layer,row,tensor}`
-- Допустимые значения из `--help`: `none`, `layer`, `row`, `tensor`
-- Переменные окружения: `LLAMA_ARG_SPLIT_MODE`
-- Значение по умолчанию из `--help`: `не указано`
+- Переменная окружения: `LLAMA_ARG_SPLIT_MODE`
+- Поле `common_params`: `split_mode`
+- Поле `llama_model_params`: `split_mode`
+- Значение по умолчанию: `layer`
+- Допустимые значения: `none`, `layer`, `row`, `tensor`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На парсинге строка превращается в `LLAMA_SPLIT_MODE_NONE`, `LLAMA_SPLIT_MODE_LAYER`, `LLAMA_SPLIT_MODE_ROW` или `LLAMA_SPLIT_MODE_TENSOR`. Неизвестное значение дает `invalid value`.
 
-Для точного описания механики нужно проверить:
+При `none` llama.cpp после выбора устройств оставляет только `--main-gpu`. При `tensor` создается Meta device из выбранных устройств; режим требует хотя бы одно не-CPU устройство.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `none`: использовать один GPU, выбранный `--main-gpu`.
+- `layer`: распределять слои и KV между GPU; дефолт и самый обычный multi-GPU режим.
+- `row`: делить веса по строкам, если backend поддерживает split buffer type; `--main-gpu` используется для промежуточных результатов и KV.
+- `tensor`: экспериментальный tensor parallelism; llama.cpp принудительно требует Flash Attention.
 
 ## Когда использовать
 
-- Перечисления лучше показывать в UI как явный список допустимых значений.
-- После обновления llama.cpp список значений нужно сверять заново: новые backend-режимы часто добавляются без обратной совместимости на уровне UI.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+`layer` подходит для большинства multi-GPU запусков, особенно когда модель не помещается на одну карту. `none` нужен для изоляции модели на конкретной карте. `row` и `tensor` стоит применять только после контрольных замеров, потому что выигрыш зависит от backend, interconnect и размера batch.
 
 ## Влияние на производительность и память
 
-- Затрагивает распределение вычислений между CPU/GPU и может менять как latency, так и объем занятой VRAM.
-- После изменения проверяйте лог старта: llama.cpp обычно печатает, какие слои и буферы реально попали на GPU.
+`layer` может включить pipeline parallelism, когда модель полностью offloaded, устройств больше одного, KV offload включен и нет tensor overrides. Это повышает throughput, но scheduler резервирует больше compute memory.
+
+`tensor` требует `--flash-attn on` или `auto`, не поддерживает quantized KV cache вместе с tensor split и может завершить создание context ошибкой при несовместимой конфигурации.
+
+`--fit` не реализован для `SPLIT_MODE_TENSOR` и не умеет менять weight allocation для `ROW`; при таких комбинациях он логирует отказ и оставляет параметры как есть.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--device` задает список устройств для split. Без него llama.cpp выбирает устройства автоматически.
 
-- `--flash-attn`
-- `--main-gpu`
-- `--n-gpu-layers`
-- `--tensor-split`
+`--gpu-layers` задает, сколько слоев вообще участвует в GPU offload.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--tensor-split` задает пропорции по устройствам. В отсутствие `--tensor-split` используются пропорции свободной памяти.
 
-## Типовые проблемы
+`--flash-attn` обязателен для `tensor`; в `auto` llama.cpp включает его сам.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## INI-пресеты и router-режим
+
+В INI:
+
+```ini
+split-mode = layer
+```
+
+Для router-режима это обычный модельный параметр. Если разные модели используют разные стратегии split, задавайте его в секциях конкретных моделей, а не глобально.
+
+## Типовые проблемы и диагностика
+
+- `SPLIT_MODE_TENSOR requires flash_attn to be enabled`: включите `--flash-attn on` или оставьте `auto`.
+- `LLAMA_SPLIT_MODE_TENSOR needs >= 1 devices`: проверьте `--device` и сборку GPU backend.
+- `--fit` не изменил offload: проверьте предупреждения `llama_params_fit is not implemented for SPLIT_MODE_TENSOR` или `LLAMA_SPLIT_MODE_ROW not implemented`.
+- Неожиданная производительность: сравните `layer` и `none` на одинаковом `--gpu-layers`, затем отдельно тестируйте `row`/`tensor`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --split-mode none
+llama-server --model /models/model.gguf --device CUDA0,CUDA1 --split-mode layer --gpu-layers auto
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --split-mode none --main-gpu 0 --gpu-layers all
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --device CUDA0,CUDA1 --split-mode tensor --flash-attn auto
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--split-mode&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--split-mode
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--split-mode
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/fit.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

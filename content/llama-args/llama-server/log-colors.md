@@ -2,36 +2,38 @@
 schema: 1
 primaryName: "--log-colors"
 title: "--log-colors"
-summary: "Черновая инженерная справка по --log-colors из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Управляет ANSI-цветами common logger: `on`, `off` или `auto`. Режим `auto` включает цвета только для terminal output."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "boolean"
+valueType: "string"
 valueHint: "[on|off|auto]"
 aliases:
-  - "--log-colors"
 allowedValues:
   - "on"
   - "off"
   - "auto"
 env:
-  - "LLAMA_LOG_COLORS"
-related: []
+  - "LLAMA_ARG_LOG_COLORS"
+related:
+  - "--log-file"
+  - "--log-prefix"
+  - "--log-timestamps"
+  - "--verbosity"
 ---
 
 # --log-colors
 
 ## Кратко
 
-Черновая инженерная справка по --log-colors из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Управляет ANSI-цветами common logger: `on`, `off` или `auto`. Режим `auto` включает цвета только для terminal output.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-Set colored logging ('on', 'off', or 'auto', default: 'auto') 'auto' enables colors when output is to a terminal
+Set colored logging ('on', 'off', or 'auto', default: 'auto')
+'auto' enables colors when output is to a terminal
 ```
 
 ## Паспорт аргумента
@@ -39,71 +41,64 @@ Set colored logging ('on', 'off', or 'auto', default: 'auto') 'auto' enables col
 - Основное имя: `--log-colors`
 - Алиасы: `--log-colors`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `[on|off|auto]`
-- Допустимые значения из `--help`: `on`, `off`, `auto`
-- Переменные окружения: `LLAMA_LOG_COLORS`
-- Значение по умолчанию из `--help`: `'auto') 'auto' enables colors when output is to a terminal`
+- Тип значения в llama-manager: `string`
+- Подсказка формата: `[on|off|auto]`
+- Допустимые значения: `on`, `off`, `auto`
+- Переменные окружения: `LLAMA_ARG_LOG_COLORS`
+- Значение по умолчанию: `auto`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик принимает truthy/falsey/auto значение и вызывает `common_log_set_colors()`. `on` включает ANSI escape sequences, `off` заменяет цвета пустыми строками, `auto` вызывает `tty_can_use_colors()`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Допустимы `on`, `off`, `auto` и другие truthy/falsey формы, которые распознают helpers `is_truthy()`/`is_falsey()`. Неизвестное значение вызывает ошибку `unknown value for --log-colors`.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте `off` для log files, CI, journald и парсеров логов. Используйте `on` для интерактивной консоли, если auto не распознал terminal. `auto` - нормальный default для ручного запуска.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На inference и память не влияет. Цвета добавляют escape-последовательности в stderr/stdout; при записи в файл через `--log-file` те же строки могут содержать цвета, если они включены.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--verbosity` и `--verbose` определяют, какие сообщения вообще доходят до common logger.
+- `--log-file`, `--log-colors`, `--log-prefix`, `--log-timestamps` управляют форматом и направлением тех сообщений, которые прошли threshold.
+- `--log-disable` останавливает worker и отбрасывает новые записи; для `--log-file` и `--log-colors` порядок особенно важен, потому что эти настройки внутри себя делают pause/resume logger.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В локальном `--models-preset` параметр пишется по длинному имени без дефисов. Для paired boolean flags `common_preset::to_args()` выбирает положительный или отрицательный CLI-аргумент по boolean-значению. Logging-параметры не входят в список reserved router args, поэтому могут передаваться дочерним model servers; учитывайте, что `--log-file` в нескольких дочерних процессах должен указывать на разные файлы, иначе процессы будут конкурировать за один путь.
 
-## Типовые проблемы
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Если в файле видны символы вроде `\033[31m`, задайте `--log-colors off`.
+- Если цвета не появились в terminal, проверьте `--log-colors on` и поддержку ANSI в консоли.
+- Если аргумент не принят, используйте одно из `on`, `off`, `auto`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --log-colors on
+llama-server --model /models/model.gguf --log-colors off --log-file /tmp/llama.log
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --log-colors on
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+log-colors = off
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--log-colors&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--log-colors
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--log-colors
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--log-colors` и обработчик CLI/env.
+- `/home/maxim/llama/llama.cpp/common/log.h` - log levels, prefix/timestamp format и публичные функции logger.
+- `/home/maxim/llama/llama.cpp/common/log.cpp` - worker thread logger, file output, colors, pause/resume и threshold filtering.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - `common_init()` включает prefix/timestamps и подключает callback libllama.

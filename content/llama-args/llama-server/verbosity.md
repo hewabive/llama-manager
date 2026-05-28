@@ -2,35 +2,44 @@
 schema: 1
 primaryName: "--verbosity"
 title: "--verbosity"
-summary: "Порог подробности логов llama.cpp."
-docStatus: draft
+summary: "Задает числовой порог логирования. Сообщения с verbosity выше порога игнорируются; значения `0..5` описаны в help, а `>9` дополнительно включает `__verbose` в server task responses."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ", N"
+valueType: "number"
+valueHint: "N"
 aliases:
   - "-lv"
-  - "--verbosity"
   - "--log-verbosity"
 allowedValues: []
 env:
-  - "LLAMA_LOG_VERBOSITY"
-related: []
+  - "LLAMA_ARG_LOG_VERBOSITY"
+related:
+  - "--verbose"
+  - "--log-file"
+  - "--log-prefix"
+  - "--log-timestamps"
+  - "--log-disable"
 ---
 
 # --verbosity
 
 ## Кратко
 
-Порог подробности логов llama.cpp.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--verbosity` задает global threshold для logger. Чем выше число, тем больше сообщений проходит; default `3` соответствует info-level.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-Set the verbosity threshold. Messages with a higher verbosity will be ignored. Values: - 0: generic output - 1: error - 2: warning - 3: info - 4: trace (more info) - 5: debug (default: 3)
+Set the verbosity threshold. Messages with a higher verbosity will be ignored. Values:
+ - 0: generic output
+ - 1: error
+ - 2: warning
+ - 3: info
+ - 4: trace (more info)
+ - 5: debug
+(default: 3)
 ```
 
 ## Паспорт аргумента
@@ -38,71 +47,65 @@ Set the verbosity threshold. Messages with a higher verbosity will be ignored. V
 - Основное имя: `--verbosity`
 - Алиасы: `-lv`, `--verbosity`, `--log-verbosity`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `, N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_LOG_VERBOSITY`
-- Значение по умолчанию из `--help`: `3`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `LLAMA_ARG_LOG_VERBOSITY`
+- Значение по умолчанию: `3`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик записывает `params.verbosity = value` и вызывает `common_log_set_verbosity_thold(value)`. Макросы `LOG_*` сравнивают свой уровень с этим threshold до вычисления и записи сообщения. В server tasks `params.verbose` становится `true`, когда базовая `verbosity > 9`, что добавляет `__verbose` в ответы.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`N` - целое число. Help документирует `0..5`: `0` output, `1` error, `2` warning, `3` info, `4` trace, `5` debug. Обработчик не ограничивает верхнюю границу; значения выше `5` пропускают еще более подробные `LOGV` сообщения, а `>9` влияет на `__verbose` responses.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+`1` или `2` подходят для тихого production-запуска. `3` оставляет нормальную стартовую диагностику. `4` и `5` используйте при расследовании проблем backend, загрузки модели, tokenization или routing. Значения `>9` применяйте точечно, потому что они могут раскрыть prompt details через `__verbose`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Чем выше threshold, тем больше formatting, I/O и disk usage при `--log-file`. На память модели и KV-cache не влияет. При низком threshold часть дорогих log arguments не вычисляется благодаря `LOG_TMPL` guard.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--verbose` эквивалентен очень большому `--verbosity`; порядок аргументов определяет, кто победит, если указаны оба.
+- `--log-file` сохраняет прошедшие threshold сообщения в файл и одновременно оставляет вывод в stdout/stderr.
+- `--log-prefix` и `--log-timestamps` делают большой debug log пригоднее для анализа.
+- `--log-disable` отбрасывает сообщения независимо от threshold, пока log worker paused.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В локальном `--models-preset` параметр пишется по длинному имени без дефисов. Для paired boolean flags `common_preset::to_args()` выбирает положительный или отрицательный CLI-аргумент по boolean-значению. Logging-параметры не входят в список reserved router args, поэтому могут передаваться дочерним model servers; учитывайте, что `--log-file` в нескольких дочерних процессах должен указывать на разные файлы, иначе процессы будут конкурировать за один путь.
 
-## Типовые проблемы
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Фактический threshold печатается строкой `log_info: verbosity = N (adjust with the -lv N CLI arg)`.
+- Если debug-сообщения не появились при `--verbosity 5`, проверьте, не задан ли позже `--log-disable`.
+- Если API начал возвращать `__verbose`, ищите `--verbose` или `--verbosity` выше `9`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --verbosity value1,value2
+llama-server --model /models/model.gguf --verbosity 2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --verbosity 5 --log-file /tmp/llama-debug.log
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+verbosity = 3
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--verbosity&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--verbosity
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--verbosity
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - обработчик `--verbosity`.
+- `/home/maxim/llama/llama.cpp/common/common.h` - default `verbosity = 3`.
+- `/home/maxim/llama/llama.cpp/common/log.h` и `/home/maxim/llama/llama.cpp/common/log.cpp` - уровни логирования и threshold filtering.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - связь `verbosity > 9` с `__verbose`.

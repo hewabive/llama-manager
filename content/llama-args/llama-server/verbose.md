@@ -2,29 +2,30 @@
 schema: 1
 primaryName: "--verbose"
 title: "--verbose"
-summary: "Черновая инженерная справка по --verbose из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Устанавливает порог verbosity в `INT_MAX`: логируются все сообщения, а server tasks начинают добавлять `__verbose` в ответы, потому что `verbosity > 9`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ","
+valueType: "flag"
+valueHint: null
 aliases:
   - "-v"
-  - "--verbose"
   - "--log-verbose"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--verbosity"
+  - "--log-file"
+  - "--log-prefix"
+  - "--log-timestamps"
 ---
 
 # --verbose
 
 ## Кратко
 
-Черновая инженерная справка по --verbose из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--verbose` - shortcut для максимальной подробности логов. Он выставляет `params.verbosity = INT_MAX` и сразу обновляет global log threshold через `common_log_set_verbosity_thold(INT_MAX)`.
 
 ## Оригинальная справка llama.cpp
 
@@ -37,71 +38,64 @@ Set verbosity level to infinity (i.e. log all messages, useful for debugging)
 - Основное имя: `--verbose`
 - Алиасы: `-v`, `--verbose`, `--log-verbose`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип значения в llama-manager: `flag`
+- Подсказка формата: `нет значения`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `не включен`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг влияет на общий logger `common_log_main()` и на server task defaults. В `server-task.cpp` поле request params `verbose` становится `true`, если базовая `verbosity > 9`; при `--verbose` это условие всегда выполнено, и ответы могут содержать служебный объект `__verbose` с подробностями prompt/request representation.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Флаг не принимает значение. Алиасы `-v`, `--verbose` и `--log-verbose` эквивалентны. Для численного контроля используйте `--verbosity N`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для краткого debug-запуска: проблемы загрузки модели, tokenizer/chat template, routing, streaming, unexpected prompt formatting. Для постоянного публичного сервера флаг обычно слишком шумный и может раскрывать чувствительный prompt в логах или `__verbose` ответах.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Может заметно увеличить I/O, размер log file и объем JSON-ответов с `__verbose`. Модель, KV-cache и VRAM не меняет. На горячем сервере подробные логи могут стать bottleneck, особенно с `--log-file` на медленном диске.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--verbosity N` задает тот же threshold численно; если оба аргумента есть, фактическое значение зависит от порядка argv.
+- `--log-file`, `--log-prefix`, `--log-timestamps` и `--log-colors` определяют, куда и в каком формате попадет большой объем debug output.
+- `--log-disable` может отбросить логи, но порядок важен: некоторые logging-настройки вызывают pause/resume worker thread.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В локальном `--models-preset` параметр пишется по длинному имени без дефисов. Для paired boolean flags `common_preset::to_args()` выбирает положительный или отрицательный CLI-аргумент по boolean-значению. Logging-параметры не входят в список reserved router args, поэтому могут передаваться дочерним model servers; учитывайте, что `--log-file` в нескольких дочерних процессах должен указывать на разные файлы, иначе процессы будут конкурировать за один путь.
 
-## Типовые проблемы
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Если в API-ответе появился `__verbose`, проверьте `--verbose` или `--verbosity` больше `9`.
+- Если debug-логи не видны, проверьте порядок с `--log-disable` и фактический threshold в строке `log_info: verbosity = ...`.
+- Для отчета о bug полезно приложить `--verbose --log-file /tmp/llama-server-debug.log`, но сначала проверьте файл на секреты и пользовательские prompt.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --verbose value1,value2
+llama-server --model /models/model.gguf --verbose
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --verbose --log-file /tmp/llama-server-debug.log
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+verbose = true
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--verbose&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--verbose
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--verbose
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - обработчик `--verbose`.
+- `/home/maxim/llama/llama.cpp/common/log.h` и `/home/maxim/llama/llama.cpp/common/log.cpp` - log levels и threshold.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - включение `__verbose` при `verbosity > 9`.
+- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_chat_completion.py` - тесты ответов с `__verbose`.

@@ -2,106 +2,109 @@
 schema: 1
 primaryName: "--spec-draft-cpu-mask"
 title: "--spec-draft-cpu-mask"
-summary: "Черновая инженерная справка по --spec-draft-cpu-mask из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Парсит hex-маску CPU affinity для generation-профиля draft-модели и наследует `--cpu-mask`, если draft-профиль не задан. В текущем server load path явно применяется только draft thread count, поэтому affinity draft-модели требует проверки на сборке."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "string"
+valueHint: "M"
 aliases:
-  - "--spec-draft-cpu-mask"
   - "-Cd"
-  - "--cpu-mask-d"
+  - "--cpu-mask-draft"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-draft-cpu-range"
+  - "--spec-draft-cpu-strict"
+  - "--spec-draft-threads"
+  - "--cpu-mask"
+  - "--cpu-range"
+  - "--numa"
 ---
 
 # --spec-draft-cpu-mask
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-cpu-mask из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-cpu-mask` задает CPU affinity mask для generation CPU-профиля draft-модели. Маска хранится отдельно от target `--cpu-mask` и дополняется `--spec-draft-cpu-range`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Важная деталь текущего `llama-server`: `common/arg.cpp` корректно парсит и постобрабатывает draft CPU affinity, но `tools/server/server-context.cpp` при загрузке draft-модели явно копирует из draft CPU-профиля только число потоков. Поэтому этот документ описывает подтвержденный parsing/storage contract и отдельно отмечает ограничение применения в server load path.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-raft M Draft model CPU affinity mask. Complements cpu-range-draft (default: same as --cpu-mask)
+Draft model CPU affinity mask. Complements cpu-range-draft (default: same as --cpu-mask)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-cpu-mask`
-- Алиасы: `--spec-draft-cpu-mask`, `-Cd`, `--cpu-mask-d`
+- Алиасы: `-Cd`, `--cpu-mask-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `same as --cpu-mask`
+- Тип значения в llama-manager: `string`
+- Подсказка формата: `M`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `same as --cpu-mask`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик выставляет `params.speculative.draft.cpuparams.mask_valid = true` и вызывает `parse_cpu_mask()` для `params.speculative.draft.cpuparams.cpumask`. После парсинга `postprocess_cpu_params(params.speculative.draft.cpuparams, &params.cpuparams)` наследует основной CPU-профиль, если draft-профиль не был задан.
 
-Для точного описания механики нужно проверить:
+В общем helper `ggml_threadpool_params_from_cpu_params()` эта маска могла бы попасть в `ggml_threadpool_params.cpumask`, но проверенный `server-context.cpp` для draft-модели создает `params_dft = params_base` и копирует из `params_spec.cpuparams` только `n_threads`. Это означает, что для `llama-server` на commit `751ebd17...` нельзя уверенно считать `--spec-draft-cpu-mask` полноценной runtime-affinity настройкой без локальной проверки логов/поведения.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Формат - hex-строка, например `0x0f`, `f0`, `000000ff`. Префикс `0x` разрешен. Парсер принимает `0-9`, `a-f`, `A-F`; максимум обрабатываются 128 hex-цифр, то есть 512 CPU-битов. Младший бит последней hex-цифры соответствует CPU `0`: `0x3` выбирает CPU `0` и `1`, `0xf0` выбирает CPU `4-7`.
+
+`--spec-draft-cpu-mask` и `--spec-draft-cpu-range` заполняют одну bool-маску; если указать оба, биты добавляются.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для изоляции CPU draft-модели от target-модели, когда speculative decoding CPU-bound и вы проверили, что ваша сборка реально применяет draft affinity. Для надежной изоляции на текущем сервере практичнее закреплять весь процесс через ОС, cpuset/cgroup, container CPU pinning или основные `--cpu-mask`/`--cpu-range`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Affinity не меняет RAM, VRAM и KV-cache. При работающем применении affinity может уменьшить миграции потоков и конкуренцию за cache, но слишком узкая маска ухудшит throughput. Если число draft-потоков больше количества выставленных CPU, `postprocess_cpu_params()` печатает предупреждение `Not enough set bits in CPU mask ...`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-cpu-range` дополняет ту же маску draft generation-профиля.
+- `--spec-draft-cpu-strict` меняет смысл маски: строгая раскладка выдает потокам CPU по кругу, обычная - всю маску каждому worker.
+- `--spec-draft-threads` должен соответствовать числу CPU в маске.
+- `--cpu-mask` является fallback-профилем, если draft CPU-профиль не задан.
+- `--spec-draft-cpu-mask-batch` относится к batch/prompt-профилю draft, а не generation-профилю.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` практичная форма ключа - `cpu-mask-draft = 0x0f`, потому что `common_preset::to_args()` рендерит последнюю форму алиаса. Router не удаляет draft CPU affinity параметры из пресета, но фактическое применение зависит от server load path.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `invalid cpumask` или `Invalid hex character ...` означает, что строка содержит не-hex символ.
+- `Not enough set bits in CPU mask ...` означает, что выставленных CPU меньше, чем `--spec-draft-threads`.
+- Если affinity не видна в `taskset`, `ps -o psr` или `htop`, учитывайте ограничение текущего `server-context.cpp`: draft mask может быть разобрана, но не перенесена в draft runtime.
+- Ошибки `failed to set affinity` печатает CPU backend, если ОС отклонила маску или CPU недоступен в cpuset/cgroup.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-cpu-mask value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4 --spec-draft-cpu-mask 0x0f
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+cpu-mask-draft = 0x0f
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-cpu-mask&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-cpu-mask
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-cpu-mask
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление, aliases и обработчик `--spec-draft-cpu-mask`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - `parse_cpu_mask()`, `postprocess_cpu_params()` и `ggml_threadpool_params_from_cpu_params()`.
+- `/home/maxim/llama/llama.cpp/common/common.h` - `common_cpu_params`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование только thread counts.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity в ggml threadpool.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - актуальная help-строка.

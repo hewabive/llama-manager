@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-ngram-map-k-min-hits"
 title: "--spec-ngram-map-k-min-hits"
-summary: "Черновая инженерная справка по --spec-ngram-map-k-min-hits из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Параметр сохраняется в конфигурации `ngram-map-k`, но в текущем коде не фильтрует drafts: ветка `key_only` создает draft до проверки `min_hits`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,18 @@ aliases:
   - "--spec-ngram-map-k-min-hits"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-type"
+  - "--spec-ngram-map-k-size-n"
+  - "--spec-ngram-map-k-size-m"
+  - "--spec-ngram-map-k4v-min-hits"
 ---
 
 # --spec-ngram-map-k-min-hits
 
 ## Кратко
 
-Черновая инженерная справка по --spec-ngram-map-k-min-hits из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-ngram-map-k-min-hits` объявлен как minimum hits для `ngram-map-k`, но в проверенном commit фактически не влияет на решение о создании draft. `get_common_ngram_map()` передает значение в `common_ngram_map.min_hits`, однако для `ngram-map-k` выставляется `key_only=true`, а `common_ngram_map_draft()` возвращает draft до блока `if (curr_key.key_num < map.min_hits)`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +35,55 @@ minimum hits for ngram-map-k speculative decoding (default: 1)
 ## Паспорт аргумента
 
 - Основное имя: `--spec-ngram-map-k-min-hits`
-- Алиасы: `--spec-ngram-map-k-min-hits`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `1`
+- Алиасы: нет
+- Значение по умолчанию: `1`
+- CLI-ограничение: значение должно быть `>= 1`
+- Переменные окружения: нет
+- Внутреннее поле: `common_params.speculative.ngram_map_k.min_hits`
+- Фактическое runtime-влияние для `ngram-map-k`: отсутствует в текущем commit
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Аргумент меняет сохраненную конфигурацию и значение в логе инициализации `size_key=..., size_value=..., key_only=1, min_hits=...`. Но текущая `key_only` ветка использует найденный key сразу и не проверяет порог.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- Значения меньше `1` отклоняются с ошибкой `ngram min hits must be at least 1`.
+- Верхний предел в CLI не задан, но внутренний тип `uint16_t`; держите значение в диапазоне `1..65535`.
+- Для рабочего порога повторяемости используйте `--spec-ngram-map-k4v-min-hits`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+В текущем `llama-server` не используйте этот аргумент как tuning knob. Настраивайте `--spec-ngram-map-k-size-n` и `--spec-ngram-map-k-size-m` либо переходите на `ngram-map-k4v`, где `min_hits` проверяется.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Влияния на `ngram-map-k` drafts нет. Меняется только поле конфигурации и лог.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-type ngram-map-k` включает реализацию.
+- `--spec-ngram-map-k-size-n` и `--spec-ngram-map-k-size-m` реально влияют на поиск и длину draft.
+- `--spec-ngram-map-k4v-min-hits` применяет похожий порог в варианте `key4v`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Ключ `spec-ngram-map-k-min-hits = 2` допустим в preset, но в текущем commit не изменит поведение `ngram-map-k`.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Если изменение `min_hits` не меняет число drafts, это соответствует коду.
+- Подтвердить можно по `common_ngram_map_draft()`: ветка `if (map.key_only)` находится выше проверки `map.min_hits`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-ngram-map-k-min-hits 1
+llama-server --model /models/model.gguf --spec-type ngram-map-k --spec-ngram-map-k-size-n 12 --spec-ngram-map-k-size-m 48
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-ngram-map-k-min-hits&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-ngram-map-k-min-hits
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-ngram-map-k-min-hits
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.h`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.cpp`

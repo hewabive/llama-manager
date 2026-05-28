@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--mmap"
 title: "--mmap"
-summary: "Черновая инженерная справка по --mmap из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Управляет memory mapping GGUF-файлов. По умолчанию mmap включен; `--no-mmap` загружает данные через чтение файлов и может изменить pageout/async upload поведение."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: null
@@ -15,16 +15,16 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_MMAP"
-related: []
+related:
+  - "--direct-io"
+  - "--mlock"
 ---
 
 # --mmap
 
 ## Кратко
 
-Черновая инженерная справка по --mmap из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--mmap` включает загрузку весов через memory mapping. Это дефолт текущего `llama-server`. `--no-mmap` отключает mmap: модель загружается медленнее, но иногда это снижает pageouts, если `--mlock` не используется.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,72 +36,82 @@ whether to memory-map model. (if mmap disabled, slower load but may reduce pageo
 
 - Основное имя: `--mmap`
 - Алиасы: `--mmap`, `--no-mmap`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_MMAP`
-- Значение по умолчанию из `--help`: `enabled`
+- Переменная окружения: `LLAMA_ARG_MMAP`
+- Поле `common_params`: `use_mmap`
+- Поле `llama_model_params`: `use_mmap`
+- Значение по умолчанию: enabled
+- Этап применения: открытие GGUF и загрузка тензоров
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Парсер bool-аргумента записывает `params.use_mmap`. В loader это значение передается в `llama_model_loader`, который решает, использовать memory mapping или читать данные в буферы.
 
-Для точного описания механики нужно проверить:
+При mmap и подходящем backend buffer llama.cpp может создавать backend buffer из host pointer на mapped region. При `--no-mmap` loader читает данные из файла и может использовать async uploads через pinned host memory, если backend поддерживает async, host buffers и events.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI-формы без значения: `--mmap` и `--no-mmap`.
+
+Для env README фиксирует truthy/falsey значения: `LLAMA_ARG_MMAP=true`, `1`, `on`, `enabled`; falsey: `false`, `0`, `off`, `disabled`. Совместимая форма `LLAMA_ARG_NO_MMAP` отключает mmap при самом факте присутствия.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте mmap включенным для обычного локального диска и быстрого старта. Используйте `--no-mmap`, если видите проблемы с page cache/pageouts, если filesystem плохо работает с mmap, или при диагностике direct I/O/async upload пути.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+mmap обычно ускоряет старт и позволяет ОС управлять page cache. `--no-mmap` чаще увеличивает время загрузки и объем явных чтений, но может дать более предсказуемое поведение на системах с memory pressure.
+
+Если включен `--check-tensors`, validation с mmap может запускаться по mapped data; без mmap проверка идет по прочитанным буферам.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--mlock` с mmap закрепляет mappings в памяти.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--direct-io` и mmap конфликтуют: если direct I/O доступен, loader предупреждает, что direct I/O включен и отключает mmap; если direct I/O недоступен, оставляет mmap и отключает direct I/O.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--override-tensor` в CPU buffer вместе с mmap печатает warning: для лучшей производительности предлагается `--no-mmap`.
 
-## Типовые проблемы
+## INI-пресеты и router-режим
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В INI:
+
+```ini
+mmap = true
+```
+
+Для отключения:
+
+```ini
+no-mmap = true
+```
+
+В router-режиме учитывайте суммарный эффект page cache при одновременной загрузке нескольких моделей.
+
+## Типовые проблемы и диагностика
+
+- Лог `mmap = true/false`: проверяйте строку `loading model tensors ... (mmap = ..., direct_io = ...)`.
+- Pageouts при работе: попробуйте `--mlock` или `--no-mmap`.
+- Медленный старт после `--no-mmap`: это ожидаемая цена явного чтения данных.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --mmap true
+llama-server --model /models/model.gguf --mmap
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --no-mmap
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --mmap --mlock
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--mmap&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--mmap
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--mmap
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-model.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

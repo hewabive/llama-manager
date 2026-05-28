@@ -2,106 +2,97 @@
 schema: 1
 primaryName: "--spec-draft-device"
 title: "--spec-draft-device"
-summary: "Черновая инженерная справка по --spec-draft-device из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Ограничивает список backend-устройств для offload draft-модели. Значение `none` отключает offload draft-модели независимо от устройств target-модели."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "list"
-valueHint: ","
+valueHint: "<dev1,dev2,..>"
 aliases:
   - "--spec-draft-device"
   - "-devd"
-  - "--device-dra"
+  - "--device-draft"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--device"
+  - "--list-devices"
+  - "--spec-draft-ngl"
+  - "--spec-draft-model"
+  - "--spec-draft-override-tensor"
 ---
 
 # --spec-draft-device
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-device из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-device` задает список GPU/backend устройств для draft-модели. Значение парсится через `parse_device_list()` и записывается в `common_params.speculative.draft.devices`; при загрузке draft-модели сервер копирует его в `params_dft.devices`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Если параметр не задан, используется default-выбор устройств llama.cpp. Если задано `none`, в список помещается `nullptr`, что означает "не offload".
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ft <dev1,dev2,..> comma-separated list of devices to use for offloading the draft model (none = don't offload) use --list-devices to see a list of available devices
+comma-separated list of devices to use for offloading the draft model (none = don't offload)
+use --list-devices to see a list of available devices
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-device`
-- Алиасы: `--spec-draft-device`, `-devd`, `--device-dra`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Алиасы: `--spec-draft-device`, `-devd`, `--device-draft`
+- Значение: список имен устройств через запятую или `none`
+- Структура llama.cpp: `common_params.speculative.draft.devices`
+- Переменная окружения: нет
+- Этап применения: парсинг CLI и загрузка draft-модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Параметр влияет только на draft-модель. Target-модель продолжает использовать `--device`. В `server-context.cpp` для draft создается `params_dft`, где `devices` заменяется на draft-список, а затем модель загружается с этими настройками.
 
-Для точного описания механики нужно проверить:
+Парсер загружает все backend-регистры, ищет устройство по имени через `ggml_backend_dev_by_name()` и отвергает CPU-устройства как invalid device. В конце обычного списка добавляется `nullptr` sentinel.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Имена устройств берите из `llama-server --list-devices`. Формат - строго через запятую без shell-склейки, например `CUDA0,CUDA1`. Значение `none` должно быть единственным элементом.
+
+Пустой список вызывает `no devices specified`. Неизвестное имя или CPU device вызывает `invalid device: ...`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, когда target и draft нужно развести по разным GPU, или когда draft-модель должна остаться на CPU, чтобы не вытеснять target из VRAM. На мног GPU это позволяет держать target на основном устройстве, а маленькую draft-модель на менее загруженном.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Выбор устройства меняет VRAM footprint и latency draft-предсказания. Draft на отдельном GPU может разгрузить target GPU, но добавляет межустройственное планирование и зависит от backend. `none` экономит VRAM, но может сделать draft медленнее и снизить общий выигрыш speculative decoding.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-ngl` задает, сколько слоев draft-модели можно offload на выбранные устройства. `--spec-draft-override-tensor` может направить отдельные tensor в конкретный buffer type. `--device` для target-модели не наследуется автоматически, если `--spec-draft-device` задан явно.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `device-draft = none` или `spec-draft-device = CUDA0`. Для переносимых preset не зашивайте имена устройств без проверки `--list-devices` на целевом сервере.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `invalid device`: имя не совпадает с `--list-devices` или указывает на CPU.
+- Draft все равно занимает VRAM target GPU: проверьте, не задан ли `--spec-draft-ngl all` без нужного `--spec-draft-device`.
+- Нет ускорения после переноса draft на другой GPU: смотрите `draft acceptance`, backend-логи и загрузку PCIe/NVLink.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-device value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-type draft-simple --spec-draft-device none
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-device CUDA1 --spec-draft-ngl all
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-device&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-device
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-device
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

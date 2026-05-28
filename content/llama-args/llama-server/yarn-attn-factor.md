@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--yarn-attn-factor"
 title: "--yarn-attn-factor"
-summary: "Черновая инженерная справка по --yarn-attn-factor из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает YaRN attention magnitude factor. По умолчанию `-1` означает значение из модели, но при активном YaRN extrapolation llama.cpp может пересчитать factor автоматически."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"
@@ -14,16 +14,20 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_YARN_ATTN_FACTOR"
-related: []
+related:
+  - "--rope-scaling"
+  - "--rope-scale"
+  - "--rope-freq-scale"
+  - "--yarn-ext-factor"
 ---
 
 # --yarn-attn-factor
 
 ## Кратко
 
-Черновая инженерная справка по --yarn-attn-factor из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--yarn-attn-factor` задает масштаб attention magnitude для YaRN. В defaults llama.cpp хранит `-1`, что означает "не задано; взять из hparams модели".
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Важно: при `yarn_ext_factor != 0` в `src/llama-context.cpp` код вычисляет новый `yarn_attn_factor` на основе RoPE scale и может заменить ранее выбранное значение. Затем результат дополнительно умножается на `hparams.rope_attn_factor`.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,71 +40,70 @@ YaRN: scale sqrt(t) or attention magnitude (default: -1.00)
 - Основное имя: `--yarn-attn-factor`
 - Алиасы: `--yarn-attn-factor`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_YARN_ATTN_FACTOR`
-- Значение по умолчанию из `--help`: `-1.00`
+- Тип значения в llama-manager: `number`
+- Формат: число, передаваемое в `std::stof`
+- Переменная окружения: `LLAMA_ARG_YARN_ATTN_FACTOR`
+- Поле в `common_params`: `yarn_attn_factor`
+- Этап применения: создание `llama_context`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик CLI записывает float в `params.yarn_attn_factor`. При создании контекста отрицательное значение заменяется на `hparams.yarn_attn_factor`. Если YaRN extrapolation активен, `llama-context.cpp` рассчитывает attention factor через `get_mscale(...)`; для некоторых моделей с `rope_yarn_log_mul` логируется предупреждение `setting new yarn_attn_factor`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `-1`: auto/unset, default llama.cpp.
+- Положительные float-значения: ручное задание magnitude factor.
+- `0` технически допустим как число, но для эксплуатации требует очень веской причины, потому что влияет на масштаб attention.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Когда рецепт модели явно задает YaRN attention factor.
+- Когда нужно воспроизвести старую long-context конфигурацию.
+- При отладке DeepSeek/YaRN metadata, где важно сравнить автоматический и ручной расчет.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память и throughput почти не меняются напрямую. Риск состоит в качестве: неверный attention magnitude может давать деградацию, повторения или слишком слабое использование дальнего контекста.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--yarn-ext-factor` определяет, будет ли выполнена автоматическая YaRN-ветка пересчета.
+- `--rope-scale` и `--rope-freq-scale` влияют на factor для расчета `get_mscale`.
+- `--rope-scaling yarn` делает YaRN-параметры частью выбранного scaling режима.
+- `--yarn-beta-fast` и `--yarn-beta-slow` задают correction dim/alpha-beta параметры отдельно от attention factor.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[my-yarn-model]
+rope-scaling = yarn
+rope-scale = 4
+yarn-attn-factor = 1
+```
 
-## Типовые проблемы
+В router mode задавайте параметр в model preset, если он нужен только конкретной модели. Глобальное CLI-значение router-а наследуется всеми дочерними model instance.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Ручное значение будто игнорируется: проверьте, активен ли `--yarn-ext-factor` не равный `0`; код может пересчитать factor.
+- В логах есть warning `setting new yarn_attn_factor`: это результат автоматического расчета в `llama-context.cpp`.
+- Качество хуже на длинном контексте: верните `-1` и сравните с metadata/default модели.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --yarn-attn-factor 1
+llama-server --model /models/model.gguf --ctx-size 32768 --rope-scaling yarn --rope-scale 4 --yarn-attn-factor 1
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --ctx-size 32768 --rope-scaling yarn --rope-scale 4 --yarn-attn-factor -1
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--yarn-attn-factor&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--yarn-attn-factor
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--yarn-attn-factor
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

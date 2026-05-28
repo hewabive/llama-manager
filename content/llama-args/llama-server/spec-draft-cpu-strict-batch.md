@@ -2,22 +2,23 @@
 schema: 1
 primaryName: "--spec-draft-cpu-strict-batch"
 title: "--spec-draft-cpu-strict-batch"
-summary: "Черновая инженерная справка по --spec-draft-cpu-strict-batch из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Переключает strict CPU placement для batch/prompt CPU-профиля draft-модели. Help задает fallback от `--spec-draft-cpu-strict`, но текущий server load path не копирует этот флаг явно в draft runtime."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "flag"
-valueHint: null
+valueType: "boolean"
+valueHint: "<0|1>"
 aliases:
-  - "--spec-draft-cpu-strict-batch"
-  - "--cpu-str"
+  - "--cpu-strict-batch-draft"
 allowedValues: []
 env: []
 related:
+  - "--spec-draft-cpu-mask-batch"
+  - "--spec-draft-threads-batch"
+  - "--spec-draft-cpu-strict"
+  - "--cpu-strict-batch"
   - "--batch-size"
-  - "--flash-attn"
-  - "--threads-batch"
   - "--ubatch-size"
 ---
 
@@ -25,89 +26,79 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-cpu-strict-batch из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-draft-cpu-strict-batch` задает strict placement для batch/prompt CPU-профиля draft-модели. Он относится к draft prefill/batch работе, а не к steady-state generation-профилю.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ict-batch-draft <0|1> Use strict CPU placement for draft model (default: --cpu-strict-draft)
+Use strict CPU placement for draft model (default: --cpu-strict-draft)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-cpu-strict-batch`
-- Алиасы: `--spec-draft-cpu-strict-batch`, `--cpu-str`
+- Алиасы: `--cpu-strict-batch-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `--cpu-strict-draft`
+- Тип значения в llama-manager: `boolean`
+- Подсказка формата: `<0|1>`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `--cpu-strict-draft`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-обработчик записывает значение в `params.speculative.draft.cpuparams_batch.strict_cpu`. После парсинга batch CPU-профиль draft участвует в `postprocess_cpu_params()` с role model `params.cpuparams_batch`.
 
-Для точного описания механики нужно проверить:
+В ggml CPU backend strict placement управляет распределением worker threads по affinity mask. Однако при загрузке draft-модели `server-context.cpp` копирует в `params_dft` только `n_threads` и `n_threads_batch`, поэтому draft batch strict flag не переносится явно в draft runtime на проверенном commit.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Используйте `0` или `1`: `0` дает каждому worker всю mask, `1` распределяет workers по CPU из mask по кругу. Обработчик принимает `int` без собственной проверки диапазона, но help объявляет `<0|1>`.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только вместе с batch affinity draft-профиля и после проверки фактического применения. Если у вас длинные prompts и CPU-bound draft prefill, strict placement может уменьшить миграции, но на узкой mask способен ухудшить throughput.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Память не меняется. Эффект проявляется только при работающей affinity mask. Слишком строгая раскладка на маленьком наборе CPU может ухудшить балансировку batch-фазы.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-cpu-mask-batch` и `--spec-draft-cpu-range-batch` задают mask, к которой применяется strict placement.
+- `--spec-draft-threads-batch` должен соответствовать размеру mask.
+- `--spec-draft-cpu-strict` является логическим fallback для draft batch strict.
+- `--cpu-strict-batch` является fallback batch-профиля target, если draft batch-профиль не задан.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` используйте ключ `cpu-strict-batch-draft = 1`. Router не удаляет draft CPU-параметры, но применение этого флага к runtime draft-контекста нужно подтверждать внешней проверкой.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Если аргумент указан без значения, парсер ожидает `<0|1>` и запуск не должен считаться корректным.
+- Если strict batch placement не виден по системным инструментам, причина может быть в том, что `server-context.cpp` не копирует draft batch strict flag.
+- Если throughput batch-фазы упал, уменьшите `--spec-draft-threads-batch` или отключите strict placement.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-cpu-strict-batch
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4 --spec-draft-threads-batch 8 --spec-draft-cpu-mask-batch 0xff --spec-draft-cpu-strict-batch 1
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+threads-batch-draft = 8
+cpu-mask-batch-draft = 0xff
+cpu-strict-batch-draft = 1
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-cpu-strict-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-cpu-strict-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-cpu-strict-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-strict-batch`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - postprocess CPU-профилей.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - strict CPU placement.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.

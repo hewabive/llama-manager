@@ -2,12 +2,12 @@
 schema: 1
 primaryName: "--reasoning"
 title: "--reasoning"
-summary: "Управляет reasoning/thinking режимом: on, off или auto."
-docStatus: draft
+summary: "Управляет тем, будет ли chat template просить модель генерировать reasoning/thinking. `auto` использует поддержку template, `on` принудительно включает template kwarg, `off` отключает."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "boolean"
+valueType: "enum"
 valueHint: "[on|off|auto]"
 aliases:
   - "-rea"
@@ -18,16 +18,21 @@ allowedValues:
   - "auto"
 env:
   - "LLAMA_ARG_REASONING"
-related: []
+related:
+  - "--reasoning-format"
+  - "--reasoning-budget"
+  - "--reasoning-budget-message"
+  - "--chat-template-kwargs"
+  - "--jinja"
 ---
 
 # --reasoning
 
 ## Кратко
 
-Управляет reasoning/thinking режимом: on, off или auto.
+`--reasoning` записывает `common_params::enable_reasoning`: `1` для включения, `0` для отключения, `-1` для auto. При `on`/`off` CLI также выставляет default `enable_thinking` в `default_template_kwargs`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Аргумент влияет на то, просит ли chat template модель думать. Он не выбирает формат возврата reasoning в API; за это отвечает `--reasoning-format`.
 
 ## Оригинальная справка llama.cpp
 
@@ -38,73 +43,69 @@ Use reasoning/thinking in the chat ('on', 'off', or 'auto', default: 'auto' (det
 ## Паспорт аргумента
 
 - Основное имя: `--reasoning`
-- Алиасы: `-rea`, `--reasoning`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `[on|off|auto]`
-- Допустимые значения из `--help`: `on`, `off`, `auto`
-- Переменные окружения: `LLAMA_ARG_REASONING`
-- Значение по умолчанию из `--help`: `'auto' (detect from template))`
+- Алиас: `-rea`
+- Значения: `on`, `off`, `auto`; также принимаются truthy/falsey/auto формы парсера llama.cpp
+- Поле `common_params`: `enable_reasoning`
+- Дополнительно: `default_template_kwargs["enable_thinking"]` для `on` и `off`
+- Переменная окружения: `LLAMA_ARG_REASONING`
+- По умолчанию: `auto`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На старте server проверяет `params_base.use_jinja` и `common_chat_templates_support_enable_thinking()`. Итоговый `enable_thinking` становится true только если template поддерживает thinking и `--reasoning off` не был задан.
 
-Для точного описания механики нужно проверить:
+При обработке chat request это значение попадает в `common_chat_templates_inputs::enable_thinking`. Затем Jinja template получает переменную `enable_thinking`, а specialized/autoparser logic может добавить thinking tags и parser.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `auto`: default; включить thinking, если template явно поддерживает `enable_thinking`.
+- `on`: задать `enable_reasoning = 1` и default kwarg `enable_thinking = true`.
+- `off`: задать `enable_reasoning = 0` и default kwarg `enable_thinking = false`.
+
+Если передать неизвестную строку, CLI бросит `error: unknown value for --reasoning`.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- `auto`: нормальный режим для моделей с корректным Jinja template.
+- `off`: публичный server, короткие ответы, embedding-adjacent workflows или модели, которые слишком часто раскрывают thinking.
+- `on`: template поддерживает thinking, но auto-detect не сработал или нужен явный режим.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Thinking обычно увеличивает число генерируемых токенов, latency, стоимость CPU/GPU и занятость слота. На размер KV-cache per token не влияет, но длинное reasoning быстрее заполняет контекст. Для ограничения длины используйте `--reasoning-budget`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--reasoning-format`: управляет parsing/возвратом thought content.
+- `--reasoning-budget`: ограничивает токены внутри thinking block, если template дал start/end tags.
+- `--chat-template-kwargs`: request-level `enable_thinking` может переопределить CLI default.
+- `--jinja`: без Jinja auto thinking обычно недоступен.
+- `--skip-chat-parsing`: thinking может быть сгенерирован, но попадет в обычный `content`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `reasoning = off`, `reasoning = on` или `reasoning = auto`. Для router mode задавайте значение на уровне модели: reasoning-поведение сильно зависит от template конкретной модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- В логе `chat template, thinking = 0`: template не поддерживает thinking, Jinja выключен или задан `--reasoning off`.
+- Модель продолжает писать `<think>` при `--reasoning off`: template мог не поддерживать управляющий kwarg, или это поведение самой модели.
+- API не возвращает `reasoning_content`: проверьте `--reasoning-format`, а не только `--reasoning`.
+- Warning про deprecated `enable_thinking` в kwargs: перенесите настройку в `--reasoning`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --reasoning on
+llama-server --model /models/reasoning.gguf --reasoning auto
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/reasoning.gguf --reasoning off
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--reasoning&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--reasoning
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--reasoning
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: parsing `--reasoning`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: вычисление `chat template, thinking`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: request-level kwargs и `enable_thinking`.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: Jinja variable `enable_thinking`.

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--reasoning-budget"
 title: "--reasoning-budget"
-summary: "Бюджет токенов для thinking: -1 без ограничения, 0 сразу завершить, N ограничить."
-docStatus: draft
+summary: "Ограничивает число токенов внутри thinking block. `-1` оставляет reasoning без лимита, `0` принудительно завершает block сразу после start tag, положительное `N` задает бюджет."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"
@@ -14,16 +14,20 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_THINK_BUDGET"
-related: []
+related:
+  - "--reasoning"
+  - "--reasoning-format"
+  - "--reasoning-budget-message"
+  - "--jinja"
 ---
 
 # --reasoning-budget
 
 ## Кратко
 
-Бюджет токенов для thinking: -1 без ограничения, 0 сразу завершить, N ограничить.
+`--reasoning-budget` записывает `common_params::sampling.reasoning_budget_tokens`. Значение применяется sampler-ом reasoning budget, который начинает считать токены после thinking start tag и при исчерпании форсирует `reasoning_budget_message + end tag`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Бюджет работает только когда chat template дал thinking start/end tags. Для обычного completion без thinking tags он не ограничивает весь ответ.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +38,69 @@ token budget for thinking: -1 for unrestricted, 0 for immediate end, N>0 for tok
 ## Паспорт аргумента
 
 - Основное имя: `--reasoning-budget`
-- Алиасы: `--reasoning-budget`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_THINK_BUDGET`
-- Значение по умолчанию из `--help`: `-1`
+- Значение: integer `N`
+- Поле `common_params`: `sampling.reasoning_budget_tokens`
+- Допустимый минимум: `-1`; значения меньше `-1` отклоняются как `invalid value`
+- Переменная окружения: `LLAMA_ARG_THINK_BUDGET`
+- По умолчанию: `-1`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При chat request server-common передает в task `reasoning_budget_tokens`, `reasoning_budget_start_tag`, `reasoning_budget_end_tag` и `reasoning_budget_message`, если template вернул `thinking_end_tag`. В `server-task.cpp` start/end/message токенизируются с `parse_special=true`.
 
-Для точного описания механики нужно проверить:
+В sampling chain `common_reasoning_budget_init()` добавляется, если есть start/end токены и либо бюджет неотрицательный, либо включена lazy grammar. При бюджете `0` sampler сразу переходит к forced end sequence после активации.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `-1`: unrestricted; budget sampler не ограничивает длину thinking, кроме случаев lazy grammar.
+- `0`: завершить thinking block сразу после start sequence.
+- `N > 0`: разрешить до `N` generated tokens внутри reasoning block.
+
+Клиент может переопределить неограниченный CLI default через request field `thinking_budget_tokens`, если CLI значение осталось `-1`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Нужно ограничить latency reasoning-моделей на публичном или shared server.
+- Нужно оставить thinking включенным, но не позволять ему занимать весь контекст.
+- Нужно быстро проверить, как модель отвечает без длинной chain-of-thought: `--reasoning-budget 0`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Меньший budget снижает число generated tokens, latency и занятость слота. На размер KV-cache напрямую не влияет, но меньше reasoning tokens означает меньше фактически записанных KV entries. Слишком маленький budget может ухудшить качество ответа, если модель ожидает reasoning перед финальным ответом.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--reasoning`: должен разрешать thinking, иначе budget может не активироваться.
+- `--reasoning-budget-message`: добавляется перед end tag при исчерпании.
+- `--reasoning-format`: влияет на то, где клиент увидит forced end/message.
+- `--jinja` и `--chat-template`: нужны корректные thinking start/end tags.
+- Backend sampling несовместим с reasoning budget; sampling code отключает backend sampling с warning.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `reasoning-budget = 256` или `reasoning-budget = 0`. В router mode задавайте per-model: у reasoning и non-reasoning моделей разный смысл этой настройки.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Бюджет не срабатывает: в template нет thinking tags или reasoning выключен.
+- В логах `reasoning-budget: activated`: sampler увидел start tag и начал считать.
+- В логах `reasoning-budget: budget exhausted, forcing end sequence`: budget исчерпан.
+- Ошибка на старте `invalid value`: передано число меньше `-1`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --reasoning-budget 1
+llama-server --model /models/reasoning.gguf --reasoning on --reasoning-budget 256
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/reasoning.gguf --reasoning on --reasoning-budget 0
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--reasoning-budget&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--reasoning-budget
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--reasoning-budget
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: validation и env `LLAMA_ARG_THINK_BUDGET`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: передача budget в task.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: токенизация start/end/forced sequence.
+- `/home/maxim/llama/llama.cpp/common/reasoning-budget.cpp`: состояние sampler.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: подключение sampler и warning про backend sampling.

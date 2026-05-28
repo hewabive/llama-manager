@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--grammar-file"
 title: "--grammar-file"
-summary: "Черновая инженерная справка по --grammar-file из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Читает user grammar из файла и использует ее как constraint для генерации. Путь читается на старте процесса; при ошибке открытия llama-server падает с сообщением `failed to open file`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "path"
 valueHint: "FNAME"
@@ -13,16 +13,20 @@ aliases:
   - "--grammar-file"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--grammar"
+  - "--json-schema"
+  - "--json-schema-file"
+  - "--backend-sampling"
 ---
 
 # --grammar-file
 
 ## Кратко
 
-Черновая инженерная справка по --grammar-file из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--grammar-file` делает то же, что `--grammar`, но берет grammar из файла. Это предпочтительный способ для сложных GBNF/BNF-like правил.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Файл читается CLI-парсером при старте `llama-server`; изменения файла после запуска не применяются автоматически.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,72 +38,77 @@ file to read grammar from
 
 - Основное имя: `--grammar-file`
 - Алиасы: `--grammar-file`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
-- Подсказка формата из `--help`: `FNAME`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип CLI-значения: путь `FNAME`
+- Поле в `common_params_sampling`: `grammar`
+- Тип grammar: `COMMON_GRAMMAR_TYPE_USER`
+- Значение по умолчанию: grammar отсутствует
+- Ошибка чтения: `error: failed to open file '<path>'`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI вызывает helper `read_file(value)` и записывает содержимое файла в `params.sampling.grammar = {COMMON_GRAMMAR_TYPE_USER, content}`. Дальше путь применения такой же, как у `--grammar`: grammar sampler создается с root-правилом `root`.
 
-Для точного описания механики нужно проверить:
+Путь не сохраняется как путь в runtime params; после чтения остается только текст grammar.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Передавайте путь к текстовому файлу grammar. Для управляемого сервера используйте абсолютный путь, чтобы не зависеть от текущего рабочего каталога процесса llama-manager или router subprocess.
+
+Файл должен быть доступен пользователю, от имени которого запускается `llama-server`.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
+Используйте `--grammar-file` для любых grammar больше одной строки, для правил с кавычками и для production preset-ов. Это снижает риск ошибок экранирования в shell, INI и UI.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для JSON-форматов сначала рассмотрите `--json-schema-file`: schema обычно проще поддерживать и тестировать, а llama.cpp сам конвертирует ее в grammar.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На старте добавляется чтение небольшого текстового файла. Во время генерации стоимость такая же, как у `--grammar`: CPU-side constraint filtering. KV-cache, RAM модели и VRAM не меняются.
+
+`--backend-sampling` при grammar отключается с warning, потому что backend sampling несовместим с grammar.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--grammar`: inline-альтернатива; если задать несколько grammar/json-schema CLI-аргументов, активным будет последнее записанное значение.
+- `--json-schema` и `--json-schema-file`: альтернативные constraint sources.
+- `--logit-bias`: не может разрешить токен, запрещенный grammar.
+- `--backend-sampling`: отключается при активной grammar.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Аргумент является sampling option и разрешен в `--models-preset`. В preset указывайте путь, который виден из subprocess:
 
-## Типовые проблемы
+```ini
+[model.json]
+grammar-file = /srv/llama/grammars/answer.gbnf
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Если router запускает отдельные процессы с другим working directory, относительные пути становятся источником ошибок.
+
+## Типовые проблемы и диагностика
+
+- `failed to open file`: путь неверный или нет прав.
+- `Failed to parse grammar`: файл прочитан, но содержимое grammar некорректно.
+- Изменили файл, но поведение не поменялось: перезапустите `llama-server`.
+- Grammar работает в CLI, но не в manager: проверьте фактический argv и рабочий каталог.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --grammar-file /path/to/value
+llama-server --model /models/model.gguf --grammar-file /srv/llama/grammars/yes-no.gbnf
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+Пример содержимого файла:
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```text
+root ::= "yes" | "no"
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--grammar-file&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--grammar-file
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--grammar-file
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--grammar-file` и helper `read_file`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `COMMON_GRAMMAR_TYPE_USER`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: создание grammar sampler.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и invalid grammar response.
+- `/home/maxim/llama/llama.cpp/common/preset.cpp`: sampling args в presets.

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--parallel"
 title: "--parallel"
-summary: "Количество серверных слотов для одновременной обработки запросов. -1 включает автоматический выбор."
-docStatus: draft
+summary: "Количество серверных слотов. `-1` включает auto: сервер использует 4 слота и принудительно включает `--kv-unified`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"
@@ -15,16 +15,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_N_PARALLEL"
-related: []
+related:
+  - "--ctx-size"
+  - "--kv-unified"
+  - "--cont-batching"
+  - "--cache-idle-slots"
+  - "--threads-http"
 ---
 
 # --parallel
 
 ## Кратко
 
-Количество серверных слотов для одновременной обработки запросов. -1 включает автоматический выбор.
+`--parallel` задает `common_params::n_parallel`: сколько серверных слотов создать для одновременных completion/embedding/rerank задач.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Для `llama-server` значение по умолчанию в парсере меняется на `-1`. После парсинга `server.cpp` обрабатывает auto-режим: `n_parallel = 4` и `kv_unified = true`, с логом `n_parallel is set to auto, using n_parallel = 4 and kv_unified = true`.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,72 +41,74 @@ number of server slots (default: -1, -1 = auto)
 
 - Основное имя: `--parallel`
 - Алиасы: `-np`, `--parallel`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_N_PARALLEL`
-- Значение по умолчанию из `--help`: `-1, -1 = auto`
+- Значение: целое число слотов
+- Значение по умолчанию: `-1`
+- Запрещено в server-режиме: `0`
+- Переменная окружения: `LLAMA_ARG_N_PARALLEL`
+- Поля llama.cpp: `common_params::n_parallel`, `llama_context_params::n_seq_max`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Сервер создает `n_parallel` объектов `server_slot` и передает это значение в `n_seq_max`. Каждый слот получает id, собственное состояние prompt/generation и участвует в scheduler loop.
 
-Для точного описания механики нужно проверить:
+Без `--kv-unified` общий `--ctx-size` делится на `n_seq_max`, поэтому увеличение `--parallel` уменьшает контекст на слот. С `--kv-unified` слоты используют общий KV-буфер.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`--parallel` также влияет на auto-значение HTTP threads: в `server-http.cpp` используется минимум `n_parallel + 4`.
+
+## Значения и формат
+
+- `-1`: auto, фактически 4 слота и `--kv-unified`.
+- `1`: один слот, наиболее предсказуемая latency и KV-память.
+- `N > 1`: несколько слотов.
+- `0`: парсер server-режима выбрасывает `error: invalid value for n_parallel`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Увеличивайте `--parallel`, если сервер должен одновременно обслуживать несколько клиентов или `n_cmpl` больше 1. Уменьшайте, если нужен максимальный контекст на запрос, меньше KV-памяти или проще диагностика.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для публичного API не ставьте большое значение без лимитов очереди и мониторинга: каждый слот может удерживать большой prompt в KV.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+Больше слотов повышает concurrency, но увеличивает `n_seq_max`, нагрузку scheduler loop и требования к KV-cache. При раздельном KV контекст на слот примерно `ctx / slots`; при unified KV память общая, но конкурирующие длинные запросы могут вытеснять idle slots или требовать prompt cache.
+
+Throughput растет только пока backend успевает эффективно батчить decode/prompt. После насыщения GPU/CPU дополнительные слоты чаще повышают tail latency.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--ctx-size`: общий контекст; без `--kv-unified` делится между слотами.
+- `--kv-unified`: автоматически включается при `--parallel -1`.
+- `--cont-batching`: позволяет scheduler добавлять новые запросы к текущей работе.
+- `--cache-idle-slots`: требует `--kv-unified` и `--cache-ram`.
+- `--predict`: глобальный default лимита генерации для каждого запроса.
+- `n_cmpl` в HTTP API не может быть больше числа слотов.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `parallel = 4` или `LLAMA_ARG_N_PARALLEL`. В router-режиме параметр относится к дочернему процессу модели; сам router модель не грузит и слоты инференса не создает.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Логи `initializing slots, n_slots = ...` и `new slot, n_ctx = ...` показывают фактическое число слотов и контекст на слот.
+- Ошибка `n_cmpl cannot be greater than the number of slots, please increase -np` лечится увеличением `--parallel` или уменьшением `n_cmpl`.
+- Для рекуррентной памяти возможен лог `Try using a bigger --parallel value`, если seq_id выходит за `n_seq_max`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --parallel 1
+llama-server --model /models/model.gguf --parallel 1 --ctx-size 16384
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --parallel -1 --ctx-size 65536
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--parallel&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--parallel
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--parallel
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--props"
 title: "--props"
-summary: "Разрешить изменение глобальных свойств через POST /props."
-docStatus: draft
+summary: "Разрешает `POST /props`; `GET /props` доступен и без этого флага. В текущем коде POST подтверждает успех, но не меняет полезные свойства."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -14,16 +14,19 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_ENDPOINT_PROPS"
-related: []
+related:
+  - "--api-key"
+  - "--metrics"
+  - "--slots"
+  - "--ui-config"
+  - "--ui-mcp-proxy"
 ---
 
 # --props
 
 ## Кратко
 
-Разрешить изменение глобальных свойств через POST /props.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--props` устанавливает `common_params::endpoint_props = true`. Важно: он разрешает только изменение через `POST /props`; `GET /props` read-only работает без флага и возвращает свойства сервера.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +37,59 @@ enable changing global properties via POST /props (default: disabled)
 ## Паспорт аргумента
 
 - Основное имя: `--props`
-- Алиасы: `--props`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_ENDPOINT_PROPS`
-- Значение по умолчанию из `--help`: `disabled`
+- Тип: флаг без значения
+- Переменная окружения: `LLAMA_ARG_ENDPOINT_PROPS`
+- Поле в `common_params`: `endpoint_props`
+- Значение по умолчанию: disabled
+- Endpoint: `POST /props`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Без флага `POST /props` отвечает `This server does not support changing global properties. Start it with --props`. С флагом текущий обработчик возвращает `{"success": true}`, но блок `update any props here` не содержит реального изменения параметров.
 
-Для точного описания механики нужно проверить:
+`GET /props` возвращает `default_generation_settings`, `total_slots`, `model_alias`, `model_path`, `modalities`, `media_marker`, признаки включенных endpoints, UI-настройки, chat template, build info, `is_sleeping` и `cors_proxy_enabled`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Флаг не принимает значение и не имеет `--no-props`.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+В текущем состоянии включайте только если клиент ожидает наличие writable `/props` и вы проверили, что это действительно нужно. Для диагностики свойств сервера флаг не нужен: достаточно `GET /props`.
 
 ## Влияние на производительность и память
 
-- Почти не влияет на скорость инференса, но влияет на безопасность, наблюдаемость и доступность HTTP API.
-- Для публичного доступа нельзя полагаться только на bind address; нужен reverse proxy, TLS и ограничение опасных операций.
+На инференс не влияет. `GET /props` доступен во время sleeping state и не должен трогать контекст модели в небезопасный момент.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--ui-config` и `--ui-config-file` отражаются в `ui_settings` ответа `/props`.
+- `--ui-mcp-proxy` отражается как `cors_proxy_enabled`.
+- `--slots` и `--metrics` отражаются как `endpoint_slots` и `endpoint_metrics`.
+- `--api-key` защищает `/props`, потому что `/props` не входит в public endpoints middleware.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI: `props = true`. В router-режиме `GET /props` без `model` возвращает свойства router-а; с `?model=<id>` запрос проксируется к выбранной модели. `POST /props` в router-режиме также проксируется.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `POST /props` возвращает not supported: сервер запущен без `--props`.
+- `GET /props` работает, но не показывает ожидаемую модель: в router-режиме добавьте `?model=<model_id>`.
+- Клиент ожидает изменение параметров через POST: проверьте текущий код, потому что обработчик пока не обновляет конкретные свойства.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --props
+llama-server --model /models/model.gguf
+curl http://127.0.0.1:8080/props
+llama-server --model /models/model.gguf --props
+curl -X POST http://127.0.0.1:8080/props -d '{}'
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--props&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--props
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--props
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--rerank"
 title: "--rerank"
-summary: "Включить endpoint reranking."
-docStatus: draft
+summary: "Включает reranking endpoint и автоматически настраивает embedding mode с `pooling rank`. Нужна reranker-модель, а не обычная embedding или chat модель."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -15,16 +15,18 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_RERANKING"
-related: []
+related:
+  - "--embedding"
+  - "--pooling"
 ---
 
 # --rerank
 
 ## Кратко
 
-Включить endpoint reranking.
+`--rerank` ставит `common_params::embedding = true` и `common_params::pooling_type = LLAMA_POOLING_TYPE_RANK`. Это shortcut для запуска `/reranking` с reranker model.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Без rank pooling route `/reranking` отвечает ошибкой `This server does not support reranking. Start it with --reranking`.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,73 +37,73 @@ enable reranking endpoint on server (default: disabled)
 ## Паспорт аргумента
 
 - Основное имя: `--rerank`
-- Алиасы: `--rerank`, `--reranking`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_RERANKING`
-- Значение по умолчанию из `--help`: `disabled`
+- Алиас: `--reranking`
+- Тип: флаг без значения
+- Поля `common_params`: `embedding`, `pooling_type`
+- Переменная окружения: `LLAMA_ARG_RERANKING`
+- По умолчанию: disabled
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Route `/reranking` начинает принимать Jina-style body с `query` и `documents` или TEI-style body с `texts`. Для каждого документа server строит rerank prompt через `format_prompt_rerank()`, создает `SERVER_TASK_TYPE_RERANK` и возвращает scores/results.
 
-Для точного описания механики нужно проверить:
+При создании context llama.cpp проверяет rank pooling prerequisites: BOS token и EOS/SEP/rerank prompt. Если их нет, логирует warnings, что reranking не будет работать.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Флаг без значения:
+
+```bash
+llama-server --model /models/reranker.gguf --rerank
+```
+
+Эквивалентная ручная форма:
+
+```bash
+llama-server --model /models/reranker.gguf --embedding --pooling rank
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+- Cross-encoder reranker GGUF, например bge-reranker style.
+- Retrieval pipeline, где после initial vector search нужно переупорядочить documents по query.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте с обычной embedding model: rank pooling и prompt format должны поддерживаться моделью/tokenizer.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Reranking создает отдельную task на каждый документ. Latency растет с числом documents; throughput зависит от batching и parallel slots. Память context определяется обычными server/model параметрами, но длинные query/documents потребляют context tokens.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--embedding`: включается автоматически.
+- `--pooling`: `--rerank` принудительно ставит `rank`; если позже в argv указан другой `--pooling`, порядок аргументов может изменить итог.
+- `--batch-size`, `--ubatch-size`, `--parallel`: важны для throughput при большом числе документов.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `rerank = true` или `reranking = true`. Для router mode лучше выделять reranker отдельным alias, чтобы chat/embedding клиенты не попадали на rank-only модель.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Route возвращает `This server does not support reranking`: нет `--rerank` или итоговый pooling не `rank`.
+- Warnings при старте про BOS/EOS/SEP/rerank prompt: tokenizer/model несовместимы с reranking path.
+- Ошибка `"documents" must be a non-empty string array`: body не соответствует Jina/TEI формату.
+- Высокая latency: уменьшите `top_n`/число documents или настройте batching/parallelism.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --rerank
+llama-server --model /models/bge-reranker.gguf --rerank
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/bge-reranker.gguf --embedding --pooling rank
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--rerank&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--rerank
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--rerank
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--rerank`, `--reranking`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: rank pooling startup checks.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: `/reranking` route.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: reranking endpoint.

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--chat-template"
 title: "--chat-template"
-summary: "Задать Jinja-шаблон чата вручную вместо шаблона из метаданных модели."
-docStatus: draft
+summary: "Задает chat template вручную и тем самым переопределяет шаблон из metadata GGUF. В Jinja-режиме это полноценный Jinja template, без `--jinja` принимаются только известные встроенные имена шаблонов."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "JINJA_TEMPLATE"
@@ -14,16 +14,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_CHAT_TEMPLATE"
-related: []
+related:
+  - "--chat-template-file"
+  - "--jinja"
+  - "--chat-template-kwargs"
+  - "--reasoning"
+  - "--skip-chat-parsing"
 ---
 
 # --chat-template
 
 ## Кратко
 
-Задать Jinja-шаблон чата вручную вместо шаблона из метаданных модели.
+`--chat-template` записывает строку в `common_params::chat_template`. При старте `llama-server` эта строка передается в `common_chat_templates_init()` и заменяет шаблон, который обычно читается из metadata модели.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Используйте аргумент только когда metadata модели отсутствует, устарела или нужно принудительно выбрать совместимый формат чата. Неверный шаблон ломает не только prompt formatting, но и парсинг reasoning/tool calls в ответе.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +39,73 @@ set custom jinja chat template (default: template taken from model's metadata) i
 ## Паспорт аргумента
 
 - Основное имя: `--chat-template`
-- Алиасы: `--chat-template`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `JINJA_TEMPLATE`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CHAT_TEMPLATE`
-- Значение по умолчанию из `--help`: `template taken from model's metadata`
+- Значение: строка `JINJA_TEMPLATE`
+- Поле `common_params`: `chat_template`
+- Переменная окружения: `LLAMA_ARG_CHAT_TEMPLATE`
+- По умолчанию: template берется из metadata модели
+- Этап применения: парсинг CLI, затем инициализация server model context
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+После загрузки модели сервер вызывает `common_chat_templates_init(model_tgt, params_base.chat_template)`. Если строка непустая, она становится explicit override. Затем сервер логирует пример форматирования строкой `chat template, example_format: ...` и сохраняет template capabilities в `/props`.
 
-Для точного описания механики нужно проверить:
+При `--jinja` включен Jinja parser и строка трактуется как Jinja template. Если `--no-jinja` задан до `--chat-template`, `common_chat_verify_template()` допускает только известные built-in template names, потому что legacy path не умеет произвольный Jinja.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Значение может быть:
+
+- полным Jinja template текстом;
+- именем встроенного шаблона из списка `--help`, например `chatml`, `llama3`, `gemma`, `gpt-oss`;
+- строкой, переданной через `LLAMA_ARG_CHAT_TEMPLATE`.
+
+Для многострочного template в llama-manager безопаснее хранить значение отдельным argv-элементом, а не shell-строкой. Для длинных шаблонов обычно проще использовать `--chat-template-file`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+- GGUF не содержит корректный `tokenizer.chat_template`.
+- Нужно временно проверить другой template без перепаковки модели.
+- Модель использует известный формат, но metadata повреждена или была сконвертирована старым конвертером.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте `--chat-template` как способ исправлять sampling или stop tokens: это меняет структуру prompt и может сломать совместимость с tools, vision/audio content parts и thinking.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На KV-cache, VRAM и веса модели аргумент не влияет. Затраты появляются на этапе форматирования chat-запроса и генерации parser для ответа; обычно это мало по сравнению с inference. Косвенное влияние может быть большим: другой template добавляет или убирает служебные токены, меняет длину prompt, stop sequences и grammar для tool calls.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--chat-template-file`: альтернативный способ заполнить то же поле `chat_template`; выигрывает тот аргумент, который применен позже в argv.
+- `--jinja` / `--no-jinja`: определяет, разрешен ли произвольный Jinja.
+- `--chat-template-kwargs`: добавляет переменные в Jinja context.
+- `--reasoning` и `--reasoning-format`: зависят от того, поддерживает ли выбранный template thinking-разметку.
+- `--skip-chat-parsing`: оставляет formatting, но принудительно использует content-only parser для ответа.
+- `--in-prefix`, `--in-suffix`, `--in-prefix-bos`: в общем CLI отключают chat template для suffix/prefix сценариев.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` указывайте как `chat-template = ...`. Для router-сервера это per-model настройка: каждый загруженный subprocess получает свой argv. Для многострочного Jinja в INI практичнее `chat-template-file`, потому что кавычки и переносы в inline-значении труднее сопровождать.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `chat template parsing error`: Jinja не разобран или template несовместим; сервер советует `--no-jinja` или `--chat-template`.
+- `Unable to generate parser for this template`: template отформатировал prompt, но autoparser не смог построить parser ответа. Проверьте `--skip-chat-parsing` как диагностический обход.
+- Thinking/tool calls приходят как обычный `content`: template не содержит нужной разметки или включен `--skip-chat-parsing`.
+- После смены template сравните `/props`: поля `chat_template`, `chat_template_caps` и, при Jinja, `chat_template_tool_use`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --chat-template value
+llama-server --model /models/model.gguf --chat-template chatml
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --jinja --chat-template "{{ bos_token }}{% for message in messages %}{{ message.role }}: {{ message.content }}{% endfor %}"
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--chat-template&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--chat-template
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--chat-template
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--chat-template`, проверка `common_chat_verify_template()`.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: `common_chat_templates_init()`, Jinja/autoparser и pure content parser.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: инициализация chat templates и `/props`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: актуальная таблица аргументов server.

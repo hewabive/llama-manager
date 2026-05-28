@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--models-autoload"
 title: "--models-autoload"
-summary: "Автоматически загружать модели в router-режиме."
-docStatus: draft
+summary: "Управляет автоматической загрузкой модели по router-запросу. Парный `--no-models-autoload` требует предварительного `POST /models/load` или per-request `autoload=true`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
@@ -16,20 +16,16 @@ allowedValues: []
 env:
   - "LLAMA_ARG_MODELS_AUTOLOAD"
 related:
-  - "--alias"
-  - "--lora"
-  - "--model"
   - "--models-dir"
   - "--models-preset"
+  - "--models-max"
 ---
 
 # --models-autoload
 
 ## Кратко
 
-Автоматически загружать модели в router-режиме.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--models-autoload` включает автоматическую загрузку модели, когда router получает запрос к unloaded модели. По умолчанию включено. `--no-models-autoload` отключает это поведение глобально.
 
 ## Оригинальная справка llama.cpp
 
@@ -40,77 +36,101 @@ for router server, whether to automatically load models (default: enabled)
 ## Паспорт аргумента
 
 - Основное имя: `--models-autoload`
-- Алиасы: `--models-autoload`, `--no-models-autoload`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_MODELS_AUTOLOAD`
-- Значение по умолчанию из `--help`: `enabled`
+- Отрицательная форма: `--no-models-autoload`
+- Тип: boolean flag
+- Переменная окружения: `LLAMA_ARG_MODELS_AUTOLOAD`
+- Значение по умолчанию: `true`
+- Поле `common_params`: `models_autoload`
+- Этап применения: router validation перед proxy request
+- Router-only: да
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При POST-запросах router берет имя модели из JSON-поля `model`. При GET-запросах берет query parameter `model`. Затем `router_validate_model()` проверяет, существует ли модель в каталоге.
 
-Для точного описания механики нужно проверить:
+Если модель существует, но не загружена:
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- при autoload `true` router вызывает `ensure_model_ready()` и запускает дочерний сервер;
+- при autoload `false` router отвечает ошибкой `model is not loaded`.
+
+Для одного запроса поведение можно переопределить query-параметром `?autoload=true` или `?autoload=false`.
+
+## Значения и формат
+
+CLI формы:
+
+```bash
+llama-server --models-autoload
+llama-server --no-models-autoload
+```
+
+В env и INI boolean-значения проходят через общий parser boolean. В INI отрицательная форма тоже допустима:
+
+```ini
+models-autoload = false
+no-models-autoload = true
+```
+
+На практике задавайте этот параметр на уровне router-процесса, а не в модельной секции.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
+Оставляйте autoload включенным для локальной разработки и небольшого доверенного набора моделей: клиенту достаточно указать `model`, router сам поднимет нужный дочерний процесс.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Отключайте autoload для публичных серверов, больших каталогов и дорогих моделей. Тогда загрузка становится явным административным действием через `POST /models/load`, а обычный запрос не сможет внезапно занять память.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Включенный autoload повышает удобство, но первый запрос к unloaded модели получает latency загрузки весов и KV-настроек. Также он может вытеснить другую модель через `--models-max`.
+
+Отключенный autoload стабилизирует latency для уже loaded моделей и снижает риск неожиданных OOM, но требует отдельного шага загрузки.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--models-max` ограничивает, сколько autoload-моделей могут одновременно работать. При достижении лимита router применяет LRU-выгрузку или возвращает ошибку.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+`load-on-startup = true` из `--models-preset` не зависит от `--models-autoload`: такие модели загружаются при старте или reload списка.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`?autoload=true|false` в query string переопределяет глобальный `--models-autoload` для конкретного router-запроса.
 
-## Типовые проблемы
+## INI-пресеты и router-режим
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+`--models-autoload` является настройкой router, а не конкретной модели. Перед запуском дочернего процесса router удаляет `LLAMA_ARG_MODELS_AUTOLOAD` из модельного пресета.
+
+Для автозагрузки конкретной модели при старте используйте preset-only ключ:
+
+```ini
+[coder]
+model = /srv/models/qwen.gguf
+load-on-startup = true
+```
+
+## Типовые проблемы и диагностика
+
+- Ответ `model is not loaded`: autoload выключен; загрузите модель через `POST /models/load` или добавьте `?autoload=true`.
+- Первый запрос слишком медленный: модель поднимается автоматически; предварительно загрузите ее.
+- Неожиданная выгрузка другой модели: autoload активировал LRU из-за `--models-max`.
+- Запрос без имени модели: router вернет `model name is missing from the request`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --models-autoload true
+llama-server --models-preset /srv/llama/models.ini --no-models-autoload
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+curl -X POST http://127.0.0.1:8080/models/load \
+  -H "Content-Type: application/json" \
+  -d '{"model":"coder"}'
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+curl "http://127.0.0.1:8080/props?model=coder&autoload=false"
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--models-autoload&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--models-autoload
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--models-autoload
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--models-autoload` и `--no-models-autoload`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: default `models_autoload = true`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: `is_autoload`, `router_validate_model`, `ensure_model_ready`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: `Routing requests`.

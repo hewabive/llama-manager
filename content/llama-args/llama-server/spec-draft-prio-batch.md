@@ -2,22 +2,23 @@
 schema: 1
 primaryName: "--spec-draft-prio-batch"
 title: "--spec-draft-prio-batch"
-summary: "Черновая инженерная справка по --spec-draft-prio-batch из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает scheduler priority для batch/prompt CPU-профиля draft-модели: `0` normal, `1` medium, `2` high, `3` realtime. Значение `-1` здесь запрещено."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "flag"
-valueHint: null
+valueType: "number"
+valueHint: "N"
 aliases:
-  - "--spec-draft-prio-batch"
-  - "--prio-batch-dr"
+  - "--prio-batch-draft"
 allowedValues: []
 env: []
 related:
+  - "--spec-draft-prio"
+  - "--spec-draft-threads-batch"
+  - "--spec-draft-poll-batch"
+  - "--prio-batch"
   - "--batch-size"
-  - "--flash-attn"
-  - "--threads-batch"
   - "--ubatch-size"
 ---
 
@@ -25,89 +26,80 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-prio-batch из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-draft-prio-batch` задает scheduler priority для batch/prompt CPU-профиля draft-модели. Это отдельный параметр от `--spec-draft-prio`, который относится к generation-профилю draft.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-aft N set draft process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0)
+set draft process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-prio-batch`
-- Алиасы: `--spec-draft-prio-batch`, `--prio-batch-dr`
+- Алиасы: `--prio-batch-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `0`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `0`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-обработчик проверяет диапазон `0..3` и записывает enum `ggml_sched_priority` в `params.speculative.draft.cpuparams_batch.priority`. Значения вне диапазона вызывают `invalid value`.
 
-Для точного описания механики нужно проверить:
+В общем CPU helper priority переносится в `ggml_threadpool_params.prio`. В текущем `server-context.cpp` при загрузке draft-модели явно копируются только thread counts, поэтому batch priority draft-профиля не подтвержден как применяемый runtime-параметр для `llama-server` на commit `751ebd17...`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Допустимы `0` normal, `1` medium, `2` high, `3` realtime. `-1` low запрещен, в отличие от основного `--prio`.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте с осторожностью на выделенных CPU, если draft prefill/batch стабильно bottleneck и вы подтвердили применение параметра. Для shared-серверов и публичных endpoint лучше оставить `0`, потому что high/realtime batch priority может ухудшить target и HTTP latency.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Память не меняется. Priority может уменьшить ожидание CPU под конкурирующей нагрузкой, но не ускоряет сами операции. На Linux повышенные уровни обычно требуют прав на realtime scheduling; без прав возможны предупреждения `failed to set thread priority`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-poll-batch` вместе с высоким priority повышает риск агрессивной CPU-загрузки.
+- `--spec-draft-threads-batch` определяет число batch workers draft-профиля.
+- `--prio-batch` задает target batch priority и является более широким fallback-профилем.
+- `--spec-draft-prio` относится к generation-профилю draft.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` используйте ключ `prio-batch-draft = 1`. Router не удаляет этот параметр, но фактическое применение к draft batch runtime нужно проверять.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `invalid value` означает значение вне `0..3`.
+- `failed to set thread priority` означает отказ ОС применить scheduler priority.
+- Если параметр не влияет на поведение, учитывайте, что `server-context.cpp` не копирует draft batch priority явно.
+- При деградации latency уменьшите priority и отключите batch polling draft-профиля.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-prio-batch
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4 --spec-draft-threads-batch 8 --spec-draft-prio-batch 1
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+threads-batch-draft = 8
+prio-batch-draft = 1
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-prio-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-prio-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-prio-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление, диапазон `0..3` и обработчик `--spec-draft-prio-batch`.
+- `/home/maxim/llama/llama.cpp/common/common.h` - CPU priority fields.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - перенос CPU params в threadpool params.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение thread priority.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.

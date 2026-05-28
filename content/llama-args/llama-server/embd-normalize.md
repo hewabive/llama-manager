@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--embd-normalize"
 title: "--embd-normalize"
-summary: "Черновая инженерная справка по --embd-normalize из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает нормализацию pooled embeddings: `-1` без нормализации, `0` max-absolute/int16 scale, `1` L1, `2` L2, `>2` p-norm. Request body может переопределить значение."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,19 @@ aliases:
   - "--embd-normalize"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--embedding"
+  - "--pooling"
+  - "--rerank"
 ---
 
 # --embd-normalize
 
 ## Кратко
 
-Черновая инженерная справка по --embd-normalize из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--embd-normalize` записывает `common_params::embd_normalize`. В server это default для embedding tasks; request body `/embedding` или `/v1/embeddings` может передать `embd_normalize` и переопределить CLI value.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Нормализация применяется только для pooled embeddings. При `--pooling none` server логирует, что `embd_normalize` не поддерживается, и возвращает token embeddings без этой нормализации.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +36,65 @@ normalisation for embeddings (default: 2) (-1=none, 0=max absolute int16, 1=taxi
 ## Паспорт аргумента
 
 - Основное имя: `--embd-normalize`
-- Алиасы: `--embd-normalize`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `2`
+- Значение: integer `N`
+- Поле `common_params`: `embd_normalize`
+- По умолчанию: `2`
+- Env: не задан
+- Этап применения: post-processing embedding result
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+После вычисления embedding server получает vector через `llama_get_embeddings_seq()` для pooled modes и вызывает `common_embd_normalize(embd, embd_res.data(), n_embd_out, embd_normalize)`. Для `pooling none` берутся token embeddings через `llama_get_embeddings_ith()` и нормализация не вызывается.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `-1`: без нормализации.
+- `0`: деление на max absolute value с масштабом int16 range (`32760.0`).
+- `1`: taxicab/L1 norm.
+- `2`: Euclidean/L2 norm, default.
+- `>2`: p-norm с `p = N`.
+
+Код не запрещает значения меньше `-1`, но они попадут в default branch p-norm с отрицательной степенью, что практически не является полезным режимом. Для конфигурации используйте только значения из help.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- `2`: стандартный выбор для cosine similarity workflows.
+- `-1`: если downstream index или модельная рекомендация требуют raw vectors.
+- `0` или `1`: только если ваш retrieval pipeline явно ожидает такую нормализацию.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Нормализация проходит по vector dimension и стоит мало по сравнению с model eval. На VRAM/KV-cache не влияет. Может существенно изменить similarity scores и совместимость с уже построенным vector index; не смешивайте разные normalization режимы в одном индексе.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--embedding`: без embedding mode endpoints недоступны.
+- `--pooling`: при `none` нормализация не применяется.
+- `--rerank`: rerank использует rank pooling/scores; `--embd-normalize` не является основным quality knob для reranking.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `embd-normalize = 2` или другое число. В router mode держите значение стабильным для alias, который обслуживает один vector index.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Векторы отличаются после перезапуска: проверьте, не поменялся default `--embd-normalize` или request override.
+- Debug log `embd_normalize is not supported by pooling type ...`: используется `--pooling none`.
+- Retrieval качество резко изменилось: переиндексируйте documents тем же normalization режимом.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --embd-normalize 1
+llama-server --model /models/embed.gguf --embedding --pooling mean --embd-normalize 2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/embed.gguf --embedding --pooling mean --embd-normalize -1
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--embd-normalize&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--embd-normalize
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--embd-normalize
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--embd-normalize`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: `common_embd_normalize()`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: request override и pooling check.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: endpoint `/embedding` option `embd_normalize`.

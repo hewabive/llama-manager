@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--fim-qwen-3b-default"
 title: "--fim-qwen-3b-default"
-summary: "Черновая инженерная справка по --fim-qwen-3b-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет для Qwen2.5-Coder 3B Q8_0. Задает HF repo/file, порт 8012, batch 1024, auto context и cache reuse 256."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,21 @@ aliases:
   - "--fim-qwen-3b-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--port"
+  - "--batch-size"
+  - "--ubatch-size"
+  - "--ctx-size"
+  - "--cache-reuse"
 ---
 
 # --fim-qwen-3b-default
 
 ## Кратко
 
-Черновая инженерная справка по --fim-qwen-3b-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--fim-qwen-3b-default` применяет встроенный пресет для `Qwen2.5-Coder-3B-Q8_0-GGUF`. Это средний по размеру default из Qwen2.5 Coder FIM shortcut-группы.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +38,85 @@ use default Qwen 2.5 Coder 3B (note: can download weights from the internet)
 ## Паспорт аргумента
 
 - Основное имя: `--fim-qwen-3b-default`
-- Алиасы: `--fim-qwen-3b-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до загрузки модели
+- Область: `llama-server`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/Qwen2.5-Coder-3B-Q8_0-GGUF"`
+- `params.model.hf_file = "qwen2.5-coder-3b-q8_0.gguf"`
+- `params.port = 8012`
+- `params.n_ubatch = 1024`
+- `params.n_batch = 1024`
+- `params.n_ctx = 0`
+- `params.n_cache_reuse = 256`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+```bash
+llama-server --fim-qwen-3b-default
+```
+
+INI форма:
+
+```ini
+[qwen-coder-3b]
+fim-qwen-3b-default = true
+alias = coder-3b
+tags = code,fim,qwen
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, когда 1.5B модель слишком слабая, но 7B модель слишком дорогая по памяти или latency. Пресет полезен для локального coding ассистента и FIM endpoint.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+По сравнению с 1.5B вариантом модель потребляет больше RAM/VRAM и обычно дает лучшее качество. Пресет не задает `--n-gpu-layers`, поэтому распределение CPU/GPU выбирается отдельными аргументами или backend defaults.
+
+`n_cache_reuse = 256` может помочь при повторяющихся префиксах code-completion запросов.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Флаг конфликтует по смыслу с другими способами выбора модели: `--model`, `--hf-repo`, `--hf-file` и другими `*-default` shortcut. Используйте один источник модели на секцию или CLI-команду.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+Для router alias задавайте через `--models-preset`, а не глобальным `--alias`.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+Shortcut можно использовать в модельной секции router:
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+```ini
+[coder-3b]
+fim-qwen-3b-default = true
+alias = coder
+stop-timeout = 20
+```
+
+Для точных переопределений context/batch лучше развернуть пресет вручную.
+
+## Типовые проблемы и диагностика
+
+- Модель скачивается при первом старте: это ожидаемо для HF preset.
+- Не хватает памяти: уменьшите GPU offload, используйте меньшую модель или другой quant через явный `--hf-repo`/`--hf-file`.
+- Порт `8012` занят: задайте `--port`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --fim-qwen-3b-default
+llama-server --fim-qwen-3b-default --ctx-size 32768 --port 8082
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --models-preset /srv/llama/coders.ini --models-autoload
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--fim-qwen-3b-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--fim-qwen-3b-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--fim-qwen-3b-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-3b-default`.
+- `/home/maxim/llama/llama.cpp/common/preset.cpp`: flag в INI.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.

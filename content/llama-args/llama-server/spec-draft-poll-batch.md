@@ -2,22 +2,23 @@
 schema: 1
 primaryName: "--spec-draft-poll-batch"
 title: "--spec-draft-poll-batch"
-summary: "Черновая инженерная справка по --spec-draft-poll-batch из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает polling для batch/prompt CPU-профиля draft-модели. Help показывает `<0|1>` и fallback от `--spec-draft-poll`; обработчик сохраняет целое значение в `uint32_t`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "flag"
-valueHint: null
+valueType: "boolean"
+valueHint: "<0|1>"
 aliases:
-  - "--spec-draft-poll-batch"
-  - "--poll-batch-dr"
+  - "--poll-batch-draft"
 allowedValues: []
 env: []
 related:
+  - "--spec-draft-poll"
+  - "--spec-draft-prio-batch"
+  - "--spec-draft-threads-batch"
+  - "--poll-batch"
   - "--batch-size"
-  - "--flash-attn"
-  - "--threads-batch"
   - "--ubatch-size"
 ---
 
@@ -25,89 +26,79 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-poll-batch из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-draft-poll-batch` управляет busy polling для batch/prompt CPU-профиля draft-модели. Он относится к draft prefill/batched work, а `--spec-draft-poll` - к generation-профилю draft.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-aft <0|1> Use polling to wait for draft model work (default: --poll-draft)
+Use polling to wait for draft model work (default: --poll-draft)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-poll-batch`
-- Алиасы: `--spec-draft-poll-batch`, `--poll-batch-dr`
+- Алиасы: `--poll-batch-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `--poll-draft`
+- Тип значения в llama-manager: `boolean`
+- Подсказка формата: `<0|1>`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `--poll-draft`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-обработчик записывает `int value` в `params.speculative.draft.cpuparams_batch.poll`, поле типа `uint32_t`. Диапазон не проверяется, но help объявляет `<0|1>`.
 
-Для точного описания механики нужно проверить:
+В ggml CPU backend polling управляет активным ожиданием worker threads перед блокировкой. В текущем server load path draft batch polling не копируется явно в `params_dft.cpuparams_batch`, поэтому его runtime-применение для draft-контекста не подтверждено кодом `server-context.cpp`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Для переносимой конфигурации используйте `0` для отключения busy polling или `1` для минимальной help-формы polling. Другие целые значения могут пройти текущий обработчик, но это не документированный контракт draft batch аргумента.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только для latency-sensitive локального сервера с выделенным CPU и после проверки фактического применения. Для shared workload polling batch-профиля draft часто вреден: prefill может начать активно ждать CPU и мешать target/HTTP.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Память не меняется. Polling может снизить latency wakeup для batch-профиля, но повышает CPU utilization и энергопотребление. С `--spec-draft-prio-batch 2` или `3` риск деградации соседних задач выше.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-poll` является логическим fallback для batch draft polling.
+- `--spec-draft-prio-batch` усиливает эффект активного ожидания.
+- `--spec-draft-threads-batch` определяет, сколько draft batch workers может активно ждать.
+- `--poll-batch` задает target batch polling и участвует в общем наследовании CPU-профилей.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` используйте ключ `poll-batch-draft = 0` или `poll-batch-draft = 1`. Router не удаляет этот параметр из дочернего argv.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Если CPU загружен в idle/low-throughput режиме, проверьте все polling параметры: `--poll`, `--poll-batch`, `--spec-draft-poll`, `--spec-draft-poll-batch`.
+- Если значение вне `0`/`1` используется в старой конфигурации, лучше привести его к help-форме.
+- Если polling draft batch не влияет на поведение, учитывайте ограничение копирования CPU-профиля в `server-context.cpp`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-poll-batch
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4 --spec-draft-threads-batch 8 --spec-draft-poll-batch 0
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+threads-batch-draft = 8
+poll-batch-draft = 0
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-poll-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-poll-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-poll-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-poll-batch`.
+- `/home/maxim/llama/llama.cpp/common/common.h` - поле `common_cpu_params.poll`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - CPU postprocess и threadpool params.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - polling loop.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.

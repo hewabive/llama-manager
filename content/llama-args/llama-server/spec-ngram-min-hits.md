@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-ngram-min-hits"
 title: "--spec-ngram-min-hits"
-summary: "Черновая инженерная справка по --spec-ngram-min-hits из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Удаленный legacy-аргумент общего порога hits для ngram speculative decoding. Текущий `llama-server` отклоняет его; используйте variant-specific `--spec-ngram-*-min-hits` с учетом реального поведения каждого варианта."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,17 @@ aliases:
   - "--spec-ngram-min-hits"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-ngram-simple-min-hits"
+  - "--spec-ngram-map-k-min-hits"
+  - "--spec-ngram-map-k4v-min-hits"
 ---
 
 # --spec-ngram-min-hits
 
 ## Кратко
 
-Черновая инженерная справка по --spec-ngram-min-hits из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-ngram-min-hits` удален. Если передать его в `llama-server`, парсер выбросит ошибку через `arg_removed()` и сервер не дойдет до загрузки модели.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +34,45 @@ the argument has been removed. use the respective --spec-ngram-*-min-hits
 ## Паспорт аргумента
 
 - Основное имя: `--spec-ngram-min-hits`
-- Алиасы: `--spec-ngram-min-hits`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Статус в llama.cpp: удален
+- Тип значения в help: `N`
+- Переменные окружения: нет
+- Runtime field: отсутствует
+- Поведение при использовании: исключение `the argument has been removed. use the respective --spec-ngram-*-min-hits`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Ничего не меняет, потому что это removed marker. Значение не попадает в `common_params` и не может повлиять на speculative decoding.
 
-Для точного описания механики нужно проверить:
+## Чем заменить
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `--spec-ngram-map-k4v-min-hits` - рабочий порог для `ngram-map-k4v` в текущем commit.
+- `--spec-ngram-simple-min-hits` парсится, но не используется в runtime `ngram-simple`.
+- `--spec-ngram-map-k-min-hits` парсится, но в текущей ветке `key_only` не фильтрует drafts.
 
-## Когда использовать
+## Значения и формат
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Формат `N` больше не имеет практического значения: любое значение после legacy-аргумента приводит к ошибке removed-аргумента.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+## INI-пресеты и router-режим
 
-## Влияние на производительность и память
+Не используйте `spec-ngram-min-hits` в `--models-preset`. Если этот ключ остался после старой конфигурации, router передаст его модельному `llama-server`, и подпроцесс упадет при парсинге argv.
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+## Типовые проблемы и диагностика
 
-## Взаимодействие с другими аргументами
-
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
-
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
-
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
-
-## Типовые проблемы
-
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Ошибка `the argument has been removed`: удалите legacy key и выберите вариант-specific замену.
+- После миграции проверьте, что выбранный `--spec-type` соответствует замененному параметру.
+- Не переносите старое значение вслепую: у `simple`, `map-k` и `map-k4v` в текущем коде разная фактическая поддержка `min_hits`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-ngram-min-hits 1
+llama-server --model /models/model.gguf --spec-type ngram-map-k4v --spec-ngram-map-k4v-min-hits 2
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-ngram-min-hits&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-ngram-min-hits
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-ngram-min-hits
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.cpp`
+- `/home/maxim/llama/llama.cpp/docs/speculative.md`

@@ -2,137 +2,99 @@
 schema: 1
 primaryName: "--cache-idle-slots"
 title: "--cache-idle-slots"
-summary: "Черновая инженерная справка по --cache-idle-slots из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Сохраняет idle slots в RAM prompt cache и очищает их при новой задаче. Работает только вместе с `--kv-unified` и включенным `--cache-ram`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
 aliases:
   - "--cache-idle-slots"
-  - "--no-cache-idle-slot"
+  - "--no-cache-idle-slots"
 allowedValues: []
 env:
   - "LLAMA_ARG_CACHE_IDLE_SLOTS"
 related:
-  - "--api-key"
-  - "--api-key-file"
-  - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
-  - "--ctx-size"
-  - "--host"
-  - "--metrics"
+  - "--kv-unified"
+  - "--cache-ram"
   - "--parallel"
-  - "--port"
-  - "--slots"
-  - "--ssl-cert-file"
-  - "--ssl-key-file"
-  - "--threads-http"
-  - "--timeout"
+  - "--cache-prompt"
 ---
 
 # --cache-idle-slots
 
 ## Кратко
 
-Черновая инженерная справка по --cache-idle-slots из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--cache-idle-slots` задает `common_params::cache_idle_slots`. При запуске новой задачи сервер может сохранить prompt idle slot в RAM prompt cache и очистить slot KV, чтобы освободить общий unified KV.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию включено, но автоматически отключается, если нет `--kv-unified` или `--cache-ram 0`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-s save and clear idle slots on new task (default: enabled, requires unified KV and cache-ram)
+save and clear idle slots on new task (default: enabled, requires unified KV and cache-ram)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--cache-idle-slots`
-- Алиасы: `--cache-idle-slots`, `--no-cache-idle-slot`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CACHE_IDLE_SLOTS`
-- Значение по умолчанию из `--help`: `enabled, requires unified KV and cache-ram`
+- Алиасы: `--cache-idle-slots`, `--no-cache-idle-slots`
+- Значение по умолчанию: enabled
+- Переменная окружения: `LLAMA_ARG_CACHE_IDLE_SLOTS`
+- Поле llama.cpp: `common_params::cache_idle_slots`
+- Этап применения: инициализация server context и scheduler loop
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На `init()` сервер проверяет условия. Если `--kv-unified` выключен, пишет `--cache-idle-slots requires --kv-unified, disabling`. Если `--cache-ram 0`, пишет `--cache-idle-slots requires --cache-ram, disabling`.
 
-Для точного описания механики нужно проверить:
+Когда включено, при запуске задач idle slots сохраняются через `prompt_save()` в `server_prompt_cache` и очищаются, чтобы освободить место в unified KV.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `--cache-idle-slots`: включить.
+- `--no-cache-idle-slots`: выключить.
+- В INI boolean значения поддерживаются через обычные и negated keys.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте включенным для `--kv-unified` серверов с несколькими слотами и длинными prompts. Выключайте, если RAM-cache слишком дорог или если нужно, чтобы idle slots не сериализовались.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
-- Почти не влияет на скорость инференса, но влияет на безопасность, наблюдаемость и доступность HTTP API.
-- Для публичного доступа нельзя полагаться только на bind address; нужен reverse proxy, TLS и ограничение опасных операций.
+Снижает давление на unified KV-cache, но переносит часть состояния в RAM. Новая задача может стартовать быстрее, чем полный prompt replay, если state удачно восстановлен из prompt cache.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--kv-unified`: обязательное условие.
+- `--cache-ram`: должен быть не `0`.
+- `--parallel`: чем больше слотов, тем чаще есть idle states для сохранения.
+- `--cache-prompt`: влияет на reuse восстановленного состояния.
 
-- `--api-key`
-- `--api-key-file`
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--host`
-- `--metrics`
-- `--parallel`
-- `--port`
-- `--slots`
-- `--ssl-cert-file`
-- `--ssl-key-file`
-- `--threads-http`
-- `--timeout`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `cache-idle-slots = true` или `no-cache-idle-slots = true`. В router-режиме применяется к дочернему процессу модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Ищите лог `idle slots will be saved to prompt cache and cleared upon starting a new task`.
+- При отключении из-за условий сервер пишет явное warning.
+- При нехватке RAM смотрите `cache state` и уменьшайте `--cache-ram`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --cache-idle-slots true
+llama-server --model /models/model.gguf --kv-unified --cache-ram 4096 --cache-idle-slots
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --kv-unified --no-cache-idle-slots
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--cache-idle-slots&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--cache-idle-slots
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--cache-idle-slots
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--gpt-oss-120b-default"
 title: "--gpt-oss-120b-default"
-summary: "Черновая инженерная справка по --gpt-oss-120b-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет для gpt-oss-120b. Задает HF repo, порт 8013, большой контекст, Jinja и sampling defaults, но не фиксирует hf_file."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,26 @@ aliases:
   - "--gpt-oss-120b-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--port"
+  - "--batch-size"
+  - "--ubatch-size"
+  - "--parallel"
+  - "--ctx-size"
+  - "--jinja"
+  - "--temp"
+  - "--top-p"
+  - "--top-k"
+  - "--min-p"
 ---
 
 # --gpt-oss-120b-default
 
 ## Кратко
 
-Черновая инженерная справка по --gpt-oss-120b-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--gpt-oss-120b-default` применяет встроенный пресет для `gpt-oss-120b`. В отличие от 20B shortcut, он задает `hf_repo`, но не задает `hf_file`, поэтому выбор файла остается логике `--hf-repo`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +43,92 @@ use gpt-oss-120b (note: can download weights from the internet)
 ## Паспорт аргумента
 
 - Основное имя: `--gpt-oss-120b-default`
-- Алиасы: `--gpt-oss-120b-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до загрузки модели
+- Область: `llama-server`, `llama-cli`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/gpt-oss-120b-GGUF"`
+- `params.port = 8013`
+- `params.n_ubatch = 2048`
+- `params.n_batch = 32768`
+- `params.n_parallel = 2`
+- `params.n_ctx = 131072 * params.n_parallel`, то есть `262144`
+- `params.sampling.temp = 1.0`
+- `params.sampling.top_p = 1.0`
+- `params.sampling.top_k = 0`
+- `params.sampling.min_p = 0.01`
+- `params.use_jinja = true`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`params.model.hf_file` этот флаг не заполняет.
+
+## Значения и формат
+
+```bash
+llama-server --gpt-oss-120b-default
+```
+
+INI:
+
+```ini
+[gpt-oss-120b]
+gpt-oss-120b-default = true
+alias = gpt-oss-large
+tags = chat,gpt-oss,large
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только на сервере, где заранее понятны требования 120B модели к памяти, диску и времени загрузки. Для production лучше явно зафиксировать файл через `--hf-file`, если в repo есть несколько вариантов и вам нужен конкретный quant.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Это тяжелый preset. `n_ctx = 262144`, `n_batch = 32768` и 120B веса могут требовать очень большого объема RAM/VRAM. Для router autoload публичного API такой shortcut опасен без жестких лимитов и ручной загрузки.
+
+Sampling defaults совпадают с 20B shortcut: `temp = 1.0`, `top_p = 1.0`, `top_k = 0`, `min_p = 0.01`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Так как `hf_file` не задан, `--hf-repo` будет использовать свою логику выбора quant/file. Если нужен конкретный GGUF, добавьте явный `--hf-file` или разверните пресет в INI.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--models-max` считает каждый loaded router instance как одну модель, но память этого instance может быть очень большой.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+```ini
+[gpt-oss-120b]
+gpt-oss-120b-default = true
+hf-file = selected-file.gguf
+alias = gpt-oss-120b
+load-on-startup = false
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Если нужно переопределить `hf-file`, проверьте итоговый argv в `/models`: порядок рендеринга INI shortcut и отдельных ключей может быть важен. Самый надежный вариант - записать развернутые `hf-repo`, `hf-file`, `ctx-size`, `batch-size` без shortcut.
+
+## Типовые проблемы и диагностика
+
+- Скачался не тот файл: preset не фиксирует `hf_file`; задайте `--hf-file`.
+- OOM: уменьшите context/batch или используйте меньший preset.
+- Долгое ожидание ответа при autoload: 120B модель загружается по первому запросу.
+- Порт `8013` занят: задайте `--port`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --gpt-oss-120b-default
+llama-server --gpt-oss-120b-default --ctx-size 32768 --port 8083
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --models-preset /srv/llama/gpt-oss.ini --models-max 1 --no-models-autoload
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--gpt-oss-120b-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--gpt-oss-120b-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--gpt-oss-120b-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--gpt-oss-120b-default`.
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: логика `--hf-repo`/`--hf-file`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router autoload и limits.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.

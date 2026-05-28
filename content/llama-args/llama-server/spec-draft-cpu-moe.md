@@ -2,107 +2,98 @@
 schema: 1
 primaryName: "--spec-draft-cpu-moe"
 title: "--spec-draft-cpu-moe"
-summary: "Черновая инженерная справка по --spec-draft-cpu-moe из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Оставляет все MoE expert tensor draft-модели на CPU. Это shorthand поверх tensor buffer override для экономии VRAM на MoE draft-моделях."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "flag"
+valueHint: null
 aliases:
   - "--spec-draft-cpu-moe"
   - "-cmoed"
-  - "--cpu-moe-"
+  - "--cpu-moe-draft"
 allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_CPU_MOE"
-related: []
+related:
+  - "--cpu-moe"
+  - "--spec-draft-n-cpu-moe"
+  - "--spec-draft-override-tensor"
+  - "--spec-draft-ngl"
 ---
 
 # --spec-draft-cpu-moe
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-cpu-moe из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-cpu-moe` оставляет все Mixture of Experts weights draft-модели на CPU. Обработчик добавляет в `common_params.speculative.draft.tensor_buft_overrides` override `LLM_FFN_EXPS_REGEX -> ggml_backend_cpu_buffer_type()`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Флаг не принимает отдельного значения. Для основной target-модели есть отдельный `--cpu-moe`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-draft keep all Mixture of Experts (MoE) weights in the CPU for the draft model
+keep all Mixture of Experts (MoE) weights in the CPU for the draft model
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-cpu-moe`
-- Алиасы: `--spec-draft-cpu-moe`, `-cmoed`, `--cpu-moe-`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_CPU_MOE`
-- Значение по умолчанию из `--help`: `не указано`
+- Алиасы: `--spec-draft-cpu-moe`, `-cmoed`, `--cpu-moe-draft`
+- Тип: флаг
+- Структура llama.cpp: `common_params.speculative.draft.tensor_buft_overrides`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_CPU_MOE`
+- Этап применения: парсинг CLI/env, затем загрузка draft-модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг добавляет правило для tensor, имена которых соответствуют `\\.ffn_(up|down|gate|gate_up)_(ch|)exps`. Это expert weights MoE-блоков. При загрузке draft-модели сервер передает эти overrides в `params_dft.tensor_buft_overrides`.
 
-Для точного описания механики нужно проверить:
+Если draft-модель не MoE, правило может просто не совпасть ни с одним tensor и практического эффекта не даст.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI-форма - только присутствие флага:
+
+```text
+--spec-draft-cpu-moe
+```
+
+Через env включается truthy-значением `LLAMA_ARG_SPEC_DRAFT_CPU_MOE=1`. Отрицательной CLI-формы для этого флага нет.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте для MoE draft-моделей, если expert weights занимают слишком много VRAM или вытесняют target-модель. Это грубый, но простой способ снизить VRAM без ручных regex override.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не включайте автоматически для всех моделей: CPU experts могут сделать draft существенно медленнее.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+VRAM draft-модели уменьшается за счет хранения experts в RAM. Цена - CPU bandwidth и возможные transfer overhead. На MoE draft-модели с редкой активацией experts это может быть приемлемо; на маленькой dense draft-модели флаг бесполезен.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-n-cpu-moe` делает похожее, но только для первых N слоев. `--spec-draft-override-tensor` позволяет задать собственные patterns. `--spec-draft-ngl all` и `--spec-draft-cpu-moe` могут использоваться вместе: общий offload отправляет слои на GPU, а MoE experts остаются на CPU.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `cpu-moe-draft = true` или `spec-draft-cpu-moe = true`. Для отключения в другом preset просто не задавайте флаг; парного `no-...` варианта в `arg.cpp` нет.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- VRAM не изменилась: draft-модель не MoE или tensor names не совпали с regex текущего llama.cpp.
+- Draft стал медленным: experts ушли на CPU; попробуйте `--spec-draft-n-cpu-moe` с меньшим N.
+- Нужен такой же режим для target: используйте отдельный `--cpu-moe`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-cpu-moe value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/moe-draft.gguf --spec-type draft-simple --spec-draft-ngl all --spec-draft-cpu-moe
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-cpu-moe&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-cpu-moe
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-cpu-moe
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`

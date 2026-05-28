@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--control-vector"
 title: "--control-vector"
-summary: "Черновая инженерная справка по --control-vector из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Загружает control vector GGUF со strength `1.0` и применяет его к слоям модели. Несколько файлов можно передать CSV-списком."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "path"
 valueHint: "FNAME"
@@ -13,21 +13,25 @@ aliases:
   - "--control-vector"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--control-vector-scaled"
+  - "--control-vector-layer-range"
+  - "--model"
 ---
 
 # --control-vector
 
 ## Кратко
 
-Черновая инженерная справка по --control-vector из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--control-vector` добавляет файл control vector со strength `1.0`. Значение записывается в `common_params.control_vectors` как `{ strength = 1.0f, fname = <path> }`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Control vectors загружаются после создания context и применяются через `llama_set_adapter_cvec()`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-add a control vector note: use comma-separated values to add multiple control vectors
+add a control vector
+note: use comma-separated values to add multiple control vectors
 ```
 
 ## Паспорт аргумента
@@ -35,71 +39,79 @@ add a control vector note: use comma-separated values to add multiple control ve
 - Основное имя: `--control-vector`
 - Алиасы: `--control-vector`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
+- Тип значения в llama-manager: `path`
 - Подсказка формата из `--help`: `FNAME`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Переменные окружения: не указаны
+- Значение по умолчанию: control vectors не применяются
+- Внутреннее поле: `common_params.control_vectors`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При создании context, если список `control_vectors` не пустой:
 
-Для точного описания механики нужно проверить:
+- `control_vector_layer_start <= 0` заменяется на `1`;
+- `control_vector_layer_end <= 0` заменяется на `llama_model_n_layer(model)`;
+- каждый GGUF читается через `common_control_vector_load()`;
+- результат применяется к context через `llama_set_adapter_cvec()`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Файлы должны содержать tensors `direction.<layer>`, каждый tensor должен быть F32 и 1D. Layer `0` считается invalid.
+
+## Значения и формат
+
+Ожидается путь к GGUF control vector. Несколько файлов:
+
+```text
+--control-vector steer_a.gguf,steer_b.gguf
+```
+
+Если несколько файлов содержат направления для одних и тех же слоев, данные складываются с учетом strength. Все vectors должны иметь одинаковый `n_embd`.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте control vectors для steering поведения модели без LoRA adapter. Это низкоуровневый механизм: применяйте только vectors, подготовленные под совместимую архитектуру и embedding dimension базовой модели.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Control vector данные загружаются в память и передаются в context adapter. Обычно footprint меньше, чем у LoRA, но влияние зависит от числа слоев и размерности. На качество и стиль ответов влияние может быть сильным даже при strength `1.0`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--control-vector-scaled`: то же, но с явным strength.
+- `--control-vector-layer-range`: ограничивает inclusive диапазон слоев.
+- `--model`: vector должен соответствовать `n_embd` и слоям модели.
+- `--lora`: LoRA и control vectors могут использоваться вместе, но эффекты складываются и требуют проверки качества.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[steered_model]
+model = /srv/models/base.gguf
+control-vector = /srv/cvec/helpful.gguf
+control-vector-layer-range = 4 28
+```
 
-## Типовые проблемы
+Для router дочерний процесс должен иметь доступ к файлам vectors по тем же путям.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `failed to load control vector file`: путь недоступен или файл не GGUF.
+- `invalid/unparsable direction tensor layer index`: tensor name не вида `direction.<N>`.
+- `invalid (non-F32) direction tensor type`: vector сохранен в неподдерживаемом типе.
+- `control vectors ... does not match previous dimensions`: смешаны vectors от разных моделей.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --control-vector /path/to/value
+llama-server --model /srv/models/base.gguf --control-vector /srv/cvec/helpful.gguf
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/base.gguf --control-vector /srv/cvec/a.gguf,/srv/cvec/b.gguf
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--control-vector&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--control-vector
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--control-vector
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

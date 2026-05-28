@@ -2,107 +2,110 @@
 schema: 1
 primaryName: "--spec-draft-ngl"
 title: "--spec-draft-ngl"
-summary: "Черновая инженерная справка по --spec-draft-ngl из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Управляет числом слоев draft-модели, размещаемых в VRAM. Поддерживает точное число, `auto` и `all`; применяется отдельно от `--gpu-layers` основной модели."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "string"
+valueHint: "N"
 aliases:
   - "--spec-draft-ngl"
   - "-ngld"
-  - "--gpu-layers-dr"
+  - "--gpu-layers-draft"
+  - "--n-gpu-layers-draft"
 allowedValues: []
 env:
   - "LLAMA_ARG_N_GPU_LAYERS_DRAFT"
-related: []
+related:
+  - "--gpu-layers"
+  - "--spec-draft-device"
+  - "--spec-draft-model"
+  - "--spec-draft-hf"
+  - "--spec-draft-override-tensor"
+  - "--fit"
 ---
 
 # --spec-draft-ngl
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-ngl из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-ngl` задает `common_params.speculative.draft.n_gpu_layers`: сколько слоев draft-модели llama.cpp пытается хранить и выполнять в VRAM. Это отдельный параметр от `--gpu-layers` для target-модели.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию значение `auto`, в структуре это `-1`. `all` записывается как `-2`. Числовое значение парсится через `std::stoi()`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-aft, --n-gpu-layers-draft N max. number of draft model layers to store in VRAM, either an exact number, 'auto', or 'all' (default: auto)
+max. number of draft model layers to store in VRAM, either an exact number, 'auto', or 'all' (default: auto)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-ngl`
-- Алиасы: `--spec-draft-ngl`, `-ngld`, `--gpu-layers-dr`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_N_GPU_LAYERS_DRAFT`
-- Значение по умолчанию из `--help`: `auto`
+- Алиасы: `--spec-draft-ngl`, `-ngld`, `--gpu-layers-draft`, `--n-gpu-layers-draft`
+- Значение: `auto`, `all` или целое число
+- Структура llama.cpp: `common_params.speculative.draft.n_gpu_layers`
+- Переменная окружения: `LLAMA_ARG_N_GPU_LAYERS_DRAFT`
+- Значение по умолчанию: `auto`
+- Этап применения: до загрузки draft-модели или MTP-контекста
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При загрузке draft-модели сервер копирует значение в `params_dft.n_gpu_layers`, после чего `common_model_params_to_llama()` передает его загрузчику модели. При MTP без отдельной draft-модели этот параметр не размещает новые веса, но fit-логика все равно учитывает память MTP-контекста.
 
-Для точного описания механики нужно проверить:
+Если llama.cpp собран без пригодного GPU backend, обработчик печатает предупреждения, что `--gpu-layers-draft` будет проигнорирован.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `auto` - использовать поведение по умолчанию/fit-подбор для draft-модели.
+- `all` - попытаться выгрузить все возможные слои draft-модели на GPU.
+- `0` - оставить слои draft-модели на CPU, если backend не переопределит поведение.
+- Положительное число - максимум слоев draft-модели в VRAM.
+
+Отрицательные числа кроме внутренних `-1`/`-2` через CLI не описаны help и не должны использоваться в UI.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Увеличивайте значение, когда draft-модель упирается в CPU и становится bottleneck. Снижайте значение, если target-модель и draft-модель вместе не помещаются в VRAM или fit начинает выгружать target сильнее, чем ожидалось.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для маленькой draft-модели часто разумно `all`, если это не вытесняет слои target-модели.
 
 ## Влияние на производительность и память
 
-- Затрагивает распределение вычислений между CPU/GPU и может менять как latency, так и объем занятой VRAM.
-- После изменения проверяйте лог старта: llama.cpp обычно печатает, какие слои и буферы реально попали на GPU.
+Больше слоев draft-модели в VRAM обычно снижает latency draft-предсказания, но увеличивает VRAM и может ухудшить размещение основной модели. При `--fit` server-context оценивает память draft-модели/MTP и добавляет ее к fit target перед загрузкой target.
+
+Проверяйте логи загрузки и сообщения `[spec] estimated memory usage of draft model ...`, а также итоговую acceptance. Быстрая draft-модель без acceptance не дает полезного ускорения.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-device` ограничивает список устройств, на которые можно offload draft-модель. `--spec-draft-override-tensor`, `--spec-draft-cpu-moe` и `--spec-draft-n-cpu-moe` могут переопределить размещение отдельных tensor поверх общего числа слоев.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--gpu-layers` управляет target-моделью и не заменяет `--spec-draft-ngl`.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В INI используйте `spec-draft-ngl = auto`, `gpu-layers-draft = all` или `n-gpu-layers-draft = 20`. Для model-specific preset это удобно держать рядом с `model-draft`.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Предупреждение `no usable GPU found`: бинарник без GPU backend или устройство недоступно.
+- OOM при старте: уменьшите `--spec-draft-ngl`, `--gpu-layers` target-модели или KV-cache draft.
+- Draft-модель загружается на CPU несмотря на значение: проверьте `--spec-draft-device`, доступные устройства через `--list-devices` и фактические backend-логи.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-ngl value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-type draft-simple --spec-draft-ngl all
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-ngl 12
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-ngl&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-ngl
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-ngl
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--offline"
 title: "--offline"
-summary: "Черновая инженерная справка по --offline из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Запрещает сетевые обращения общего downloader-а и заставляет использовать уже подготовленный cache. Применяется к HF/URL downloads, включая `mmproj`, draft и vocoder модели."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "flag"
 valueHint: null
@@ -13,17 +13,23 @@ aliases:
   - "--offline"
 allowedValues: []
 env:
-  - "LLAMA_OFFLINE"
-related: []
+  - "LLAMA_ARG_OFFLINE"
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--model-url"
+  - "--mmproj-url"
+  - "--hf-repo-v"
+  - "--cache-list"
 ---
 
 # --offline
 
 ## Кратко
 
-Черновая инженерная справка по --offline из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--offline` выставляет `common_params.offline = true`. Общий downloader не делает сетевых запросов и принимает только файлы, которые уже существуют в ожидаемом cache/local path.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это полезно для production, air-gapped и воспроизводимых запусков, но требует заранее прогретого cache.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,71 +42,77 @@ Offline mode: forces use of cache, prevents network access
 - Основное имя: `--offline`
 - Алиасы: `--offline`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_OFFLINE`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип значения в llama-manager: `flag`
+- Переменные окружения: `LLAMA_ARG_OFFLINE`
+- Значение по умолчанию: disabled
+- Внутреннее поле: `common_params.offline`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+`common_params_handle_models()` передает `params.offline` в обработку:
 
-Для точного описания механики нужно проверить:
+- основной модели;
+- `mmproj`;
+- speculative draft model;
+- vocoder model.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+В `common_download_file_single()` offline-режим проверяет только `std::filesystem::exists(path)`. Если файла нет, логируется `required file is not available in cache (offline mode)` и возвращается ошибка. Если файл есть, возвращается fake status `304` как cached response.
+
+Для HF repo при offline сначала не запрашивается список файлов из сети; downloader использует `hf_cache::get_cached_files(repo)`.
+
+## Значения и формат
+
+Это флаг без значения. Парной `--no-offline` формы в проверенном коде нет.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+Используйте после того, как все нужные модели, split shards, `mmproj`, draft и vocoder файлы уже скачаны и доступны пользователю процесса. Это хороший production-default для инстансов, которые не должны зависеть от внешних сервисов.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте для первого запуска HF/URL модели, если cache еще пуст.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Offline уменьшает вариативность старта: нет сетевого API/listing/download. На inference memory/latency не влияет. Если cache лежит на медленном диске, время загрузки все равно определяется локальным I/O.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--hf-repo`/`--hf-file`: работают только если HF cache содержит repo files metadata/файлы.
+- `--model-url`/`--mmproj-url`: требуют существующий локальный файл по рассчитанному или заданному пути.
+- `--hf-token`: не вызывает сеть в offline, но может оставаться в конфигурации без эффекта.
+- `--docker-repo`: в проверенном коде Docker resolver не получает `params.offline`, поэтому для строгого offline используйте локальный `--model`, а не Docker repo.
+- `--cache-list`: помогает увидеть HF-модели, доступные из cache.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[*]
+offline = true
 
-## Типовые проблемы
+[cached_hf]
+hf-repo = ggml-org/example-GGUF:Q4_K_M
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В router-режиме cache должен быть доступен как router-процессу, так и дочерним model processes. README отмечает, что router по умолчанию ищет модели в cache.
+
+## Типовые проблемы и диагностика
+
+- `required file is not available in cache (offline mode)`: прогрейте cache online или укажите локальный `--model`.
+- HF repo не находится, хотя файл есть на диске: cache должен быть в формате HF cache, а не произвольный каталог; для произвольного каталога используйте `--models-dir` или `--model`.
+- URL download в offline не работает: укажите тот же локальный путь через `--model`/`--mmproj`, куда файл был скачан.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --offline
+llama-server --hf-repo ggml-org/example-GGUF:Q4_K_M --offline
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/model.gguf --mmproj /srv/models/mmproj-F16.gguf --offline
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--offline&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--offline
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--offline
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.h`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

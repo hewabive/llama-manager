@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--reverse-prompt"
 title: "--reverse-prompt"
-summary: "Черновая инженерная справка по --reverse-prompt из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Добавляет stop/anti-prompt строку, на которой generation останавливается. В server это становится default stop sequence для completion/chat задач, если request не передал собственный `stop`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "PROMPT"
@@ -14,16 +14,18 @@ aliases:
   - "--reverse-prompt"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--escape"
+  - "--chat-template"
 ---
 
 # --reverse-prompt
 
 ## Кратко
 
-Черновая инженерная справка по --reverse-prompt из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--reverse-prompt` добавляет строку в `common_params::antiprompt`. В server defaults она попадает в `server_task_params::antiprompt` и используется как stop sequence, если конкретный request не передал свои `stop`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Аргумент можно указывать несколько раз: каждая строка добавляется в список.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +36,65 @@ halt generation at PROMPT, return control in interactive mode
 ## Паспорт аргумента
 
 - Основное имя: `--reverse-prompt`
-- Алиасы: `-r`, `--reverse-prompt`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `PROMPT`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Алиас: `-r`
+- Значение: строка `PROMPT`
+- Поле `common_params`: `antiprompt`
+- Этап применения: CLI parse, затем defaults server tasks
+- Env: не задан
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `server-task.cpp` defaults берут `params_base.antiprompt`. При разборе request поле `stop` токенизируется с `parse_special=true`; если request stop пустой, применяется default antiprompt из CLI.
 
-Для точного описания механики нужно проверить:
+В отличие от интерактивного CLI, server не "возвращает управление пользователю" в терминале. Для HTTP API смысл практический: остановить генерацию на заданной строке.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Строка сравнивается как stop text/tokenized sequence. Если включен `--escape`, для `antiprompt` применяются escapes `\n`, `\r`, `\t`, `\'`, `\"`, `\\` после парсинга CLI.
+
+Для special-token stop sequences используйте точные textual forms и проверяйте модельный tokenizer; server tokenizes stops с `parse_special=true`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+- Модель не имеет корректных stop tokens в template.
+- Нужно остановить completion на пользовательском delimiter.
+- Нужно задать server-wide fallback stop для клиентов, которые не отправляют `stop`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не задавайте слишком общие строки вроде `.` или `\n`: они будут преждевременно обрывать ответы.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На память модели не влияет. Проверка stop sequences добавляет небольшую runtime-логику. Слишком длинный список stop strings может немного увеличить post-processing каждого токена.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--escape`: обрабатывает escapes внутри reverse prompts.
+- `--chat-template`: многие chat templates уже добавляют stop sequences; дополнительный `--reverse-prompt` может конфликтовать.
+- Request field `stop`: если клиент передает непустой `stop`, он заменяет CLI defaults для этой задачи.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `reverse-prompt = ...`; для нескольких stop sequences проверьте, как llama-manager сериализует повторяющиеся аргументы. В router mode задавайте per-model, потому что delimiters зависят от tokenizer/template.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Ответы обрываются слишком рано: stop string слишком общий или появляется в нормальном тексте.
+- Stop не срабатывает: проверьте escapes, special token parsing и то, не переопределил ли request поле `stop`.
+- При `--verbose` проверяйте итоговые request params, где stop list попадает в task.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --reverse-prompt value
+llama-server --model /models/model.gguf --reverse-prompt "<|im_end|>"
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --reverse-prompt "### User:"
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--reverse-prompt&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--reverse-prompt
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--reverse-prompt
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--reverse-prompt`, escape post-processing.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::antiprompt`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: defaults и request `stop`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server argument table.

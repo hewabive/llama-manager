@@ -2,106 +2,108 @@
 schema: 1
 primaryName: "--spec-draft-backend-sampling"
 title: "--spec-draft-backend-sampling"
-summary: "Черновая инженерная справка по --spec-draft-backend-sampling из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает или отключает backend-side sampling для MTP draft-контекста. По умолчанию включено; отрицательная форма `--no-spec-draft-backend-sampling` возвращает sampling на CPU path."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "boolean"
 valueHint: null
 aliases:
   - "--spec-draft-backend-sampling"
-  - "--no-spec"
+  - "--no-spec-draft-backend-sampling"
 allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_BACKEND_SAMPLING"
-related: []
+  - "LLAMA_ARG_NO_SPEC_DRAFT_BACKEND_SAMPLING"
+related:
+  - "--backend-sampling"
+  - "--spec-type"
+  - "--spec-draft-p-min"
+  - "--spec-draft-model"
 ---
 
 # --spec-draft-backend-sampling
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-backend-sampling из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-backend-sampling` управляет `common_params.speculative.draft.backend_sampling`. По умолчанию значение `true`: MTP draft implementation пытается привязать sampler chain к draft-контексту backend через `llama_set_sampler()`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Для отключения используйте отрицательную форму `--no-spec-draft-backend-sampling`. Это boolean-аргумент с парой positive/negative flags, а не аргумент со значением `true`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
--draft-backend-sampling offload draft sampling to the backend (default: enabled)
+offload draft sampling to the backend (default: enabled)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-backend-sampling`
-- Алиасы: `--spec-draft-backend-sampling`, `--no-spec`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_BACKEND_SAMPLING`
-- Значение по умолчанию из `--help`: `enabled`
+- Отрицательная форма: `--no-spec-draft-backend-sampling`
+- Структура llama.cpp: `common_params.speculative.draft.backend_sampling`
+- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_BACKEND_SAMPLING`, совместимая отрицательная `LLAMA_ARG_NO_SPEC_DRAFT_BACKEND_SAMPLING`
+- Значение по умолчанию: `enabled`
+- Подтвержденное применение: MTP draft implementation
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common_speculative_impl_draft_mtp` при `backend_sampling = true` для каждой sequence создается sampler chain с `top_k(10)` и вызывается `llama_set_sampler(ctx_dft, seq_id, chain)`. Если backend offload не удался, код пишет warning `backend offload failed ...; using CPU sampler` и продолжает с CPU sampler.
 
-Для точного описания механики нужно проверить:
+В `draft-simple` поле `backend_sampling` не читается: там sampler создается и вызывается через common sampler path.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI:
+
+```text
+--spec-draft-backend-sampling
+--no-spec-draft-backend-sampling
+```
+
+Env принимает обычные truthy/falsey boolean-строки через общий parser. Для отрицательной формы llama.cpp также добавляет `LLAMA_ARG_NO_...` compatibility env.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
+Оставляйте включенным для `--spec-type draft-mtp`, если backend поддерживает sampler attachment и это снижает overhead. Отключайте при диагностике backend-specific ошибок, несовместимости sampler offload или если нужно сравнить CPU и backend sampling.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для `draft-simple` этот флаг не является основным тюнингом; смотрите `--backend-sampling` для основного server sampling и `--spec-draft-p-min`/`--spec-draft-n-max` для draft поведения.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память почти не меняется. Возможный эффект - latency sampling внутри MTP draft. Если backend не поддерживает offload, код fallback-ится на CPU sampler и печатает warning.
+
+Сравнивайте token/s и `draft acceptance`; сам флаг не меняет acceptance напрямую, но может менять стоимость draft generation.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--backend-sampling` управляет основным sampling сервера и в `server-context.cpp` отключается для слота, если слот использует speculative decoding. `--spec-draft-backend-sampling` относится к draft/MTP sampler chain и хранится в другой структуре.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--spec-draft-p-min` использует probability candidates, полученные draft sampler; при backend fallback логика порога остается той же.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В INI positive форма обычно задается `spec-draft-backend-sampling = true`, отрицательная - `no-spec-draft-backend-sampling = true` или через env `LLAMA_ARG_NO_SPEC_DRAFT_BACKEND_SAMPLING=1`. Так как default уже enabled, явно задавать positive форму обычно не нужно.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `backend offload failed ...; using CPU sampler`: backend не принял sampler chain; для проверки задайте `--no-spec-draft-backend-sampling`.
+- Нет эффекта на `draft-simple`: это ожидаемо, поле используется в MTP implementation.
+- Пользователь передал `--spec-draft-backend-sampling true`: CLI parser воспримет `true` как следующий аргумент и запуск упадет; используйте флаг без значения.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-backend-sampling true
+llama-server --model /models/target-with-mtp.gguf --spec-type draft-mtp --no-spec-draft-backend-sampling
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/target-with-mtp.gguf --spec-type draft-mtp --spec-draft-backend-sampling
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-backend-sampling&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-backend-sampling
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-backend-sampling
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

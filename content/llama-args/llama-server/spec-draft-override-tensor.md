@@ -2,115 +2,96 @@
 schema: 1
 primaryName: "--spec-draft-override-tensor"
 title: "--spec-draft-override-tensor"
-summary: "Черновая инженерная справка по --spec-draft-override-tensor из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Переопределяет buffer type отдельных tensor draft-модели по regex-like pattern. Используется для точечного размещения draft tensor на CPU/GPU поверх общего `--spec-draft-ngl`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "list"
-valueHint: ","
+valueHint: "<tensor name pattern>=<buffer type>,..."
 aliases:
   - "--spec-draft-override-tensor"
   - "-otd"
-  - "--ov"
+  - "--override-tensor-draft"
 allowedValues: []
 env: []
 related:
-  - "--flash-attn"
-  - "--main-gpu"
-  - "--n-gpu-layers"
-  - "--split-mode"
-  - "--tensor-split"
+  - "--override-tensor"
+  - "--spec-draft-ngl"
+  - "--spec-draft-device"
+  - "--spec-draft-cpu-moe"
+  - "--spec-draft-n-cpu-moe"
 ---
 
 # --spec-draft-override-tensor
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-override-tensor из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-override-tensor` добавляет правила `llama_model_tensor_buft_override` только для draft-модели. Значение парсится как список `pattern=buffer_type` через запятую и записывается в `common_params.speculative.draft.tensor_buft_overrides`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+После парсинга llama.cpp добавляет завершающий `{nullptr, nullptr}` sentinel, если список override не пуст.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-erride-tensor-draft <tensor name pattern>=<buffer type>,... override tensor buffer type for draft model
+override tensor buffer type for draft model
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-override-tensor`
-- Алиасы: `--spec-draft-override-tensor`, `-otd`, `--ov`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Алиасы: `--spec-draft-override-tensor`, `-otd`, `--override-tensor-draft`
+- Формат: `<tensor name pattern>=<buffer type>,...`
+- Структура llama.cpp: `common_params.speculative.draft.tensor_buft_overrides`
+- Переменная окружения: нет
+- Этап применения: парсинг CLI, затем загрузка draft-модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При загрузке draft-модели сервер копирует список в `params_dft.tensor_buft_overrides`. Загрузчик модели использует его для выбора buffer type отдельных tensor. На target-модель этот аргумент не влияет; для target существует отдельный `--override-tensor`.
 
-Для точного описания механики нужно проверить:
+`parse_tensor_buffer_overrides()` собирает доступные buffer types из загруженных backend devices. Если buffer type неизвестен, печатает список доступных buffer types и выбрасывает `unknown buffer type`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Каждый элемент обязан содержать `=`. Левая часть - pattern имени tensor, правая - точное имя buffer type, как его печатает backend. Разделитель элементов - запятая.
+
+Пример формы: `blk\.0.*=CPU`. Реальные имена buffer type зависят от сборки и backend, поэтому перед постоянной настройкой проверьте лог ошибки или вывод backend.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Это низкоуровневый инструмент для случаев, когда общих `--spec-draft-ngl`, `--spec-draft-device` и MoE CPU-флагов недостаточно. Типичный сценарий - оставить тяжелые или редко используемые tensor draft-модели на CPU, а остальное выгрузить на GPU.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для MoE обычно проще использовать `--spec-draft-cpu-moe` или `--spec-draft-n-cpu-moe`, потому что они генерируют готовые patterns для expert tensor.
 
 ## Влияние на производительность и память
 
-- Затрагивает распределение вычислений между CPU/GPU и может менять как latency, так и объем занятой VRAM.
-- После изменения проверяйте лог старта: llama.cpp обычно печатает, какие слои и буферы реально попали на GPU.
+Перенос tensor на CPU экономит VRAM draft-модели, но может добавить CPU/GPU transfer и увеличить draft latency. Если draft становится медленнее target-подтверждения, speculative decoding может потерять смысл.
+
+Сравнивайте VRAM, token/s и `draft acceptance` до и после override.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-ngl` задает общий уровень offload, а override точечно меняет buffer type. `--spec-draft-cpu-moe` и `--spec-draft-n-cpu-moe` добавляют свои override в тот же список; порядок добавления соответствует порядку парсинга аргументов и env.
 
-- `--flash-attn`
-- `--main-gpu`
-- `--n-gpu-layers`
-- `--split-mode`
-- `--tensor-split`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI задавайте значение одной строкой, например `override-tensor-draft = blk\\.0.*=CPU`. Экранирование зависит от INI-парсера и shell здесь не участвует, поэтому проверяйте фактический argv/subprocess log.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `invalid value`: один из элементов не содержит `=`.
+- `unknown buffer type`: имя buffer type не существует в текущей сборке/backend.
+- Сервер стартует, но draft медленный: override перенес слишком много tensor на CPU.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-override-tensor value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-override-tensor blk\\.0.*=CPU
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-override-tensor&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-override-tensor
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-override-tensor
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`

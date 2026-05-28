@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--webui-config"
 title: "--webui-config"
-summary: "Черновая инженерная справка по --webui-config из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Deprecated-алиас для `--ui-config`: JSON-настройки Web UI по умолчанию. Новые конфигурации должны использовать `--ui-config`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "json"
 valueHint: "JSON"
@@ -14,16 +14,17 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_WEBUI_CONFIG"
-related: []
+related:
+  - "--ui-config"
+  - "--webui-config-file"
+  - "--ui"
 ---
 
 # --webui-config
 
 ## Кратко
 
-Черновая инженерная справка по --webui-config из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--webui-config` устарел и заменен на `--ui-config`. Обработчик сохраняет значение и в `ui_config_json`, и в `webui_config_json`, поэтому поведение совпадает с новым флагом.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +35,50 @@ related: []
 ## Паспорт аргумента
 
 - Основное имя: `--webui-config`
-- Алиасы: `--webui-config`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `json` (JSON-значение)
-- Подсказка формата из `--help`: `JSON`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_WEBUI_CONFIG`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение: JSON string
+- Переменная окружения: `LLAMA_ARG_WEBUI_CONFIG`
+- Поля в `common_params`: `ui_config_json`, `webui_config_json`
+- Современная замена: `--ui-config`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+После парсинга JSON попадает в `json_ui_settings` и deprecated `json_webui_settings`. В `/props` сервер возвращает оба ключа: `ui_settings` и `webui_settings`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Формат такой же, как у `--ui-config`: валидный JSON, обычно object. Ошибка парсинга приводит к `failed to parse UI config`.
 
 ## Когда использовать
 
-- JSON-значения особенно чувствительны к shell-экранированию. Для сложных конфигураций удобнее хранить значение в пресете или отдельном файле.
-- Перед запуском полезно валидировать JSON на стороне UI, иначе ошибка проявится только в логе `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте только для старых scripts/presets. Для новых записей используйте `--ui-config`, чтобы не зависеть от deprecated имени.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На инференс не влияет. JSON парсится один раз при инициализации.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--ui-config` пишет в те же поля; последнее примененное значение победит.
+- `--webui-config-file` и `--ui-config-file` являются файловыми вариантами.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI старый ключ: `webui-config = {"key": true}`. Предпочтительно заменить на `ui-config = ...`. В router-режиме settings также отражаются в router `/props`.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Deprecated warning в help: ожидаемо.
+- JSON ломается из-за shell quoting: используйте `--ui-config-file`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --webui-config '{"key":"value"}'
+llama-server --model /models/model.gguf --webui-config '{"renderUserContentAsMarkdown":true}'
+llama-server --model /models/model.gguf --ui-config '{"renderUserContentAsMarkdown":true}'
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--webui-config&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--webui-config
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--webui-config
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

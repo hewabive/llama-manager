@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-ngram-size-m"
 title: "--spec-ngram-size-m"
-summary: "Черновая инженерная справка по --spec-ngram-size-m из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Удаленный legacy-аргумент общего размера m-gram. Текущий `llama-server` отклоняет его; используйте `--spec-ngram-simple-size-m`, `--spec-ngram-map-k-size-m` или `--spec-ngram-map-k4v-size-m`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,18 @@ aliases:
   - "--spec-ngram-size-m"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-ngram-simple-size-m"
+  - "--spec-ngram-map-k-size-m"
+  - "--spec-ngram-map-k4v-size-m"
+  - "--spec-ngram-mod-n-max"
 ---
 
 # --spec-ngram-size-m
 
 ## Кратко
 
-Черновая инженерная справка по --spec-ngram-size-m из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-ngram-size-m` удален. В текущем CLI он существует только для понятной ошибки миграции и не настраивает `common_params`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +35,55 @@ the argument has been removed. use the respective --spec-ngram-*-size-m
 ## Паспорт аргумента
 
 - Основное имя: `--spec-ngram-size-m`
-- Алиасы: `--spec-ngram-size-m`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Статус в llama.cpp: удален
+- Тип значения в help: `N`
+- Переменные окружения: нет
+- Runtime field: отсутствует
+- Поведение при использовании: исключение `the argument has been removed. use the respective --spec-ngram-*-size-m`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+С этим аргументом сервер не должен запускаться. Обработчик в `common/arg.cpp` вызывает `arg_removed()` и завершает парсинг ошибкой до инициализации speculative context.
 
-Для точного описания механики нужно проверить:
+## Чем заменить
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `--spec-ngram-simple-size-m` для `ngram-simple`.
+- `--spec-ngram-map-k-size-m` для `ngram-map-k`.
+- `--spec-ngram-map-k4v-size-m` для `ngram-map-k4v`.
+- Для `ngram-mod` прямого `size-m` нет: длина черновика задается парой `--spec-ngram-mod-n-min` и `--spec-ngram-mod-n-max`.
 
-## Когда использовать
+## Значения и формат
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Любое значение после `--spec-ngram-size-m` будет отвергнуто как использование удаленного аргумента. Не добавляйте этот ключ в UI или preset как допустимый параметр.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+## INI-пресеты и router-режим
 
-## Влияние на производительность и память
+В preset-файлах удаленный ключ так же опасен, как в CLI:
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+```ini
+; плохо: подпроцесс llama-server упадет на старте
+spec-ngram-size-m = 48
+```
 
-## Взаимодействие с другими аргументами
+Заменяйте его на ключ конкретной реализации.
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+## Типовые проблемы и диагностика
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
-
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
-
-## Типовые проблемы
-
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Ошибка при загрузке модельного подпроцесса в router: проверьте `--models-preset` на legacy key `spec-ngram-size-m`.
+- Если раньше один общий параметр применялся ко всем ngram вариантам, после миграции задайте отдельные значения для каждого включенного `--spec-type`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-ngram-size-m 1
+llama-server --model /models/model.gguf --spec-type ngram-map-k --spec-ngram-map-k-size-m 48
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --spec-type ngram-mod --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-ngram-size-m&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-ngram-size-m
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-ngram-size-m
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/docs/speculative.md`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

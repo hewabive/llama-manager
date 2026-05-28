@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--embedding"
 title: "--embedding"
-summary: "Ограничить сервер embedding-сценарием. Используйте с dedicated embedding моделями."
-docStatus: draft
+summary: "Переводит server в embedding-capable context и открывает embedding endpoints. Используйте с dedicated embedding models; для rerank удобнее `--rerank`, который также ставит `--pooling rank`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -15,16 +15,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_EMBEDDINGS"
-related: []
+related:
+  - "--pooling"
+  - "--embd-normalize"
+  - "--rerank"
+  - "--batch-size"
+  - "--ubatch-size"
 ---
 
 # --embedding
 
 ## Кратко
 
-Ограничить сервер embedding-сценарием. Используйте с dedicated embedding моделями.
+`--embedding` ставит `common_params::embedding = true`. При создании context это передается как `llama_context_params::embeddings`, после чего server разрешает `/embedding` и `/v1/embeddings`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Без этого флага embedding endpoint отвечает `This server does not support embeddings. Start it with --embeddings`.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,73 +40,72 @@ restrict to only support embedding use case; use only with dedicated embedding m
 ## Паспорт аргумента
 
 - Основное имя: `--embedding`
-- Алиасы: `--embedding`, `--embeddings`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_EMBEDDINGS`
-- Значение по умолчанию из `--help`: `disabled`
+- Алиас: `--embeddings`
+- Тип: флаг без значения
+- Поле `common_params`: `embedding`
+- Переменная окружения: `LLAMA_ARG_EMBEDDINGS`
+- По умолчанию: disabled
+- Этап применения: создание llama context и HTTP route checks
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Server создает context с embeddings enabled. Route `/embedding` и OpenAI-compatible `/v1/embeddings` начинают принимать requests. Внутри task type становится `SERVER_TASK_TYPE_EMBEDDING`, а результат формируется из `llama_get_embeddings_ith()` или `llama_get_embeddings_seq()` в зависимости от pooling.
 
-Для точного описания механики нужно проверить:
+Фраза help "restrict to only support embedding use case" означает, что режим предназначен для embedding models. Не рассчитывайте на полноценный chat/completions workflow с embedding-only моделью.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Флаг без значения:
+
+```bash
+llama-server --model /models/embed.gguf --embedding
+```
+
+Отрицательной формы в `arg.cpp` нет.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+- Dedicated embedding models.
+- Multimodal embeddings, если модель и mtmd context это поддерживают.
+- Retrieval pipeline, где server должен отдавать vectors через `/embedding` или `/v1/embeddings`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для reranker models используйте `--rerank`, потому что он включает `--embedding` и правильный rank pooling.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Embedding requests обычно нагружают prompt processing/prefill, а не autoregressive decode. Throughput зависит от `--batch-size`, `--ubatch-size`, `--parallel`, CPU/GPU backend и pooling. В server есть защита для embeddings: если `n_batch > n_ubatch`, параметры выравниваются, чтобы все токены embedding-запроса помещались в один ubatch.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--pooling`: определяет форму embedding result; для `/v1/embeddings` pooling `none` не совместим.
+- `--embd-normalize`: нормализует pooled embeddings.
+- `--rerank`: включает embedding и ставит `pooling_type = rank`.
+- `--batch-size`, `--ubatch-size`, `--parallel`, `--ctx-size`: основные knobs throughput/памяти.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `embedding = true`. В router mode embedding model лучше выделять отдельным alias/tag и не смешивать с chat aliases, потому что клиенты выбирают модель через JSON field `model`.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `/embedding` возвращает `This server does not support embeddings`: флаг не попал в argv или model subprocess запущен без него.
+- `/v1/embeddings` ругается на pooling `none`: задайте pooled strategy.
+- Плохое качество vectors: проверьте, что модель действительно embedding, а не chat/instruct.
+- Низкий throughput: смотрите batch/ubatch и число parallel slots.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --embedding
+llama-server --model /models/embed.gguf --embedding --pooling mean --embd-normalize 2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/embed.gguf --embedding --batch-size 2048 --ubatch-size 2048
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--embedding&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--embedding
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--embedding
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--embedding`, `--embeddings`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: `cparams.embeddings`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: embedding routes and result extraction.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: `/embedding`, `/v1/embeddings`.

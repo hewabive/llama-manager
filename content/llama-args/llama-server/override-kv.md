@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--override-kv"
 title: "--override-kv"
-summary: "Черновая инженерная справка по --override-kv из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Переопределяет отдельные GGUF metadata keys до загрузки модели. Формат строгий: `KEY=TYPE:VALUE`, типы только `int`, `float`, `bool`, `str`; ошибка формата останавливает запуск."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "list"
 valueHint: "KEY=TYPE:VALUE,..."
@@ -14,20 +14,20 @@ aliases:
 allowedValues: []
 env: []
 related:
-  - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
+  - "--check-tensors"
   - "--ctx-size"
-  - "--parallel"
+  - "--rope-scaling"
+  - "--rope-freq-base"
+  - "--rope-freq-scale"
 ---
 
 # --override-kv
 
 ## Кратко
 
-Черновая инженерная справка по --override-kv из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--override-kv` - аварийный и диагностический механизм для подмены metadata модели при загрузке GGUF. Он не меняет файл модели на диске, а передает массив `llama_model_kv_override` в `llama_model_params`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Используйте его только когда точно известен ключ metadata и ожидаемый тип. Неверный override может сломать токенизацию, RoPE-параметры, chat template metadata или другие свойства модели без понятной ошибки на уровне HTTP.
 
 ## Оригинальная справка llama.cpp
 
@@ -40,75 +40,77 @@ advanced option to override model metadata by key. to specify multiple overrides
 - Основное имя: `--override-kv`
 - Алиасы: `--override-kv`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `KEY=TYPE:VALUE,...`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип значения в llama-manager: `list`
+- Формат: `KEY=TYPE:VALUE`, несколько элементов через запятую
+- Переменные окружения: нет
+- Поле в `common_params`: `kv_overrides`
+- Этап применения: парсинг CLI, postprocess с terminator entry, загрузка модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common/arg.cpp` значение разбирается через `parse_csv_row`, а каждый элемент передается в `string_parse_kv_override`. При успешном разборе entry добавляется в `params.kv_overrides`. В postprocess llama.cpp добавляет завершающий элемент с пустым key, потому что C API ожидает null-like terminator.
 
-Для точного описания механики нужно проверить:
+В `common/common.cpp` массив передается в `llama_model_params::kv_overrides`. В `src/llama-model-loader.cpp` loader строит map overrides и применяет их при чтении typed metadata. Если тип override не совпадает с ожидаемым типом конкретного ключа, loader логирует warning `Bad metadata override type`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `int`: целое через `std::atol`, пример `llama.context_length=int:8192`.
+- `float`: число через `std::atof`, пример `llama.rope.freq_base=float:10000`.
+- `bool`: строго `true` или `false`.
+- `str`: строка длиной не больше 127 символов.
+- Key до `=` должен быть короче 128 символов.
+
+Запятая разделяет элементы списка. Если значение строки должно содержать запятую, этот CLI-формат для него не подходит без поддержки CSV escaping в конкретном пути генерации argv.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Исправить известный metadata-дефект в GGUF без пересборки файла.
+- Проверить гипотезу о metadata перед конвертацией или выпуском новой модели.
+- Временно отключить/включить tokenizer flags, например `tokenizer.ggml.add_bos_token`.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+Сам override не стоит памяти. Но он может изменить параметры, которые влияют на память и граф: context length, RoPE metadata, tokenizer behavior, architecture-specific flags. Поэтому после изменения сравнивайте логи загрузки модели и контекста, а не только успешный старт HTTP server.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- Для RoPE часто проще и прозрачнее использовать прямые `--rope-*` аргументы, чем менять metadata через `--override-kv`.
+- `--ctx-size` переопределяет runtime context независимо от metadata context length.
+- `--check-tensors` проверяет данные tensors, но не доказывает корректность metadata override.
+- При нескольких `--override-kv` entries для одного ключа не задавайте один key дважды. В проверенном loader используется `insert` в map, поэтому повторный ключ не должен рассматриваться как надежное переопределение первого.
 
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--parallel`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В локальном `--models-preset`:
 
-## Типовые проблемы
+```ini
+[my-model]
+override-kv = tokenizer.ggml.add_bos_token=bool:false,tokenizer.ggml.add_eos_token=bool:false
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В router mode это per-model параметр: он применяется дочерним процессом при загрузке конкретной модели. Не используйте его как глобальный router CLI override, если разные модели требуют разных metadata.
+
+## Типовые проблемы и диагностика
+
+- `Invalid type for KV override`: проверьте префикс типа (`int:`, `float:`, `bool:`, `str:`).
+- `invalid boolean value`: для bool допустимы только `true` и `false`.
+- Warning `Bad metadata override type`: ключ найден, но тип не совпал с тем, который loader ожидает.
+- Override не виден в metadata dump: в loader есть примечание, что KV overrides не применяются к выводу dump metadata; проверяйте фактические логи использования ключа.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --override-kv value1,value2
+llama-server --model /models/model.gguf --override-kv tokenizer.ggml.add_bos_token=bool:false,tokenizer.ggml.add_eos_token=bool:false
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --override-kv llama.context_length=int:8192
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--override-kv&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--override-kv
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--override-kv
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

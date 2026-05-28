@@ -2,13 +2,13 @@
 schema: 1
 primaryName: "--repack"
 title: "--repack"
-summary: "Черновая инженерная справка по --repack из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Управляет использованием extra buffer types для weight repacking. По умолчанию repacking включен; `--no-repack` отключает эти extra buffer types."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ","
+valueType: "boolean"
+valueHint: null
 aliases:
   - "--repack"
   - "-nr"
@@ -16,16 +16,16 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_REPACK"
-related: []
+related:
+  - "--no-host"
+  - "--override-tensor"
 ---
 
 # --repack
 
 ## Кратко
 
-Черновая инженерная справка по --repack из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--repack` разрешает weight repacking через extra buffer types. В текущем llama.cpp это включено по умолчанию, а `--no-repack` выставляет `no_extra_bufts = true` и отключает добавление extra buffer types.
 
 ## Оригинальная справка llama.cpp
 
@@ -37,72 +37,72 @@ whether to enable weight repacking (default: enabled)
 
 - Основное имя: `--repack`
 - Алиасы: `--repack`, `-nr`, `--no-repack`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_REPACK`
-- Значение по умолчанию из `--help`: `enabled`
+- Переменная окружения: `LLAMA_ARG_REPACK`
+- Поле `common_params`: `no_extra_bufts`
+- Поле `llama_model_params`: `use_extra_bufts`
+- Значение по умолчанию: enabled
+- Этап применения: построение buffer type list при загрузке модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Парсер bool-аргумента инвертирует значение: включенный `--repack` означает `no_extra_bufts = false`, а `--no-repack` - `true`. В `common_model_params_to_llama()` это становится `use_extra_bufts = !params.no_extra_bufts`.
 
-Для точного описания механики нужно проверить:
+В `make_cpu_buft_list()` и `make_gpu_buft_list()` extra buffer types добавляются только если `use_extra_bufts` включен.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI использует формы без значения: `--repack` или `--no-repack`. Через env для boolean-аргументов llama.cpp принимает truthy/falsey значения, а также совместимую форму `LLAMA_ARG_NO_REPACK`, если она присутствует.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте включенным для дефолтной производительности. Используйте `--no-repack`, если подозреваете ошибку backend-specific repacking, хотите сравнить baseline или отладить несовместимость с конкретной моделью/LoRA.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Repacking может ускорить операции с весами ценой другого формата хранения и потенциально другого объема/типа буфера. Отключение часто упрощает поведение, но может снизить throughput.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--no-host` меняет доступность host buffer в CPU fallback list и может влиять на то, какие extra buffer types реально выбираются.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--override-tensor` может принудительно выбрать buffer type для отдельных тензоров; при CPU override llama.cpp все равно рассматривает extra CPU buffer types, если repacking включен.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В INI:
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+```ini
+repack = true
+```
+
+Для отключения:
+
+```ini
+no-repack = true
+```
+
+В router-режиме задавайте в model preset, если проблема проявляется только на конкретной модели.
+
+## Типовые проблемы и диагностика
+
+- Падение при загрузке на конкретном backend: повторите с `--no-repack`.
+- Производительность ниже ожидаемой: убедитесь, что repacking не отключен глобальным preset/env.
+- Изменился тип/размер буфера: сравните строки `model buffer size` и debug-логи выбора buffer type.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --repack value1,value2
+llama-server --model /models/model.gguf --repack
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-repack
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--repack&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--repack
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--repack
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-model.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

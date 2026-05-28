@@ -2,13 +2,13 @@
 schema: 1
 primaryName: "--spec-draft-model"
 title: "--spec-draft-model"
-summary: "Черновая инженерная справка по --spec-draft-model из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает локальный GGUF-файл draft-модели для draft-model speculative decoding. Модель загружается на старте отдельно от target и должна быть tokenizer/vocab-совместима с основной моделью."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ", F"
+valueType: "path"
+valueHint: "FNAME"
 aliases:
   - "--spec-draft-model"
   - "-md"
@@ -17,10 +17,13 @@ allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_MODEL"
 related:
-  - "--alias"
-  - "--lora"
   - "--model"
-  - "--models-dir"
+  - "--spec-draft-hf"
+  - "--spec-type"
+  - "--spec-draft-ngl"
+  - "--spec-draft-device"
+  - "--spec-draft-type-k"
+  - "--spec-draft-type-v"
   - "--models-preset"
 ---
 
@@ -28,90 +31,85 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-model из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-model` указывает локальный путь к GGUF draft-модели. Значение записывается в `common_params.speculative.draft.mparams.path`; после обработки моделей сервер загружает draft-модель отдельным `llama_model_load_from_file()` и создает для нее отдельный контекст.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Если `--spec-type draft-simple` не указан, но draft-модель задана и не используется `draft-mtp`, llama.cpp предупреждает и включает `draft-simple` автоматически.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-NAME draft model for speculative decoding (default: unused)
+draft model for speculative decoding (default: unused)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-model`
 - Алиасы: `--spec-draft-model`, `-md`, `--model-draft`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `, F`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_MODEL`
-- Значение по умолчанию из `--help`: `unused`
+- Значение: путь к локальному GGUF-файлу
+- Структура llama.cpp: `common_params.speculative.draft.mparams.path`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_MODEL`
+- Значение по умолчанию: не используется
+- Этап применения: обработка модели перед стартом, загрузка draft-модели после target-модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Сервер сначала загружает target-модель, затем при наличии draft-модели пишет в лог `loading draft model '...'`, собирает `params_dft` из базовых параметров и draft-override параметров, загружает веса и создает draft-контекст. В `params_dft` переопределяются `model`, `devices`, `n_gpu_layers`, `cache_type_k`, `cache_type_v`, CPU thread settings и tensor buffer overrides для draft.
 
-Для точного описания механики нужно проверить:
+`draft-simple` проверяет совместимость vocab: тип vocab, BOS/EOS поведение и размер/текст токенов должны совпадать достаточно близко. При несовместимости инициализация speculative-контекста падает с сообщением про несовместимый draft vocab.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Указывайте путь к файлу `.gguf`. Относительные пути разрешаются относительно текущего рабочего каталога процесса `llama-server`; для llama-manager и router-пресетов практичнее абсолютные пути.
+
+В отличие от `--model` вместе с `--hf-repo`, этот аргумент сам по себе не задает `hf_file`. Для Hugging Face draft-модели используйте `--spec-draft-hf`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте отдельную draft-модель, когда у вас есть меньшая модель той же семьи и с тем же tokenizer, например target 7B/14B и draft 0.5B/1.5B. Цель - дешево предсказать несколько следующих токенов и затем подтвердить их target-моделью.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте случайную маленькую модель другой архитектуры или tokenizer: сервер либо откажется инициализировать speculative decoding, либо acceptance будет настолько низким, что ускорения не будет.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Draft-модель добавляет время загрузки, память под веса, отдельный KV-cache и compute buffers. Размещение draft-весов управляется `--spec-draft-ngl`, `--spec-draft-device`, `--spec-draft-override-tensor`, `--spec-draft-cpu-moe` и `--spec-draft-n-cpu-moe`.
+
+Даже маленькая draft-модель может занимать заметную VRAM при большом `--parallel` и большом контексте. При включенном `--fit` сервер пытается оценить память draft-модели/MTP и резервирует ее в fit target.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-type draft-simple` делает использование draft-модели явным. `--spec-draft-n-max`, `--spec-draft-n-min` и `--spec-draft-p-min` управляют длиной и confidence draft-токенов. `--spec-draft-type-k` и `--spec-draft-type-v` влияют на KV-cache draft-контекста.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+`--spec-draft-hf` является альтернативным источником draft-модели. Если заданы оба источника, поведение сводится к общему `common_params_model`: локальный путь и HF repo попадут в одну структуру draft-модели, а обработчик HF может интерпретировать путь как файл внутри repo. Для предсказуемости задавайте только один источник.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В `--models-preset` используйте `model-draft = /abs/path/draft.gguf`. README прямо показывает `model-draft` в INI и предупреждает, что относительные пути считаются от CWD сервера.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Для router-режима draft-модель должна быть доступна каждому subprocess, который будет грузить соответствующий preset.
+
+## Типовые проблемы и диагностика
+
+- `failed to load draft model`: путь неверный, нет прав, файл не GGUF или не виден subprocess.
+- `the target and draft vocabs are not compatible`: draft-модель не подходит к target.
+- `n_seq mismatch`: draft-контекст создан с числом последовательностей, несовместимым с `--parallel`.
+- Низкий `draft acceptance`: модель формально совместима, но плохо предсказывает target; пробуйте другую draft-модель, меньше `--spec-draft-n-max` или выше `--spec-draft-p-min`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-model value1,value2
+llama-server --model /models/qwen-coder-7b.gguf --spec-draft-model /models/qwen-coder-0.5b.gguf --spec-type draft-simple
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[coder]
+model = /models/qwen-coder-7b.gguf
+model-draft = /models/qwen-coder-0.5b.gguf
+spec-type = draft-simple
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-model&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-model
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-model
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

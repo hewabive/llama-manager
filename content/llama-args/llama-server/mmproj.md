@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--mmproj"
 title: "--mmproj"
-summary: "Путь к multimodal projector для vision/multimodal моделей."
-docStatus: draft
+summary: "Задает локальный файл multimodal projector для vision/audio-capable моделей. При наличии projector сервер инициализирует `mtmd_context` и включает multimodal обработку запросов."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "FILE"
@@ -16,25 +16,28 @@ allowedValues: []
 env:
   - "LLAMA_ARG_MMPROJ"
 related:
-  - "--alias"
-  - "--lora"
+  - "--mmproj-url"
+  - "--mmproj-auto"
+  - "--mmproj-offload"
+  - "--image-min-tokens"
+  - "--image-max-tokens"
+  - "--hf-repo"
   - "--model"
-  - "--models-dir"
-  - "--models-preset"
 ---
 
 # --mmproj
 
 ## Кратко
 
-Путь к multimodal projector для vision/multimodal моделей.
+`--mmproj` указывает локальный GGUF-файл multimodal projector. Значение записывается в `common_params.mmproj.path`; при загрузке модели server создает `mtmd_context` через `mtmd_init_from_file(mmproj_path, model_tgt, mparams)`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Если модель выбрана через `--hf-repo`, projector может быть найден и скачан автоматически. Явный `--mmproj` нужен, когда auto-поиск не подходит, projector лежит локально или нужно закрепить конкретную версию.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-path to a multimodal projector file. see tools/mtmd/README.md note: if -hf is used, this argument can be omitted
+path to a multimodal projector file. see tools/mtmd/README.md
+note: if -hf is used, this argument can be omitted
 ```
 
 ## Паспорт аргумента
@@ -42,75 +45,84 @@ path to a multimodal projector file. see tools/mtmd/README.md note: if -hf is us
 - Основное имя: `--mmproj`
 - Алиасы: `-mm`, `--mmproj`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
+- Тип значения в llama-manager: `path`
 - Подсказка формата из `--help`: `FILE`
-- Допустимые значения из `--help`: `не указаны`
 - Переменные окружения: `LLAMA_ARG_MMPROJ`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение по умолчанию: пусто
+- Внутреннее поле: `common_params.mmproj.path`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Если `params_base.mmproj.path` непустой, `server_context::load_model()` готовит `mtmd_context_params`:
 
-Для точного описания механики нужно проверить:
+- `use_gpu` берется из `--mmproj-offload`;
+- `n_threads` берется из CPU params;
+- `flash_attn_type`, `warmup`, `image_min_tokens`, `image_max_tokens` передаются в mtmd;
+- `media_marker` берется из server helper.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+После успешной инициализации появляется лог `loaded multimodal model, '<path>'`. Если `mtmd_init_from_file()` возвращает `nullptr`, сервер логирует `failed to load multimodal model` и старт модели считается неуспешным.
+
+При loaded `mmproj` server отключает несовместимые режимы: `ctx_shift` и `cache_reuse` сбрасываются с warning, потому что multimodal их не поддерживает.
+
+## Значения и формат
+
+Ожидается путь к projector GGUF. Для router `--models-dir` README рекомендует класть multimodal модель в подкаталог рядом с файлом, имя projector должно начинаться с `mmproj`, например `mmproj-F16.gguf`.
+
+`--mmproj` не является URL; для URL используйте `--mmproj-url`.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
+Используйте `--mmproj`, когда сервер должен принимать изображения или audio input через multimodal API и backbone-модель требует отдельный projector. Для text-only сервера этот аргумент не нужен.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Если HF repo содержит правильный projector рядом с моделью, сначала попробуйте `--hf-repo` без явного `--mmproj`; auto-подбор учитывает соседний путь и близость quant bits.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Projector добавляет память и работу на preprocessing multimodal inputs. При включенном `--fit` server отдельно оценивает worst-case memory usage projector и добавляет ее к fit targets.
+
+GPU offload projector управляется `--mmproj-offload`. На системах с ограниченной VRAM выключение offload может помочь загрузиться ценой CPU latency.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--hf-repo`: может автоматически скачать `mmproj`, если он найден.
+- `--mmproj-auto`/`--no-mmproj`: включает или запрещает auto projector из HF.
+- `--mmproj-url`: удаленный вариант; после скачивания также заполняет `mmproj.path`.
+- `--mmproj-offload`: управляет `mparams.use_gpu`.
+- `--image-min-tokens` и `--image-max-tokens`: передаются в mtmd для dynamic resolution vision-моделей.
+- `--ctx-shift` и `--cache-reuse`: будут отключены при loaded `mmproj`.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI:
 
-## Типовые проблемы
+```ini
+[gemma_vision_local]
+model = /srv/models/gemma/gemma-3-4b-it-Q8_0.gguf
+mmproj = /srv/models/gemma/mmproj-F16.gguf
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В `--models-dir` multimodal модель лучше держать в отдельной директории с основным GGUF и `mmproj*.gguf`, чтобы router корректно связывал файлы.
+
+## Типовые проблемы и диагностика
+
+- `failed to load multimodal model`: projector не подходит к backbone, поврежден или недоступен.
+- Клиент получает ошибку, что audio/image input не поддержан: проверьте наличие `loaded multimodal model` в логах.
+- Контекстное сдвигание неожиданно отключено: для multimodal это ожидаемо, смотрите warning `ctx_shift is not supported by multimodal`.
+- Auto HF скачал не тот projector: задайте явный `--mmproj`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --mmproj /path/to/value
+llama-server --model /srv/models/gemma/gemma-3-4b-it-Q8_0.gguf --mmproj /srv/models/gemma/mmproj-F16.gguf
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0 --mmproj /srv/pinned/mmproj-F16.gguf
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--mmproj&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--mmproj
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--mmproj
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

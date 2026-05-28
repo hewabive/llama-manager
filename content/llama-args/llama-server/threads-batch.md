@@ -2,33 +2,34 @@
 schema: 1
 primaryName: "--threads-batch"
 title: "--threads-batch"
-summary: "Количество CPU-потоков для batch/prompt processing. Если не задано, наследует --threads."
-docStatus: draft
+summary: "Задает число CPU-потоков для prompt/batch processing. Если параметр не указан, batch CPU-профиль наследуется от `--threads` после постобработки."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"
 aliases:
   - "-tb"
-  - "--threads-batch"
 allowedValues: []
 env: []
 related:
-  - "--batch-size"
-  - "--flash-attn"
   - "--threads"
-  - "--threads-http"
+  - "--cpu-mask-batch"
+  - "--cpu-range-batch"
+  - "--cpu-strict-batch"
+  - "--prio-batch"
+  - "--poll-batch"
+  - "--batch-size"
   - "--ubatch-size"
+  - "--flash-attn"
 ---
 
 # --threads-batch
 
 ## Кратко
 
-Количество CPU-потоков для batch/prompt processing. Если не задано, наследует --threads.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Отдельно настраивает CPU-потоки для обработки prompt/batch, то есть фазы, где сервер прогоняет пачки токенов перед обычным token-by-token decode.
 
 ## Оригинальная справка llama.cpp
 
@@ -41,77 +42,73 @@ number of threads to use during batch and prompt processing (default: same as --
 - Основное имя: `--threads-batch`
 - Алиасы: `-tb`, `--threads-batch`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `same as --threads`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `same as --threads`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик записывает значение в `params.cpuparams_batch.n_threads`. Явное `0` или отрицательное значение заменяется на `std::thread::hardware_concurrency()`. Если аргумент не указан, `postprocess_cpu_params(params.cpuparams_batch, &params.cpuparams)` копирует весь основной CPU-профиль, а `common.cpp` передает итог в `llama_context_params.n_threads_batch`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`N` - целое число. Положительное значение фиксирует размер batch threadpool. Отсутствие аргумента означает наследование `--threads`; явно переданное `0` или `-1` не наследует `--threads`, а выбирает `hardware_concurrency()`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте при длинных prompt, больших `--batch-size`/`--ubatch-size`, embedding/rerank нагрузках или когда prompt ingestion должен быть быстрее обычной генерации. Частый профиль для локального сервера: умеренный `--threads` для decode и больше `--threads-batch` для загрузки длинного контекста.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
-- Влияет на загрузку CPU. Больше потоков не всегда быстрее из-за конкуренции за cache, NUMA и фоновых процессов.
-- Для серверного режима отдельно оценивайте потоки генерации, batch-обработки и HTTP-обработки.
+Влияет на скорость prompt processing и prefill, но не меняет размер KV-cache. Слишком высокое значение может ухудшить интерактивную latency, потому что batch-фаза начнет забирать CPU у HTTP threads и у основного decode.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--threads` является моделью наследования для batch CPU-профиля, если `--threads-batch` не задан.
+- `--cpu-mask-batch`, `--cpu-range-batch`, `--cpu-strict-batch`, `--prio-batch` и `--poll-batch` настраивают тот же batch CPU-профиль.
+- `--batch-size` и `--ubatch-size` определяют объем работы, который batch-потоки будут обрабатывать за вызов decode.
+- `--flash-attn` и GPU offload могут сместить bottleneck с CPU на backend устройства, поэтому оптимальное значение надо измерять отдельно.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads`
-- `--threads-http`
-- `--ubatch-size`
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `threads-batch = 12`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
+
+
+## Типовые проблемы и диагностика
+
+- Если маска содержит меньше выставленных CPU, чем `--threads`, при постобработке появляется предупреждение `Not enough set bits in CPU mask ...`; в такой конфигурации часть потоков будет конкурировать за те же ядра.
+- Ошибки `invalid cpumask`, `invalid range`, `Start index out of bounds` или `End index out of bounds` означают, что аргумент не прошел парсер `parse_cpu_mask()`/`parse_cpu_range()`.
+- Предупреждения `failed to set affinity` или `failed to set thread priority` печатает CPU backend, когда ОС не разрешила affinity/scheduler policy или CPU index отсутствует в доступном cpuset.
+- Для проверки фактических значений смотрите строку `system_info: n_threads = ...`; для HTTP-пула отдельно печатается `using N threads for HTTP server`.
+
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --threads-batch 1
+llama-server --model /models/model.gguf --threads 6 --threads-batch 12
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --batch-size 4096 --ubatch-size 512 --threads-batch 16
+```
 
-## Что проверить агенту перед переводом в current
+```ini
+[*]
+threads = 6
+threads-batch = 12
+```
 
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--threads-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--threads-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--threads-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление аргумента, help-текст, обработчик CLI и env.
+- `/home/maxim/llama/llama.cpp/common/common.h` - поля `common_params` и `common_cpu_params`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - постобработка CPU-параметров, парсинг CPU mask/range, перенос в `llama_context_params` и `ggml_threadpool_params`.
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp` и `tools/server/server-context.cpp` - применение параметров при старте `llama-server` и загрузке модели.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity, strict CPU placement, thread priority и polling в CPU backend.

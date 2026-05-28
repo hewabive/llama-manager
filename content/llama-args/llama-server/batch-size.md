@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--batch-size"
 title: "--batch-size"
-summary: "Логический максимум batch size при обработке промпта. Влияет на производительность и потребление памяти."
-docStatus: draft
+summary: "Логический максимум токенов в batch при обработке prompt и decode. Увеличивает потенциальный throughput prefill, но повышает пиковое потребление памяти."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"
@@ -16,18 +16,20 @@ allowedValues: []
 env:
   - "LLAMA_ARG_BATCH"
 related:
-  - "--flash-attn"
-  - "--threads-batch"
   - "--ubatch-size"
+  - "--ctx-size"
+  - "--parallel"
+  - "--cont-batching"
+  - "--threads-batch"
 ---
 
 # --batch-size
 
 ## Кратко
 
-Логический максимум batch size при обработке промпта. Влияет на производительность и потребление памяти.
+`--batch-size` задает `common_params::n_batch`, затем `llama_context_params::n_batch`: логический максимум токенов, которые сервер пытается собрать в один batch.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это не то же самое, что `--ubatch-size`. `--batch-size` определяет верхнюю границу работы планировщика, а `--ubatch-size` ограничивает физические micro-batch, на которые backend может дробить вычисление.
 
 ## Оригинальная справка llama.cpp
 
@@ -39,74 +41,71 @@ logical maximum batch size (default: 2048)
 
 - Основное имя: `--batch-size`
 - Алиасы: `-b`, `--batch-size`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_BATCH`
-- Значение по умолчанию из `--help`: `2048`
+- Значение: целое число токенов
+- Значение по умолчанию: `2048`
+- Переменная окружения: `LLAMA_ARG_BATCH`
+- Поле llama.cpp: `common_params::n_batch`
+- Этап применения: создание `llama_context`, затем цикл `update_slots()`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `server-context.cpp` сервер собирает pending prompt tokens и generated tokens в `llama_batch`, не превышая `llama_n_batch(ctx_tgt)`. При continuous batching новые промпты могут добавляться к текущему batch, пока есть место и совместимы тип задачи/LoRA.
 
-Для точного описания механики нужно проверить:
+В `llama-context.cpp` для causal attention фактический `n_batch` ограничивается размером контекста: `min(n_ctx, params.n_batch)`. Для embedding-режима `server.cpp` дополнительно предупреждает и выставляет `n_batch = n_ubatch`, если `--embedding` включен и `n_batch > n_ubatch`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- Положительное число: верхняя граница логического batch.
+- `0` не описан как специальное значение; не задавайте его.
+- Значения ниже 32 могут отключить эффективное использование BLAS, что прямо отмечено в комментарии `common.h`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Увеличивайте `--batch-size`, когда длинные промпты обрабатываются слишком медленно и есть запас VRAM/RAM. Уменьшайте при OOM во время prompt processing, ошибках compute backend или если нужно снизить latency отдельных запросов на загруженном сервере.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для интерактивного single-user сервера обычно достаточно дефолта. Для API-сервера с несколькими слотами полезно подбирать вместе `--parallel`, `--cont-batching` и `--ubatch-size`.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Большой `--batch-size` может резко ускорить prefill длинных промптов и повысить суммарный throughput при continuous batching. Цена: больше временных буферов, больше нагрузка на backend и потенциально более высокая задержка для маленьких запросов, если они ждут заполнения batch.
+
+Если `--batch-size` сильно больше `--ubatch-size`, вычисление все равно физически пойдет micro-batch кусками, но сервер сможет логически планировать больше токенов за итерацию.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--ubatch-size`: физический лимит; фактический `n_ubatch = min(n_batch, requested_ubatch)` либо `n_batch`, если `--ubatch-size 0`.
+- `--ctx-size`: для causal attention ограничивает фактический `n_batch`.
+- `--parallel`: batch должен вмещать decode-токены активных слотов; сервер выделяет batch как `max(n_batch, n_parallel)`.
+- `--cont-batching`: определяет, будут ли новые промпты добавляться на лету.
+- `--threads-batch`: CPU-потоки для batch/prompt phase.
 
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используется `batch-size = 2048` или `LLAMA_ARG_BATCH`. Этот аргумент входит в whitelist удаленных presets в `common/preset.cpp`.
 
-## Типовые проблемы
+В router-режиме значение применяется к дочернему процессу модели; у разных моделей могут быть разные batch-настройки.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- При embedding смотрите предупреждения `embeddings enabled with n_batch (...) > n_ubatch (...)`.
+- При OOM на старте или первом запросе сначала уменьшайте `--ubatch-size`, затем `--batch-size`.
+- В логах `llama-context` проверяйте фактические `n_batch` и `n_ubatch`, потому что они могут отличаться от argv после ограничений.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --batch-size 1
+llama-server --model /models/model.gguf --batch-size 1024 --ubatch-size 512
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --parallel 8 --batch-size 4096 --ubatch-size 1024 --cont-batching
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--batch-size&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--batch-size
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--batch-size
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

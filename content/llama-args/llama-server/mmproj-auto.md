@@ -2,116 +2,117 @@
 schema: 1
 primaryName: "--mmproj-auto"
 title: "--mmproj-auto"
-summary: "Автоматически использовать mmproj, если он доступен, например при загрузке с Hugging Face."
-docStatus: draft
+summary: "Управляет автоматическим использованием `mmproj`, найденного рядом с HF-моделью. По умолчанию включено; отрицательные формы `--no-mmproj` и `--no-mmproj-auto` запрещают projector."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "list"
-valueHint: ","
+valueType: "flag"
+valueHint: null
 aliases:
   - "--mmproj-auto"
   - "--no-mmproj"
-  - "--no-mmproj-"
+  - "--no-mmproj-auto"
 allowedValues: []
 env:
   - "LLAMA_ARG_MMPROJ_AUTO"
 related:
-  - "--alias"
-  - "--lora"
-  - "--model"
-  - "--models-dir"
-  - "--models-preset"
+  - "--hf-repo"
+  - "--mmproj"
+  - "--mmproj-url"
+  - "--mmproj-offload"
 ---
 
 # --mmproj-auto
 
 ## Кратко
 
-Автоматически использовать mmproj, если он доступен, например при загрузке с Hugging Face.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--mmproj-auto` включает автоматическое использование projector, который downloader находит рядом с HF-моделью. В проверенном commit это поведение включено по умолчанию, а `--no-mmproj` или `--no-mmproj-auto` выставляют `params.no_mmproj = true`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-auto whether to use multimodal projector file (if available), useful when using -hf (default: enabled)
+whether to use multimodal projector file (if available), useful when using -hf (default: enabled)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--mmproj-auto`
-- Алиасы: `--mmproj-auto`, `--no-mmproj`, `--no-mmproj-`
+- Положительная форма: `--mmproj-auto`
+- Отрицательные формы: `--no-mmproj`, `--no-mmproj-auto`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `flag`
 - Переменные окружения: `LLAMA_ARG_MMPROJ_AUTO`
-- Значение по умолчанию из `--help`: `enabled`
+- Значение по умолчанию: enabled
+- Внутреннее поле: `common_params.no_mmproj` с инверсной логикой
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI handler получает bool `value` от положительной или отрицательной формы и записывает `params.no_mmproj = !value`. После обработки основной модели:
 
-Для точного описания механики нужно проверить:
+- если `params.no_mmproj` true, `params.mmproj` очищается;
+- иначе, если HF downloader нашел `mmproj` и явные `--mmproj`/`--mmproj-url` пусты, найденный путь записывается в `params.mmproj`;
+- затем для server/mtmd example projector скачивается/обрабатывается и позже загружается в `server_context::load_model()`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+В CLI используйте флаг без значения:
+
+- `--mmproj-auto` - включить auto behavior;
+- `--no-mmproj` или `--no-mmproj-auto` - отключить.
+
+Для INI/preset boolean-ключей используйте обычный формат preset parser; для отрицания в README указан `no-` prefix.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте default, если запускаете vision/multimodal HF repo и хотите, чтобы projector подхватился автоматически. Используйте `--no-mmproj`, если нужен text-only запуск той же модели, если auto-подбор выбирает несовместимый projector или если вы хотите явно указать другой `--mmproj`.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Включенный auto projector может добавить скачивание, память и preprocessing. Отключение projector уменьшает footprint, но server перестает поддерживать multimodal input для этой модели.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--hf-repo`: основной сценарий auto-поиска `mmproj`.
+- `--mmproj` и `--mmproj-url`: явные значения имеют практический приоритет, если `--no-mmproj` не очищает `params.mmproj`.
+- `--mmproj-offload`: влияет только если projector реально загружен.
+- `--image-min-tokens`/`--image-max-tokens`: применимы только при loaded `mmproj`.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Примеры:
 
-## Типовые проблемы
+```ini
+[vision_auto]
+hf-repo = ggml-org/gemma-3-4b-it-GGUF:Q8_0
+mmproj-auto = true
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+[text_only_same_repo]
+hf-repo = ggml-org/gemma-3-4b-it-GGUF:Q8_0
+no-mmproj = true
+```
+
+В router-режиме auto projector удобен для HF cache моделей, но для локального `--models-dir` README рекомендует класть `mmproj*.gguf` рядом с моделью в подкаталоге.
+
+## Типовые проблемы и диагностика
+
+- Multimodal неожиданно включился: проверьте, не найден ли `mmproj` автоматически при `--hf-repo`.
+- Multimodal не включился: проверьте отсутствие `--no-mmproj` и наличие `mmproj` в repo/cache.
+- Нужен другой projector: задайте явный `--mmproj` и не используйте `--no-mmproj`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --mmproj-auto value1,value2
+llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0 --no-mmproj
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--mmproj-auto&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--mmproj-auto
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--mmproj-auto
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

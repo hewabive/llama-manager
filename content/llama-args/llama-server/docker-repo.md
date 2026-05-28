@@ -2,34 +2,40 @@
 schema: 1
 primaryName: "--docker-repo"
 title: "--docker-repo"
-summary: "Черновая инженерная справка по --docker-repo из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Загружает GGUF-слой из Docker Hub model repository и подставляет скачанный файл как основную модель. Если namespace не указан, используется `ai/`, а tag по умолчанию - `latest`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "string"
-valueHint: "[<repo>/]<model>[:q"
+valueHint: "[<repo>/]<model>[:quant]"
 aliases:
   - "-dr"
   - "--docker-repo"
 allowedValues: []
 env:
   - "LLAMA_ARG_DOCKER_REPO"
-related: []
+related:
+  - "--model"
+  - "--model-url"
+  - "--hf-repo"
+  - "--offline"
 ---
 
 # --docker-repo
 
 ## Кратко
 
-Черновая инженерная справка по --docker-repo из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--docker-repo` выбирает модель из Docker Hub. Значение записывается в `common_params.model.docker_repo`; при обработке модели llama.cpp вызывает `common_docker_resolve_model()`, скачивает GGUF layer из OCI/Docker manifest и заменяет `model.path` локальным файлом в cache.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Этот аргумент рассчитан именно на Docker Hub model artifacts с GGUF-слоем. Он не запускает контейнер и не использует локальный Docker daemon.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-uant] Docker Hub model repository. repo is optional, default to ai/. quant is optional, default to :latest. example: gemma3 (default: unused)
+Docker Hub model repository. repo is optional, default to ai/. quant is optional, default to :latest.
+example: gemma3
+(default: unused)
 ```
 
 ## Паспорт аргумента
@@ -37,71 +43,81 @@ uant] Docker Hub model repository. repo is optional, default to ai/. quant is op
 - Основное имя: `--docker-repo`
 - Алиасы: `-dr`, `--docker-repo`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `[<repo>/]<model>[:q`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `string`
+- Подсказка формата из `--help`: `[<repo>/]<model>[:quant]`
 - Переменные окружения: `LLAMA_ARG_DOCKER_REPO`
-- Значение по умолчанию из `--help`: `unused`
+- Значение по умолчанию: не используется
+- Внутреннее поле: `common_params.model.docker_repo`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При непустом `model.docker_repo` функция `common_params_handle_model()` обрабатывает Docker-источник первой, раньше `--hf-repo` и `--model-url`. После успешной загрузки:
 
-Для точного описания механики нужно проверить:
+- `model.path` становится локальным cache-файлом;
+- `model.name` получает исходное значение Docker repo;
+- основной сервер дальше грузит модель как обычный локальный GGUF.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`common_docker_resolve_model()` получает токен Docker Hub, запрашивает manifest, ищет layer с media type `application/vnd.docker.ai.gguf.v3` или содержащим `gguf`, валидирует `sha256:<64 hex>`, скачивает blob и кладет файл с именем вида `<repo>_<tag>.gguf`, где `/` заменены на `_`.
+
+## Значения и формат
+
+Формат: `[<repo>/]<model>[:quant]`.
+
+- `gemma3` превращается в repo `ai/gemma3` и tag `latest`;
+- `ai/smollm2:135M-Q4_0` использует repo `ai/smollm2`, tag `135M-Q4_0`;
+- если `:tag` не указан, используется `latest`.
+
+Пробелы и shell-экранирование не обрабатываются специально: передавайте значение отдельным argv-элементом.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+Используйте `--docker-repo`, если модель распространяется через Docker Hub как OCI artifact с GGUF layer и вы хотите единый способ доставки без ручного URL. Для локального production-запуска после первичной загрузки часто проще закрепить получившийся путь через `--model`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте этот аргумент для приватных registry или non-Docker-Hub источников: текущая реализация жестко обращается к `auth.docker.io` и `registry-1.docker.io`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Первый старт зависит от Docker Hub API, размера blob и скорости диска. После скачивания производительность инференса определяется выбранной GGUF-моделью.
+
+В отличие от HF/download path, Docker resolver в этом commit не получает `params.offline`: `--offline` не предотвращает сетевые обращения Docker resolver. Для строгого offline режима используйте заранее скачанный локальный `--model`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--model`: при заданном `--docker-repo` не является источником модели; Docker resolver перезаписывает `model.path`.
+- `--hf-repo` и `--model-url`: не используются, если `--docker-repo` непустой, потому что Docker ветка стоит первой.
+- `--offline`: не применяется к Docker resolver в проверенном коде.
+- `--mmproj`: Docker resolver скачивает только основной GGUF layer; projector задавайте отдельно.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI ключ пишется как `docker-repo = ai/smollm2:135M-Q4_0`. Для router-пресетов учитывайте, что дочерний процесс будет обращаться в Docker Hub при загрузке модели. Если это нежелательно, заранее скачайте модель и укажите `model = /abs/path/file.gguf`.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `Failed to get Docker registry token`: проблема доступа к Docker Hub auth.
+- `Failed to get Docker manifest`: repo/tag не существует или недоступен.
+- `No GGUF layer found in Docker manifest`: artifact не содержит GGUF-слой.
+- `Invalid OCI digest format received in manifest`: manifest вернул digest не в ожидаемом `sha256` формате.
+- `Failed to download Docker Model`: blob не скачался или HTTP-статус неуспешный.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --docker-repo value
+llama-server --docker-repo gemma3
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --docker-repo ai/smollm2:135M-Q4_0
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[docker_smollm]
+docker-repo = ai/smollm2:135M-Q4_0
+ctx-size = 4096
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--docker-repo&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--docker-repo
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--docker-repo
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.h`

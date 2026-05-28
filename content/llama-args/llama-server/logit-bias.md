@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--logit-bias"
 title: "--logit-bias"
-summary: "Черновая инженерная справка по --logit-bias из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Сдвигает logit конкретного token id до остальных CPU samplers. CLI принимает форму `TOKEN_ID+BIAS` или `TOKEN_ID-BIAS`; HTTP API дополнительно принимает массивы, строки и OpenAI-style объект."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "string"
 valueHint: "TOKEN_ID(+/-)BIAS"
@@ -14,93 +14,123 @@ aliases:
   - "--logit-bias"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--ignore-eos"
+  - "--samplers"
+  - "--grammar"
+  - "--json-schema"
 ---
 
 # --logit-bias
 
 ## Кратко
 
-Черновая инженерная справка по --logit-bias из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--logit-bias` добавляет положительный или отрицательный сдвиг к logit выбранного token id. Это точечный способ повысить, снизить или почти запретить вероятность конкретных токенов.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+CLI-формат отличается от HTTP API: на CLI нужен token id и знак, например `15043+1` или `15043-1`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-modifies the likelihood of token appearing in the completion, i.e. `--logit-bias 15043+1` to increase likelihood of token ' Hello', or `--logit-bias 15043-1` to decrease likelihood of token ' Hello'
+modifies the likelihood of token appearing in the completion,
+i.e. `--logit-bias 15043+1` to increase likelihood of token ' Hello',
+or `--logit-bias 15043-1` to decrease likelihood of token ' Hello'
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--logit-bias`
 - Алиасы: `-l`, `--logit-bias`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `TOKEN_ID(+/-)BIAS`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип CLI-значения: `TOKEN_ID(+/-)BIAS`
+- Поле в `common_params_sampling`: `logit_bias`
+- HTTP-поле: `logit_bias`
+- Значение по умолчанию: пустой список `[]`
+- CLI parse: `std::stringstream` читает integer token id, затем знак `+` или `-`, затем float bias.
+- Ошибка CLI-формата: `invalid input format`.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-аргумент добавляет элемент `{token, bias}` в `params.sampling.logit_bias`. Аргумент можно повторять, чтобы добавить несколько bias-правил.
 
-Для точного описания механики нужно проверить:
+В `common_sampler_init` logit bias sampler добавляется перед обычной sampler chain: `llama_sampler_init_logit_bias(llama_vocab_n_tokens(vocab), params.logit_bias.size(), params.logit_bias.data())`. После этого могут применяться Mirostat или обычные samplers, а grammar может дополнительно отфильтровать недопустимые токены.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+В server request path `server-task.cpp` сначала очищает `params.sampling.logit_bias`, затем парсит JSON-поле `logit_bias`. Если `ignore_eos` включен, сервер добавляет заранее рассчитанные EOG-token biases в тот же список.
+
+## Значения и формат
+
+CLI:
+
+- `--logit-bias 15043+1`: повысить logit token id `15043` на `1`.
+- `--logit-bias 15043-1`: понизить logit token id `15043` на `1`.
+- Знак обязателен. Значение без `+` или `-` не пройдет parser.
+
+HTTP API поддерживает больше форм:
+
+- `[[15043, 1.0]]`: bias по token id.
+- `[["Hello", -0.5]]`: строка токенизируется, bias применяется ко всем полученным токенам.
+- `[[15043, false]]`: boolean `false` превращается в `-INFINITY`, то есть фактический запрет токена.
+- `{"15043": 1.0, "Hello": -0.5}`: OpenAI-compatible object.
+
+В HTTP numeric token id принимается только если он в диапазоне `0 <= tok < n_vocab`. Некорректные элементы массива в текущем коде в основном пропускаются, а не всегда приводят к ошибке.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
+Используйте `--logit-bias`, когда нужно точечно запретить или предпочесть конкретный токен: например, подавить нежелательный специальный маркер, повысить вероятность фиксированного разделителя или протестировать поведение tokenizer. Для запрета слов через CLI сначала найдите token id конкретной модели; строковый формат на CLI не поддерживается.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте большой положительный bias как замену prompt engineering: модель может начать форсировать токен в неподходящих местах.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память модели и KV-cache не меняются. CPU overhead пропорционален числу bias-правил и обычно мал. Большой список строковых HTTP bias может быть дороже на этапе разбора запроса из-за токенизации строк.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--ignore-eos`: добавляет EOG-token biases к `logit_bias`.
+- `--grammar`, `--grammar-file`, `--json-schema`, `--json-schema-file`: grammar может полностью запретить токен, даже если `--logit-bias` его повышает.
+- `--mirostat` и `--samplers`: работают после logit bias sampler; bias влияет на распределение, которое они получают.
+- `--temp`: при очень низкой temperature даже небольшой bias может заметно менять результат.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--logit-bias` помечен как sampling option и разрешен в `--models-preset`. Если нужно несколько правил, убедитесь, что INI/preset слой поддерживает повторяющийся ключ:
 
-## Типовые проблемы
+```ini
+[model.default]
+logit-bias = 15043-2
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Для per-request настройки чаще удобнее JSON `logit_bias`, потому что он поддерживает массив правил и строковые ключи.
+
+## Типовые проблемы и диагностика
+
+- `invalid input format`: на CLI не хватает знака или token id не integer.
+- Bias не действует на слово: слово может состоять из нескольких токенов; CLI работает только с одним token id за раз.
+- Запрет конфликтует с grammar: grammar имеет жесткое ограничение допустимых токенов и может пересэмплировать.
+- OpenAI-style клиент отправляет объект: это поддерживается в server request path, но не является CLI-форматом.
+
+В JSON ответа task params `logit_bias` форматируется как массив объектов `{ "token": ..., "bias": ... }`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --logit-bias value
+llama-server --model /models/model.gguf --logit-bias 15043-2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf -l 15043+1 -l 2-100
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "prompt": "Say hello",
+  "logit_bias": [["Hello", 1.0], [15043, -1.0]]
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--logit-bias&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--logit-bias
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--logit-bias
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: CLI parser `-l`/`--logit-bias`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: поля `logit_bias` и `logit_bias_eog`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: добавление `llama_sampler_init_logit_bias`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: HTTP formats для `logit_bias` и взаимодействие с `ignore_eos`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание JSON `logit_bias`.

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-draft-n-max"
 title: "--spec-draft-n-max"
-summary: "Черновая инженерная справка по --spec-draft-n-max из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает максимальную длину draft-последовательности для draft-model/MTP speculative decoding. Большее значение может повысить throughput при высокой acceptance, но увеличивает работу на неудачные draft."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -14,16 +14,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_N_MAX"
-related: []
+related:
+  - "--spec-draft-n-min"
+  - "--spec-draft-p-min"
+  - "--spec-type"
+  - "--spec-draft-model"
+  - "--parallel"
 ---
 
 # --spec-draft-n-max
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-n-max из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-n-max` задает `common_params.speculative.draft.n_max`: верхний предел числа токенов, которые draft-model/MTP реализация пытается предложить за один speculative шаг. Значение по умолчанию - `3`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Дополнительно сервер ограничивает draft длиной, которая помещается в слот: `n_ctx - prompt.n_tokens() - 2`, а при конечном бюджете генерации еще и `n_remaining - 1`.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +39,57 @@ number of tokens to draft for speculative decoding (default: 3)
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-n-max`
-- Алиасы: `--spec-draft-n-max`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_N_MAX`
-- Значение по умолчанию из `--help`: `3`
+- Значение: целое число
+- Структура llama.cpp: `common_params.speculative.draft.n_max`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_N_MAX`
+- Значение по умолчанию: `3`
+- Этап применения: парсинг CLI/env, затем цикл draft generation в `common/speculative.cpp`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `draft-simple` и `draft-mtp` цикл добавляет токены, пока не достигнут `params.n_max`, per-slot лимит `dp.n_max`, либо пока probability top-кандидата ниже `--spec-draft-p-min`. После генерации `common_speculative_draft()` дополнительно обрезает результат до `dp.n_max`, если слот не может вместить весь draft.
 
-Для точного описания механики нужно проверить:
+HTTP-переопределение `speculative.n_max` в `server-task.cpp` в текущем commit находится внутри `#if 0`, поэтому запросы к server API не меняют CLI/env значение.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Парсер принимает `int` через `std::stoi()` без явной проверки диапазона в обработчике. Практически используйте `0` и положительные значения осторожно: код draft-loop не документирует `0` как "выключить speculative"; для отключения используйте `--spec-type none` или не задавайте draft-тип.
+
+Не ставьте `--spec-draft-n-min` выше `--spec-draft-n-max`: runtime-нормализация для CLI сейчас не выполняется.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Увеличивайте `N`, если draft acceptance высокая и draft-модель заметно быстрее target. Уменьшайте, если acceptance низкая, много partial rollback/checkpoint overhead или latency отдельных ответов важнее throughput.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Большее `N` увеличивает потенциальное число target-токенов, подтверждаемых одним шагом, но также увеличивает работу draft-модели и объем speculative verification. При контекстах без дешевого sequence removal сервер может использовать checkpoints, что делает длинные draft дороже.
+
+Диагностика: смотрите `accepted X/Y draft tokens`, `draft acceptance = ...`, а также `created speculative checkpoint ...`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-n-min` может очистить короткий draft, если он меньше минимума. `--spec-draft-p-min` часто является главным ограничителем длины: высокий порог останавливает draft раньше `n_max`. `--parallel` влияет на число speculative последовательностей и память draft-контекста.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `spec-draft-n-max = 8`. Для разных моделей держите значение в model preset, потому что оптимальный draft depth зависит от пары target/draft.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Нет ускорения при большом N: acceptance низкая, уменьшите N или повысьте качество draft-модели.
+- Частые checkpoints: контекст плохо поддерживает partial removal для такой длины draft.
+- Значение из API не действует: в текущем commit runtime-переопределение speculative параметров отключено в `server-task.cpp`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-n-max 1
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-type draft-simple --spec-draft-n-max 8
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-n-max&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-n-max
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-n-max
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`

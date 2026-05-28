@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--vision-gemma-12b-default"
 title: "--vision-gemma-12b-default"
-summary: "Черновая инженерная справка по --vision-gemma-12b-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет для Gemma 3 12B IT QAT vision. Задает HF repo, порт 8014, auto context и включает Jinja."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,23 @@ aliases:
   - "--vision-gemma-12b-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--mmproj"
+  - "--mmproj-auto"
+  - "--port"
+  - "--ctx-size"
+  - "--jinja"
+  - "--image-min-tokens"
+  - "--image-max-tokens"
 ---
 
 # --vision-gemma-12b-default
 
 ## Кратко
 
-Черновая инженерная справка по --vision-gemma-12b-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--vision-gemma-12b-default` применяет встроенный пресет для `gemma-3-12b-it-qat-GGUF`. Это более тяжелый Gemma 3 vision shortcut по сравнению с `--vision-gemma-4b-default`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +40,82 @@ use Gemma 3 12B QAT (note: can download weights from the internet)
 ## Паспорт аргумента
 
 - Основное имя: `--vision-gemma-12b-default`
-- Алиасы: `--vision-gemma-12b-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до загрузки модели и multimodal projector
+- Область: `llama-server`, `llama-cli`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/gemma-3-12b-it-qat-GGUF"`
+- `params.port = 8014`
+- `params.n_ctx = 0`
+- `params.use_jinja = true`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`hf_file` и `mmproj` напрямую не задаются.
+
+## Значения и формат
+
+```bash
+llama-server --vision-gemma-12b-default
+```
+
+INI:
+
+```ini
+[gemma-vision-12b]
+vision-gemma-12b-default = true
+alias = vision-large
+tags = vision,gemma,large
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, когда нужна более сильная Gemma vision модель и сервер имеет достаточно памяти. Для быстрой проверки или ограниченного железа сначала попробуйте `--vision-gemma-4b-default`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+12B QAT потребляет больше RAM/VRAM и дольше загружается. Multimodal pipeline также требует `mmproj` и image token budget. Ограничивайте `--ctx-size` и image token параметры, если запросы с изображениями создают слишком большой prompt.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Как и 4B вариант, shortcut полагается на общую HF-логику для выбора файла и projector. Если нужна конкретная quantization или конкретный projector, задайте `--hf-file`/`--mmproj` явно.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+`--jinja` включен. Если template берется из metadata, убедитесь, что используемый файл модели содержит корректный template.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+```ini
+[gemma-vision-12b]
+vision-gemma-12b-default = true
+alias = vision
+load-on-startup = false
+stop-timeout = 30
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Для публичного router API обычно лучше сочетать этот preset с `--no-models-autoload`.
+
+## Типовые проблемы и диагностика
+
+- OOM: используйте 4B preset, меньший context или другой offload.
+- Нет image capability в `/models`: проверьте `mmproj`.
+- Первый vision запрос медленный: модель и projector могут скачиваться или загружаться по autoload.
+- Порт `8014` занят: задайте `--port`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --vision-gemma-12b-default
+llama-server --vision-gemma-12b-default --ctx-size 32768 --port 8084
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --models-preset /srv/llama/vision.ini --models-max 1 --no-models-autoload
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--vision-gemma-12b-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--vision-gemma-12b-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--vision-gemma-12b-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--vision-gemma-12b-default`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: multimodal capability в router metadata.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: multimodal behavior и built-in preset help.

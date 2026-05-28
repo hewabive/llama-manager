@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--metrics"
 title: "--metrics"
-summary: "Включить endpoint метрик Prometheus."
-docStatus: draft
+summary: "Включает `GET /metrics` в формате Prometheus text exposition. Без флага endpoint возвращает not supported."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -16,23 +16,17 @@ env:
   - "LLAMA_ARG_ENDPOINT_METRICS"
 related:
   - "--api-key"
-  - "--api-key-file"
   - "--host"
   - "--port"
   - "--slots"
-  - "--ssl-cert-file"
-  - "--ssl-key-file"
   - "--threads-http"
-  - "--timeout"
 ---
 
 # --metrics
 
 ## Кратко
 
-Включить endpoint метрик Prometheus.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--metrics` устанавливает `common_params::endpoint_metrics = true`. Маршрут `/metrics` регистрируется всегда, но без флага обработчик отвечает ошибкой `This server does not support metrics endpoint. Start it with --metrics`.
 
 ## Оригинальная справка llama.cpp
 
@@ -43,81 +37,57 @@ enable prometheus compatible metrics endpoint (default: disabled)
 ## Паспорт аргумента
 
 - Основное имя: `--metrics`
-- Алиасы: `--metrics`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_ENDPOINT_METRICS`
-- Значение по умолчанию из `--help`: `disabled`
+- Тип: флаг без значения
+- Переменная окружения: `LLAMA_ARG_ENDPOINT_METRICS`
+- Поле в `common_params`: `endpoint_metrics`
+- Значение по умолчанию: disabled
+- Endpoint: `GET /metrics`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При запросе обработчик ставит high-priority задачу `SERVER_TASK_TYPE_METRICS`, получает состояние очереди и слотов, затем отдает `text/plain; version=0.0.4`. Заголовок `Process-Start-Time-Unix` содержит время старта процесса.
 
-Для точного описания механики нужно проверить:
+Метрики включают counters и gauges: prompt tokens/seconds, predicted tokens/seconds, processing/deferred requests, `n_decode_total`, `n_tokens_max`, `n_busy_slots_per_decode`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Флаг не принимает значение и не имеет `--no-metrics`. В INI falsey-значение просто не выведет флаг, потому что отрицательного варианта нет.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Включайте для Prometheus, VictoriaMetrics, Grafana Agent или другого scrape-агента. Для публичного сервера не открывайте `/metrics` наружу без аутентификации или сетевого allowlist: endpoint раскрывает нагрузку, throughput и косвенно параметры работы модели.
 
 ## Влияние на производительность и память
 
-- Почти не влияет на скорость инференса, но влияет на безопасность, наблюдаемость и доступность HTTP API.
-- Для публичного доступа нельзя полагаться только на bind address; нужен reverse proxy, TLS и ограничение опасных операций.
+Обычный scrape дешевый, но каждый запрос проходит через очередь задач и читает состояние сервера. Слишком частый scrape может добавлять шум к HTTP thread pool и логам, но не должен существенно менять скорость генерации.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--api-key` защищает `/metrics`, потому что он не входит в public endpoints middleware.
+- `--slots` управляет JSON endpoint `/slots`, но данные для `/metrics` собираются тем же типом task.
+- В router-режиме README указывает, что для `/metrics` нужен query `?model=<model_id>`; без него router вернет `model name is missing from the request`.
 
-- `--api-key`
-- `--api-key-file`
-- `--host`
-- `--port`
-- `--slots`
-- `--ssl-cert-file`
-- `--ssl-key-file`
-- `--threads-http`
-- `--timeout`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI: `metrics = true` или `LLAMA_ARG_ENDPOINT_METRICS = true`. В router-режиме метрики отдельной модели запрашиваются через router с параметром `model`; внешний scrape должен учитывать список моделей.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- JSON error `not_supported_error`: сервер запущен без `--metrics`.
+- `401 Invalid API Key`: добавьте `Authorization: Bearer ...`.
+- В router-режиме `model name is missing from the request`: добавьте `?model=<id>`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --metrics
+llama-server --model /models/model.gguf --metrics
+curl http://127.0.0.1:8080/metrics
+curl "http://127.0.0.1:8080/metrics?model=my-model"
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--metrics&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--metrics
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--metrics
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

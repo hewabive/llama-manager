@@ -2,108 +2,103 @@
 schema: 1
 primaryName: "--spec-draft-hf"
 title: "--spec-draft-hf"
-summary: "Черновая инженерная справка по --spec-draft-hf из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает Hugging Face repo для draft-модели в формате `<user>/<model>[:quant]`. Работает как `--hf-repo`, но заполняет параметры draft-модели и скачивает GGUF перед загрузкой speculative-контекста."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "string"
+valueHint: "<user>/<model>[:quant]"
 aliases:
   - "--spec-draft-hf"
   - "-hfd"
   - "-hfrd"
-  - "--hf-repo-"
+  - "--hf-repo-draft"
 allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_HF_REPO"
-related: []
+related:
+  - "--hf-repo"
+  - "--hf-file"
+  - "--hf-token"
+  - "--offline"
+  - "--spec-draft-model"
+  - "--spec-type"
 ---
 
 # --spec-draft-hf
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-hf из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-hf` задает Hugging Face repository для draft-модели. Значение записывается в `common_params.speculative.draft.mparams.hf_repo`, затем общий обработчик моделей скачивает/находит GGUF в HF cache и заполняет локальный путь draft-модели.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Аргумент нужен, когда draft-модель удобнее доставлять из HF, а не указывать локальным `--spec-draft-model`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-draft <user>/<model>[:quant] Same as --hf-repo, but for the draft model (default: unused)
+Same as --hf-repo, but for the draft model (default: unused)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-hf`
-- Алиасы: `--spec-draft-hf`, `-hfd`, `-hfrd`, `--hf-repo-`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_HF_REPO`
-- Значение по умолчанию из `--help`: `unused`
+- Алиасы: `--spec-draft-hf`, `-hfd`, `-hfrd`, `--hf-repo-draft`
+- Формат: `<user>/<model>[:quant]`
+- Структура llama.cpp: `common_params.speculative.draft.mparams.hf_repo`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_HF_REPO`
+- Значение по умолчанию: не используется
+- Этап применения: парсинг, download/cache lookup в `common_params_handle_models()`, затем загрузка draft-модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+После парсинга `common_params_handle_models()` вызывает `common_params_handle_model()` для `params.speculative.draft.mparams`. Если задан HF repo, downloader выбирает GGUF по quant tag, использует `--hf-token` для приватных repo и учитывает `--offline`.
 
-Для точного описания механики нужно проверить:
+После скачивания draft-модель загружается тем же путем, что и локальный `--spec-draft-model`: сервер пишет `loading draft model '...'`, создает отдельный `llama_model` и `llama_context`, а speculative-код проверяет совместимость vocab с target.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Формат совпадает с `--hf-repo`: `namespace/repo` или `namespace/repo:quant`. Quant tag регистронезависим в downloader основного HF-механизма. Если нужен конкретный файл внутри repo, в текущем наборе draft-аргументов отдельного `--spec-draft-hf-file` нет; не смешивайте `--spec-draft-hf` и локальный `--spec-draft-model` без проверки фактического результата.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для reproducible-конфигураций, где target и draft поставляются из известных HF GGUF repo, например в preset для FIM/Qwen Coder. Для air-gapped сервера сначала прогрейте HF cache, затем запускайте с `--offline`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Первый запуск может скачать веса из сети и заметно увеличить время старта. После загрузки влияние такое же, как у `--spec-draft-model`: отдельные веса, KV-cache и compute buffers draft-модели.
+
+Память draft-модели регулируется `--spec-draft-ngl`, `--spec-draft-device`, `--spec-draft-type-k`, `--spec-draft-type-v` и tensor override параметрами.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--hf-token` передается downloader и нужен для приватных draft repo. `--offline` запрещает сетевую загрузку и требует, чтобы нужный файл уже был доступен в cache. `--spec-type draft-simple` явно включает draft-model speculative decoding; без него сервер может включить `draft-simple` автоматически, если draft-модель задана.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+При `--spec-type draft-mtp` и `--hf-repo` основная модель может автоматически найти MTP-файл рядом с target. Это отдельный путь от `--spec-draft-hf`; если вы явно задаете draft HF repo, он имеет приоритет как заданная draft-модель.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В INI используйте `spec-draft-hf = user/repo:quant` или алиас `hf-repo-draft = user/repo:quant`. Router README предупреждает, что HF repo, alias и часть параметров управляются router при загрузке модели; проверяйте итоговые аргументы subprocess в логах llama-manager.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `failed to download model from Hugging Face`: repo/tag недоступен, нет сети, неверный token или включен `--offline`.
+- `failed to load draft model`: скачанный файл не найден или не является подходящим GGUF.
+- Ошибка совместимости vocab: выбран не тот draft repo или quant tag указывает на модель другой семьи.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-hf value1,value2
+llama-server --hf-repo ggml-org/Qwen2.5-Coder-7B-Q8_0-GGUF --spec-draft-hf ggml-org/Qwen2.5-Coder-0.5B-Q8_0-GGUF --spec-type draft-simple
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/target.gguf --spec-draft-hf ggml-org/example-draft-GGUF:Q4_K_M --hf-token hf_... --spec-type draft-simple
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-hf&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-hf
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-hf
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

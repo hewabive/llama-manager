@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-default"
 title: "--spec-default"
-summary: "Черновая инженерная справка по --spec-default из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает встроенную ngram-mod speculative конфигурацию: match 24, min 48, max 64. Draft-модель этот флаг не задает."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,20 @@ aliases:
   - "--spec-default"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-type"
+  - "--spec-ngram-mod-n-match"
+  - "--spec-ngram-mod-n-min"
+  - "--spec-ngram-mod-n-max"
+  - "--spec-draft-model"
+  - "--spec-draft-hf"
 ---
 
 # --spec-default
 
 ## Кратко
 
-Черновая инженерная справка по --spec-default из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-default` включает default speculative decoding config из llama.cpp. На проверенном commit это ngram-mod конфигурация без draft-модели.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +37,89 @@ enable default speculative decoding config
 ## Паспорт аргумента
 
 - Основное имя: `--spec-default`
-- Алиасы: `--spec-default`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до инициализации speculative subsystem
+- Область: `llama-server`, `llama-cli`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг выполняет:
 
-Для точного описания механики нужно проверить:
+- добавляет `COMMON_SPECULATIVE_TYPE_NGRAM_MOD` в `params.speculative.types`;
+- задает `params.speculative.ngram_mod.n_match = 24`;
+- задает `params.speculative.ngram_mod.n_min = 48`;
+- задает `params.speculative.ngram_mod.n_max = 64`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Draft-модель, `--spec-draft-hf` и `--spec-draft-model` этот флаг не задает.
+
+## Значения и формат
+
+```bash
+llama-server --model /srv/models/model.gguf --spec-default
+```
+
+INI:
+
+```ini
+[fast-local]
+model = /srv/models/model.gguf
+spec-default = true
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+Используйте как быстрый способ включить ngram-based speculative decoding без отдельной draft-модели. Это может помочь на workloads с повторяющимися фрагментами или предсказуемыми продолжениями.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не считайте флаг универсальным ускорителем: эффективность зависит от prompt pattern, модели, batch/parallel режима и backend.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Ngram speculative decoding не требует второй модели, поэтому его память обычно ниже, чем у draft-model speculative decoding. При этом добавляется служебная работа speculative subsystem, и на неподходящем workload ускорения может не быть.
+
+Параметры `n_match = 24`, `n_min = 48`, `n_max = 64` задают окно совпадений и диапазон предлагаемых ngram tokens для ngram-mod реализации.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-type` вручную добавляет speculative types. Default `params.speculative.types` содержит `none`; `--spec-default` добавляет к списку `ngram-mod`, и speculative init игнорирует `none` как активную реализацию.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+Ручные аргументы `--spec-ngram-mod-n-match`, `--spec-ngram-mod-n-min`, `--spec-ngram-mod-n-max` управляют теми же полями, что и `--spec-default`. В CLI порядок аргументов важен: более поздний обработчик перезапишет поле.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+С `--fim-qwen-7b-spec` или `--fim-qwen-14b-spec` этот флаг может добавить ngram-mod поверх draft setup. Проверяйте фактическую скорость и логи, потому что несколько speculative методов не всегда лучше одного.
 
-## Типовые проблемы
+## INI-пресеты и router-режим
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В router INI:
+
+```ini
+[model-with-ngram-spec]
+model = /srv/models/model.gguf
+spec-default = true
+alias = fast-model
+```
+
+Если нужны точные значения ngram-mod в INI, надежнее записать `spec-type = ngram-mod` и явные `spec-ngram-mod-*` ключи вместо shortcut.
+
+## Типовые проблемы и диагностика
+
+- Нет ускорения: workload плохо подходит для ngram speculative decoding.
+- Ошибка инициализации speculative context: ищите лог `failed to initialize speculative decoding context`.
+- Ручные `spec-ngram-mod-*` не дали ожидаемый эффект: проверьте порядок CLI аргументов или разверните shortcut в явные ключи.
+- Ожидали draft-модель: используйте `--spec-draft-model`/`--spec-draft-hf` или Qwen `*-spec` shortcut.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-default
+llama-server --model /srv/models/model.gguf --spec-default
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/model.gguf --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-default&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-default
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-default
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--spec-default`, `--spec-type`, `--spec-ngram-mod-*`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: default speculative type list.
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`: selection of active speculative configs.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help `--spec-default`.

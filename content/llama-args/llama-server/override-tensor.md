@@ -2,13 +2,13 @@
 schema: 1
 primaryName: "--override-tensor"
 title: "--override-tensor"
-summary: "Черновая инженерная справка по --override-tensor из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Принудительно задает buffer type для тензоров, имена которых совпадают с regex-паттерном. Это опасный низкоуровневый инструмент для ручного размещения весов."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "string"
-valueHint: "<tensor name pattern>=<buffer"
+valueHint: "<tensor name pattern>=<buffer type>,..."
 aliases:
   - "-ot"
   - "--override-tensor"
@@ -16,101 +16,107 @@ allowedValues: []
 env:
   - "LLAMA_ARG_OVERRIDE_TENSOR"
 related:
-  - "--flash-attn"
-  - "--main-gpu"
-  - "--n-gpu-layers"
-  - "--split-mode"
-  - "--tensor-split"
+  - "--device"
+  - "--fit"
+  - "--gpu-layers"
+  - "--mmap"
+  - "--repack"
 ---
 
 # --override-tensor
 
 ## Кратко
 
-Черновая инженерная справка по --override-tensor из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--override-tensor` добавляет правила вида `<tensor name pattern>=<buffer type>` и заставляет loader выбирать указанный buffer type для совпавших тензоров. Паттерн интерпретируется как C++ `std::regex` и проверяется через `std::regex_search()`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это не обычный tuning-флаг. Ошибочное правило может сломать загрузку модели или резко ухудшить производительность.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-type>,... override tensor buffer type
+override tensor buffer type
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--override-tensor`
 - Алиасы: `-ot`, `--override-tensor`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `<tensor name pattern>=<buffer`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_OVERRIDE_TENSOR`
-- Значение по умолчанию из `--help`: `не указано`
+- Переменная окружения: `LLAMA_ARG_OVERRIDE_TENSOR`
+- Поле `common_params`: `tensor_buft_overrides`
+- Поле `llama_model_params`: `tensor_buft_overrides`, NULL-terminated список
+- Формат: `<regex>=<buffer type>,...`
+- Этап применения: создание тензоров при загрузке модели
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Парсер сначала загружает backends, строит map доступных buffer types по имени `ggml_backend_buft_name()`, затем разбивает строку по запятым. Для каждого элемента требуется `=`.
 
-Для точного описания механики нужно проверить:
+Если buffer type неизвестен, llama.cpp печатает `Available buffer types:` и завершает обработку аргумента ошибкой `unknown buffer type`. После парсинга список overrides дополняется терминатором `{nullptr, nullptr}`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+При создании tensor loader идет по overrides в порядке добавления. Первое regex-совпадение выбирает buffer type. Если override указывает на CPU buffer, loader заново выбирает подходящий CPU/extra buffer type; при включенном mmap печатает warning с рекомендацией рассмотреть `--no-mmap`.
+
+## Значения и формат
+
+Пример формы:
+
+```text
+blk\.0\..*=CPU
+```
+
+Точные имена buffer types зависят от backend и видны в ошибке `Available buffer types` или debug-логах. Паттерн должен быть валидным regex; запятая используется как разделитель правил, поэтому ее нельзя безопасно использовать внутри паттерна.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для точечной диагностики размещения весов: например, оставить отдельные MoE tensors на CPU, обойти баг buffer type для конкретного слоя или проверить гипотезу о VRAM. Для стандартного MoE-offload сначала рассмотрите специализированные параметры вроде `--cpu-moe`/`--n-cpu-moe`, если они доступны в вашей конфигурации.
 
 ## Влияние на производительность и память
 
-- Затрагивает распределение вычислений между CPU/GPU и может менять как latency, так и объем занятой VRAM.
-- После изменения проверяйте лог старта: llama.cpp обычно печатает, какие слои и буферы реально попали на GPU.
+Override может переместить крупные веса между VRAM, host buffer и CPU memory. Это может спасти старт от OOM, но добавить PCIe/host traffic на каждом eval. CPU override с mmap может быть медленным, о чем loader предупреждает.
+
+Наличие tensor overrides отключает условие pipeline parallelism в `llama_context`: pipeline включается только если `!model.has_tensor_overrides()`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--fit` не переписывает уже заданные tensor overrides. Если overrides присутствуют, fit может отказаться с сообщением `model_params::tensor_buft_overrides already set by user`.
 
-- `--flash-attn`
-- `--main-gpu`
-- `--n-gpu-layers`
-- `--split-mode`
-- `--tensor-split`
+`--repack` влияет на extra buffer types, которые могут быть выбраны при CPU override.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--mmap` важен для производительности CPU overrides; при warning попробуйте `--no-mmap`.
 
-## Типовые проблемы
+`--device`, `--gpu-layers` и `--split-mode` задают базовое распределение, поверх которого применяются overrides.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## INI-пресеты и router-режим
+
+В INI:
+
+```ini
+override-tensor = blk\.0\..*=CPU
+```
+
+В router-режиме задавайте только для конкретной модели: tensor names и полезные паттерны зависят от архитектуры и GGUF.
+
+## Типовые проблемы и диагностика
+
+- `invalid value`: в одном из правил нет `=`.
+- `unknown buffer type`: проверьте список `Available buffer types` в stderr.
+- `std::regex` error или падение на старте: проверьте экранирование паттерна.
+- Производительность резко упала: проверьте, не ушли ли hot tensors на CPU/host; смотрите debug-логи `buffer type overridden`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --override-tensor value
+llama-server --model /models/model.gguf --override-tensor 'blk\.0\..*=CPU'
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --override-tensor 'blk\.[0-3]\.ffn_.*=CPU' --no-mmap
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--override-tensor&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--override-tensor
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--override-tensor
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/fit.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

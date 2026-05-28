@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--models-preset"
 title: "--models-preset"
-summary: "Путь к INI-файлу пресетов моделей для router-режима."
-docStatus: draft
+summary: "Подключает INI-файл с модельными пресетами для router-режима. Через него задают кастомные модели, алиасы, теги и параметры дочерних llama-server."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "PATH"
@@ -15,19 +15,20 @@ allowedValues: []
 env:
   - "LLAMA_ARG_MODELS_PRESET"
 related:
-  - "--alias"
-  - "--lora"
-  - "--model"
   - "--models-dir"
+  - "--models-max"
+  - "--models-autoload"
+  - "--alias"
+  - "--tags"
+  - "--model"
+  - "--hf-repo"
 ---
 
 # --models-preset
 
 ## Кратко
 
-Путь к INI-файлу пресетов моделей для router-режима.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--models-preset` указывает путь к INI-файлу, из которого router строит или дополняет список моделей. Это основной способ задать на одну router-службу несколько моделей с разными `--ctx-size`, `--n-gpu-layers`, `--alias`, `--tags`, draft-моделью и служебными router-only настройками.
 
 ## Оригинальная справка llama.cpp
 
@@ -39,75 +40,123 @@ path to INI file containing model presets for the router server (default: disabl
 
 - Основное имя: `--models-preset`
 - Алиасы: `--models-preset`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
-- Подсказка формата из `--help`: `PATH`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_MODELS_PRESET`
-- Значение по умолчанию из `--help`: `disabled`
+- Тип: `PATH`
+- Переменная окружения: `LLAMA_ARG_MODELS_PRESET`
+- Значение по умолчанию: пустая строка, пользовательский INI не загружается
+- Поле `common_params`: `models_preset`
+- Этап применения: router загружает INI при построении каталога моделей
+- Router-only: да
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Router вызывает `common_preset_context::load_from_ini()` и получает набор пресетов. Каждая секция INI становится моделью или переопределением существующей модели. Ключи соответствуют аргументам `llama-server` без ведущих дефисов, коротким формам или env-именам.
 
-Для точного описания механики нужно проверить:
+Примеры допустимых ключей:
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `model = /models/qwen.gguf` соответствует `--model /models/qwen.gguf`.
+- `hf-repo = ggml-org/gemma-3-4b-it-GGUF:Q4_K_M` соответствует `--hf-repo`.
+- `c = 8192` соответствует короткому аргументу context size.
+- `LLAMA_ARG_CACHE_RAM = 0` использует env-имя аргумента.
+- `no-jinja = true` записывает отрицательную форму для bool-аргумента с парным `--no-*`.
+
+## Значения и формат
+
+Файл должен существовать и читаться процессом `llama-server`; иначе старт завершается ошибкой `preset file does not exist` или `failed to open server preset file`.
+
+Синтаксис секций:
+
+```ini
+[*]
+ctx-size = 8192
+n-gpu-layers = 99
+
+[qwen-coder]
+model = /srv/models/qwen2.5-coder-7b-q8_0.gguf
+alias = coder
+tags = code,local
+load-on-startup = true
+
+[ggml-org/gemma-3-4b-it-GGUF:Q4_K_M]
+alias = gemma
+tags = vision,hf
+```
+
+Секция `[*]` является глобальной: ее параметры применяются ко всем пресетам, затем модельная секция может их переопределить.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
+Используйте `--models-preset`, когда нужны:
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- стабильные API-имена через `--alias`;
+- разные параметры загрузки для разных моделей;
+- добавление HF-моделей, которых нет в локальном cache;
+- настройка `load-on-startup` и `stop-timeout`;
+- дополнение моделей, найденных через `--models-dir`.
+
+Для одного простого локального GGUF без router проще использовать `--model`.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Сам INI не загружает веса, кроме моделей с `load-on-startup = true`. Память и время старта зависят от того, сколько таких моделей будет одновременно загружено, и от `--models-max`.
+
+Если `load-on-startup` моделей больше, чем `--models-max`, router завершится ошибкой `number of models to load on startup ... exceeds models_max`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Порядок наложения настроек в router:
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
+1. CLI/env аргументы router-процесса имеют высший приоритет и сливаются в каждый модельный пресет.
+2. Модельная секция INI.
+3. Глобальная секция `[*]`.
+4. Автоматические пресеты из cache и `--models-dir`.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Перед запуском дочернего сервера router удаляет из пресета зарезервированные параметры `--models-dir`, `--models-preset`, `--models-max`, `--models-autoload`, TLS/API-key параметры, а также перезаписывает `--host`, `--port` и `--alias`. Поэтому `host`, `port` и API-ключи в модельной секции не являются способом управлять дочерним сервером.
 
-## Типовые проблемы
+`--alias` и `--tags` читаются из пресета как метаданные router. В JSON `/models` они показываются отдельно, а из отображаемого `status.preset` удаляются.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## INI-пресеты и router-режим
+
+В INI доступны обычные аргументы `llama-server`, а также preset-only ключи:
+
+- `load-on-startup`: boolean, загрузить модель при старте или reload.
+- `stop-timeout`: секунды graceful shutdown перед принудительным завершением дочернего процесса, по умолчанию `10`.
+
+Флаги без значения в CLI пишутся как boolean:
+
+```ini
+[embeddings]
+embd-gemma-default = true
+alias = embeddinggemma
+```
+
+Для флагов без отрицательной формы значение `false` при рендеринге дочернего argv просто пропускает флаг.
+
+## Типовые проблемы и диагностика
+
+- `option '...' not recognized in preset`: ключ не совпадает с именем аргумента, короткой формой или env-именем.
+- Нужный параметр не попал в дочерний процесс: проверьте, не относится ли он к зарезервированным router-аргументам.
+- Относительный путь в `model` или `model-draft` не найден: пути считаются от текущего рабочего каталога `llama-server`; используйте абсолютные пути.
+- После правки INI модель не изменилась: выполните `GET /models?reload=1`. Running-модель с измененным пресетом будет выгружена и должна быть загружена заново.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --models-preset /path/to/value
+llama-server --models-preset /srv/llama/models.ini --models-max 2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+curl "http://127.0.0.1:8080/models?reload=1"
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+curl -X POST http://127.0.0.1:8080/models/load \
+  -H "Content-Type: application/json" \
+  -d '{"model":"coder"}'
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--models-preset&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--models-preset
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--models-preset
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--models-preset`, preset-only ключи.
+- `/home/maxim/llama/llama.cpp/common/preset.cpp`: INI parser, `to_args`, merge/cascade, поддержка env/short keys.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: приоритеты, reserved args, reload, `/models`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: разделы `Model presets` и `Routing requests`.

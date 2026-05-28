@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--reasoning-budget-message"
 title: "--reasoning-budget-message"
-summary: "Черновая инженерная справка по --reasoning-budget-message из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Сообщение, которое sampler вставляет перед end-of-thinking tag, когда `--reasoning-budget` исчерпан. Не действует без активного reasoning budget и thinking tags в template."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "MESSAGE"
@@ -14,16 +14,19 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_THINK_BUDGET_MESSAGE"
-related: []
+related:
+  - "--reasoning-budget"
+  - "--reasoning"
+  - "--reasoning-format"
 ---
 
 # --reasoning-budget-message
 
 ## Кратко
 
-Черновая инженерная справка по --reasoning-budget-message из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--reasoning-budget-message` записывает строку в `common_params::sampling.reasoning_budget_message`. Когда reasoning budget заканчивается, server токенизирует `message + end_tag` и sampler форсирует эту последовательность.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию сообщение пустое, поэтому при исчерпании budget форсируется только end-of-thinking tag.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +37,57 @@ message injected before the end-of-thinking tag when reasoning budget is exhaust
 ## Паспорт аргумента
 
 - Основное имя: `--reasoning-budget-message`
-- Алиасы: `--reasoning-budget-message`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `MESSAGE`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_THINK_BUDGET_MESSAGE`
-- Значение по умолчанию из `--help`: `none`
+- Значение: строка `MESSAGE`
+- Поле `common_params`: `sampling.reasoning_budget_message`
+- Переменная окружения: `LLAMA_ARG_THINK_BUDGET_MESSAGE`
+- По умолчанию: пустая строка
+- Этап применения: tokenization при создании server task
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+`server-task.cpp` читает `reasoning_budget_message`, соединяет его с `reasoning_budget_end_tag` и вызывает `common_tokenize(vocab, message + end_tag, false, true)`. Полученные токены становятся `reasoning_budget_forced`.
 
-Для точного описания механики нужно проверить:
+Если budget не активировался, сообщение не появляется. Если budget исчерпан, сообщение становится частью сгенерированного текста в reasoning block перед закрывающим tag.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Это обычная строка. Если нужны переводы строк или кавычки, учитывайте quoting argv/INI. При включенном `--escape` CLI post-processing обрабатывает escapes только для prompt/prefix/suffix/antiprompt/seq_breakers, не для этого поля.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Нужно явно обозначить в reasoning, что внутреннее рассуждение было остановлено лимитом.
+- Клиенту или UI важно отличать естественное завершение thinking от принудительного.
+- Вы используете очень маленький `--reasoning-budget` и хотите дать модели мягкий переход к финальному ответу.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Сообщение добавляет свои токены к forced sequence. Обычно влияние минимально, но длинное сообщение частично нивелирует экономию от малого budget.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--reasoning-budget`: без неограниченного/активного budget message не используется.
+- `--reasoning-format`: определяет, попадет ли forced message в `reasoning_content` или останется в `content`.
+- `--reasoning`: если thinking выключен и tags не генерируются, sampler не активируется.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `reasoning-budget-message = ...`. Для router mode задавайте сообщение в секции модели, чтобы оно соответствовало языку/формату конкретного template.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Сообщение не видно: budget не исчерпан или не было thinking start tag.
+- Сообщение видно пользователю в `content`: выбран `--reasoning-format none`, `deepseek-legacy` или включен `--skip-chat-parsing`.
+- Модель продолжает reasoning после сообщения: проверьте, что end tag корректно определяется template и токенизируется.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --reasoning-budget-message value
+llama-server --model /models/reasoning.gguf --reasoning on --reasoning-budget 128 --reasoning-budget-message "Reasoning budget exhausted."
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--reasoning-budget-message&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--reasoning-budget-message
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--reasoning-budget-message
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--reasoning-budget-message`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: передача message вместе с tags.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: tokenization `message + end_tag`.
+- `/home/maxim/llama/llama.cpp/common/reasoning-budget.cpp`: forced sequence logic.

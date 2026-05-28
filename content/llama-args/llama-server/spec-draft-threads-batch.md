@@ -2,119 +2,110 @@
 schema: 1
 primaryName: "--spec-draft-threads-batch"
 title: "--spec-draft-threads-batch"
-summary: "Черновая инженерная справка по --spec-draft-threads-batch из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает CPU-потоки draft-контекста для batch и prompt processing. Если не задано, наследует `--spec-draft-threads`, а при отсутствии draft-профиля - итоговый batch-профиль target."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "list"
-valueHint: ","
+valueType: "number"
+valueHint: "N"
 aliases:
-  - "--spec-draft-threads-batch"
   - "-tbd"
-  - "--thre"
+  - "--threads-batch-draft"
 allowedValues: []
 env: []
 related:
-  - "--batch-size"
-  - "--flash-attn"
+  - "--spec-draft-model"
+  - "--spec-draft-threads"
   - "--threads"
   - "--threads-batch"
-  - "--threads-http"
+  - "--batch-size"
   - "--ubatch-size"
+  - "--flash-attn"
 ---
 
 # --spec-draft-threads-batch
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-threads-batch из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-draft-threads-batch` задает число CPU-потоков draft-контекста для batch/prompt-фазы. В отличие от `--spec-draft-threads`, этот параметр используется для batched decode в libllama, включая обработку prompt и крупных batch-кусков draft-контекста.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ads-batch-draft N number of threads to use during batch and prompt processing (default: same as --threads-draft)
+number of threads to use during batch and prompt processing (default: same as --threads-draft)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-threads-batch`
-- Алиасы: `--spec-draft-threads-batch`, `-tbd`, `--thre`
+- Алиасы: `-tbd`, `--threads-batch-draft`
 - Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `same as --threads-draft`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `same as --threads-draft`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-обработчик записывает значение в `params.speculative.draft.cpuparams_batch.n_threads`. Если пользователь передал `0` или отрицательное значение, оно сразу заменяется на `std::thread::hardware_concurrency()`.
 
-Для точного описания механики нужно проверить:
+После парсинга `postprocess_cpu_params(params.speculative.draft.cpuparams_batch, &params.cpuparams_batch)` дополняет batch-профиль draft из batch-профиля target, если draft batch-профиль не задан. При загрузке draft-модели `server-context.cpp` копирует `params_spec.cpuparams_batch.n_threads` в `params_dft.cpuparams_batch.n_threads`, но только если `params_spec.cpuparams.n_threads > 0`. После этого `common_context_params_to_llama()` переносит значение в `llama_context_params.n_threads_batch` draft-контекста.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+`N` - целое число. Положительное значение фиксирует число потоков для batch/prompt работы draft-контекста. Явное `0` или отрицательное значение означает `std::thread::hardware_concurrency()`. Если аргумент не указан, значение наследуется из draft generation-профиля или batch-профиля target через общую постобработку.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, когда draft-модель долго обрабатывает prompt, большие speculative batches или multimodal preprocessing на draft-контексте. Если workload состоит из короткого decode и draft-модель в основном на GPU, отдельная настройка batch threads может не дать эффекта.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
-- Влияет на загрузку CPU. Больше потоков не всегда быстрее из-за конкуренции за cache, NUMA и фоновых процессов.
-- Для серверного режима отдельно оценивайте потоки генерации, batch-обработки и HTTP-обработки.
+Параметр не меняет размер KV-cache, batch size или VRAM напрямую. Он может ускорить CPU prefill draft-контекста, но слишком большое значение конкурирует с target `--threads-batch`, HTTP worker threads и другими слотами. При длинных prompts измеряйте отдельно prefill latency и steady-state decode.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-draft-threads` задает generation-профиль draft и является логическим fallback для batch-профиля draft.
+- `--threads-batch` задает batch-профиль target и участвует в наследовании, если draft batch-профиль не задан.
+- `--batch-size` и `--ubatch-size` определяют объем работы, который может распараллеливаться; `--spec-draft-threads-batch` только задает CPU-потоки для draft-контекста.
+- `--flash-attn` и offload draft-модели через `--spec-draft-ngl`/`--spec-draft-device` могут сместить bottleneck с CPU на GPU.
+- `--draft`, `--draft-min` и их legacy-алиасы удалены; они не управляют потоками draft-контекста.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads`
-- `--threads-batch`
-- `--threads-http`
-- `--ubatch-size`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В `--models-preset` используйте ключ без ведущих дефисов. Так как `common_preset::to_args()` рендерит последнюю форму алиаса, практичная форма для пресета - `threads-batch-draft = 8`.
 
-## Типовые проблемы
+Router не удаляет draft CPU-параметры при запуске дочерней модели. Он перезаписывает host/port/alias и часть модельных аргументов, но не `threads-batch-draft`.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Если `--spec-draft-threads` не задан, но `--spec-draft-threads-batch` задан, текущий `server-context.cpp` копирует draft thread counts только при `params_spec.cpuparams.n_threads > 0`. Поэтому для надежной настройки batch-потоков draft задавайте оба параметра.
+- Если prompt processing ускорился, но decode latency выросла, уменьшите batch-потоки draft или target `--threads-batch`.
+- Draft-specific batch thread count отдельно не печатается в server log; наличие draft-контекста проверяйте по `loading draft model` и `speculative decoding context initialized`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-threads-batch value1,value2
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-threads 4 --spec-draft-threads-batch 8
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --threads-batch 16 --spec-draft-threads 3 --spec-draft-threads-batch 6
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+model-draft = /models/draft.gguf
+threads-draft = 4
+threads-batch-draft = 8
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-threads-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-threads-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-threads-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--spec-draft-threads-batch`, обработчик CLI и постобработка CPU-профилей.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - `postprocess_cpu_params()` и `common_context_params_to_llama()`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - копирование draft `n_threads` и `n_threads_batch` при загрузке draft-модели.
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp` - инициализация speculative decoding.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md` - актуальная help-строка.

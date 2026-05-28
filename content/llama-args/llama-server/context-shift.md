@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--context-shift"
 title: "--context-shift"
-summary: "Черновая инженерная справка по --context-shift из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Разрешает сдвиг контекста при бесконечной генерации, чтобы не останавливаться на заполнении `n_ctx`. По умолчанию выключено."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
@@ -15,16 +15,20 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_CONTEXT_SHIFT"
-related: []
+related:
+  - "--keep"
+  - "--ctx-size"
+  - "--predict"
+  - "--cache-reuse"
 ---
 
 # --context-shift
 
 ## Кратко
 
-Черновая инженерная справка по --context-shift из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--context-shift` задает `common_params::ctx_shift`: разрешить удаление части старого контекста и сдвиг оставшихся KV-позиций, когда генерация подходит к лимиту слота.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию в server-справке disabled.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,72 +40,64 @@ whether to use context shift on infinite text generation (default: disabled)
 
 - Основное имя: `--context-shift`
 - Алиасы: `--context-shift`, `--no-context-shift`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CONTEXT_SHIFT`
-- Значение по умолчанию из `--help`: `disabled`
+- Значение по умолчанию: disabled
+- Переменная окружения: `LLAMA_ARG_CONTEXT_SHIFT`
+- Поле llama.cpp: `common_params::ctx_shift`
+- Этап применения: генерация в `update_slots()`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Когда `slot.prompt.n_tokens() + 1 >= slot.n_ctx`, сервер с включенным context shift оставляет первые `n_keep` токенов, удаляет `n_discard` токенов после них и сдвигает оставшийся KV назад.
 
-Для точного описания механики нужно проверить:
+Если context shift выключен, генерация останавливается с `STOP_TYPE_LIMIT` и response получает `truncated = true`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `--context-shift`: включить.
+- `--no-context-shift`: выключить.
+
+Если memory type не поддерживает shifting или загружен multimodal projector, сервер автоматически отключает режим и пишет warning.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Включайте для long-running text generation, где допустимо забывать середину/старый контекст. Не включайте для строгих chat/RAG сценариев, где потеря старых токенов меняет смысл.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Не увеличивает KV-size, а позволяет продолжать генерацию в фиксированном окне. Сам shift требует операций удаления/сдвига KV, но дешевле полного перезапуска.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--keep`: сколько initial prompt tokens сохранить при shift.
+- `n_discard` в HTTP `/completion`: сколько токенов выбросить; если `0`, сервер выбрасывает половину оставшейся части.
+- `--cache-reuse`: также требует memory shifting.
+- `--predict -1`: без context shift бесконечная генерация все равно упрется в `n_ctx`.
+- Multimodal (`--mmproj`) отключает `ctx_shift`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `context-shift = true` или `no-context-shift = true`. В router-режиме применяется к дочернему процессу модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Warning `ctx_shift is not supported by multimodal` означает автоматическое отключение.
+- Лог `slot context shift, n_keep = ..., n_left = ..., n_discard = ...` показывает фактический shift.
+- Если ответ обрывается по лимиту, проверьте `truncated`, `stop`, `n_ctx` и включен ли `--context-shift`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --context-shift true
+llama-server --model /models/model.gguf --ctx-size 4096 --context-shift --keep 128 --predict -1
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-context-shift --predict 512
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--context-shift&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--context-shift
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--context-shift
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_ctx_shift.py`

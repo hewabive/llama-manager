@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--tags"
 title: "--tags"
-summary: "Информационные теги модели, не используются для маршрутизации."
-docStatus: draft
+summary: "Добавляет информационные теги модели в metadata API. Теги выводятся в `/models`, но не участвуют в выборе маршрута."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "list"
 valueHint: "STRING"
@@ -14,16 +14,17 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_TAGS"
-related: []
+related:
+  - "--alias"
+  - "--models-preset"
+  - "--models-dir"
 ---
 
 # --tags
 
 ## Кратко
 
-Информационные теги модели, не используются для маршрутизации.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--tags` задает comma-separated список информационных тегов модели. Они попадают в metadata API, но не используются для маршрутизации запросов и не заменяют `--alias`.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,72 +36,93 @@ set model tags, comma-separated (informational, not used for routing)
 
 - Основное имя: `--tags`
 - Алиасы: `--tags`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `STRING`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_TAGS`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: `STRING`, comma-separated list
+- Переменная окружения: `LLAMA_ARG_TAGS`
+- Поле `common_params`: `model_tags`
+- Внутренний тип: `std::set<std::string>`
+- Этап применения: парсинг CLI/env, затем публикация metadata
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Парсер делит строку по запятым, удаляет пробелы вокруг каждого тега и добавляет непустые строки в `params.model_tags`.
 
-Для точного описания механики нужно проверить:
+В single-model mode tags сохраняются в `server_context` и возвращаются в `/models` и `/v1/models`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+В router mode tags читаются из модельного preset, сохраняются в `server_model_meta.tags` и возвращаются в списке `/models`. Router не ищет модель по tag и не фильтрует по tags.
+
+## Значения и формат
+
+```bash
+llama-server --model /srv/models/qwen.gguf --tags code,local,q8_0
+```
+
+Повторяющиеся теги схлопываются из-за `std::set`. Регистр не нормализуется: `Vision` и `vision` будут разными тегами.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте `--tags`, чтобы UI, inventory-скрипты или администратор могли отличать модели по назначению: `chat`, `code`, `embedding`, `vision`, `local`, `hf`, `experimental`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте tags как механизм access control или routing. Клиент должен указывать canonical model id или alias.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На inference, загрузку весов, KV-cache, RAM и VRAM не влияет. Это metadata.
+
+Большой список тегов увеличивает только JSON metadata и шум в логах `Available models`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--alias` участвует в API-имени и router lookup; `--tags` только описывает модель.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+В `--models-preset` tags удобно задавать рядом с alias:
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[embeddinggemma]
+embd-gemma-default = true
+alias = embeddings
+tags = embedding,gemma,default
+```
 
-## Типовые проблемы
+При reload router перечитывает tags для unloaded моделей. Для running модели с измененным preset router сначала выгружает ее как измененную, затем обновляет metadata.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## INI-пресеты и router-режим
+
+В INI ключ пишется как `tags = ...` или `LLAMA_ARG_TAGS = ...`.
+
+В ответе `/models` tags возвращаются отдельно:
+
+```json
+{
+  "id": "coder",
+  "aliases": ["qwen-coder"],
+  "tags": ["code", "local"]
+}
+```
+
+## Типовые проблемы и диагностика
+
+- Запрос с `"model": "code"` не находит модель: `code` был tag, а не alias.
+- Tags не обновились после правки INI: вызовите `GET /models?reload=1`.
+- Порядок tags отличается от строки запуска: хранение идет через `std::set`, порядок сортированный.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --tags value1,value2
+llama-server --model /srv/models/gemma.gguf --tags chat,gemma,local
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --models-preset /srv/llama/models.ini
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+curl -s http://127.0.0.1:8080/models
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--tags&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--tags
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--tags
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: парсинг `--tags`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `model_tags`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: tags в metadata single-model server.
+- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: tags в router metadata и reload.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help-строка и `/models`.

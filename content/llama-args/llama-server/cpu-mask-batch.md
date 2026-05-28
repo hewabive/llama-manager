@@ -2,22 +2,25 @@
 schema: 1
 primaryName: "--cpu-mask-batch"
 title: "--cpu-mask-batch"
-summary: "Черновая инженерная справка по --cpu-mask-batch из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает CPU affinity для batch/prompt CPU-профиля как hex-маску. Если batch-маска не задана, batch-профиль наследует основную маску `--cpu-mask`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "M"
 aliases:
   - "-Cb"
-  - "--cpu-mask-batch"
 allowedValues: []
 env: []
 related:
-  - "--batch-size"
-  - "--flash-attn"
+  - "--threads"
   - "--threads-batch"
+  - "--cpu-range-batch"
+  - "--cpu-strict-batch"
+  - "--prio-batch"
+  - "--poll-batch"
+  - "--batch-size"
   - "--ubatch-size"
 ---
 
@@ -25,9 +28,7 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --cpu-mask-batch из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Задает CPU affinity для batch/prompt CPU-профиля как hex-маску. Если batch-маска не задана, batch-профиль наследует основную маску `--cpu-mask`.
 
 ## Оригинальная справка llama.cpp
 
@@ -40,74 +41,72 @@ CPU affinity mask: arbitrarily long hex. Complements cpu-range-batch (default: s
 - Основное имя: `--cpu-mask-batch`
 - Алиасы: `-Cb`, `--cpu-mask-batch`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `M`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `same as --cpu-mask`
+- Тип значения в llama-manager: `string`
+- Подсказка формата: `M`
+- Допустимые значения: `не ограничены в metadata`
+- Переменные окружения: `не заданы`
+- Значение по умолчанию: `same as --cpu-mask`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик выставляет `mask_valid = true` и вызывает `parse_cpu_mask()` для batch CPU-профиля `params.cpuparams_batch`. После загрузки контекста маска копируется в `ggml_threadpool_params.cpumask`; CPU backend применяет ее к worker threads через affinity API ОС, если маска не пустая.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Формат - hex-строка, например `ff`, `0xff`, `0000000f`. Парсер принимает цифры `0-9`, `a-f`, `A-F` и опциональный префикс `0x`. Обрабатываются максимум 128 hex-цифр, то есть 512 CPU-битов (`GGML_MAX_N_THREADS`). Младший бит последней hex-цифры соответствует CPU `0`: `0x3` выбирает CPU `0` и `1`, `0xf0` выбирает CPU `4-7`.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для закрепления batch/prompt processing на конкретных ядрах: например, чтобы оставить часть CPU для HTTP threads, ОС и других сервисов, либо разнести несколько экземпляров `llama-server` по разным наборам CPU.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Affinity сама по себе не меняет память. Она может улучшить latency за счет cache locality и уменьшения миграций потоков, но слишком узкая маска при большом числе потоков ухудшит throughput. На Linux affinity ограничивается cpuset/cgroup процесса; недоступные CPU дадут предупреждение `failed to set affinity`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--cpu-range-batch` и `--cpu-mask-batch` заполняют одну batch-маску; при указании обоих значения объединяются.
+- Если batch CPU-профиль не задан, он наследует основной профиль `--cpu-mask`/`--cpu-range` через `postprocess_cpu_params()`.
+- `--threads-batch` должен быть согласован с количеством выставленных CPU, иначе появится предупреждение о нехватке set bits.
+- `--cpu-strict-batch` определяет, получит ли каждый поток всю batch-маску или отдельный CPU из нее.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
-- `--ubatch-size`
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+## INI-пресеты и router-режим
 
-## Типовые проблемы
+В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `cpu-mask-batch = 0xff00`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
+
+
+## Типовые проблемы и диагностика
+
+- Если batch-маска содержит меньше выставленных CPU, чем `--threads-batch`, при постобработке появляется предупреждение `Not enough set bits in CPU mask ...`; в такой конфигурации часть потоков будет конкурировать за те же ядра.
+- Ошибки `invalid cpumask`, `invalid range`, `Start index out of bounds` или `End index out of bounds` означают, что аргумент не прошел парсер `parse_cpu_mask()`/`parse_cpu_range()`.
+- Предупреждения `failed to set affinity` или `failed to set thread priority` печатает CPU backend, когда ОС не разрешила affinity/scheduler policy или CPU index отсутствует в доступном cpuset.
+- Для проверки фактических значений смотрите строку `system_info: n_threads = ...`; для HTTP-пула отдельно печатается `using N threads for HTTP server`.
+
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --cpu-mask-batch value
+llama-server --model /models/model.gguf --cpu-mask-batch 0xff --threads 8
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --cpu-mask-batch 0x0f --cpu-strict 1
+```
 
-## Что проверить агенту перед переводом в current
+```ini
+[*]
+cpu-mask-batch = 0xff
+```
 
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--cpu-mask-batch&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--cpu-mask-batch
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--cpu-mask-batch
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление аргумента, help-текст, обработчик CLI и env.
+- `/home/maxim/llama/llama.cpp/common/common.h` - поля `common_params` и `common_cpu_params`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp` - постобработка CPU-параметров, парсинг CPU mask/range, перенос в `llama_context_params` и `ggml_threadpool_params`.
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp` и `tools/server/server-context.cpp` - применение параметров при старте `llama-server` и загрузке модели.
+- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity, strict CPU placement, thread priority и polling в CPU backend.

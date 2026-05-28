@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--yarn-ext-factor"
 title: "--yarn-ext-factor"
-summary: "Черновая инженерная справка по --yarn-ext-factor из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Настраивает YaRN extrapolation mix factor. Значение по умолчанию `-1` означает auto: для `--rope-scaling yarn` llama.cpp использует `1.0`, для остальных режимов `0.0`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"
@@ -14,16 +14,21 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_YARN_EXT_FACTOR"
-related: []
+related:
+  - "--rope-scaling"
+  - "--rope-scale"
+  - "--rope-freq-scale"
+  - "--yarn-attn-factor"
+  - "--yarn-orig-ctx"
 ---
 
 # --yarn-ext-factor
 
 ## Кратко
 
-Черновая инженерная справка по --yarn-ext-factor из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--yarn-ext-factor` управляет долей YaRN extrapolation. Это float-параметр, который передается в `llama_context_params::yarn_ext_factor`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Значение `-1` в defaults не является рабочим коэффициентом, а означает "не задано". При создании контекста llama.cpp заменяет его на `1.0`, если выбран `--rope-scaling yarn`, и на `0.0` для остальных типов scaling.
 
 ## Оригинальная справка llama.cpp
 
@@ -36,71 +41,73 @@ YaRN: extrapolation mix factor (default: -1.00, 0.0 = full interpolation)
 - Основное имя: `--yarn-ext-factor`
 - Алиасы: `--yarn-ext-factor`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_YARN_EXT_FACTOR`
-- Значение по умолчанию из `--help`: `-1.00, 0.0 = full interpolation`
+- Тип значения в llama-manager: `number`
+- Формат: число, передаваемое в `std::stof`
+- Переменная окружения: `LLAMA_ARG_YARN_EXT_FACTOR`
+- Поле в `common_params`: `yarn_ext_factor`
+- Этап применения: создание `llama_context`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common/arg.cpp` значение записывается в `params.yarn_ext_factor`. В `src/llama-context.cpp` отрицательное значение трактуется как unset. Если после этого `yarn_ext_factor != 0`, контекст выполняет YaRN-ветку расчета attention magnitude и может автоматически вычислить `yarn_attn_factor`.
 
-Для точного описания механики нужно проверить:
+При `0.0` YaRN extrapolation отключается в этой ветке: справка описывает это как full interpolation.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `-1`: auto/unset, default llama.cpp.
+- `0.0`: full interpolation.
+- `1.0`: обычная полная extrapolation для `--rope-scaling yarn`.
+- Другие float-значения используйте только по проверенному рецепту модели.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Когда long-context рецепт модели явно указывает YaRN ext factor.
+- Когда нужно отключить YaRN extrapolation, оставив другие параметры для сравнения: `--yarn-ext-factor 0`.
+- Когда metadata модели неполные, но известна корректная YaRN-конфигурация.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память почти не меняется. Влияние проявляется в качестве и устойчивости на длинных позициях. При `yarn_ext_factor != 0` в `llama-context.cpp` дополнительно пересчитывается attention factor, что видно в warning-логе `setting new yarn_attn_factor`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--rope-scaling yarn` меняет auto-default `-1` на `1.0`.
+- `--rope-scale` или `--rope-freq-scale` задают factor, от которого зависит автоматический расчет `yarn_attn_factor`.
+- Явный `--yarn-attn-factor` может быть перезаписан в YaRN-ветке, если `yarn_ext_factor != 0`, потому что код пересчитывает `cparams.yarn_attn_factor`.
+- `--yarn-orig-ctx` задает исходную длину контекста для YaRN.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[my-yarn-model]
+rope-scaling = yarn
+rope-scale = 4
+yarn-ext-factor = 1
+```
 
-## Типовые проблемы
+В router mode параметр может быть per-model настройкой в `--models-preset`.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `--rope-scaling yarn` задан, но поведение похоже на interpolation: проверьте, не стоит ли `yarn-ext-factor = 0`.
+- В логах появляется `setting new yarn_attn_factor`: это ожидаемо при `yarn_ext_factor != 0`.
+- Нестабильное качество на длинном контексте: сравните `0`, `1` и default `-1` только при фиксированных `--ctx-size` и `--rope-scale`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --yarn-ext-factor 1
+llama-server --model /models/model.gguf --ctx-size 32768 --rope-scaling yarn --rope-scale 4 --yarn-ext-factor 1
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --ctx-size 32768 --rope-scaling yarn --rope-scale 4 --yarn-ext-factor 0
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--yarn-ext-factor&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--yarn-ext-factor
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--yarn-ext-factor
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

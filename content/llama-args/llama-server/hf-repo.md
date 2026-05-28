@@ -2,13 +2,13 @@
 schema: 1
 primaryName: "--hf-repo"
 title: "--hf-repo"
-summary: "Черновая инженерная справка по --hf-repo из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Выбирает основной GGUF из Hugging Face repo в формате `<user>/<model>[:quant]`. Downloader использует HF cache, умеет split GGUF и автоматически подбирает `mmproj`, если он найден и не отключен."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "list"
-valueHint: ", <user>/<model>[:quant]"
+valueType: "string"
+valueHint: "<user>/<model>[:quant]"
 aliases:
   - "-hf"
   - "-hfr"
@@ -16,21 +16,31 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_HF_REPO"
-related: []
+related:
+  - "--hf-file"
+  - "--hf-token"
+  - "--offline"
+  - "--cache-list"
+  - "--mmproj-auto"
+  - "--mmproj"
+  - "--model"
 ---
 
 # --hf-repo
 
 ## Кратко
 
-Черновая инженерная справка по --hf-repo из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--hf-repo` задает Hugging Face repository для основной модели. Значение записывается в `common_params.model.hf_repo` и должно иметь формат `<user>/<model>[:quant]`, например `ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+При загрузке llama.cpp строит план скачивания: получает список файлов репозитория, выбирает GGUF по `--hf-file` или quant tag, скачивает все части split GGUF, а для server/mtmd автоматически ищет соседний `mmproj`, если `--no-mmproj` не задан.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-Hugging Face model repository; quant is optional, case-insensitive, default to Q4_K_M, or falls back to the first file in the repo if Q4_K_M doesn't exist. mmproj is also downloaded automatically if available. to disable, add --no-mmproj example: ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M (default: unused)
+Hugging Face model repository; quant is optional, case-insensitive, default to Q4_K_M, or falls back to the first file in the repo if Q4_K_M doesn't exist.
+mmproj is also downloaded automatically if available. to disable, add --no-mmproj
+example: ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M
+(default: unused)
 ```
 
 ## Паспорт аргумента
@@ -38,71 +48,89 @@ Hugging Face model repository; quant is optional, case-insensitive, default to Q
 - Основное имя: `--hf-repo`
 - Алиасы: `-hf`, `-hfr`, `--hf-repo`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `, <user>/<model>[:quant]`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `string`
+- Подсказка формата из `--help`: `<user>/<model>[:quant]`
 - Переменные окружения: `LLAMA_ARG_HF_REPO`
-- Значение по умолчанию из `--help`: `unused`
+- Значение по умолчанию: не используется
+- Внутреннее поле: `common_params.model.hf_repo`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+`common_download_split_repo_tag()` разбирает строку на repo и optional tag. Repo обязан состоять ровно из двух частей `owner/name`; иначе выбрасывается ошибка `invalid HF repo format, expected <user>/<model>[:quant]`.
 
-Для точного описания механики нужно проверить:
+Если `--hf-file` не задан, downloader выбирает модель так:
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- если quant tag указан после `:`, ищет GGUF, имя которого содержит этот tag перед `.` или `-`, без учета регистра;
+- если tag не указан, пробует `Q4_K_M`, затем `Q8_0`;
+- если этих quant нет, берет первый доступный GGUF, кроме `mmproj`, `imatrix` и `mtp-`;
+- для split GGUF выбирает shard `00001` и автоматически добавляет остальные shard-файлы с тем же prefix/count.
+
+После скачивания `model.name` становится исходным HF repo, а `model.path` - локальным путем в HF cache. Если найден `mmproj` и `--mmproj`/`--mmproj-url` не заданы, `params.mmproj.path` заполняется автоматически, пока `--no-mmproj` не отключает это поведение.
+
+## Значения и формат
+
+Формат: `<user>/<model>[:quant]`.
+
+- `ggml-org/gemma-3-4b-it-GGUF` - repo без quant, выбор по умолчанию;
+- `ggml-org/gemma-3-4b-it-GGUF:Q8_0` - repo с quant tag;
+- `:latest` имеет особый смысл для remote `preset.ini`: в коде он переводится в секцию `default` при обработке удаленного пресета.
+
+`--hf-repo` не принимает URL. Для прямого URL используйте `--model-url`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте `--hf-repo`, когда модель опубликована как HF GGUF-репозиторий и вы хотите автоматический выбор quant, скачивание split-файлов и cache. Это предпочтительный вариант для HF-моделей по сравнению с прямым `--model-url`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для точного воспроизведения production-конфигурации лучше задавать либо quant tag, либо `--hf-file`, чтобы обновления состава repo не меняли выбранный файл неожиданно.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Первый старт может быть долгим из-за сетевого списка файлов и скачивания всех частей модели. После попадания в HF cache повторный старт использует локальные файлы. Размер выбранного quant напрямую влияет на RAM/VRAM, latency и максимальный `--ctx-size`.
+
+Автоматически найденный `mmproj` добавляет отдельную загрузку и память для multimodal projector.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--hf-file`: имеет приоритет над quant tag и выбирает конкретный файл внутри repo.
+- `--hf-token`: передается как bearer token для приватных/gated repo.
+- `--offline`: запрещает сетевой список файлов и скачивание; выбор идет только по локальному HF cache.
+- `--model`: если `--hf-file` пустой, значение `--model` переносится в `hf_file`.
+- `--mmproj-auto`/`--no-mmproj`: включает или отключает автоматическое использование найденного projector.
+- `--cache-list`: показывает repo:tag, найденные в HF cache, исключая `mmproj` и `mtp`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `hf-repo = owner/name:Q4_K_M`. По README router умеет искать модели в cache и рекомендует добавлять HF-модели в cache командой `llama-server -hf <user>/<model>:<tag>`, после чего router нужно перезапустить.
 
-## Типовые проблемы
+Некоторые аргументы контролируются router-ом и могут удаляться или перезаписываться при загрузке дочернего процесса; HF repo и model alias прямо приведены в README как такие параметры.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `invalid HF repo format`: строка не вида `owner/repo`.
+- `file '<name>' not found in repository`: `--hf-file` не совпадает с путем файла в repo.
+- `no GGUF files found in repository`: repo не содержит подходящих GGUF или cache пустой в offline-режиме.
+- В логах `Available GGUF files:`: используйте список для выбора корректного `--hf-file`.
+- Multimodal не работает: проверьте, найден ли `mmproj`, не задан ли `--no-mmproj`, и есть ли строка `loaded multimodal model`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --hf-repo value1,value2
+llama-server --hf-repo ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0 --no-mmproj
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[glm_flash_q4]
+hf-repo = ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M
+ctx-size = 8192
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--hf-repo&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--hf-repo
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--hf-repo
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.h`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

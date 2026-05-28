@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--repeat-last-n"
 title: "--repeat-last-n"
-summary: "Черновая инженерная справка по --repeat-last-n из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает размер окна предыдущих токенов, по которому llama-server считает обычные repeat/frequency/presence penalties. `0` отключает это окно, `-1` разворачивается до размера контекста слота."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,20 @@ aliases:
   - "--repeat-last-n"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--repeat-penalty"
+  - "--presence-penalty"
+  - "--frequency-penalty"
+  - "--samplers"
 ---
 
 # --repeat-last-n
 
 ## Кратко
 
-Черновая инженерная справка по --repeat-last-n из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--repeat-last-n` управляет тем, сколько последних токенов учитывать в сэмплере `penalties`. Это не длина ответа и не размер контекста модели, а окно истории для штрафов повторения.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Значение по умолчанию: `64`. `0` отключает применение penalties по истории. `-1` означает "размер контекста": в server task оно заменяется на `n_ctx_slot`.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,72 +38,92 @@ last n tokens to consider for penalize (default: 64, 0 = disabled, -1 = ctx_size
 
 - Основное имя: `--repeat-last-n`
 - Алиасы: `--repeat-last-n`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `64, 0 = disabled, -1 = ctx_size`
+- Тип CLI-значения: целое число `N`
+- Поле в `common_params_sampling`: `penalty_last_n`
+- HTTP-поле для `/completion` и совместимых server routes: `repeat_last_n`
+- Значение по умолчанию в `common.h`: `64`
+- Проверка CLI: значение меньше `-1` отклоняется как `invalid repeat-last-n`
+- Проверка HTTP task: значение меньше `-1` отклоняется как `Error: repeat_last_n must be >= -1`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При старте CLI-парсер записывает значение в `params.sampling.penalty_last_n`. При обработке HTTP-запроса `tools/server/server-task.cpp` может переопределить его из JSON-поля `repeat_last_n`; если в запросе поля нет, используется серверный default, полученный из CLI.
 
-Для точного описания механики нужно проверить:
+Сэмплер создается для конкретной задачи/слота в `common_sampler_init`. Если `--mirostat 0`, цепочка сэмплеров по умолчанию начинается с `penalties`, затем идет `dry`, затем `top_k`/`top_p`/`min_p`/`temperature` и другие фильтры. Для `penalties` llama.cpp вызывает `llama_sampler_init_penalties(params.penalty_last_n, params.penalty_repeat, params.penalty_freq, params.penalty_present)`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Дополнительно CLI-обработчик поднимает `params.sampling.n_prev` как минимум до `penalty_last_n`. Это нужно для локального ring buffer предыдущих токенов, который пополняется в `common_sampler_accept`.
+
+## Значения и формат
+
+- `64`: default, небольшой локальный контроль повторов.
+- `0`: отключает окно penalties. На практике это выключает эффект `--repeat-penalty`, `--presence-penalty` и `--frequency-penalty`, даже если их коэффициенты заданы.
+- `-1`: использовать размер контекста слота. В server task значение заменяется на `n_ctx_slot`.
+- Положительное число: проверять не больше указанного числа последних токенов.
+- Меньше `-1`: ошибка на CLI или при разборе HTTP task.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Увеличивайте `--repeat-last-n`, если модель зацикливается на фразах, списках или одинаковых абзацах через расстояние больше 64 токенов. Уменьшайте значение, если ответы становятся слишком осторожными, модель избегает нужной терминологии или плохо повторяет имена, ключи JSON и кодовые идентификаторы.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для длинных творческих ответов часто полезно окно больше `64`. Для кода, JSON и задач с обязательными повторяющимися ключами слишком большое окно может мешать.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Параметр не меняет KV-cache, RAM под модель или VRAM. Он влияет на CPU-side sampling: чем больше окно, тем больше история, которую должен учитывать penalties sampler. Обычно это малая часть latency по сравнению с eval модели, но при очень большом окне, большом vocab и высокой конкуренции слотов overhead может стать заметен.
+
+`-1` в сервере равен контексту слота, а не обязательно полному контексту модели. При большом `--ctx-size` и `--parallel` это может означать большое окно для каждого активного слота.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--repeat-penalty`, `--presence-penalty`, `--frequency-penalty`: коэффициенты штрафа, которые работают внутри окна `--repeat-last-n`.
+- `--samplers`: если из цепочки убрать `penalties`, этот аргумент не будет влиять на sampling.
+- `--mirostat`: при `--mirostat 1` или `--mirostat 2` обычная цепочка `params.samplers` не используется, поэтому `penalties` из default chain не добавляется.
+- `--ctx-size` и `--parallel`: определяют `n_ctx_slot`, которым сервер заменяет `repeat_last_n = -1`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Аргумент помечен как sampling option через `set_sampling()`, поэтому он допустим в `--models-preset`; `common/preset.cpp` автоматически разрешает sampling-параметры даже для remote preset whitelist. В INI используйте ключ без ведущих дефисов:
 
-## Типовые проблемы
+```ini
+[model.default]
+repeat-last-n = 128
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В router/model-preset сценарии это default для процесса с конкретной моделью. Клиентский JSON-запрос с `repeat_last_n` может переопределить его для отдельной генерации.
+
+## Типовые проблемы и диагностика
+
+- Ошибка старта с `invalid repeat-last-n`: передано число меньше `-1`.
+- Ошибка HTTP-запроса `repeat_last_n must be >= -1`: клиент отправил недопустимое JSON-значение.
+- Параметр не меняет поведение: проверьте, что в `--samplers` есть `penalties` и что `--mirostat` равен `0`.
+- Повторы все еще есть: увеличивайте не только окно, но и сами коэффициенты `--repeat-penalty`, `--presence-penalty` или `--frequency-penalty`.
+
+В trace/debug логах полезна строка `sampler params`, где печатается `repeat_last_n`, `repeat_penalty`, `frequency_penalty` и `presence_penalty`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --repeat-last-n 1
+llama-server --model /models/model.gguf --repeat-last-n 128 --repeat-penalty 1.08
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --ctx-size 8192 --repeat-last-n -1 --repeat-penalty 1.05
+```
 
-## Что проверить агенту перед переводом в current
+Пример per-request override:
 
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "prompt": "Напиши краткое резюме",
+  "repeat_last_n": 256,
+  "repeat_penalty": 1.08
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--repeat-last-n&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--repeat-last-n
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--repeat-last-n
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--repeat-last-n`, проверка CLI и `set_sampling()`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: default `penalty_last_n = 64` и default цепочка `samplers`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: создание `llama_sampler_init_penalties` и печать sampler params.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `repeat_last_n`, проверка `>= -1`, замена `-1` на `n_ctx_slot`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и описание request-параметра `repeat_last_n`.

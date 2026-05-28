@@ -2,17 +2,17 @@
 schema: 1
 primaryName: "--spec-draft-type-k"
 title: "--spec-draft-type-k"
-summary: "Черновая инженерная справка по --spec-draft-type-k из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает тип данных K-части KV-cache для draft-модели или MTP draft-контекста. Квантованные типы уменьшают память draft-контекста, но могут менять скорость и acceptance."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "enum"
-valueHint: ","
+valueHint: "TYPE"
 aliases:
   - "--spec-draft-type-k"
   - "-ctkd"
-  - "--cache-type"
+  - "--cache-type-k-draft"
 allowedValues:
   - "f32"
   - "f16"
@@ -25,93 +25,83 @@ allowedValues:
   - "q5_1"
 env:
   - "LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_K"
-related: []
+related:
+  - "--cache-type-k"
+  - "--spec-draft-type-v"
+  - "--spec-draft-model"
+  - "--spec-draft-ngl"
+  - "--spec-type"
 ---
 
 # --spec-draft-type-k
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-type-k из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-type-k` задает тип хранения key tensor в KV-cache draft-контекста. Значение записывается в `common_params.speculative.draft.cache_type_k`, затем копируется в `params_dft.cache_type_k` для отдельной draft-модели или в `cparams_mtp.type_k` для MTP-контекста.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+По умолчанию используется `f16`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
--k-draft TYPE KV cache data type for K for the draft model allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1 (default: f16)
+KV cache data type for K for the draft model
+allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1 (default: f16)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-type-k`
-- Алиасы: `--spec-draft-type-k`, `-ctkd`, `--cache-type`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `enum` (одно значение из фиксированного набора)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `f32`, `f16`, `bf16`, `q8_0`, `q4_0`, `q4_1`, `iq4_nl`, `q5_0`, `q5_1`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_K`
-- Значение по умолчанию из `--help`: `f16`
+- Алиасы: `--spec-draft-type-k`, `-ctkd`, `--cache-type-k-draft`
+- Структура llama.cpp: `common_params.speculative.draft.cache_type_k`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_K`
+- Значение по умолчанию: `f16`
+- Ошибка для неизвестного значения: `Unsupported cache type: ...`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При создании draft-контекста тип K передается в `llama_context_params::type_k`. Это влияет на память KV-cache draft-модели, а не на KV-cache target-модели. Target управляется отдельным `--cache-type-k`.
 
-Для точного описания механики нужно проверить:
+Для `--spec-type draft-mtp` без отдельной draft-модели этот параметр все равно применяется: сервер создает MTP context against target model и выставляет `cparams_mtp.type_k`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Допустимы только строки из списка `f32`, `f16`, `bf16`, `q8_0`, `q4_0`, `q4_1`, `iq4_nl`, `q5_0`, `q5_1`. Регистр должен совпадать с `ggml_type_name()`, используйте lowercase как в help.
 
 ## Когда использовать
 
-- Перечисления лучше показывать в UI как явный список допустимых значений.
-- После обновления llama.cpp список значений нужно сверять заново: новые backend-режимы часто добавляются без обратной совместимости на уровне UI.
+Оставляйте `f16`, если draft KV-cache не является главным потребителем памяти. Переходите на `q8_0` или более компактные типы, когда draft/MTP контекст мешает разместить target-модель или большой `--parallel`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Меняйте K и V типы вместе только после проверки качества и скорости: разные backend могут по-разному ускорять или замедлять квантованный KV.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Квантованные типы уменьшают память draft KV-cache, но могут добавить конвертации или снизить точность draft logits. Если acceptance падает, общий throughput может ухудшиться даже при меньшей памяти.
+
+Смотрите логи speculative init: `cache_k=...` и строку `[spec] estimated memory usage ...` при включенном fit.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-type-v` задает V-часть того же draft KV-cache. `--ctx-size` и `--parallel` косвенно увеличивают объем draft KV-cache. `--cache-type-k` не заменяет этот аргумент для draft-контекста.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `spec-draft-type-k = q8_0` или `cache-type-k-draft = q8_0`. Для preset с MTP это имеет смысл даже без `model-draft`.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `Unsupported cache type`: значение не входит в список или указан неверный регистр.
+- OOM сохраняется: уменьшите также `--spec-draft-type-v`, `--spec-draft-ngl`, `--parallel` или context size.
+- Acceptance просела после квантования KV: верните `f16` и сравните `draft acceptance`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-type-k f32
+llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf --spec-draft-type-k q8_0 --spec-draft-type-v q8_0
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-type-k&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-type-k
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-type-k
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

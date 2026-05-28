@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--cache-ram"
 title: "--cache-ram"
-summary: "Черновая инженерная справка по --cache-ram из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Лимит RAM-cache для сериализованных prompt states. `0` отключает, `-1` снимает лимит, по умолчанию 8192 MiB."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"
@@ -16,101 +16,90 @@ allowedValues: []
 env:
   - "LLAMA_ARG_CACHE_RAM"
 related:
-  - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
-  - "--ctx-size"
-  - "--parallel"
+  - "--cache-idle-slots"
+  - "--cache-prompt"
+  - "--ctx-checkpoints"
+  - "--kv-unified"
 ---
 
 # --cache-ram
 
 ## Кратко
 
-Черновая инженерная справка по --cache-ram из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--cache-ram` задает `common_params::cache_ram_mib`: лимит RAM для `server_prompt_cache`, который хранит serialized sequence states и checkpoints для prompt reuse между слотами/вытеснениями.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это не размер KV-cache в VRAM. Это дополнительный RAM-уровень prompt cache.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 - disable)[(more info)](https://github.com/ggml-org/llama.cpp/pull/16391)
+set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 - disable)
+[(more info)](https://github.com/ggml-org/llama.cpp/pull/16391)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--cache-ram`
 - Алиасы: `-cram`, `--cache-ram`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_CACHE_RAM`
-- Значение по умолчанию из `--help`: `8192, -1 - no limit, 0 - disable`
+- Значение по умолчанию: `8192`
+- Специальные значения: `-1` без лимита, `0` выключить
+- Переменная окружения: `LLAMA_ARG_CACHE_RAM`
+- Поле llama.cpp: `common_params::cache_ram_mib`
+- Этап применения: инициализация server context
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Если значение не `0`, сервер создает `server_prompt_cache(limit_mib, n_ctx)` и пишет `prompt cache is enabled, size limit: ...`. Если `0`, пишет `prompt cache is disabled - use --cache-ram N to enable it`.
 
-Для точного описания механики нужно проверить:
+Cache хранит prompt states в RAM; при превышении лимита удаляются старые entries, но код всегда оставляет хотя бы один state.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `0`: отключить RAM prompt cache.
+- `-1`: без лимита по MiB.
+- `N > 0`: лимит в MiB.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Оставляйте включенным, если используете несколько слотов, `--cache-idle-slots` или часто переключаете похожие длинные prompts. Отключайте на машинах с малым RAM или когда важнее предсказуемое потребление памяти.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+`-1` безопасен только на контролируемом сервере с внешними лимитами процесса/container.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+Может заметно ускорить возврат к старым prompt states, но потребляет системную RAM пропорционально размеру сериализованных states. При `bad_alloc` код уменьшает limit примерно до 40% текущего размера и вызывает cleanup.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--cache-idle-slots`: требует включенный `--cache-ram`.
+- `--kv-unified`: вместе с `--cache-idle-slots` позволяет чистить idle slots, освобождая KV.
+- `--ctx-checkpoints`: checkpoints сохраняются вместе с prompt state.
+- `--parallel`: больше слотов повышает шанс вытеснений и пользу RAM-cache.
 
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--parallel`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `cache-ram = 4096` или `LLAMA_ARG_CACHE_RAM`. В router-режиме применяется к дочернему процессу модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Логи `prompt cache is enabled/disabled` показывают фактический режим.
+- Логи `cache state: ... prompts, ... MiB` показывают текущее заполнение.
+- При росте RSS уменьшайте `--cache-ram` или ставьте `--cache-ram 0`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --cache-ram 1
+llama-server --model /models/model.gguf --cache-ram 4096
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --cache-ram 0
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--cache-ram&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--cache-ram
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--cache-ram
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

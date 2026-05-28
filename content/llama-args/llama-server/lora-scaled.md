@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--lora-scaled"
 title: "--lora-scaled"
-summary: "LoRA-адаптеры с пользовательским scale в формате FNAME:SCALE."
-docStatus: draft
+summary: "Загружает LoRA adapter с явным scale в формате `FNAME:SCALE`. CSV-список позволяет добавить несколько adapters за один аргумент."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "path"
 valueHint: "FNAME:SCALE,..."
@@ -14,25 +14,22 @@ aliases:
 allowedValues: []
 env: []
 related:
-  - "--alias"
   - "--lora"
+  - "--lora-init-without-apply"
   - "--model"
-  - "--models-dir"
-  - "--models-preset"
 ---
 
 # --lora-scaled
 
 ## Кратко
 
-LoRA-адаптеры с пользовательским scale в формате FNAME:SCALE.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--lora-scaled` добавляет LoRA adapter с пользовательским scale. Каждый CSV-элемент должен иметь формат `FNAME:SCALE`; обработчик записывает `{ path = FNAME, scale = stof(SCALE) }` в `common_params.lora_adapters`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-path to LoRA adapter with user defined scaling (format: FNAME:SCALE,...) note: use comma-separated values
+path to LoRA adapter with user defined scaling (format: FNAME:SCALE,...)
+note: use comma-separated values
 ```
 
 ## Паспорт аргумента
@@ -40,75 +37,80 @@ path to LoRA adapter with user defined scaling (format: FNAME:SCALE,...) note: u
 - Основное имя: `--lora-scaled`
 - Алиасы: `--lora-scaled`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
+- Тип значения в llama-manager: `path`
 - Подсказка формата из `--help`: `FNAME:SCALE,...`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Переменные окружения: не указаны
+- Значение по умолчанию: adapters не загружаются
+- Внутреннее поле: `common_params.lora_adapters`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На парсинге каждый элемент делится по `:`. Если частей не ровно две, выбрасывается `lora-scaled format: FNAME:SCALE`. Scale преобразуется через `std::stof`.
 
-Для точного описания механики нужно проверить:
+Дальше adapter загружается и управляется так же, как `--lora`: через startup apply, `/lora-adapters` и per-request `lora`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Пример:
+
+```text
+--lora-scaled /srv/loras/domain.gguf:0.6
+```
+
+Несколько:
+
+```text
+--lora-scaled /srv/loras/a.gguf:0.5,/srv/loras/b.gguf:1.2
+```
+
+Так как разделитель scale - двоеточие, пути с двоеточием проблемны. На Windows это особенно важно для путей вида `C:\...`; для таких случаев безопаснее проверить фактический parser behavior или использовать пути без drive-colon в среде запуска.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
+Используйте `--lora-scaled`, когда adapter должен стартовать не с scale `1.0`: например, частичное смешивание доменного adapter или предзагрузка adapter с `0.0` для последующего включения API.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для простого scale `1.0` используйте `--lora`.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Память adapter загружается независимо от scale. Scale `0.0` отключает влияние adapter на результат, но сам adapter остается загруженным и доступным для runtime API.
+
+Разные scale в запросах могут мешать batching так же, как разные наборы LoRA.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--lora`: можно смешивать; порядок добавления определяет id adapters в `/lora-adapters`.
+- `--lora-init-without-apply`: может обнулить стартовое применение adapters, несмотря на заданный scale.
+- Request field `lora`: per-request scale может переопределить startup/global scale.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[scaled_lora]
+model = /srv/models/base.gguf
+lora-scaled = /srv/loras/domain.gguf:0.6
+```
 
-## Типовые проблемы
+В router-режиме учитывайте, что id adapter зависит от порядка, в котором adapters добавлены при запуске дочернего процесса.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `lora-scaled format: FNAME:SCALE`: нет двоеточия или их больше одного после CSV-разбора.
+- `std::stof` ошибка: scale не является числом.
+- Adapter имеет неожиданный id: проверьте порядок всех `--lora` и `--lora-scaled`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --lora-scaled /path/to/value
+llama-server --model /srv/models/base.gguf --lora-scaled /srv/loras/domain.gguf:0.7
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/base.gguf --lora-scaled /srv/loras/a.gguf:0.5,/srv/loras/b.gguf:1.1
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--lora-scaled&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--lora-scaled
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--lora-scaled
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

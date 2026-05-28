@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--dry-multiplier"
 title: "--dry-multiplier"
-summary: "Черновая инженерная справка по --dry-multiplier из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает и масштабирует DRY repetition penalty. Значение `0.0` отключает DRY, даже если остальные `--dry-*` параметры заданы."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,21 @@ aliases:
   - "--dry-multiplier"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--dry-base"
+  - "--dry-allowed-length"
+  - "--dry-penalty-last-n"
+  - "--dry-sequence-breaker"
+  - "--samplers"
 ---
 
 # --dry-multiplier
 
 ## Кратко
 
-Черновая инженерная справка по --dry-multiplier из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--dry-multiplier` задает силу DRY sampler. DRY означает "Don't Repeat Yourself": он штрафует токены, которые продолжают уже найденную повторяющуюся последовательность.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Default: `0.00`. При `0.0` DRY отключен по смыслу, хотя сам `dry` sampler остается в default цепочке.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,72 +39,86 @@ set DRY sampling multiplier (default: 0.00, 0.0 = disabled)
 
 - Основное имя: `--dry-multiplier`
 - Алиасы: `--dry-multiplier`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `0.00, 0.0 = disabled`
+- Тип CLI-значения: float `N`
+- Поле в `common_params_sampling`: `dry_multiplier`
+- HTTP-поле: `dry_multiplier`
+- Значение по умолчанию: `0.0`
+- CLI-парсер использует `std::stof`; отдельной проверки диапазона в `arg.cpp` нет.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Значение сохраняется в `params.sampling.dry_multiplier`. При инициализации sampler chain `common/sampling.cpp` вызывает `llama_sampler_init_dry(vocab, llama_model_n_ctx_train(model), dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, ...)`.
 
-Для точного описания механики нужно проверить:
+DRY находится после `penalties` и перед `top_k`/`top_p`/`min_p`/`temperature` в default `--samplers`. Значит, он меняет logits до вероятностных фильтров и до финального sampling.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `0.0`: disabled.
+- Положительное значение: включает DRY и масштабирует штраф.
+- Чем больше `--dry-multiplier`, тем сильнее подавляются продолжения повторяющихся последовательностей.
+- Практически меняйте вместе с `--dry-base`, `--dry-allowed-length` и `--dry-penalty-last-n`; один multiplier без понимания окна часто дает неожиданный результат.
+
+Формула из README для токенов, продолжающих повтор после допустимой длины: `multiplier * base ^ (length of repeating sequence before token - allowed length)`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Включайте DRY, если обычный `--repeat-penalty` недостаточно хорошо ловит длинные циклы: повтор абзаца, фразы, markdown-шаблона, куска кода или однотипных bullets. Для мягкого production default начинайте с небольшого положительного multiplier и коротких тестов на ваших prompt.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для задач, где повтор структуры обязателен, например JSON массив объектов или однотипные таблицы, DRY может быть слишком агрессивным.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+DRY не меняет KV-cache, RAM модели или VRAM. Он добавляет CPU-side работу в sampling и сканирует историю до `--dry-penalty-last-n`. Чем больше окно, тем выше потенциальный overhead на токен.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--dry-base`: задает экспоненциальный рост штрафа.
+- `--dry-allowed-length`: сколько токенов повтора разрешено до штрафа.
+- `--dry-penalty-last-n`: сколько истории сканировать.
+- `--dry-sequence-breaker`: задает границы, на которых DRY не продолжает матчить последовательность.
+- `--samplers`: должен содержать `dry`; default содержит его.
+- `--mirostat`: при `--mirostat 1/2` обычная цепочка `params.samplers`, включая `dry`, не используется.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--dry-multiplier` помечен как sampling option и разрешен в `--models-preset`.
 
-## Типовые проблемы
+```ini
+[model.default]
+dry-multiplier = 0.8
+dry-base = 1.75
+dry-allowed-length = 2
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Запрос с JSON-полем `dry_multiplier` переопределяет default процесса для конкретной генерации.
+
+## Типовые проблемы и диагностика
+
+- DRY не влияет: проверьте, что `dry_multiplier` больше `0`, в `--samplers` есть `dry`, а `--mirostat` выключен.
+- Модель ломает списки или JSON: уменьшите `--dry-multiplier`, увеличьте `--dry-allowed-length` или настройте sequence breakers.
+- Overhead sampling вырос: проверьте `--dry-penalty-last-n`, особенно если используется `-1`.
+
+В trace/debug логах строка `sampler params` печатает `dry_multiplier`, `dry_base`, `dry_allowed_length` и `dry_penalty_last_n`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --dry-multiplier 1
+llama-server --model /models/model.gguf --dry-multiplier 0.8 --dry-base 1.75 --dry-allowed-length 2
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```json
+{
+  "prompt": "Напиши длинный текст без зацикливания",
+  "dry_multiplier": 0.8,
+  "dry_base": 1.75,
+  "dry_allowed_length": 2
+}
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--dry-multiplier&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--dry-multiplier
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--dry-multiplier
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--dry-multiplier`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: defaults DRY и default `samplers`.
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поля `dry_*`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: формула и request-параметры DRY.

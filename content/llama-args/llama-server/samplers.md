@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--samplers"
 title: "--samplers"
-summary: "Черновая инженерная справка по --samplers из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Задает полный порядок sampler-ов по именам через `;`. В отличие от `--sampler-seq`, явно помечает sequence как пользовательскую настройку, поэтому GGUF metadata `general.sampling.sequence` не перезапишет ее при загрузке модели."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "string"
 valueHint: "SAMPLERS"
@@ -13,16 +13,20 @@ aliases:
   - "--samplers"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--sampler-seq"
+  - "--top-k"
+  - "--top-p"
+  - "--min-p"
+  - "--temp"
+  - "--adaptive-target"
 ---
 
 # --samplers
 
 ## Кратко
 
-Черновая инженерная справка по --samplers из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--samplers` задает sampler-цепочку по именам, разделенным `;`. Порядок важен: каждый sampler получает результат предыдущего. Если sampler не указан, он не применяется, даже если его числовой параметр задан.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +37,100 @@ samplers that will be used for generation in the order, separated by ';' (defaul
 ## Паспорт аргумента
 
 - Основное имя: `--samplers`
-- Алиасы: `--samplers`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `string` (строка)
-- Подсказка формата из `--help`: `SAMPLERS`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature`
+- Поле в `common_params`: `params.sampling.samplers`
+- HTTP-поле: `samplers`
+- CLI-разделитель: `;`
+- Дефолт: `penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-парсер делит строку по `;`, преобразует имена через `common_sampler_types_from_names(..., true)` и выставляет user sampling bit `COMMON_PARAMS_SAMPLING_CONFIG_SAMPLERS`. Поэтому sequence из metadata модели не заменит явно заданный `--samplers`.
 
-Для точного описания механики нужно проверить:
+После обхода указанной цепочки llama.cpp добавляет финальный sampler выбора токена: `dist` по умолчанию или `adaptive_p`, если он был указан в цепочке. При `--mirostat 1/2` обычная цепочка игнорируется и строится отдельная Mirostat-цепочка.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Канонические имена:
+
+- `penalties`
+- `dry`
+- `top_n_sigma`
+- `top_k`
+- `typ_p`
+- `top_p`
+- `min_p`
+- `xtc`
+- `temperature`
+- `infill`
+- `adaptive_p`
+
+CLI также принимает альтернативы: `top-k`, `top-p`, `top-n-sigma`, `nucleus`, `typical-p`, `typical`, `typ-p`, `typ`, `min-p`, `temp`, `adaptive-p`. Неизвестные имена не прерывают запуск, но логируются warning-ом и пропускаются.
+
+## HTTP API
+
+В JSON поле `samplers` работает иначе:
+
+- массив строк принимает только канонические имена (`allow_alt_names = false`);
+- строка трактуется как короткая sequence, как `--sampler-seq`;
+- если поле отсутствует, берется дефолт процесса.
+
+Пример массива:
+
+```json
+{"samplers": ["top_k", "top_p", "min_p", "temperature"]}
+```
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Чтобы полностью отключить конкретный sampler, удалите его из `--samplers`, а не только ставьте "disabled" значение.
+- Чтобы зафиксировать порядок и защититься от `general.sampling.sequence` в GGUF metadata, используйте `--samplers`, а не `--sampler-seq`.
+- Для `adaptive_p` явно добавьте `adaptive_p`; код все равно поставит его финальным sampler-ом.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память модели не меняется, но цепочка влияет на CPU/GPU стоимость sampling. `top_k`, `top_p`, `min_p` и `temperature` имеют backend implementations; `typical`, `xtc`, `top_n_sigma`, `adaptive_p`, penalties/DRY могут ограничивать эффективность `--backend-sampling`.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- Числовые параметры (`--top-k`, `--top-p`, `--temp` и т.д.) работают только если соответствующий sampler присутствует в цепочке.
+- `--sampler-seq` задает ту же структуру, но через символы и без user sampling bit.
+- `--mirostat` заменяет обычную цепочку.
+- `--backend-sampling` зависит от совместимости всей активной цепочки и условий запроса.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Ключ INI:
 
-## Типовые проблемы
+```ini
+[fixed-chain]
+samplers = penalties;dry;top_k;top_p;min_p;temperature
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Sampling options разрешены в `--models-preset`. В router-режиме preset модели может задать собственную цепочку; запросы могут заменить ее через `"samplers"`.
+
+## Типовые проблемы и диагностика
+
+- Параметр sampler-а задан, но не влияет: sampler отсутствует в цепочке.
+- Опечатка в имени sampler-а: ищите warning `unable to match sampler by name`.
+- `adaptive_p` в середине строки фактически будет применен в конце.
+- Trace-лог `sampler chain` показывает фактически собранную цепочку, включая `?sampler` для пустых/отключенных sampler-ов.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --samplers value
+llama-server --model /models/model.gguf --samplers "top_k;top_p;min_p;temperature"
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --samplers "penalties;dry;top_k;top_p;temperature;adaptive_p" --adaptive-target 0.2
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--samplers&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--samplers
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--samplers
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`
+- `/home/maxim/llama/llama.cpp/common/preset.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

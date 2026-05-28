@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--pooling"
 title: "--pooling"
-summary: "Черновая инженерная справка по --pooling из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Выбирает pooling strategy для embedding context: `none`, `mean`, `cls`, `last` или `rank`. Для OpenAI-compatible embeddings нужен pooled режим, для rerank используется `rank`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "enum"
 valueHint: "{none,mean,cls,last,rank}"
@@ -19,16 +19,19 @@ allowedValues:
   - "rank"
 env:
   - "LLAMA_ARG_POOLING"
-related: []
+related:
+  - "--embedding"
+  - "--rerank"
+  - "--embd-normalize"
 ---
 
 # --pooling
 
 ## Кратко
 
-Черновая инженерная справка по --pooling из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--pooling` записывает `common_params::pooling_type` и передается в `llama_context_params::pooling_type` при создании context. Значение определяет, как token-level embeddings превращаются в один vector на sequence.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Если не указано, используется model default (`LLAMA_POOLING_TYPE_UNSPECIFIED`).
 
 ## Оригинальная справка llama.cpp
 
@@ -39,73 +42,69 @@ pooling type for embeddings, use model default if unspecified
 ## Паспорт аргумента
 
 - Основное имя: `--pooling`
-- Алиасы: `--pooling`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `enum` (одно значение из фиксированного набора)
-- Подсказка формата из `--help`: `{none,mean,cls,last,rank}`
-- Допустимые значения из `--help`: `none`, `mean`, `cls`, `last`, `rank`
-- Переменные окружения: `LLAMA_ARG_POOLING`
-- Значение по умолчанию из `--help`: `не указано`
+- Значения: `none`, `mean`, `cls`, `last`, `rank`
+- Поле `common_params`: `pooling_type`
+- Переменная окружения: `LLAMA_ARG_POOLING`
+- Этап применения: создание llama context
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Для `/embedding` и `/v1/embeddings` server смотрит фактический `llama_pooling_type(ctx)`. Если pooling `none`, server возвращает token embeddings, но OpenAI-compatible endpoint отклоняет такой режим сообщением `Pooling type 'none' is not OAI compatible. Please use a different pooling type`.
 
-Для точного описания механики нужно проверить:
+Для `/reranking` требуется `params.embedding = true` и `params.pooling_type == LLAMA_POOLING_TYPE_RANK`. Флаг `--rerank` выставляет оба значения автоматически.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `none`: не объединять, вернуть embeddings по token positions.
+- `mean`: среднее по sequence.
+- `cls`: CLS pooling.
+- `last`: last-token pooling.
+- `rank`: ranking score/pooling для reranker models.
+
+Неизвестное значение приводит к `invalid value`.
 
 ## Когда использовать
 
-- Перечисления лучше показывать в UI как явный список допустимых значений.
-- После обновления llama.cpp список значений нужно сверять заново: новые backend-режимы часто добавляются без обратной совместимости на уровне UI.
+- `mean`, `cls`, `last`: embedding models, в зависимости от training/config модели.
+- `none`: диагностика token embeddings или non-OAI `/embedding`.
+- `rank`: reranker models и endpoint `/reranking`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для большинства dedicated embedding GGUF лучше начать с model default и менять только при явной рекомендации модели.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Pooling type влияет на форму результата и небольшой объем post-processing. `none` может вернуть много vectors на один input, что увеличит response size и память на ответ. `rank` меняет сценарий на reranking, где каждый документ становится отдельной задачей.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--embedding`: включает embedding context; без него endpoints embedding/rerank недоступны.
+- `--rerank`: shortcut для `--embedding --pooling rank`.
+- `--embd-normalize`: применяется только когда pooling не `none`.
+- `--batch-size` и `--ubatch-size`: важны для throughput embedding requests.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `pooling = mean` или другое значение. В router mode задавайте per-model, потому что pooling должен соответствовать архитектуре и training objective модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `/v1/embeddings` возвращает ошибку про `Pooling type 'none'`: задайте `--pooling mean`, `cls` или `last`.
+- `/reranking` возвращает `This server does not support reranking`: нужен `--rerank` или `--embedding --pooling rank`.
+- Reranking warning при старте про BOS/EOS/SEP/rerank prompt: модель/tokenizer не подходит для rank pooling.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --pooling none
+llama-server --model /models/embed.gguf --embedding --pooling mean
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/reranker.gguf --embedding --pooling rank
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--pooling&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--pooling
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--pooling
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: parsing `--pooling`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: передача `pooling_type` в context и rerank warnings.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: embedding/rerank route checks.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: embedding и reranking endpoints.

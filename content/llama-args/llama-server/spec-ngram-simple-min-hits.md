@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-ngram-simple-min-hits"
 title: "--spec-ngram-simple-min-hits"
-summary: "Черновая инженерная справка по --spec-ngram-simple-min-hits из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Параметр парсится в `common_params.speculative.ngram_simple.min_hits`, но в текущем commit не влияет на алгоритм `ngram-simple`: runtime config передает только `size_n` и `size_m`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,20 @@ aliases:
   - "--spec-ngram-simple-min-hits"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-type"
+  - "--spec-ngram-simple-size-n"
+  - "--spec-ngram-simple-size-m"
+  - "--spec-ngram-map-k4v-min-hits"
 ---
 
 # --spec-ngram-simple-min-hits
 
 ## Кратко
 
-Черновая инженерная справка по --spec-ngram-simple-min-hits из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-ngram-simple-min-hits` существует в CLI и проходит проверку значения, но в проверенном commit `751ebd17a58a8a513994509214373bb9e6a3d66c` не используется при генерации `ngram-simple` drafts.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Причина в коде: `params.speculative.ngram_simple.min_hits` сохраняется и печатается в логе инициализации, но `common_ngram_simple_config` содержит только `size_ngram` и `size_mgram`; функция `common_ngram_simple_draft()` не получает `min_hits`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +37,57 @@ minimum hits for ngram-simple speculative decoding (default: 1)
 ## Паспорт аргумента
 
 - Основное имя: `--spec-ngram-simple-min-hits`
-- Алиасы: `--spec-ngram-simple-min-hits`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `1`
+- Алиасы: нет
+- Значение по умолчанию: `1`
+- CLI-ограничение: значение должно быть `>= 1`
+- Переменные окружения: нет
+- Внутреннее поле: `common_params.speculative.ngram_simple.min_hits`
+- Фактическое runtime-влияние в текущем commit: отсутствует для `ngram-simple`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На этапе парсинга аргумент меняет поле конфигурации и отображается в логе `adding speculative implementation 'ngram-simple'` строкой `min_hits=...`. Дальше это значение не участвует в поиске совпадения и не меняет, будет ли создан draft.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- Значения меньше `1` отклоняются с ошибкой `ngram min hits must be at least 1`.
+- Верхний предел в CLI-парсере не задан, но поле имеет тип `uint16_t`; не используйте значения выше `65535`.
+- Поскольку параметр не влияет на текущий `ngram-simple`, менять его для настройки качества бесполезно.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Для текущего `llama-server` не используйте этот параметр как tuning knob. Для порога повторяемости используйте `ngram-map-k4v` и `--spec-ngram-map-k4v-min-hits`, где проверка реально есть.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+В текущей реализации влияния нет: ни память, ни число черновиков `ngram-simple` от этого значения не меняются.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-ngram-simple-size-n` и `--spec-ngram-simple-size-m` реально управляют `ngram-simple`.
+- `--spec-type ngram-simple` нужен для запуска реализации.
+- `--spec-ngram-map-k-min-hits` тоже не применяется к draft decision в ветке `ngram-map-k` текущего кода; `--spec-ngram-map-k4v-min-hits` применяется.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Ключ можно записать в preset как `spec-ngram-simple-min-hits = 2`, но это только изменит сохраненное значение и лог. Практического эффекта на `ngram-simple` в текущем commit нет.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Если изменение этого параметра не меняет количество drafts, это ожидаемое поведение текущего кода.
+- Для проверки смотрите исходники `common_speculative_impl_ngram_simple` и `common_ngram_simple_config`.
+- Не используйте этот аргумент для публичной документации как рабочий фильтр качества без повторной сверки с новым commit llama.cpp.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-ngram-simple-min-hits 1
+llama-server --model /models/model.gguf --spec-type ngram-simple --spec-ngram-simple-size-n 12 --spec-ngram-simple-size-m 48
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-ngram-simple-min-hits&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-ngram-simple-min-hits
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-ngram-simple-min-hits
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.h`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.cpp`

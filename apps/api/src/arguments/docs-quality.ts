@@ -1,0 +1,173 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { argumentDocsDirectory, parseArgumentDocFile } from "./docs.js";
+
+const stalePatterns = [
+  /Этот файл создан автоматически/i,
+  /Перед переводом `docStatus`/i,
+  /Для точного описания механики нужно проверить/i,
+  /Что проверить агенту перед переводом/i,
+  /Автоматически связанные аргументы/i,
+  /\bTODO\b/i,
+];
+
+const requiredFrontmatter = [
+  "schema",
+  "primaryName",
+  "title",
+  "summary",
+  "docStatus",
+  "reviewedHelpHash",
+  "reviewedLlamaCppCommit",
+  "category",
+  "valueType",
+  "aliases",
+  "related",
+];
+
+type Issue = {
+  path: string;
+  severity: "error" | "warning";
+  message: string;
+};
+
+function hasFlag(name: string) {
+  return process.argv.includes(name);
+}
+
+function argValue(name: string) {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? null : process.argv[index + 1] ?? null;
+}
+
+function docFilesInDirectory() {
+  return readdirSync(argumentDocsDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) => name.endsWith(".md"))
+    .filter((name) => !name.startsWith("_") && name !== "README.md")
+    .map((name) => resolve(argumentDocsDirectory, name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function changedDocFiles() {
+  const root = resolve(argumentDocsDirectory, "..", "..", "..");
+  const output = execFileSync(
+    "git",
+    [
+      "diff",
+      "--name-only",
+      "--diff-filter=ACM",
+      "HEAD",
+      "--",
+      "content/llama-args/llama-server",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
+
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((path) => path.endsWith(".md"))
+    .filter((path) => !path.includes("/_") && !path.endsWith("/README.md"))
+    .map((path) => resolve(root, path))
+    .filter((path) => existsSync(path))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function inputFiles() {
+  const explicit = argValue("--file");
+  if (explicit) {
+    return [resolve(explicit)];
+  }
+  if (hasFlag("--changed")) {
+    return changedDocFiles();
+  }
+  return docFilesInDirectory();
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function lintFile(path: string) {
+  const issues: Issue[] = [];
+  const raw = readFileSync(path, "utf8");
+  const parsed = parseArgumentDocFile(raw);
+
+  for (const key of requiredFrontmatter) {
+    if (!(key in parsed.frontmatter)) {
+      issues.push({
+        path,
+        severity: "error",
+        message: `missing frontmatter field: ${key}`,
+      });
+    }
+  }
+
+  const status = stringValue(parsed.frontmatter.docStatus);
+  const summary = stringValue(parsed.frontmatter.summary);
+  const reviewedCommit = stringValue(parsed.frontmatter.reviewedLlamaCppCommit);
+
+  if (
+    !summary ||
+    /чернов(ая|ой|ое)\s+инженерн/i.test(summary) ||
+    /создан[а-я\s]+автоматически/i.test(summary)
+  ) {
+    issues.push({
+      path,
+      severity: "warning",
+      message: "summary is empty or still reads like a draft",
+    });
+  }
+
+  if (["current", "needs-review"].includes(status) && !reviewedCommit) {
+    issues.push({
+      path,
+      severity: "error",
+      message: `${status} doc must set reviewedLlamaCppCommit`,
+    });
+  }
+
+  for (const pattern of stalePatterns) {
+    if (pattern.test(raw)) {
+      issues.push({
+        path,
+        severity: status === "draft" ? "warning" : "error",
+        message: `stale generated text matched ${pattern}`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+const files = inputFiles();
+const issues = files.flatMap(lintFile);
+const errorCount = issues.filter((issue) => issue.severity === "error").length;
+const warningCount = issues.filter(
+  (issue) => issue.severity === "warning",
+).length;
+
+console.log(
+  JSON.stringify(
+    {
+      checked: files.length,
+      errors: errorCount,
+      warnings: warningCount,
+      issues,
+    },
+    null,
+    2,
+  ),
+);
+
+if (errorCount > 0 || (hasFlag("--strict") && warningCount > 0)) {
+  process.exitCode = 1;
+}

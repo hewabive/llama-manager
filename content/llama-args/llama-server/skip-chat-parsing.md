@@ -2,106 +2,103 @@
 schema: 1
 primaryName: "--skip-chat-parsing"
 title: "--skip-chat-parsing"
-summary: "Черновая инженерная справка по --skip-chat-parsing из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Принудительно использует pure content parser для chat responses. Formatting template остается, но reasoning и tool calls не извлекаются в отдельные поля."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
 aliases:
   - "--skip-chat-parsing"
-  - "--no-skip-chat-pars"
+  - "--no-skip-chat-parsing"
 allowedValues: []
 env:
   - "LLAMA_ARG_SKIP_CHAT_PARSING"
-related: []
+related:
+  - "--chat-template"
+  - "--jinja"
+  - "--reasoning-format"
+  - "--tools"
 ---
 
 # --skip-chat-parsing
 
 ## Кратко
 
-Черновая инженерная справка по --skip-chat-parsing из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--skip-chat-parsing` записывает `common_params::force_pure_content_parser = true`. В Jinja path template все еще применяется к входным messages, но parser ответа строится как `content(rest())`: все generated text возвращается как обычный content.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Используйте как диагностический или compatibility режим, когда autoparser/tool parser ломает ответы модели.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ing force a pure content parser, even if a Jinja template is specified; model will output everything in the content section, including any reasoning and/or tool calls (default: disabled)
+force a pure content parser, even if a Jinja template is specified; model will output everything in the content section, including any reasoning and/or tool calls (default: disabled)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--skip-chat-parsing`
-- Алиасы: `--skip-chat-parsing`, `--no-skip-chat-pars`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SKIP_CHAT_PARSING`
-- Значение по умолчанию из `--help`: `disabled`
+- Отрицательная форма: `--no-skip-chat-parsing`
+- Поле `common_params`: `force_pure_content_parser`
+- Переменная окружения: `LLAMA_ARG_SKIP_CHAT_PARSING`
+- По умолчанию: disabled
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common_chat_templates_apply_jinja()` при `inputs.force_pure_content` server логирует warning `Forcing pure content template, will not render reasoning or tools separately.` Затем он строит prompt обычным template rendering, но возвращает `COMMON_CHAT_FORMAT_PEG_NATIVE` parser, который берет весь остаток после generation prompt как content.
 
-Для точного описания механики нужно проверить:
+Это не отключает chat template и не отключает generation prompt. Оно отключает структурное извлечение reasoning/tool calls из ответа.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Boolean-pair:
+
+- `--skip-chat-parsing`: включить pure content parser;
+- `--no-skip-chat-parsing`: выключить и вернуться к parser по template.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
+- Template корректно форматирует prompt, но automatic parser падает.
+- Модель генерирует нестандартный tool call формат, который лучше обработать на стороне клиента.
+- Нужно временно вернуть старое поведение, где весь ответ находится в `content`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте для production tool calling, если клиент ожидает structured `tool_calls`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Может немного снизить CPU post-processing, потому что parser проще. На inference, KV-cache и память модели не влияет. Косвенно может увеличить клиентскую нагрузку: parsing reasoning/tool calls придется делать снаружи.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--reasoning-format`: фактически нейтрализуется для структурного вывода; reasoning останется в content.
+- `--tools`: tool schemas могут быть включены в prompt, но tool calls не будут вынесены в отдельные поля.
+- `--chat-template` и `--jinja`: formatting сохраняется.
+- `--reasoning-budget`: budget sampler может продолжать работать, если template дал thinking tags.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `skip-chat-parsing = true` или отрицательную форму `no-skip-chat-parsing = true`. Для router mode задавайте только тем моделям, чей template/parser проблемен.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Клиент перестал получать `tool_calls`: это ожидаемо при включенном `--skip-chat-parsing`.
+- `reasoning_content` пустой, а `<think>` виден в `content`: pure content parser включен.
+- В логе есть warning `Forcing pure content template`: режим активен.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --skip-chat-parsing true
+llama-server --model /models/model.gguf --skip-chat-parsing
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-skip-chat-parsing
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--skip-chat-parsing&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--skip-chat-parsing
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--skip-chat-parsing
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `force_pure_content_parser`.
+- `/home/maxim/llama/llama.cpp/common/chat.cpp`: branch `inputs.force_pure_content`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: передача в `chat_params`.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание аргумента.

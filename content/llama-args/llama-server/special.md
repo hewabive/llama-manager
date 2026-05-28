@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--special"
 title: "--special"
-summary: "Черновая инженерная справка по --special из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Разрешает вывод special/control tokens как текста при detokenization. Полезно для диагностики templates и token streams, но обычно не нужно для публичного API."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -14,16 +14,18 @@ aliases:
   - "--special"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--chat-template"
+  - "--reverse-prompt"
 ---
 
 # --special
 
 ## Кратко
 
-Черновая инженерная справка по --special из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--special` ставит `common_params::special = true`. В server detokenization это разрешает отображать special/control tokens, вместо того чтобы скрывать их как служебные.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Для обычного chat/completions API оставляйте default `false`, иначе клиенты могут увидеть токены вроде BOS/EOS/FIM/chat markers.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +36,65 @@ special tokens output enabled (default: false)
 ## Паспорт аргумента
 
 - Основное имя: `--special`
-- Алиасы: `-sp`, `--special`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `false`
+- Алиас: `-sp`
+- Тип: флаг без значения
+- Поле `common_params`: `special`
+- По умолчанию: `false`
+- Env: не задан
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В generation loop server вызывает `common_token_to_piece(..., special)` и `common_detokenize(..., special)`. При `params_base.special = true` special tokens могут попасть в `text_to_send`, token probabilities и detokenized output.
 
-Для точного описания механики нужно проверить:
+Для некоторых preserved tokens server может вывести special token даже при default, если token нужен grammar/parser логике; `--special` расширяет это поведение глобально.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Это флаг без отдельного значения:
+
+```bash
+llama-server --model /models/model.gguf --special
+```
+
+Отрицательной формы в `arg.cpp` для этого аргумента нет.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+- Диагностика chat template, stop tokens и tokenizer behavior.
+- Проверка, какие FIM/chat/control markers реально генерирует модель.
+- Локальные эксперименты с low-level completions.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не включайте по умолчанию для OpenAI-compatible публичного endpoint: clients обычно ожидают user-visible text без control tokens.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На inference и память не влияет. Может увеличить размер HTTP response, если модель генерирует много служебных tokens.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--chat-template`: special tokens часто являются частью template delimiters.
+- `--reverse-prompt`: если stop sequence содержит special token textual form, включенный `--special` помогает увидеть диагностику, но не обязателен для stop tokenization.
+- `/tokenize` request fields `add_special` и `parse_special` независимы от этого флага.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI пишите `special = true`. В router mode включайте только для диагностической модели/alias, чтобы не менять output contract всех клиентов.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- В ответе появились `<s>`, `</s>`, `<|...|>`: включен `--special` или модель генерирует textual markers как обычный текст.
+- Stop sequence не виден в ответе: stop tokens могут быть отфильтрованы до отправки; проверяйте verbose/token logs.
+- Клиентский JSON parser не ломается от `--special`, но downstream logic может не ожидать control markers.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --special
+llama-server --model /models/model.gguf --special --verbose
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--special&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--special
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--special
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--special`.
+- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::special`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: detokenization helpers.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: token output path.

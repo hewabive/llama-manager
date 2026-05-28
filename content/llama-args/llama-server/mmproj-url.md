@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--mmproj-url"
 title: "--mmproj-url"
-summary: "Черновая инженерная справка по --mmproj-url из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Скачивает multimodal projector по прямому URL и затем использует локальную копию как `--mmproj`. Для строгого воспроизведения лучше закреплять локальный путь через `--mmproj`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "URL"
@@ -16,20 +16,20 @@ allowedValues: []
 env:
   - "LLAMA_ARG_MMPROJ_URL"
 related:
-  - "--alias"
-  - "--lora"
-  - "--model"
-  - "--models-dir"
-  - "--models-preset"
+  - "--mmproj"
+  - "--mmproj-auto"
+  - "--mmproj-offload"
+  - "--model-url"
+  - "--offline"
 ---
 
 # --mmproj-url
 
 ## Кратко
 
-Черновая инженерная справка по --mmproj-url из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--mmproj-url` задает прямой URL для скачивания multimodal projector. Значение записывается в `common_params.mmproj.url`; затем `common_params_handle_model(params.mmproj, ...)` скачивает файл и заполняет `mmproj.path`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Используйте этот аргумент только для одного прямого файла projector. Для HF repo с auto-поиском projector чаще достаточно `--hf-repo`.
 
 ## Оригинальная справка llama.cpp
 
@@ -42,75 +42,66 @@ URL to a multimodal projector file. see tools/mtmd/README.md
 - Основное имя: `--mmproj-url`
 - Алиасы: `-mmu`, `--mmproj-url`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `string` (строка)
+- Тип значения в llama-manager: `string`
 - Подсказка формата из `--help`: `URL`
-- Допустимые значения из `--help`: `не указаны`
 - Переменные окружения: `LLAMA_ARG_MMPROJ_URL`
-- Значение по умолчанию из `--help`: `не указано`
+- Значение по умолчанию: пусто
+- Внутреннее поле: `common_params.mmproj.url`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+`--mmproj-url` участвует в общем download pipeline для `common_params_model`. Если `mmproj.path` пустой, локальное имя берется из последнего сегмента URL после удаления query string и fragment. После успешного скачивания server загружает projector так же, как при явном `--mmproj`.
 
-Для точного описания механики нужно проверить:
+В отличие от `--hf-repo`, прямой URL не выполняет поиск совместимого projector и не проверяет repo-соседство с основной моделью.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Ожидается URL на GGUF projector. Если URL не заканчивается понятным именем файла или содержит signed query, лучше одновременно задать `--mmproj /abs/path/mmproj.gguf`, чтобы контролировать имя локальной копии.
 
 ## Когда использовать
 
-- Строковые параметры могут иметь неочевидный внутренний формат. Не считайте строку свободным текстом, пока не проверен парсер llama.cpp.
-- Для значений с пробелами и спецсимволами важно смотреть фактический массив argv, а не только визуальное представление команды.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте `--mmproj-url`, когда projector опубликован как отдельный артефакт по прямому URL. Для production лучше один раз скачать файл и затем использовать локальный `--mmproj`, чтобы не зависеть от сети и ETag.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Первый старт включает скачивание projector. После загрузки runtime-влияние такое же, как у `--mmproj`: дополнительная память и preprocessing для multimodal inputs.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--mmproj`: если задан, может использоваться как путь назначения для URL download.
+- `--offline`: требует уже существующий локальный файл по рассчитанному или заданному пути.
+- `--mmproj-auto`: не нужен для явного URL; `--no-mmproj` очищает `params.mmproj` после обработки основной модели.
+- `--hf-token`: bearer token попадает в download options, если сервер URL его принимает.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[vision_url_projector]
+model = /srv/models/vision.gguf
+mmproj = /srv/models/mmproj.gguf
+mmproj-url = https://example.org/mmproj-F16.gguf
+```
 
-## Типовые проблемы
+В router-режиме прямой URL может замедлять lazy load модели. Для стабильного router лучше держать projector локально рядом с моделью.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `required file is not available in cache (offline mode)`: включен `--offline`, но projector не скачан.
+- `failed to load multimodal model`: URL скачал не тот файл, HTML error page или несовместимый projector.
+- Projector скачивается при каждом изменении URL query: закрепите локальный `--mmproj`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --mmproj-url value
+llama-server --model /srv/models/vision.gguf --mmproj-url https://example.org/mmproj-F16.gguf
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/vision.gguf --mmproj /srv/models/mmproj-F16.gguf --mmproj-url https://example.org/download/mmproj
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--mmproj-url&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--mmproj-url
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--mmproj-url
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/download.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`

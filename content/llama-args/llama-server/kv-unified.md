@@ -2,117 +2,107 @@
 schema: 1
 primaryName: "--kv-unified"
 title: "--kv-unified"
-summary: "Черновая инженерная справка по --kv-unified из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Использует единый KV-буфер для всех последовательностей вместо раздельного разделения контекста по слотам. Автоматически включается при `--parallel -1`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
-valueType: "list"
-valueHint: ","
+valueType: "boolean"
+valueHint: null
 aliases:
   - "-kvu"
   - "--kv-unified"
   - "-no-kvu"
-  - "--no-kv-un"
+  - "--no-kv-unified"
 allowedValues: []
 env:
   - "LLAMA_ARG_KV_UNIFIED"
 related:
-  - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
-  - "--ctx-size"
   - "--parallel"
+  - "--ctx-size"
+  - "--cache-idle-slots"
+  - "--cache-ram"
 ---
 
 # --kv-unified
 
 ## Кратко
 
-Черновая инженерная справка по --kv-unified из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--kv-unified` задает `common_params::kv_unified`, затем `llama_context_params::kv_unified`: все sequence ids используют один общий KV stream.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+В server auto-режиме `--parallel -1` код принудительно ставит `n_parallel = 4` и `kv_unified = true`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-ified use single unified KV buffer shared across all sequences (default: enabled if number of slots is auto)
+use single unified KV buffer shared across all sequences (default: enabled if number of slots is auto)
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--kv-unified`
-- Алиасы: `-kvu`, `--kv-unified`, `-no-kvu`, `--no-kv-un`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `,`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_KV_UNIFIED`
-- Значение по умолчанию из `--help`: `enabled if number of slots is auto`
+- Алиасы включения: `-kvu`, `--kv-unified`
+- Алиасы выключения: `-no-kvu`, `--no-kv-unified`
+- Переменная окружения: `LLAMA_ARG_KV_UNIFIED`
+- Поля llama.cpp: `common_params::kv_unified`, `llama_context_params::kv_unified`
+- Этап применения: создание `llama_context` и KV-memory
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Без unified KV `llama-context.cpp` считает `n_ctx_seq = n_ctx / n_seq_max`; каждый слот фактически получает свою долю контекста. С unified KV `n_ctx_seq = n_ctx`, а KV-cache использует один stream для всех sequences.
 
-Для точного описания механики нужно проверить:
+В логах `llama-context` смотрите `kv_unified = true/false`, а в `llama-kv-cache` строку с количеством seqs/streams.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+CLI-форма флаговая:
+
+- `--kv-unified`: включить.
+- `--no-kv-unified`: выключить, если не используется auto `--parallel -1`.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
+Используйте для многослотового сервера, где запросы имеют разную длину и статическое деление контекста по слотам слишком жесткое. Это также нужно для `--cache-idle-slots`.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Отключайте для более простой модели памяти или если backend/модель ведет себя нестабильно с unified KV.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+Unified KV уменьшает потери от пустых слотов и позволяет длинному активному запросу использовать общий контекст. Но конкурирующие длинные запросы начинают делить один ресурс, поэтому возрастает роль `--cache-ram` и очистки idle slots.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--parallel -1`: автоматически включает этот режим.
+- `--ctx-size`: становится размером общего KV-буфера.
+- `--cache-idle-slots`: требует `--kv-unified`.
+- `--cache-ram`: нужен для сохранения idle slots перед очисткой.
+- `--cache-type-k` и `--cache-type-v`: определяют типы данных внутри unified KV.
 
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--parallel`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `kv-unified = true` или `no-kv-unified = true`. В router-режиме применяется в дочернем процессе модели.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Если `--cache-idle-slots` отключается с warning, проверьте `kv_unified`.
+- Если запросы вытесняют друг друга из KV, смотрите логи `purging slot ...` и состояние prompt cache.
+- Если ожидаете auto unified, проверьте лог `n_parallel is set to auto`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --kv-unified value1,value2
+llama-server --model /models/model.gguf --parallel 4 --kv-unified --ctx-size 65536
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --parallel 4 --no-kv-unified --ctx-size 32768
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--kv-unified&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--kv-unified
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--kv-unified
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

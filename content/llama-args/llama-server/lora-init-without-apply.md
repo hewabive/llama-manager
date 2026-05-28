@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--lora-init-without-apply"
 title: "--lora-init-without-apply"
-summary: "Черновая инженерная справка по --lora-init-without-apply из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Загружает LoRA adapters в память, но не применяет их к контексту на старте. Их можно включить позже через `POST /lora-adapters` или per-request `lora`."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -14,20 +14,18 @@ aliases:
 allowedValues: []
 env: []
 related:
-  - "--alias"
   - "--lora"
+  - "--lora-scaled"
   - "--model"
-  - "--models-dir"
-  - "--models-preset"
 ---
 
 # --lora-init-without-apply
 
 ## Кратко
 
-Черновая инженерная справка по --lora-init-without-apply из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--lora-init-without-apply` выставляет `common_params.lora_init_without_apply = true`. LoRA adapters все равно загружаются из файлов при старте, но `common_set_adapter_lora()` не вызывается после создания context.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+В server README это описано как способ загрузить adapters со scale `0` и применить позже через `POST /lora-adapters`.
 
 ## Оригинальная справка llama.cpp
 
@@ -40,75 +38,71 @@ load LoRA adapters without applying them (apply later via POST /lora-adapters) (
 - Основное имя: `--lora-init-without-apply`
 - Алиасы: `--lora-init-without-apply`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `disabled`
+- Тип значения в llama-manager: `flag`
+- Переменные окружения: не указаны
+- Значение по умолчанию: disabled
+- Внутреннее поле: `common_params.lora_init_without_apply`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+При загрузке модели LoRA-файлы читаются и pointers сохраняются в `params.lora_adapters`. Отличие только в финальном шаге: если флаг включен, код пропускает `common_set_adapter_lora(lctx, params.lora_adapters)`.
 
-Для точного описания механики нужно проверить:
+После старта:
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `GET /lora-adapters` показывает загруженные adapters;
+- `POST /lora-adapters` задает глобальные scale;
+- поле `lora` в JSON-запросе может включить adapters для конкретного запроса.
+
+## Значения и формат
+
+Это флаг без значения. Парной отрицательной CLI-формы в проверенном коде нет.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+Используйте, когда нужно подготовить несколько adapters без влияния на первые запросы и включать их динамически. Это удобно для API-сервера, где разные клиенты выбирают разные LoRA по id.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Не используйте, если adapter должен влиять на все ответы сразу после запуска; тогда достаточно `--lora` или `--lora-scaled`.
 
 ## Влияние на производительность и память
 
-- Может влиять на время старта, объем памяти под веса модели и совместимость tokenizer/chat-template.
-- После изменения полезно выполнить короткий запрос и проверить, что модель отвечает ожидаемым форматом.
+Память на adapters все равно расходуется, потому что они загружены. До применения scale runtime overhead минимален относительно активного adapter, но переключение adapters может очищать prompt cache и снижать batching при разных per-request конфигурациях.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--lora`/`--lora-scaled`: задают список adapters, которые будут только инициализированы.
+- `POST /lora-adapters`: основной способ включить adapters глобально после старта.
+- Request field `lora`: per-request включение без изменения глобального состояния.
 
-- `--alias`
-- `--lora`
-- `--model`
-- `--models-dir`
-- `--models-preset`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[lora_pool]
+model = /srv/models/base.gguf
+lora = /srv/loras/a.gguf,/srv/loras/b.gguf
+lora-init-without-apply = true
+```
 
-## Типовые проблемы
+В router-режиме это позволяет держать pool adapters у конкретного дочернего процесса, но id adapters все равно локальны для этого процесса.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Adapter загружен, но не влияет: это ожидаемо; проверьте scale через `GET /lora-adapters`.
+- После `POST /lora-adapters` старые prompt cache стали невалидны: при смене LoRA server может очистить cache слота.
+- Клиент отправляет id вне диапазона: `parse_lora_request()` принимает id/scale, но реально изменяются только существующие indices при построении списка.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --lora-init-without-apply
+llama-server --model /srv/models/base.gguf --lora /srv/loras/a.gguf,/srv/loras/b.gguf --lora-init-without-apply
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+curl -X POST http://127.0.0.1:8080/lora-adapters -H 'Content-Type: application/json' -d '[{"id":0,"scale":0.8}]'
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--lora-init-without-apply&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--lora-init-without-apply
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--lora-init-without-apply
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

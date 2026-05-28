@@ -2,39 +2,33 @@
 schema: 1
 primaryName: "--threads-http"
 title: "--threads-http"
-summary: "Количество потоков для обработки HTTP-запросов."
-docStatus: draft
+summary: "Задает число fixed worker threads HTTP-сервера cpp-httplib. При `N < 1` сервер выбирает `max(--parallel + 4, hardware_concurrency() - 1)` и пишет фактическое значение в лог."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"
 aliases:
-  - "--threads-http"
 allowedValues: []
 env:
   - "LLAMA_ARG_THREADS_HTTP"
 related:
-  - "--api-key"
-  - "--api-key-file"
-  - "--host"
-  - "--metrics"
-  - "--port"
-  - "--slots"
-  - "--ssl-cert-file"
-  - "--ssl-key-file"
   - "--threads"
   - "--threads-batch"
+  - "--parallel"
   - "--timeout"
+  - "--metrics"
+  - "--slots"
+  - "--api-key"
+  - "--port"
 ---
 
 # --threads-http
 
 ## Кратко
 
-Количество потоков для обработки HTTP-запросов.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--threads-http` управляет только HTTP worker pool: parsing JSON, chat template application, tokenization, сборка JSON-ответов, streaming bookkeeping и обработка служебных endpoints. Он не задает CPU-потоки libllama для inference.
 
 ## Оригинальная справка llama.cpp
 
@@ -47,81 +41,67 @@ number of threads used to process HTTP requests (default: -1)
 - Основное имя: `--threads-http`
 - Алиасы: `--threads-http`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
+- Тип значения в llama-manager: `number`
+- Подсказка формата: `N`
+- Допустимые значения: `не ограничены в metadata`
 - Переменные окружения: `LLAMA_ARG_THREADS_HTTP`
-- Значение по умолчанию из `--help`: `-1`
+- Значение по умолчанию: `-1`
+
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Обработчик CLI записывает значение в `params.n_threads_http`. В `server-http.cpp` перед запуском cpp-httplib сервер вычисляет фактическое число потоков: если `params.n_threads_http < 1`, используется `max(params.n_parallel + 4, hardware_concurrency() - 1)`. Затем создается `httplib::ThreadPool(n_threads_http, n_threads_http + 1024)`.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+`N` - целое число. Положительное значение фиксирует количество постоянно живущих HTTP worker threads. `0`, `-1` и любые значения меньше `1` включают автоматический выбор. В логе запуска ищите строку `using N threads for HTTP server`.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Увеличивайте значение, если сервер одновременно принимает много streaming-клиентов, тяжелые chat templates, большие JSON payloads, `/metrics`, `/slots` или proxy/router запросы. Уменьшайте значение на маленьких машинах, где HTTP workers начинают конкурировать с `--threads` и `--threads-batch`.
 
 ## Влияние на производительность и память
 
-- Влияет на загрузку CPU. Больше потоков не всегда быстрее из-за конкуренции за cache, NUMA и фоновых процессов.
-- Для серверного режима отдельно оценивайте потоки генерации, batch-обработки и HTTP-обработки.
+Каждый fixed HTTP worker потребляет stack и scheduler overhead, но не увеличивает модель, KV-cache или VRAM. Слишком маленькое значение создает очередь HTTP-обработки вокруг tokenization/serialization; слишком большое увеличивает CPU contention и может ухудшить latency inference.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--parallel` участвует в автоматической формуле как `--parallel + 4`.
+- `--threads` и `--threads-batch` используют CPU для вычислений; HTTP workers используют те же системные CPU для I/O, parsing и tokenization.
+- `--timeout` ограничивает read/write ожидания, но не заменяет достаточный HTTP worker pool.
+- `--metrics`, `--slots`, UI и streaming endpoints добавляют HTTP-работу даже без увеличения inference-потоков.
 
-- `--api-key`
-- `--api-key-file`
-- `--host`
-- `--metrics`
-- `--port`
-- `--slots`
-- `--ssl-cert-file`
-- `--ssl-key-file`
-- `--threads`
-- `--threads-batch`
-- `--timeout`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `threads-http = 8`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
-## Типовые проблемы
+Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+
+## Типовые проблемы и диагностика
+
+- Если новые HTTP-запросы ждут при свободных inference slots, проверьте `using N threads for HTTP server` и увеличьте `--threads-http`.
+- Если decode latency выросла после увеличения `--threads-http`, уменьшите HTTP pool или ограничьте inference affinity через `--cpu-mask`/`--cpu-range`.
+- В router-режиме параметр применим и к родительскому router server, и к дочерним процессам, если указан в соответствующем пресете.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --threads-http 1
+llama-server --model /models/model.gguf --threads-http 8
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --parallel 4 --threads-http 12
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```ini
+[*]
+threads-http = 8
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--threads-http&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--threads-http
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--threads-http
+- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--threads-http` и поле `params.n_threads_http`.
+- `/home/maxim/llama/llama.cpp/common/common.h` - значение по умолчанию `n_threads_http = -1`.
+- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp` - автоматическая формула и создание `httplib::ThreadPool`.
+- `/home/maxim/llama/llama.cpp/tools/server/README-dev.md` - перечень операций, выполняемых в HTTP worker threads.

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--media-path"
 title: "--media-path"
-summary: "Черновая инженерная справка по --media-path из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Каталог, из которого multimodal endpoints могут читать локальные `file://` media URLs. Без него `file://` запрещены."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "PATH"
@@ -13,16 +13,17 @@ aliases:
   - "--media-path"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--mmproj"
+  - "--mmproj-url"
+  - "--api-key"
 ---
 
 # --media-path
 
 ## Кратко
 
-Черновая инженерная справка по --media-path из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--media-path` записывает каталог в `common_params::media_path`, проверяет, что это существующий каталог, и добавляет завершающий разделитель. Затем путь попадает в chat parsing options и разрешает `file://` URLs для локальных media-файлов.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +34,58 @@ directory for loading local media files; files can be accessed via file:// URLs 
 ## Паспорт аргумента
 
 - Основное имя: `--media-path`
-- Алиасы: `--media-path`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
-- Подсказка формата из `--help`: `PATH`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `disabled`
+- Значение: путь к каталогу
+- Переменная окружения: не задана в `arg.cpp`
+- Поле в `common_params`: `media_path`
+- Значение по умолчанию: пустая строка, `file://` disabled
+- Этап применения: chat/media parsing
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `handle_media()` URL с `file://` запрещен, если `media_path` пустой: `file:// URLs are not allowed unless --media-path is specified`. Когда путь задан, сервер удаляет префикс `file://`, проверяет filename/path через `fs_validate_filename(..., true)`, логирует `loading image from local file ...` и читает файл из `media_path + file_path`.
 
-Для точного описания механики нужно проверить:
+Directory traversal запрещен. Тесты покрывают отказ для `file://../mtmd/test-1.jpeg`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Путь должен быть существующим каталогом. В запросе используйте относительный путь внутри этого каталога, например `file://images/cat.jpg`. Абсолютные `file://` пути не должны использоваться как способ обхода base directory.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте для локальных multimodal сценариев, где клиент передает ссылки на файлы, уже доступные серверу. Для внешних клиентов безопаснее передавать base64 или контролируемые remote URLs, потому что `--media-path` открывает серверу чтение части файловой системы.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Чтение local media добавляет disk I/O и память под загруженный файл. Для remote `http` media код имеет лимит 10 MB и timeout 10 секунд; для local path явного лимита размера в этой функции нет.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- Для фактической обработки изображений/аудио нужна multimodal модель и `--mmproj` или совместимый HF источник.
+- `--api-key` важен, если endpoint доступен по сети: без него пользователи смогут просить сервер читать разрешенные local media.
+- `--props`/`GET /props` показывает `media_marker` и modalities, полезные для проверки multimodal capability.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI: `media-path = /srv/llama-media`. В router-режиме путь должен существовать в окружении дочернего модельного процесса, который реально обрабатывает chat request.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `not a directory`: каталог не существует на старте.
+- `file:// URLs are not allowed`: сервер запущен без `--media-path`.
+- `file path is not allowed`: путь содержит traversal или недопустимую форму.
+- `file does not exist or cannot be opened`: файл отсутствует относительно media base или нет прав.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --media-path /path/to/value
+llama-server --model /models/vision.gguf --mmproj /models/mmproj.gguf --media-path /srv/llama-media
+curl http://127.0.0.1:8080/v1/chat/completions -d '{"messages":[{"role":"user","content":[{"type":"text","text":"Describe this"},{"type":"image_url","image_url":{"url":"file://images/cat.jpg"}}]}]}'
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--media-path&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--media-path
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--media-path
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_security.py`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

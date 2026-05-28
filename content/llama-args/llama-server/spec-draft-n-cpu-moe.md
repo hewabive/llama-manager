@@ -2,106 +2,91 @@
 schema: 1
 primaryName: "--spec-draft-n-cpu-moe"
 title: "--spec-draft-n-cpu-moe"
-summary: "Черновая инженерная справка по --spec-draft-n-cpu-moe из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Оставляет MoE expert tensor первых N слоев draft-модели на CPU. Полезно для частичной экономии VRAM без полного CPU-размещения всех experts."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
-valueType: "flag"
-valueHint: null
+valueType: "number"
+valueHint: "N"
 aliases:
   - "--spec-draft-n-cpu-moe"
-  - "--spec-draft-ncm"
+  - "--spec-draft-ncmoe"
+  - "-ncmoed"
+  - "--n-cpu-moe-draft"
 allowedValues: []
 env:
   - "LLAMA_ARG_SPEC_DRAFT_N_CPU_MOE"
-related: []
+related:
+  - "--n-cpu-moe"
+  - "--spec-draft-cpu-moe"
+  - "--spec-draft-override-tensor"
+  - "--spec-draft-ngl"
 ---
 
 # --spec-draft-n-cpu-moe
 
 ## Кратко
 
-Черновая инженерная справка по --spec-draft-n-cpu-moe из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--spec-draft-n-cpu-moe N` оставляет expert weights первых `N` MoE-слоев draft-модели на CPU. Обработчик добавляет по одному tensor buffer override для `blk.0...`, `blk.1...` и так далее до `blk.N-1...`.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Это числовой аргумент, не флаг. Отрицательные значения запрещены.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-oe, -ncmoed, --n-cpu-moe-draft N keep the Mixture of Experts (MoE) weights of the first N layers in the CPU for the draft model
+keep the Mixture of Experts (MoE) weights of the first N layers in the CPU for the draft model
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--spec-draft-n-cpu-moe`
-- Алиасы: `--spec-draft-n-cpu-moe`, `--spec-draft-ncm`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_SPEC_DRAFT_N_CPU_MOE`
-- Значение по умолчанию из `--help`: `не указано`
+- Алиасы: `--spec-draft-n-cpu-moe`, `--spec-draft-ncmoe`, `-ncmoed`, `--n-cpu-moe-draft`
+- Значение: целое `N >= 0`
+- Структура llama.cpp: `common_params.speculative.draft.tensor_buft_overrides`
+- Переменная окружения: `LLAMA_ARG_SPEC_DRAFT_N_CPU_MOE`
+- Ошибка для отрицательного значения: `invalid value`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Для каждого `i` от `0` до `N - 1` код создает pattern `blk\\.i\\.ffn_(up|down|gate|gate_up)_(ch|)exps` и направляет совпавшие tensor в CPU buffer. При загрузке draft-модели эти overrides передаются в `params_dft.tensor_buft_overrides`.
 
-Для точного описания механики нужно проверить:
+Если `N = 0`, цикл не добавляет правил и аргумент фактически ничего не меняет.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Значение парсится через `std::stoi()`. Дробные строки и нечисловые значения приведут к ошибке парсинга аргумента. Слишком большое N не валидируется по числу слоев: лишние patterns просто не совпадут с tensor.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, если полный `--spec-draft-cpu-moe` слишком сильно замедляет draft, но VRAM все равно нужно сэкономить. Увеличивайте N постепенно и сравнивайте VRAM/latency.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Чем больше N, тем меньше VRAM занимают MoE experts draft-модели и тем больше CPU/RAM нагрузки. Небольшое N может быть компромиссом, если первые слои дают достаточную экономию или если backend размещает блоки неравномерно.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--spec-draft-cpu-moe` покрывает все MoE experts и обычно делает этот аргумент избыточным. `--spec-draft-override-tensor` можно использовать для более точного набора слоев. Target-модель управляется отдельным `--n-cpu-moe`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `n-cpu-moe-draft = 8` или `spec-draft-n-cpu-moe = 8`. Значение `0` можно использовать как явное "не добавлять partial MoE CPU override", но проще не задавать ключ.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `invalid value`: N отрицательное.
+- VRAM не меняется: draft-модель не MoE, N попал в несуществующие слои или tensor names отличаются.
+- Draft latency выросла: уменьшите N или верните experts на GPU.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-draft-n-cpu-moe
+llama-server --model /models/target.gguf --spec-draft-model /models/moe-draft.gguf --spec-type draft-simple --spec-draft-ngl all --spec-draft-n-cpu-moe 8
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-draft-n-cpu-moe&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-draft-n-cpu-moe
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-draft-n-cpu-moe
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`

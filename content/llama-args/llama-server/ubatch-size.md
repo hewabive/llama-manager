@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--ubatch-size"
 title: "--ubatch-size"
-summary: "Физический micro-batch size. Часто имеет смысл менять вместе с batch-size при нехватке памяти."
-docStatus: draft
+summary: "Физический maximum micro-batch size для backend-вычисления. Обычно это первый параметр, который уменьшают при OOM на prompt processing."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"
@@ -17,7 +17,9 @@ env:
   - "LLAMA_ARG_UBATCH"
 related:
   - "--batch-size"
-  - "--flash-attn"
+  - "--ctx-size"
+  - "--parallel"
+  - "--cont-batching"
   - "--threads-batch"
 ---
 
@@ -25,9 +27,9 @@ related:
 
 ## Кратко
 
-Физический micro-batch size. Часто имеет смысл менять вместе с batch-size при нехватке памяти.
+`--ubatch-size` задает `common_params::n_ubatch`, затем `llama_context_params::n_ubatch`: физический максимум micro-batch для prompt/decode вычислений.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Если `--batch-size` отвечает за логическую упаковку токенов, то `--ubatch-size` отвечает за то, какими порциями backend реально выполняет граф.
 
 ## Оригинальная справка llama.cpp
 
@@ -39,74 +41,72 @@ physical maximum batch size (default: 512)
 
 - Основное имя: `--ubatch-size`
 - Алиасы: `-ub`, `--ubatch-size`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_UBATCH`
-- Значение по умолчанию из `--help`: `512`
+- Значение: целое число токенов
+- Значение по умолчанию: `512`
+- Переменная окружения: `LLAMA_ARG_UBATCH`
+- Поле llama.cpp: `common_params::n_ubatch`
+- Этап применения: создание `llama_context`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `llama-context.cpp` фактический `n_ubatch` считается как `min(n_batch, requested_ubatch)`. Если передать `--ubatch-size 0`, backend берет `n_ubatch = n_batch`.
 
-Для точного описания механики нужно проверить:
+Для embedding-режима сервер требует, чтобы все токены embedding-запроса помещались в один ubatch. Если `--embedding` включен и `n_batch > n_ubatch`, `server.cpp` выставляет оба значения равными `n_ubatch`, чтобы избежать assertion failure.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- Положительное число: физический micro-batch limit.
+- `0`: использовать фактический `n_batch`.
+- Значения ниже 32 могут ухудшить или отключить эффективный BLAS-путь.
+- Отрицательные значения не описаны как валидные.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
+Уменьшайте `--ubatch-size`, если модель стартует, но падает или получает OOM именно при обработке длинного prompt. Это часто сохраняет логический `--batch-size` и throughput планировщика, но снижает пиковую память на один backend graph.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Увеличивайте осторожно, если GPU/CPU недогружены на prefill и есть явный запас памяти.
 
 ## Влияние на производительность и память
 
-- В первую очередь влияет на скорость обработки prompt/prefill и пиковое потребление памяти.
-- Слишком большое значение может ускорить короткие запросы, но привести к OOM на длинном контексте или нескольких слотах.
+Меньший `--ubatch-size` снижает пиковую память и может стабилизировать запуск на ограниченной VRAM. Но слишком маленькое значение увеличивает число запусков графа, ухудшает prefill throughput и может поднять latency.
+
+Большой `--ubatch-size` особенно чувствителен на больших моделях, длинном контексте и нескольких слотах.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--batch-size`: верхняя граница для `--ubatch-size`.
+- `--ctx-size`: через фактический `n_batch` ограничивает и `n_ubatch`.
+- `--parallel`: увеличивает число decode-токенов, которые сервер должен обслуживать за итерацию.
+- `--cont-batching`: повышает шанс, что несколько prompt fragments попадут в общий batch.
+- `--threads-batch`: влияет на CPU-параллелизм для batch phase.
 
-- `--batch-size`
-- `--flash-attn`
-- `--threads-batch`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используется `ubatch-size = 512` или `LLAMA_ARG_UBATCH`. Этот аргумент входит в whitelist удаленных presets.
 
-## Типовые проблемы
+В router-режиме значение применяется к дочернему процессу конкретной модели.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Ошибка `input (...) is too large to process. increase the physical batch size` возникает для задач, которые нельзя split-ить; тогда `--ubatch-size` действительно должен быть не меньше входа.
+- При OOM на prompt processing пробуйте `--ubatch-size 256` или `--ubatch-size 128`.
+- В логах `llama-context` проверяйте фактические `n_batch` и `n_ubatch`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --ubatch-size 1
+llama-server --model /models/model.gguf --batch-size 2048 --ubatch-size 256
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/embed.gguf --embedding --batch-size 512 --ubatch-size 512
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--ubatch-size&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--ubatch-size
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--ubatch-size
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

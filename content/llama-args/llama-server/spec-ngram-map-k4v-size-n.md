@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--spec-ngram-map-k4v-size-n"
 title: "--spec-ngram-map-k4v-size-n"
-summary: "Черновая инженерная справка по --spec-ngram-map-k4v-size-n из категории \"Параметры speculative decoding\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Размер key n-gram для экспериментального `ngram-map-k4v`, который хранит до четырех value m-grams на key и выбирает наиболее устойчивое продолжение."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"
@@ -13,16 +13,18 @@ aliases:
   - "--spec-ngram-map-k4v-size-n"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--spec-type"
+  - "--spec-ngram-map-k4v-size-m"
+  - "--spec-ngram-map-k4v-min-hits"
+  - "--spec-ngram-map-k-size-n"
 ---
 
 # --spec-ngram-map-k4v-size-n
 
 ## Кратко
 
-Черновая инженерная справка по --spec-ngram-map-k4v-size-n из категории "Параметры speculative decoding". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--spec-ngram-map-k4v-size-n` задает длину key n-gram для `ngram-map-k4v`. Этот вариант похож на `ngram-map-k`, но не ограничивается одним продолжением: для каждого key он ведет статистику до четырех value m-grams и выбирает наиболее частый, если он достаточно доминирует.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +35,62 @@ ngram size N for ngram-map-k4v speculative decoding, length of lookup n-gram (de
 ## Паспорт аргумента
 
 - Основное имя: `--spec-ngram-map-k4v-size-n`
-- Алиасы: `--spec-ngram-map-k4v-size-n`
-- Категория в `--help`: `Параметры speculative decoding`
-- Тип значения в llama-manager: `number` (числовое значение)
-- Подсказка формата из `--help`: `N`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `12`
+- Алиасы: нет
+- Значение по умолчанию: `12`
+- Допустимый диапазон: `1..1024`
+- Переменные окружения: нет
+- Внутреннее поле: `common_params.speculative.ngram_map_k4v.size_n`
+- Runtime field: `common_ngram_map.size_key`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Чем меньше key, тем чаще находятся совпадения, но тем выше риск разных продолжений для одного key. `ngram-map-k4v` частично компенсирует это статистикой value slots: draft создается только после `min_hits` и только если наиболее частый value не проигрывает конкурирующим продолжениям.
 
-Для точного описания механики нужно проверить:
+## Значения и формат
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `1..1024` принимаются.
+- `0`, отрицательные значения и значения больше `1024` отклоняются с ошибкой `ngram size N must be between 1 and 1024 inclusive`.
+- Размер считается в токенах.
 
 ## Когда использовать
 
-- Числовые параметры стоит менять небольшими шагами и фиксировать исходное значение, чтобы можно было быстро откатиться.
-- Проверяйте единицы измерения: в разных аргументах число может означать токены, потоки, секунды, слоты, MiB или индекс устройства.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+`ngram-map-k4v` полезен для длинных повторов с несколькими возможными продолжениями, где простой `ngram-map-k` слишком охотно копирует первый найденный вариант. Начните с дефолта `12`; при редких drafts снижайте, при плохой acceptance rate повышайте.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Вариант дороже `ngram-map-k`: для key хранится до четырех value m-grams и статистика, а при draft обновляются counts. Память остается per-slot, без отдельной draft model.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--spec-type ngram-map-k4v` включает реализацию.
+- `--spec-ngram-map-k4v-size-m` задает длину value m-gram.
+- `--spec-ngram-map-k4v-min-hits` реально фильтрует drafts для этого варианта.
+- `--spec-draft-n-max` может дополнительно обрезать draft.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+spec-type = ngram-map-k4v
+spec-ngram-map-k4v-size-n = 8
+spec-ngram-map-k4v-size-m = 8
+spec-ngram-map-k4v-min-hits = 2
+```
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Мало drafts: уменьшите `size_n` или `min_hits`.
+- Низкая acceptance rate: увеличьте `size_n` или уменьшите `size_m`.
+- Ищите в логах `adding speculative implementation 'ngram-map-k4v'` и финальную `statistics ngram_map_k`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --spec-ngram-map-k4v-size-n 1
+llama-server --model /models/model.gguf --spec-type ngram-map-k4v --spec-ngram-map-k4v-size-n 8 --spec-ngram-map-k4v-size-m 8 --spec-ngram-map-k4v-min-hits 2
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--spec-ngram-map-k4v-size-n&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--spec-ngram-map-k4v-size-n
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--spec-ngram-map-k4v-size-n
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/common/ngram-map.cpp`
+- `/home/maxim/llama/llama.cpp/docs/speculative.md`

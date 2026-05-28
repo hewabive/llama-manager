@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--tools"
 title: "--tools"
-summary: "Черновая инженерная справка по --tools из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Включает экспериментальные built-in tools для Web UI/agents на endpoint `/tools`. Опасно в недоверенных окружениях, особенно с write и shell tools."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "list"
 valueHint: "TOOL1,TOOL2,..."
@@ -14,93 +14,95 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_TOOLS"
-related: []
+related:
+  - "--api-key"
+  - "--host"
+  - "--ui"
+  - "--ui-mcp-proxy"
 ---
 
 # --tools
 
 ## Кратко
 
-Черновая инженерная справка по --tools из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--tools` разбирается через `parse_csv_row(value)` и записывает список в `common_params::server_tools`. Если список не пуст, `server.cpp` вызывает `tools.setup(...)`, регистрирует `GET /tools` и `POST /tools`, и выводит предупреждение о недоверенных окружениях.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-experimental: whether to enable built-in tools for AI agents - do not enable in untrusted environments (default: no tools) specify "all" to enable all tools available tools: read_file, file_glob_search, grep_search, exec_shell_command, write_file, edit_file, apply_diff, get_datetime
+experimental: whether to enable built-in tools for AI agents - do not enable in untrusted environments (default: no tools)
+specify "all" to enable all tools
+available tools: read_file, file_glob_search, grep_search, exec_shell_command, write_file, edit_file, apply_diff, get_datetime
 ```
 
 ## Паспорт аргумента
 
 - Основное имя: `--tools`
-- Алиасы: `--tools`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `list` (список значений)
-- Подсказка формата из `--help`: `TOOL1,TOOL2,...`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_TOOLS`
-- Значение по умолчанию из `--help`: `no tools`
+- Значение: CSV список имен tools или `all`
+- Переменная окружения: `LLAMA_ARG_TOOLS`
+- Поле в `common_params`: `server_tools`
+- Значение по умолчанию: пустой список, endpoint не регистрируется
+- Endpoints: `GET /tools`, `POST /tools`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+`GET /tools` возвращает JSON-описания включенных tools. `POST /tools` принимает JSON body с `tool` и `params`, вызывает выбранный tool и возвращает результат.
 
-Для точного описания механики нужно проверить:
+Известные tools валидируются на старте. Неизвестное имя прерывает запуск с ошибкой `unknown tool "...". available tools: ...`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Доступные tools
+
+- `read_file`: читает файл, максимум 16 KB без диапазона строк.
+- `file_glob_search`: рекурсивный поиск файлов, максимум 100 результатов.
+- `grep_search`: regex-поиск по файлам, максимум 100 совпадений.
+- `exec_shell_command`: выполняет shell command через `sh -c` или `cmd /c`, максимум 60 секунд и 16 KB вывода.
+- `write_file`: создает или перезаписывает файл, создает parent directories.
+- `edit_file`: применяет line-based replace/delete/append.
+- `apply_diff`: применяет unified diff через `git apply`.
+- `get_datetime`: возвращает текущее время.
+
+## Значения и формат
+
+Примеры значений: `read_file,grep_search`, `get_datetime`, `all`. Запятые разделяют элементы; пробелы в именах tools не используются.
 
 ## Когда использовать
 
-- Списки обычно требуют точного разделителя. Чаще всего это запятая, но конкретный формат нужно сверять с `--help` и исходным кодом.
-- Если элемент списка содержит пробелы или спецсимволы, проверьте итоговую команду запуска без shell-конкатенации.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Включайте только локально или в жестко изолированной среде, где доверяете пользователям и модели/agent workflow. `exec_shell_command`, `write_file`, `edit_file` и `apply_diff` дают возможность выполнять команды или менять файловую систему от имени процесса `llama-server`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+На инференс напрямую не влияет. Запущенные tools могут грузить CPU, диск, создавать процессы и конкурировать с моделью за ресурсы. Shell-команды ограничены timeout/output cap, но все равно могут менять состояние системы.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--api-key` практически обязателен при включении `/tools`.
+- `--host 127.0.0.1` предпочтителен; не публикуйте tools на `0.0.0.0` без reverse proxy и policy.
+- UI может использовать endpoint, но сам endpoint регистрируется независимо от `--ui`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI: `tools = read_file,grep_search` или `tools = all`. В router-режиме tools регистрируются на процессе, где применен аргумент; для публичного router-а это особенно рискованно, потому что endpoint находится рядом с модельным API.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- `/tools` 404: список tools пуст или аргумент не применился.
+- `unknown tool`: проверьте имя и запятые.
+- Tool возвращает `failed to open file` или `path does not exist`: путь относится к файловой системе процесса `llama-server`.
+- Команда обрезана: `exec_shell_command` ограничивает output и добавляет `[output truncated]`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --tools value1,value2
+llama-server --model /models/model.gguf --tools read_file,grep_search --api-key local-secret
+llama-server --model /models/model.gguf --tools all --host 127.0.0.1
+curl http://127.0.0.1:8080/tools -H "Authorization: Bearer local-secret"
+curl -X POST http://127.0.0.1:8080/tools -H "Authorization: Bearer local-secret" -d '{"tool":"get_datetime","params":{}}'
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--tools&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--tools
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--tools
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-tools.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `/home/maxim/llama/llama.cpp/tools/server/README-dev.md`

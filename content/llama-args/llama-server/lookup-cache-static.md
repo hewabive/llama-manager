@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--lookup-cache-static"
 title: "--lookup-cache-static"
-summary: "Черновая инженерная справка по --lookup-cache-static из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Указывает бинарный static n-gram lookup cache для speculative decoding типа `ngram-cache`. Файл читается при инициализации speculative context и не должен ожидаться как обновляемый выходной файл."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "FNAME"
@@ -15,10 +15,9 @@ aliases:
 allowedValues: []
 env: []
 related:
-  - "--cache-reuse"
-  - "--cache-type-k"
-  - "--cache-type-v"
-  - "--ctx-size"
+  - "--lookup-cache-dynamic"
+  - "--spec-type"
+  - "--spec-default"
   - "--parallel"
 ---
 
@@ -26,9 +25,9 @@ related:
 
 ## Кратко
 
-Черновая инженерная справка по --lookup-cache-static из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--lookup-cache-static FNAME` задает путь к static lookup cache для speculative decoding implementation `ngram-cache`. Один только путь не включает speculative decoding: нужен `--spec-type ngram-cache` или preset, который добавляет этот тип.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+Static cache загружается при инициализации speculative context и используется как read-mostly источник n-gram подсказок.
 
 ## Оригинальная справка llama.cpp
 
@@ -41,75 +40,65 @@ path to static lookup cache to use for lookup decoding (not updated by generatio
 - Основное имя: `--lookup-cache-static`
 - Алиасы: `-lcs`, `--lookup-cache-static`
 - Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
-- Подсказка формата из `--help`: `FNAME`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип значения в llama-manager: `path`
+- Формат: путь к файлу lookup cache
+- Переменные окружения: нет
+- Поле в `common_params`: `speculative.ngram_cache.lookup_cache_static`
+- Этап применения: парсинг CLI, инициализация speculative decoding
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common/arg.cpp` путь записывается в `params.speculative.ngram_cache.lookup_cache_static`. В `common/speculative.cpp` implementation `common_speculative_impl_ngram_cache` при создании вызывает `common_ngram_cache_load(path_static)` и копирует загруженный cache в состояние каждой sequence.
 
-Для точного описания механики нужно проверить:
+Если файл открыть или прочитать не удалось, код логирует `failed to open static lookup cache` и вызывает abort с текстом `Couldn't read static lookup cache`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Путь должен указывать на существующий бинарный файл в формате `common_ngram_cache_save`. Это не JSON и не текстовый словарь. Для управляемых instances используйте абсолютный путь, чтобы не зависеть от рабочего каталога процесса.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Для `--spec-type ngram-cache`, когда есть заранее подготовленный lookup cache.
+- Для повторяемых workload, где static corpus помогает предсказывать следующие tokens.
+- Когда cache должен быть одинаковым для всех запусков и не изменяться генерацией.
 
 ## Влияние на производительность и память
 
-- Может заметно влиять на RAM/VRAM через размер KV-cache и количество одновременно обслуживаемых слотов.
-- При ошибках выделения памяти сначала уменьшайте контекст, parallelism или типы KV-cache, затем уже меняйте остальные параметры.
+Cache загружается в RAM для speculative state. При `--parallel` состояние создается для нескольких sequences, поэтому большой cache может заметно увеличить RAM. Удачный cache может снизить latency за счет draft tokens; неудачный может дать overhead без выигрыша.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- Требуется `--spec-type ngram-cache`; иначе путь будет распарсен, но implementation не будет создан.
+- `--lookup-cache-dynamic` добавляет второй lookup cache, который проверяется перед static fallback в `common_ngram_cache_draft`.
+- `--parallel` влияет на число sequence states, куда копируется cache.
+- `--spec-default` в этом commit включает `ngram-mod`, а не `ngram-cache`; не рассчитывайте, что static lookup cache включится через default.
 
-- `--cache-reuse`
-- `--cache-type-k`
-- `--cache-type-v`
-- `--ctx-size`
-- `--parallel`
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[cached-model]
+spec-type = ngram-cache
+lookup-cache-static = /var/lib/llama/static.ngram
+```
 
-## Типовые проблемы
+В router mode путь должен быть доступен дочернему процессу модели. Если router запускается как service, учитывайте права пользователя service account.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- Сервер aborts на старте speculative context: проверьте существование файла и права чтения.
+- Cache не дает эффекта: убедитесь, что `--spec-type ngram-cache` реально включен; в логах должна быть строка `adding speculative implementation 'ngram-cache'`.
+- Неправильный формат файла может привести к assertions при чтении binary records.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --lookup-cache-static /path/to/value
+llama-server --model /models/model.gguf --spec-type ngram-cache --lookup-cache-static /var/lib/llama/static.ngram
 ```
-
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--lookup-cache-static&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--lookup-cache-static
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--lookup-cache-static
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
+- `/home/maxim/llama/llama.cpp/common/ngram-cache.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

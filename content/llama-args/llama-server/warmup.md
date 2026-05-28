@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--warmup"
 title: "--warmup"
-summary: "Черновая инженерная справка по --warmup из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Выполняет пустой прогрев модели после создания контекста. По умолчанию включен; `--no-warmup` ускоряет старт, но первая реальная генерация может получить cold-start latency."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
@@ -14,16 +14,18 @@ aliases:
   - "--no-warmup"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--embedding"
+  - "--rerank"
 ---
 
 # --warmup
 
 ## Кратко
 
-Черновая инженерная справка по --warmup из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
+`--warmup` управляет `common_params::warmup`. При default enabled llama.cpp после создания context делает короткий encode/decode с BOS/EOS или fallback token, синхронизирует backend, очищает memory и сбрасывает performance counters.
 
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--no-warmup` отключает этот шаг.
 
 ## Оригинальная справка llama.cpp
 
@@ -34,73 +36,63 @@ whether to perform warmup with an empty run (default: enabled)
 ## Паспорт аргумента
 
 - Основное имя: `--warmup`
-- Алиасы: `--warmup`, `--no-warmup`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `enabled`
+- Отрицательная форма: `--no-warmup`
+- Поле `common_params`: `warmup`
+- По умолчанию: enabled
+- Этап применения: после загрузки модели и создания context
+- Env: не задан
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+В `common_init_from_params()` при `params.warmup` логируется `warming up the model with an empty run - please wait ... (--no-warmup to disable)`. Затем вызывается `llama_set_warmup(lctx, true)`, выполняется encoder/decode pass, `llama_memory_clear()`, `llama_synchronize()`, `llama_perf_context_reset()`, и warmup выключается.
 
-Для точного описания механики нужно проверить:
+Для encoder-decoder моделей warmup учитывает decoder start token. Для decoder-only моделей выполняется decode небольшого batch.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Boolean-pair:
+
+- `--warmup`: включить;
+- `--no-warmup`: отключить.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
+Оставляйте включенным для production server, где важнее стабильная latency первого запроса и раннее выявление backend проблем.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте `--no-warmup` для быстрых smoke tests, router scenarios с частой загрузкой/выгрузкой моделей или когда startup time критичнее первого request.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Warmup увеличивает время старта и может кратковременно задействовать backend buffers. После warmup memory очищается, поэтому постоянный KV-cache не должен оставаться занят warmup prompt. Зато первая реальная генерация часто становится более предсказуемой по latency.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--embedding` и `--rerank`: warmup выполняется для того же context, но не отправляет embedding/rerank HTTP response.
+- GPU/backend flags (`--gpu-layers`, `--flash-attn`, offload-настройки) влияют на стоимость warmup, потому что он прогревает фактический backend path.
+- `--perf`: counters сбрасываются после warmup, чтобы не смешивать прогрев с runtime метриками.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+В INI используйте `warmup = true` или `no-warmup = true`. В router mode `--no-warmup` может заметно ускорить lazy model loading, но первый запрос к каждой модели получит cold-start эффект.
 
-## Типовые проблемы
+## Типовые проблемы и диагностика
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+- Старт "завис" на несколько секунд: ищите лог `warming up the model with an empty run`.
+- Ошибка backend появляется до первого запроса: warmup обнаружил проблему раньше runtime.
+- Первый запрос медленный при `--no-warmup`: это ожидаемый cold start.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --warmup true
+llama-server --model /models/model.gguf --warmup
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --no-warmup
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--warmup&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--warmup
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--warmup
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--warmup`, `--no-warmup`.
+- `/home/maxim/llama/llama.cpp/common/common.cpp`: warmup encode/decode, memory clear, perf reset.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server help table.

@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--fim-qwen-7b-spec"
 title: "--fim-qwen-7b-spec"
-summary: "Черновая инженерная справка по --fim-qwen-7b-spec из категории \"Параметры llama-server\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Встроенный пресет Qwen2.5-Coder 7B Q8_0 с Qwen2.5-Coder 0.5B draft-моделью для speculative decoding."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null
@@ -13,16 +13,22 @@ aliases:
   - "--fim-qwen-7b-spec"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--fim-qwen-7b-default"
+  - "--spec-draft-hf"
+  - "--spec-draft-model"
+  - "--spec-type"
+  - "--spec-default"
+  - "--hf-repo"
+  - "--hf-file"
+  - "--cache-reuse"
 ---
 
 # --fim-qwen-7b-spec
 
 ## Кратко
 
-Черновая инженерная справка по --fim-qwen-7b-spec из категории "Параметры llama-server". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--fim-qwen-7b-spec` выбирает Qwen2.5-Coder 7B как target-модель и Qwen2.5-Coder 0.5B как draft-модель. Это shortcut для speculative decoding без ручного указания `--spec-draft-hf`.
 
 ## Оригинальная справка llama.cpp
 
@@ -33,73 +39,97 @@ use Qwen 2.5 Coder 7B + 0.5B draft for speculative decoding (note: can download 
 ## Паспорт аргумента
 
 - Основное имя: `--fim-qwen-7b-spec`
-- Алиасы: `--fim-qwen-7b-spec`
-- Категория в `--help`: `Параметры llama-server`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Тип: flag без значения
+- Env: нет
+- Этап применения: парсинг CLI, до загрузки target и draft моделей
+- Область: `llama-server`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Флаг записывает:
 
-Для точного описания механики нужно проверить:
+- `params.model.hf_repo = "ggml-org/Qwen2.5-Coder-7B-Q8_0-GGUF"`
+- `params.model.hf_file = "qwen2.5-coder-7b-q8_0.gguf"`
+- `params.speculative.draft.mparams.hf_repo = "ggml-org/Qwen2.5-Coder-0.5B-Q8_0-GGUF"`
+- `params.speculative.draft.mparams.hf_file = "qwen2.5-coder-0.5b-q8_0.gguf"`
+- `params.port = 8012`
+- `params.n_ubatch = 1024`
+- `params.n_batch = 1024`
+- `params.n_ctx = 0`
+- `params.n_cache_reuse = 256`
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+Если draft-модель задана, но `--spec-type` явно не включает draft type, speculative subsystem логирует предупреждение и включает draft-simple автоматически.
+
+## Значения и формат
+
+```bash
+llama-server --fim-qwen-7b-spec
+```
+
+INI:
+
+```ini
+[coder-7b-spec]
+fim-qwen-7b-spec = true
+alias = coder-spec
+tags = code,fim,speculative
+```
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
+Используйте, когда нужна 7B target-модель и есть смысл ускорить decoding с маленькой draft-моделью. Это полезно для интерактивного code completion, если память позволяет держать обе модели.
 
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Если draft-модель не помещается или acceptance rate низкий на вашем workload, используйте `--fim-qwen-7b-default`.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Speculative decoding добавляет загрузку второй модели. Это увеличивает RAM/VRAM и время старта, но может снизить latency генерации, если draft предсказывает токены, которые target принимает.
+
+Draft offload и CPU-настройки управляются отдельными `--spec-draft-*` аргументами. Этот preset их не задает.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+Связанные speculative аргументы:
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+- `--spec-type` для явного выбора speculative types.
+- `--spec-draft-ngl`, `--spec-draft-device`, `--spec-draft-threads` для ресурсов draft-модели.
+- `--spec-draft-n-max`, `--spec-draft-n-min`, `--spec-draft-p-min` для поведения draft decoding.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+`--spec-default` не нужен для включения draft-simple с этим shortcut, но может добавить ngram-mod speculative конфигурацию. Проверяйте итоговую эффективность на workload, а не включайте все speculative методы автоматически.
 
-## Типовые проблемы
+## INI-пресеты и router-режим
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В router INI shortcut описывает обе модели:
+
+```ini
+[coder-7b-spec]
+fim-qwen-7b-spec = true
+alias = coder
+load-on-startup = false
+```
+
+Учитывайте `--models-max`: один loaded model instance с draft-моделью считается одной router-моделью, но внутри дочернего процесса занимает память под target и draft.
+
+## Типовые проблемы и диагностика
+
+- Лог `draft model is specified but 'draft' speculative type is not explicitly enabled`: это ожидаемая автоматическая активация draft-simple.
+- OOM при загрузке: нужны ресурсы для 7B target и 0.5B draft.
+- Скорость не выросла: speculative decoding зависит от acceptance rate, backend и draft настройки.
+- Скачиваются две модели: target и draft берутся из HF repo.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --fim-qwen-7b-spec
+llama-server --fim-qwen-7b-spec --port 8082
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --fim-qwen-7b-spec --spec-draft-ngl all --ctx-size 32768
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--fim-qwen-7b-spec&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--fim-qwen-7b-spec
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--fim-qwen-7b-spec
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-7b-spec`, `--spec-type`, draft args.
+- `/home/maxim/llama/llama.cpp/common/speculative.cpp`: automatic draft-simple enable и speculative init.
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: загрузка draft context.
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.

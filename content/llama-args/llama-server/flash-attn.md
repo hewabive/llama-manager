@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--flash-attn"
 title: "--flash-attn"
-summary: "Включение Flash Attention: on, off или auto. Может улучшить скорость и снизить память, если backend поддерживает."
-docStatus: draft
+summary: "Управляет Flash Attention: `auto`, принудительно `on` или принудительно `off`. Режим влияет на создание context, совместимость KV-cache и tensor split."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: "[on|off|auto]"
@@ -19,19 +19,16 @@ allowedValues:
 env:
   - "LLAMA_ARG_FLASH_ATTN"
 related:
-  - "--main-gpu"
-  - "--n-gpu-layers"
+  - "--cache-type-k"
+  - "--cache-type-v"
   - "--split-mode"
-  - "--tensor-split"
 ---
 
 # --flash-attn
 
 ## Кратко
 
-Включение Flash Attention: on, off или auto. Может улучшить скорость и снизить память, если backend поддерживает.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--flash-attn` задает режим Flash Attention для context. По умолчанию используется `auto`: llama.cpp сам включает или отключает Flash Attention там, где это требуется или недоступно.
 
 ## Оригинальная справка llama.cpp
 
@@ -43,75 +40,76 @@ set Flash Attention use ('on', 'off', or 'auto', default: 'auto')
 
 - Основное имя: `--flash-attn`
 - Алиасы: `-fa`, `--flash-attn`
-- Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `boolean` (логическое значение или переключатель)
-- Подсказка формата из `--help`: `[on|off|auto]`
-- Допустимые значения из `--help`: `on`, `off`, `auto`
-- Переменные окружения: `LLAMA_ARG_FLASH_ATTN`
-- Значение по умолчанию из `--help`: `'auto')`
+- Переменная окружения: `LLAMA_ARG_FLASH_ATTN`
+- Поле `common_params`: `flash_attn_type`
+- Поле `llama_context_params`: `flash_attn_type`
+- Значение по умолчанию: `auto`
+- Допустимые значения: truthy, falsey, `auto`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+Парсер принимает truthy-значения `on`, `enabled`, `true`, `1`, falsey-значения `off`, `disabled`, `false`, `0`, а также `auto` и `-1`. Значение сохраняется как `LLAMA_FLASH_ATTN_TYPE_ENABLED`, `DISABLED` или `AUTO`.
 
-Для точного описания механики нужно проверить:
+При создании context llama.cpp выставляет внутренние флаги `flash_attn` и `auto_fa`. Для Grok Flash Attention принудительно отключается с предупреждением. Для `--split-mode tensor` `auto` принудительно включает Flash Attention, а `off` приводит к ошибке.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+- `auto`: рекомендуемый режим по умолчанию.
+- `on`: требовать Flash Attention.
+- `off`: запретить Flash Attention.
+- Через env принимаются те же строки: `LLAMA_ARG_FLASH_ATTN=auto`, `LLAMA_ARG_FLASH_ATTN=on`.
 
 ## Когда использовать
 
-- Для логических параметров в llama.cpp часто встречаются формы `on/off`, `true/false`, `0/1` или отдельные `--no-*` варианты.
-- В UI лучше выбирать значение из списка, а не давать пользователю свободно вводить произвольную строку.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Оставляйте `auto`, если нет конкретной причины фиксировать режим. Используйте `on` для `--split-mode tensor` или для конфигураций с quantized V cache, где llama.cpp требует Flash Attention. Используйте `off` для диагностики backend-ошибок или сравнения качества/производительности.
 
 ## Влияние на производительность и память
 
-- Затрагивает распределение вычислений между CPU/GPU и может менять как latency, так и объем занятой VRAM.
-- После изменения проверяйте лог старта: llama.cpp обычно печатает, какие слои и буферы реально попали на GPU.
+Flash Attention часто снижает объем промежуточной памяти attention и ускоряет eval, но эффект зависит от backend, модели, размера context и batch. Несовместимая комбинация не "молча замедляется", а обычно дает явную ошибку на создании context.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+`--split-mode tensor` требует включенный Flash Attention и не поддерживает quantized KV cache одновременно.
 
-- `--main-gpu`
-- `--n-gpu-layers`
-- `--split-mode`
-- `--tensor-split`
+`--cache-type-v` с quantized V требует Flash Attention; при `--flash-attn off` llama.cpp завершает создание context ошибкой `V cache quantization requires flash_attn`.
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Для quantized K/V llama.cpp дополнительно проверяет делимость размеров голов на block size типа cache.
 
-## Типовые проблемы
+## INI-пресеты и router-режим
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+В INI:
+
+```ini
+flash-attn = auto
+```
+
+Для router-режима это модельный параметр. Если разные модели имеют разную совместимость, задавайте `flash-attn` в секциях моделей, а не глобально.
+
+## Типовые проблемы и диагностика
+
+- `SPLIT_MODE_TENSOR requires flash_attn to be enabled`: поставьте `--flash-attn auto` или `--flash-attn on`.
+- `V cache quantization requires flash_attn`: не используйте `--flash-attn off` с quantized V cache.
+- Grok-модель: llama.cpp печатает предупреждение и отключает Flash Attention независимо от запроса.
+- Для проверки смотрите строку `flash_attn = ...` при создании context.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --flash-attn on
+llama-server --model /models/model.gguf --flash-attn auto
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
+```bash
+llama-server --model /models/model.gguf --split-mode tensor --flash-attn on
+```
 
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /models/model.gguf --flash-attn off
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--flash-attn&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--flash-attn
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--flash-attn
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
+- `/home/maxim/llama/llama.cpp/include/llama.h`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`

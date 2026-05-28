@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--control-vector-scaled"
 title: "--control-vector-scaled"
-summary: "Черновая инженерная справка по --control-vector-scaled из категории \"Общие параметры\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Загружает control vector с явным strength в формате `FNAME:SCALE`. Несколько vectors можно передать CSV-списком."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
 valueType: "path"
 valueHint: "FNAME:SCALE,..."
@@ -13,21 +13,23 @@ aliases:
   - "--control-vector-scaled"
 allowedValues: []
 env: []
-related: []
+related:
+  - "--control-vector"
+  - "--control-vector-layer-range"
+  - "--model"
 ---
 
 # --control-vector-scaled
 
 ## Кратко
 
-Черновая инженерная справка по --control-vector-scaled из категории "Общие параметры". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--control-vector-scaled` добавляет control vector с заданным strength. Каждый CSV-элемент должен иметь формат `FNAME:SCALE`; обработчик записывает `{ strength = stof(SCALE), fname = FNAME }` в `common_params.control_vectors`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-add a control vector with user defined scaling SCALE note: use comma-separated values (format: FNAME:SCALE,...)
+add a control vector with user defined scaling SCALE
+note: use comma-separated values (format: FNAME:SCALE,...)
 ```
 
 ## Паспорт аргумента
@@ -35,71 +37,71 @@ add a control vector with user defined scaling SCALE note: use comma-separated v
 - Основное имя: `--control-vector-scaled`
 - Алиасы: `--control-vector-scaled`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `path` (путь к файлу или каталогу)
+- Тип значения в llama-manager: `path`
 - Подсказка формата из `--help`: `FNAME:SCALE,...`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `не указаны`
-- Значение по умолчанию из `--help`: `не указано`
+- Переменные окружения: не указаны
+- Значение по умолчанию: control vectors не применяются
+- Внутреннее поле: `common_params.control_vectors`
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+На парсинге каждый элемент делится по `:`. Если частей не две, выбрасывается `control-vector-scaled format: FNAME:SCALE`. Scale читается через `std::stof`.
 
-Для точного описания механики нужно проверить:
+При загрузке vectors данные каждого tensor умножаются на strength и складываются с другими vectors. После этого общий vector применяется к диапазону слоев через `llama_set_adapter_cvec()`.
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+## Значения и формат
+
+Примеры:
+
+```text
+--control-vector-scaled /srv/cvec/helpful.gguf:0.8
+--control-vector-scaled /srv/cvec/a.gguf:0.5,/srv/cvec/b.gguf:-0.3
+```
+
+Отрицательный scale синтаксически допустим через `std::stof` и может инвертировать направление steering, если это осмысленно для конкретного vector.
 
 ## Когда использовать
 
-- Для управляемых экземпляров предпочтительны абсолютные пути: они не зависят от текущего рабочего каталога процесса.
-- На Linux учитывайте права доступа пользователя, от имени которого запущен llama-manager и дочерний `llama-server`.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+Используйте, когда strength `1.0` слишком сильный/слабый или нужно смешать несколько steering directions. Меняйте scale малыми шагами и проверяйте качество на контрольных prompts.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Память определяется vector data, а не scale. Слишком большой по модулю scale может резко ухудшить качество генерации, даже если производительность почти не меняется.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--control-vector`: добавляет vectors со strength `1.0`; все vectors суммируются.
+- `--control-vector-layer-range`: задает слой, на котором применяется уже суммированный vector.
+- `--model`: vectors должны совпадать по `n_embd`.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+```ini
+[scaled_cvec]
+model = /srv/models/base.gguf
+control-vector-scaled = /srv/cvec/helpful.gguf:0.6
+```
 
-## Типовые проблемы
+Если путь содержит `:`, формат становится неоднозначным. Для Linux production путей избегайте двоеточий в именах control vector файлов.
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+## Типовые проблемы и диагностика
+
+- `control-vector-scaled format: FNAME:SCALE`: нарушен формат или в пути есть лишнее двоеточие.
+- Ошибка преобразования scale: scale должен быть числом формата, принимаемого `std::stof`.
+- Модель стала отвечать нестабильно: уменьшите `abs(scale)` или сузьте `--control-vector-layer-range`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --control-vector-scaled /path/to/value
+llama-server --model /srv/models/base.gguf --control-vector-scaled /srv/cvec/helpful.gguf:0.6
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+llama-server --model /srv/models/base.gguf --control-vector-scaled /srv/cvec/helpful.gguf:0.7,/srv/cvec/formal.gguf:0.3
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--control-vector-scaled&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--control-vector-scaled
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--control-vector-scaled
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`

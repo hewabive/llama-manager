@@ -2,10 +2,10 @@
 schema: 1
 primaryName: "--backend-sampling"
 title: "--backend-sampling"
-summary: "Черновая инженерная справка по --backend-sampling из категории \"Параметры сэмплинга\". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску."
-docStatus: draft
+summary: "Экспериментально переносит совместимые sampler-операции в backend llama.cpp. Режим может автоматически отключаться для конкретного запроса при grammar, reasoning budget, speculative decoding или pre-sampling logprobs."
+docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: null
+reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры сэмплинга"
 valueType: "flag"
 valueHint: null
@@ -15,16 +15,19 @@ aliases:
 allowedValues: []
 env:
   - "LLAMA_ARG_BACKEND_SAMPLING"
-related: []
+related:
+  - "--samplers"
+  - "--top-k"
+  - "--top-p"
+  - "--min-p"
+  - "--temp"
 ---
 
 # --backend-sampling
 
 ## Кратко
 
-Черновая инженерная справка по --backend-sampling из категории "Параметры сэмплинга". Назначение, допустимые значения и побочные эффекты нужно подтвердить по исходной справке, коду llama.cpp и тестовому запуску.
-
-Этот файл создан автоматически из текущего вывода `llama-server --help` и считается черновиком. Перед переводом `docStatus` в `current` нужно проверить поведение аргумента по исходному коду llama.cpp, changelog, issues/PR и локальному запуску.
+`--backend-sampling` включает экспериментальный путь, при котором sampler chain может быть передан в backend и выполняться ближе к вычислению logits. Это не гарантированное ускорение: совместимость зависит от sampler-ов и от параметров конкретного запроса.
 
 ## Оригинальная справка llama.cpp
 
@@ -35,73 +38,81 @@ enable backend sampling (experimental) (default: disabled)
 ## Паспорт аргумента
 
 - Основное имя: `--backend-sampling`
-- Алиасы: `-bs`, `--backend-sampling`
-- Категория в `--help`: `Параметры сэмплинга`
-- Тип значения в llama-manager: `flag` (флаг без отдельного значения)
-- Подсказка формата из `--help`: `не указано`
-- Допустимые значения из `--help`: `не указаны`
-- Переменные окружения: `LLAMA_ARG_BACKEND_SAMPLING`
-- Значение по умолчанию из `--help`: `disabled`
+- Алиас: `-bs`
+- Поле в `common_params`: `params.sampling.backend_sampling`
+- HTTP-поле: `backend_sampling`
+- Env: `LLAMA_ARG_BACKEND_SAMPLING`
+- Значение по умолчанию: disabled.
 
 ## Что меняет в llama-server
 
-Аргумент передается напрямую в процесс `llama-server` и должен рассматриваться как часть контракта запуска конкретной версии llama.cpp. В llama-manager он хранится в конфигурации экземпляра или INI-пресете и попадает в массив аргументов при старте процесса.
+CLI-флаг ставит `params.sampling.backend_sampling = true`. При создании общего context llama.cpp заранее инициализирует sampler-ы на каждую sequence и, если режим включен, передает их в `llama_context_params`.
 
-Для точного описания механики нужно проверить:
+В server runtime sampler заново создается на слот. Затем server решает, можно ли вызвать `llama_set_sampler(ctx, slot.id, sampler)`. Режим отключается для запроса, если:
 
-- где аргумент объявлен в CLI-парсере llama.cpp;
-- в какую структуру настроек он записывается;
-- используется ли он только на старте или влияет на runtime-поведение сервера;
-- есть ли deprecated-алиасы, неочевидные значения и platform-specific ограничения;
-- как аргумент взаимодействует с моделью, backend, HTTP API и router-режимом.
+- `task.params.sampling.backend_sampling` false;
+- слот использует speculative decoding;
+- нужны pre-sampling logits (`n_probs > 0` и `post_sampling_probs == false`);
+- sampler init выключил backend sampling из-за grammar или reasoning budget.
+
+## Совместимость sampler-ов
+
+В текущем `llama-sampler.cpp` backend hooks есть у `top_k`, `top_p`, `min_p`, `temp_ext` и `dist`. Не все sampler-ы имеют backend implementation: typical, XTC, top-n-sigma, adaptive-p, penalties/DRY и grammar-related sampler-ы требуют CPU-side логики или отключают режим.
+
+Фактическую совместимость проверяйте trace-логами и тестами на вашей сборке backend-а.
 
 ## Когда использовать
 
-- Флаг обычно меняет режим работы самим фактом присутствия в командной строке.
-- Перед добавлением в постоянный пресет проверьте, есть ли парный отрицательный флаг или более новый аргумент с тем же смыслом.
-
-Используйте этот аргумент в постоянной конфигурации только после короткого контрольного запуска. Для рискованных параметров полезно сначала создать отдельный тестовый экземпляр с тем же `--model`, но на другом порту.
+- Для экспериментов с latency/throughput на backend-ах, где sampling становится заметным bottleneck.
+- Для цепочек, близких к `top_k;top_p;min_p;temperature`.
+- Не включайте без контрольного сравнения качества и скорости: флаг помечен как experimental.
 
 ## Влияние на производительность и память
 
-- Точное влияние зависит от подсистемы llama.cpp, которую затрагивает аргумент.
-- После изменения сравнивайте лог запуска, потребление памяти и поведение контрольного запроса.
+Модель и KV-cache не меняются. Может немного увеличить служебную память на sampler configs per sequence. Выигрыш зависит от backend-а, размера словаря, batch/slot layout и состава цепочки.
 
 ## Взаимодействие с другими аргументами
 
-Связанные аргументы, которые стоит проверять вместе с этим параметром:
+- `--samplers` определяет, есть ли в цепочке backend-compatible sampler-ы.
+- Grammar/JSON schema и reasoning budget отключают backend sampling warning-ом.
+- `n_probs` без `post_sampling_probs` отключает backend sampling для запроса.
+- Speculative decoding сейчас несовместим с backend sampling в server-context.
 
-- Автоматически связанные аргументы не определены. Добавьте их после ручного анализа.
+## INI-пресеты и router-режим
 
-При конфликте нескольких аргументов приоритет обычно определяется CLI-парсером llama.cpp и порядком применения настроек. Это нужно подтверждать по исходному коду для каждой конкретной версии.
+Ключ INI для флага:
 
-## Типовые проблемы
+```ini
+[backend-sampling]
+backend-sampling = true
+```
 
-- Сервер не стартует: проверьте лог `llama-server`, фактический argv, права доступа к файлам и корректность формата значения.
-- Аргумент игнорируется: убедитесь, что используется свежий бинарник после сборки и что имя аргумента не устарело.
-- Поведение отличается после `git pull`: заново запустите аудит справки и сравните `reviewedHelpHash` с текущим hash `--help`.
-- UI принимает значение, но backend падает: добавьте в llama-manager более строгую валидацию для этого типа значения.
+Параметр является sampling option, поэтому допускается в presets. Env `LLAMA_ARG_BACKEND_SAMPLING` наследуется child process-ами router-а.
+
+## Типовые проблемы и диагностика
+
+- Нет ускорения: цепочка содержит sampler-ы без backend hooks или sampling не является bottleneck.
+- Режим выключился: ищите warning `backend sampling is not compatible with grammar` или `reasoning budget`.
+- Для запроса с logprobs проверьте `post_sampling_probs`: pre-sampling logprobs пока несовместимы.
+- Trace `sampler chain` и `sampler params` показывают активную цепочку и `backend_sampling`.
 
 ## Примеры
 
 ```bash
-llama-server --model /models/example.gguf --backend-sampling
+llama-server --model /models/model.gguf --backend-sampling --samplers "top_k;top_p;min_p;temperature"
 ```
 
-Для управляемого экземпляра llama-manager этот аргумент должен храниться как отдельная пара имя/значение, а не как склеенная shell-строка. Это снижает риск ошибок с кавычками и переносимостью между Linux, macOS и Windows.
-
-## Что проверить агенту перед переводом в current
-
-- Найти объявление аргумента в актуальном исходном коде llama.cpp.
-- Проверить, изменялась ли логика аргумента в недавних PR/issues.
-- Запустить минимальный `llama-server --help` и тестовый старт с этим аргументом.
-- Описать реальные ошибки из логов и способы диагностики.
-- Добавить 1-3 практических примера для типовых сценариев.
-- После проверки обновить `summary`, при необходимости `related`, указать commit llama.cpp и поставить `docStatus: current`.
+```bash
+LLAMA_ARG_BACKEND_SAMPLING=1 llama-server --model /models/model.gguf
+```
 
 ## Источники
 
-- https://github.com/ggml-org/llama.cpp
-- https://github.com/ggml-org/llama.cpp/search?q=--backend-sampling&type=code
-- https://github.com/ggml-org/llama.cpp/issues?q=--backend-sampling
-- https://github.com/ggml-org/llama.cpp/discussions?discussions_q=--backend-sampling
+- `/home/maxim/llama/llama.cpp/common/arg.cpp`
+- `/home/maxim/llama/llama.cpp/common/common.h`
+- `/home/maxim/llama/llama.cpp/common/common.cpp`
+- `/home/maxim/llama/llama.cpp/common/sampling.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `/home/maxim/llama/llama.cpp/tools/server/README.md`
