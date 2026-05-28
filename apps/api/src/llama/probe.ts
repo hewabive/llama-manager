@@ -184,9 +184,16 @@ function modelRecordsFromProbe(
     );
 }
 
-function shouldProbeRouterModel(status: string | null) {
-  return ["loaded", "loading", "sleeping"].includes(
-    status?.toLowerCase() ?? "",
+function shouldProbeRouterModelDiagnostics(status: string | null) {
+  return ["loaded", "sleeping"].includes(status?.toLowerCase() ?? "");
+}
+
+function shouldUseModelForCapabilityProbe(status: string | null) {
+  if (!status) {
+    return true;
+  }
+  return ["loaded", "ready", "running", "sleeping"].includes(
+    status.toLowerCase(),
   );
 }
 
@@ -195,7 +202,7 @@ async function probeRouterModelDiagnostics(
   models: LlamaEndpointProbe,
 ): Promise<Record<string, LlamaModelDiagnostics>> {
   const activeModels = modelRecordsFromProbe(models)
-    .filter((model) => shouldProbeRouterModel(model.status))
+    .filter((model) => shouldProbeRouterModelDiagnostics(model.status))
     .slice(0, ROUTER_MODEL_DIAGNOSTICS_LIMIT);
 
   const entries = await Promise.all(
@@ -392,9 +399,8 @@ const capabilityDefinitions: CapabilityDefinition[] = [
 function selectedCapabilityModel(models: LlamaEndpointProbe) {
   const records = modelRecordsFromProbe(models);
   return (
-    records.find((model) => shouldProbeRouterModel(model.status))?.id ??
-    records[0]?.id ??
-    null
+    records.find((model) => shouldUseModelForCapabilityProbe(model.status))
+      ?.id ?? null
   );
 }
 

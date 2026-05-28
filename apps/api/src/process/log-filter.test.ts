@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   filterManagedLlamaLogChunk,
+  isRoutineManagerProbeSideEffectLogLine,
   isRoutineManagerProbeRequestLogLine,
 } from "./log-filter.js";
 
@@ -53,6 +54,8 @@ test("filters only complete routine request lines from chunks", () => {
   const chunk = [
     "main: loading model",
     "srv  log_server_r: done request: GET /health 127.0.0.1 503",
+    "0.17.466.965 I srv  proxy_reques: proxying request to model Gemma on port 57117",
+    "[57117] 0.47.921.945 I srv  update_slots: all slots are idle",
     "srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200",
     "load_tensors: loading model tensors",
   ].join("\n");
@@ -65,6 +68,27 @@ test("filters only complete routine request lines from chunks", () => {
       "load_tensors: loading model tensors",
       "",
     ].join("\n"),
+  );
+});
+
+test("detects routine router probe side-effect log lines", () => {
+  assert.equal(
+    isRoutineManagerProbeSideEffectLogLine(
+      "0.17.466.965 I srv  proxy_reques: proxying request to model Gemma on port 57117",
+    ),
+    true,
+  );
+  assert.equal(
+    isRoutineManagerProbeSideEffectLogLine(
+      "[57117] 0.47.921.945 I srv  update_slots: all slots are idle",
+    ),
+    true,
+  );
+  assert.equal(
+    isRoutineManagerProbeSideEffectLogLine(
+      "0.17.467.473 E srv    operator(): http client error: Could not establish connection",
+    ),
+    false,
   );
 });
 

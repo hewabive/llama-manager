@@ -11,6 +11,9 @@ import { readTailLines } from "../utils/log-tail.js";
 
 const MAX_SUMMARY_LINES = 1_000;
 const MIB = 1024 * 1024;
+const READY_LOG_PATTERN =
+  /(?:server is listening|http server listening|listening on|starting the main loop|model loaded|warming up.*done|cmd_child_to_router:ready)/i;
+const ERROR_LOG_PATTERN = /\b(error|fatal|failed|exception)\b/i;
 
 type MemoryByteField =
   | "modelBytes"
@@ -44,13 +47,55 @@ function lastIndex(lines: string[], pattern: RegExp) {
 }
 
 function interestingLines(lines: string[], pattern: RegExp, limit: number) {
+  return interestingLinesByPredicate(
+    lines,
+    (line) => pattern.test(line),
+    limit,
+  );
+}
+
+function interestingLinesByPredicate(
+  lines: string[],
+  predicate: (line: string, index: number) => boolean,
+  limit: number,
+) {
   const result: string[] = [];
-  for (const line of lines) {
-    if (pattern.test(line)) {
+  lines.forEach((line, index) => {
+    if (predicate(line, index)) {
       result.push(line.trim());
     }
-  }
+  });
   return result.slice(-limit);
+}
+
+function withoutChildPrefix(line: string) {
+  return line.trim().replace(/^\[\d+\]\s+/, "");
+}
+
+function withoutLlamaTimestamp(line: string) {
+  return withoutChildPrefix(line).replace(/^\d+(?:\.\d+)+\s+/, "");
+}
+
+function isTransientStartupRouterConnectionError(line: string) {
+  return /^E\s+srv\s+operator\(\):\s+http client error:\s+Could not establish connection\s*$/i.test(
+    withoutLlamaTimestamp(line),
+  );
+}
+
+function errorLines(lines: string[], limit: number) {
+  const lastReadyIndex = lastIndex(lines, READY_LOG_PATTERN);
+  return interestingLinesByPredicate(
+    lines,
+    (line, index) => {
+      if (!ERROR_LOG_PATTERN.test(line)) {
+        return false;
+      }
+      return !(
+        index < lastReadyIndex && isTransientStartupRouterConnectionError(line)
+      );
+    },
+    limit,
+  );
 }
 
 function parseListeningUrl(lines: string[]) {
@@ -118,11 +163,7 @@ function parseModelAlias(lines: string[]) {
 }
 
 function isReady(lines: string[]) {
-  return lines.some((line) =>
-    /(?:server is listening|http server listening|listening on|starting the main loop|model loaded|warming up.*done)/i.test(
-      line,
-    ),
-  );
+  return lines.some((line) => READY_LOG_PATTERN.test(line));
 }
 
 function loadProgress(
@@ -266,7 +307,7 @@ function countProgressDots(lines: string[]) {
 
 function parseLoadProgress(lines: string[]): InstanceLoadProgress {
   const readyPattern =
-    /(?:starting the main loop|model loaded|warming up.*done)/i;
+    /(?:starting the main loop|model loaded|warming up.*done|cmd_child_to_router:ready)/i;
   const listeningPattern =
     /(?:server is listening|http server listening|listening on)/i;
   const loadingPattern =
@@ -299,11 +340,7 @@ function parseLoadProgress(lines: string[]): InstanceLoadProgress {
   }
 
   const window = lines.slice(loadingIndex);
-  const errorLine = interestingLines(
-    window,
-    /\b(error|fatal|failed|exception)\b/i,
-    1,
-  )[0];
+  const errorLine = interestingLines(window, ERROR_LOG_PATTERN, 1)[0];
   if (errorLine) {
     return loadProgress("error", null, errorLine, false);
   }
@@ -401,7 +438,7 @@ export function summarizeInstanceLog(input: {
       slots: parseSlots(lines),
       ready: isReady(lines),
       warnings: interestingLines(lines, /\b(warn|warning)\b/i, 8),
-      errors: interestingLines(lines, /\b(error|fatal|failed|exception)\b/i, 8),
+      errors: errorLines(lines, 8),
       notices: interestingLines(
         lines,
         /\b(server is listening|http server listening|offload|loaded|warming up|cache|slot|ready)\b/i,

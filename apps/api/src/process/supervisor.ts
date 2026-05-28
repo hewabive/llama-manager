@@ -122,7 +122,7 @@ export class ProcessSupervisor extends EventEmitter {
       [
         `# llama-manager filtered log for ${instance.name}`,
         config.logs.filterRoutineProbeRequests
-          ? "# routine local GET/HEAD diagnostic request lines are omitted here"
+          ? "# routine diagnostic request lines and their router side-effect noise are omitted here"
           : "# probe request filtering is disabled; this log matches raw output",
         `# raw log: ${rawLogPath}`,
         "",

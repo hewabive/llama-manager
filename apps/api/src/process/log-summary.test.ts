@@ -158,3 +158,57 @@ test("summarizeInstanceLog reports warmup as late loading stage", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("summarizeInstanceLog ignores transient router connection errors before child readiness", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.17.179.974 I srv          load: spawning server instance with name=Gemma on port 57117",
+        "0.17.466.965 I srv  proxy_reques: proxying request to model Gemma on port 57117",
+        "0.17.467.473 E srv    operator(): http client error: Could not establish connection",
+        "0.17.467.526 E srv    operator(): http client error: Could not establish connection",
+        "[57117] 0.12.314.080 I srv  llama_server: model loaded",
+        "[57117] 0.12.314.086 I srv  llama_server: server is listening on http://127.0.0.1:57117",
+        "[57117] cmd_child_to_router:ready",
+      ].join("\n"),
+    );
+
+    const summary = summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.ready, true);
+    assert.deepEqual(summary.errors, []);
+    assert.equal(summary.loadProgress.stage, "ready");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("summarizeInstanceLog keeps router connection errors after readiness", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "[57117] 0.12.314.080 I srv  llama_server: model loaded",
+        "[57117] cmd_child_to_router:ready",
+        "1.17.467.473 E srv    operator(): http client error: Could not establish connection",
+      ].join("\n"),
+    );
+
+    const summary = summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.errors.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

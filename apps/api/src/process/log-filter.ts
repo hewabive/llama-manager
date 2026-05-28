@@ -84,6 +84,33 @@ export function isRoutineManagerProbeRequestLogLine(
   );
 }
 
+function withoutChildPrefix(line: string) {
+  return line.trim().replace(/^\[\d+\]\s+/, "");
+}
+
+function withoutLlamaTimestamp(line: string) {
+  return withoutChildPrefix(line).replace(/^\d+(?:\.\d+)+\s+/, "");
+}
+
+export function isRoutineManagerProbeSideEffectLogLine(line: string) {
+  const normalized = withoutLlamaTimestamp(line);
+  return (
+    /^I\s+srv\s+proxy_reques[t]?:\s+proxying request to model .+ on port \d+\s*$/i.test(
+      normalized,
+    ) || /^I\s+srv\s+update_slots:\s+all slots are idle\s*$/i.test(normalized)
+  );
+}
+
+export function isRoutineManagerProbeLogLine(
+  line: string,
+  localAddresses = localProbeAddresses(),
+) {
+  return (
+    isRoutineManagerProbeRequestLogLine(line, localAddresses) ||
+    isRoutineManagerProbeSideEffectLogLine(line)
+  );
+}
+
 export function filterManagedLlamaLogChunk(
   chunk: string,
   localAddresses = localProbeAddresses(),
@@ -95,7 +122,7 @@ export function filterManagedLlamaLogChunk(
 
     const newline = parts[index + 1] ?? "";
     const line = part.endsWith("\r") ? part.slice(0, -1) : part;
-    if (newline && isRoutineManagerProbeRequestLogLine(line, localAddresses)) {
+    if (newline && isRoutineManagerProbeLogLine(line, localAddresses)) {
       return filtered;
     }
     return `${filtered}${part}${newline}`;
