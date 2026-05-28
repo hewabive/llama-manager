@@ -401,9 +401,6 @@ export function SmartArgRow(props: {
               </Badge>
             )}
           </Group>
-          <Text c="dimmed" size="xs" lineClamp={1}>
-            {props.option.category} · {props.option.valueType}
-          </Text>
         </Box>
 
         {enabled && props.option.valueType !== "flag" && valueControl()}

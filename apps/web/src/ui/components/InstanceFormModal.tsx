@@ -239,6 +239,9 @@ export function InstanceFormModal(props: {
   });
 
   const argsCatalog = argsCatalogQuery.data?.data;
+  const argsCatalogTooltip = argsCatalog
+    ? `Reload from binary --help. Catalog has ${argsCatalog.options.length} args, ${argsCatalog.cache.hit ? "cache hit" : "fresh parse"}: ${argsCatalog.binaryPath}`
+    : "Reload from binary --help";
   const knownArgs = argsCatalog?.options ?? [];
   const knownArgByName = useMemo(() => {
     const map = new Map<string, LlamaArgumentOption>();
@@ -940,7 +943,7 @@ export function InstanceFormModal(props: {
                 disabled={argsCatalogQuery.isError}
                 style={{ flex: 1 }}
               />
-              <Tooltip label="Reload from binary --help">
+              <Tooltip label={argsCatalogTooltip}>
                 <ActionIcon
                   aria-label="Reload arguments from binary help"
                   variant="subtle"
@@ -953,20 +956,6 @@ export function InstanceFormModal(props: {
                 </ActionIcon>
               </Tooltip>
             </Group>
-            {argsCatalog && (
-              <Group gap="xs">
-                <Badge variant="light">{argsCatalog.options.length} args</Badge>
-                <Badge
-                  color={argsCatalog.cache.hit ? "green" : "yellow"}
-                  variant="outline"
-                >
-                  {argsCatalog.cache.hit ? "cache hit" : "refreshed"}
-                </Badge>
-                <Text c="dimmed" size="xs" lineClamp={1}>
-                  {argsCatalog.binaryPath}
-                </Text>
-              </Group>
-            )}
             {argsCatalogQuery.isError && (
               <Text c="red" size="xs">
                 {(argsCatalogQuery.error as Error).message}
