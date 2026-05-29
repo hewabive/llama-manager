@@ -5,39 +5,71 @@ Engineering help for `llama-server` arguments lives in
 
 ## Source Of Truth
 
-- The canonical `llama.cpp` checkout is stored in `llama_source_settings`.
-- `reviewedLlamaCppCommit` in each Markdown file records the source commit that
-  was reviewed.
-- `reviewedHelpHash` remains a fallback diagnostic for the selected binary
-  `llama-server --help` output.
+The synchronization source is the generated help block in the configured
+`llama.cpp` checkout:
 
-## Work Orders
+```text
+tools/server/README.md
+<!-- HELP_START --> ... <!-- HELP_END -->
+```
 
-Work orders are generated on demand and are not project artifacts.
+llama-manager stores a reviewed snapshot of that block in:
 
-- UI: `Args` -> `Source sync` -> `Work order`.
-- API: `GET /api/llama-args/docs-work-order`.
-- CLI: `pnpm --filter @llama-manager/api args:docs:work-order -- --limit 10`.
+```text
+content/llama-args/source/server-help.generated.md
+content/llama-args/source/help-source.json
+```
 
-The generator writes nothing to disk. It returns Markdown in the API response or
-prints it to stdout in the CLI.
+The stored hash is the only automatic stale signal. `reviewedHelpHash` and
+`reviewedLlamaCppCommit` in individual Markdown files are historical diagnostics,
+not mass-review triggers.
+
+## User Signal
+
+The `Arguments` page compares the stored snapshot hash with the current generated
+help block from the configured source repo.
+
+- Hash matches: no action.
+- Hash differs: show one global warning that the argument reference may not
+  match the current llama.cpp source.
+- Missing source/snapshot: show a source-sync error.
+
+The app does not mark every argument `needs-review` when llama.cpp gets a new
+commit.
+
+## Agent Workflow
+
+Use the repo-local Codex skill:
+
+```text
+.codex/skills/llama-arg-help-sync/SKILL.md
+```
+
+Useful commands:
+
+```bash
+pnpm --filter @llama-manager/api args:docs:source-sync
+pnpm --filter @llama-manager/api args:docs:source-sync -- --diff
+pnpm --filter @llama-manager/api args:docs:source-sync -- --write
+pnpm --filter @llama-manager/api args:docs:quality
+```
+
+The agent reviews the generated help diff, edits only affected Engineering help
+files, then writes the new snapshot/hash with `--write`.
 
 ## Hygiene Rules
 
 - Do not commit generated work-order text.
-- Useful permanent changes belong in the argument Markdown files or app code.
+- Useful permanent changes belong in argument Markdown files, the source
+  snapshot, or app code.
 - If scratch notes are unavoidable, put them under
   `runtime/tmp/argument-help/`, start the file with
   `TEMPORARY - remove after task`, and delete it before final verification.
-- After editing docs, run
-  `pnpm --filter @llama-manager/api args:docs:quality -- --changed`.
+- Do not mass-edit all argument docs just because the llama.cpp commit changed.
 
 ## Completion Criteria
 
-For each reviewed argument:
-
-- verify behavior against the canonical `llama.cpp` source checkout;
-- update practical Russian engineering help;
-- remove stale generated boilerplate;
-- set `docStatus: current` only after review;
-- set `reviewedLlamaCppCommit` to the current source commit.
+- The generated help diff has been reviewed.
+- Affected docs are updated or intentionally marked `orphaned`.
+- `args:docs:source-sync` reports `"inSync": true`.
+- `args:docs:quality` passes.

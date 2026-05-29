@@ -1,0 +1,300 @@
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, relative, resolve } from "node:path";
+
+import type { LlamaArgumentHelpSourceSync } from "@llama-manager/core";
+
+import { config } from "../config.js";
+import {
+  getLlamaSourceCurrentCommit,
+  getLlamaSourceSettings,
+} from "../llama/source-repository.js";
+
+const helpStartMarker = "<!-- HELP_START -->";
+const helpEndMarker = "<!-- HELP_END -->";
+const helpBlockName = "HELP_START..HELP_END";
+const sourceRelativePath = "tools/server/README.md";
+
+export const argumentHelpSourceDirectory = resolve(
+  config.rootDir,
+  "content",
+  "llama-args",
+  "source",
+);
+export const argumentHelpSourceSnapshotPath = resolve(
+  argumentHelpSourceDirectory,
+  "server-help.generated.md",
+);
+export const argumentHelpSourceMetadataPath = resolve(
+  argumentHelpSourceDirectory,
+  "help-source.json",
+);
+
+type HelpSourceMetadata = {
+  schema: 1;
+  source: string;
+  block: string;
+  hash: string;
+  llamaCppCommit: string | null;
+  updatedAt: string;
+};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+export function hashHelpBlock(block: string) {
+  return createHash("sha256").update(block).digest("hex");
+}
+
+export function normalizeHelpBlock(block: string) {
+  return `${block.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd()}\n`;
+}
+
+export function extractGeneratedHelpBlock(readme: string) {
+  const normalized = readme.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const start = normalized.indexOf(helpStartMarker);
+  const endStart = normalized.indexOf(
+    helpEndMarker,
+    start + helpStartMarker.length,
+  );
+
+  if (start === -1 || endStart === -1 || endStart <= start) {
+    throw new Error(
+      `Generated help block markers not found: ${helpStartMarker} / ${helpEndMarker}`,
+    );
+  }
+
+  return normalizeHelpBlock(
+    normalized.slice(start, endStart + helpEndMarker.length),
+  );
+}
+
+function sourceReadmePath() {
+  return resolve(getLlamaSourceSettings().repoPath, sourceRelativePath);
+}
+
+function readMetadata(): HelpSourceMetadata | null {
+  if (!existsSync(argumentHelpSourceMetadataPath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      readFileSync(argumentHelpSourceMetadataPath, "utf8"),
+    ) as Partial<HelpSourceMetadata>;
+    if (
+      parsed.schema !== 1 ||
+      parsed.source !== sourceRelativePath ||
+      parsed.block !== helpBlockName ||
+      typeof parsed.hash !== "string"
+    ) {
+      return null;
+    }
+    return {
+      schema: 1,
+      source: sourceRelativePath,
+      block: helpBlockName,
+      hash: parsed.hash,
+      llamaCppCommit:
+        typeof parsed.llamaCppCommit === "string"
+          ? parsed.llamaCppCommit
+          : null,
+      updatedAt:
+        typeof parsed.updatedAt === "string" ? parsed.updatedAt : nowIso(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function readStoredGeneratedHelpBlock() {
+  if (!existsSync(argumentHelpSourceSnapshotPath)) {
+    return null;
+  }
+  return normalizeHelpBlock(
+    readFileSync(argumentHelpSourceSnapshotPath, "utf8"),
+  );
+}
+
+export function readCurrentGeneratedHelpBlock() {
+  const path = sourceReadmePath();
+  if (!existsSync(path)) {
+    throw new Error(`llama.cpp server README not found: ${path}`);
+  }
+  return extractGeneratedHelpBlock(readFileSync(path, "utf8"));
+}
+
+function storedSnapshot() {
+  const metadata = readMetadata();
+  const block = readStoredGeneratedHelpBlock();
+  if (!block) {
+    return {
+      path: argumentHelpSourceSnapshotPath,
+      exists: false,
+      hash: metadata?.hash ?? null,
+      llamaCppCommit: metadata?.llamaCppCommit ?? null,
+      updatedAt: metadata?.updatedAt ?? null,
+      error: "stored generated help snapshot not found",
+    };
+  }
+
+  const computedHash = hashHelpBlock(block);
+  return {
+    path: argumentHelpSourceSnapshotPath,
+    exists: true,
+    hash: metadata?.hash ?? computedHash,
+    llamaCppCommit: metadata?.llamaCppCommit ?? null,
+    updatedAt:
+      metadata?.updatedAt ??
+      statSync(argumentHelpSourceSnapshotPath).mtime.toISOString(),
+    error:
+      metadata && metadata.hash !== computedHash
+        ? `metadata hash ${metadata.hash} does not match snapshot hash ${computedHash}`
+        : null,
+  };
+}
+
+function currentSnapshot() {
+  const path = sourceReadmePath();
+  try {
+    const block = readCurrentGeneratedHelpBlock();
+    return {
+      path,
+      exists: true,
+      hash: hashHelpBlock(block),
+      llamaCppCommit: getLlamaSourceCurrentCommit(),
+      updatedAt: statSync(path).mtime.toISOString(),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      path,
+      exists: existsSync(path),
+      hash: null,
+      llamaCppCommit: getLlamaSourceCurrentCommit(),
+      updatedAt: existsSync(path) ? statSync(path).mtime.toISOString() : null,
+      error: (error as Error).message,
+    };
+  }
+}
+
+export function getLlamaArgumentHelpSourceSync(): LlamaArgumentHelpSourceSync {
+  const stored = storedSnapshot();
+  const current = currentSnapshot();
+  const inSync =
+    stored.hash && current.hash && !stored.error && !current.error
+      ? stored.hash === current.hash
+      : null;
+
+  return {
+    sourcePath: sourceRelativePath,
+    block: helpBlockName,
+    snapshotPath: argumentHelpSourceSnapshotPath,
+    metadataPath: argumentHelpSourceMetadataPath,
+    stored,
+    current,
+    inSync,
+  };
+}
+
+export function updateStoredGeneratedHelpSnapshot() {
+  const block = readCurrentGeneratedHelpBlock();
+  const hash = hashHelpBlock(block);
+  const metadata: HelpSourceMetadata = {
+    schema: 1,
+    source: sourceRelativePath,
+    block: helpBlockName,
+    hash,
+    llamaCppCommit: getLlamaSourceCurrentCommit(),
+    updatedAt: nowIso(),
+  };
+
+  mkdirSync(dirname(argumentHelpSourceSnapshotPath), { recursive: true });
+  writeFileSync(argumentHelpSourceSnapshotPath, block, "utf8");
+  writeFileSync(
+    argumentHelpSourceMetadataPath,
+    `${JSON.stringify(metadata, null, 2)}\n`,
+    "utf8",
+  );
+  return getLlamaArgumentHelpSourceSync();
+}
+
+type DiffOp = { kind: "equal" | "remove" | "add"; line: string };
+
+function diffLines(left: string[], right: string[]): DiffOp[] {
+  const lengths = Array.from({ length: left.length + 1 }, () =>
+    Array<number>(right.length + 1).fill(0),
+  );
+
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) {
+      lengths[i]![j] =
+        left[i] === right[j]
+          ? lengths[i + 1]![j + 1]! + 1
+          : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
+    }
+  }
+
+  const ops: DiffOp[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      ops.push({ kind: "equal", line: left[i]! });
+      i += 1;
+      j += 1;
+    } else if (lengths[i + 1]![j]! >= lengths[i]![j + 1]!) {
+      ops.push({ kind: "remove", line: left[i]! });
+      i += 1;
+    } else {
+      ops.push({ kind: "add", line: right[j]! });
+      j += 1;
+    }
+  }
+  while (i < left.length) {
+    ops.push({ kind: "remove", line: left[i]! });
+    i += 1;
+  }
+  while (j < right.length) {
+    ops.push({ kind: "add", line: right[j]! });
+    j += 1;
+  }
+  return ops;
+}
+
+function label(path: string) {
+  return relative(config.rootDir, path) || path;
+}
+
+export function generatedHelpDiff() {
+  const stored = readStoredGeneratedHelpBlock() ?? "";
+  const current = readCurrentGeneratedHelpBlock();
+  const ops = diffLines(stored.split("\n"), current.split("\n"));
+  const body = ops
+    .filter((op, index, all) => {
+      if (op.kind !== "equal") return true;
+      const hasChangeNearby = all
+        .slice(Math.max(0, index - 3), Math.min(all.length, index + 4))
+        .some((near) => near.kind !== "equal");
+      return hasChangeNearby;
+    })
+    .map((op) => {
+      if (op.kind === "add") return `+${op.line}`;
+      if (op.kind === "remove") return `-${op.line}`;
+      return ` ${op.line}`;
+    })
+    .join("\n");
+
+  return [
+    `--- ${label(argumentHelpSourceSnapshotPath)}`,
+    `+++ ${label(sourceReadmePath())}`,
+    body || "No generated help block changes.",
+  ].join("\n");
+}

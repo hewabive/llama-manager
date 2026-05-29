@@ -14,7 +14,6 @@ import {
   Code,
   Divider,
   Group,
-  Modal,
   Paper,
   ScrollArea,
   Select,
@@ -32,7 +31,6 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ClipboardList,
   Copy,
   RefreshCw,
   Save,
@@ -46,7 +44,6 @@ import {
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArgumentDocsSyncReport,
-  getLlamaArgumentDocsWorkOrder,
   getLlamaArguments,
   listPathCatalog,
   updateLlamaArgumentDefaults,
@@ -378,10 +375,9 @@ function SourceSyncPanel(props: {
   fetching: boolean;
   error: Error | null;
   onAudit: () => void;
-  onWorkOrder: () => void;
 }) {
   const report = props.report;
-  const needsAttention = report
+  const docsNeedingAttention = report
     ? report.statusCounts.needsReview +
       report.statusCounts.draft +
       report.statusCounts.missing +
@@ -416,21 +412,13 @@ function SourceSyncPanel(props: {
           </div>
           <Group gap="xs" wrap="wrap">
             <Button
-              aria-label="Open argument docs work order"
-              variant="light"
-              leftSection={<ClipboardList size={16} />}
-              onClick={props.onWorkOrder}
-            >
-              Work order
-            </Button>
-            <Button
               aria-label="Audit argument docs against source repository"
               variant="light"
               leftSection={<RefreshCw size={16} />}
               loading={props.fetching}
               onClick={props.onAudit}
             >
-              Audit docs
+              Refresh
             </Button>
           </Group>
         </Group>
@@ -450,6 +438,22 @@ function SourceSyncPanel(props: {
         {report && (
           <Stack gap="xs">
             <Group gap="xs" wrap="wrap">
+              <Badge
+                color={
+                  report.helpSource.inSync === true
+                    ? "green"
+                    : report.helpSource.inSync === false
+                      ? "yellow"
+                      : "red"
+                }
+                variant="light"
+              >
+                {report.helpSource.inSync === true
+                  ? "help snapshot current"
+                  : report.helpSource.inSync === false
+                    ? "help snapshot changed"
+                    : "help snapshot unavailable"}
+              </Badge>
               <Badge color={sourceSyncColor(report)} variant="light">
                 {sourceSyncLabel(report)}
               </Badge>
@@ -467,12 +471,38 @@ function SourceSyncPanel(props: {
                 </Badge>
               )}
               <Badge
-                color={needsAttention > 0 ? "yellow" : "green"}
+                color={docsNeedingAttention > 0 ? "yellow" : "green"}
                 variant="light"
               >
-                {needsAttention} need attention
+                {docsNeedingAttention} doc issues
               </Badge>
             </Group>
+
+            {report.helpSource.inSync === false && (
+              <Alert
+                color="yellow"
+                icon={<AlertTriangle size={16} />}
+                variant="light"
+              >
+                Argument reference may not match the configured llama.cpp
+                source. Update llama-manager and llama.cpp first. Developers can
+                run the repo Codex skill{" "}
+                <Code>.codex/skills/llama-arg-help-sync</Code> to refresh
+                Engineering help.
+              </Alert>
+            )}
+
+            {report.helpSource.current.error && (
+              <Text c="red" size="sm">
+                {report.helpSource.current.error}
+              </Text>
+            )}
+
+            {report.helpSource.stored.error && (
+              <Text c="yellow" size="sm">
+                {report.helpSource.stored.error}
+              </Text>
+            )}
 
             {report.source.error && (
               <Text c="red" size="sm">
@@ -498,9 +528,35 @@ function SourceSyncPanel(props: {
 
             <details className="argument-secondary-details">
               <Text component="summary" fw={600} size="sm">
-                Source files and docs needing attention
+                Snapshot, source and docs needing attention
               </Text>
               <Stack gap="xs" mt="xs">
+                <Group gap="xs" wrap="wrap">
+                  <Text c="dimmed" size="xs">
+                    Stored help
+                  </Text>
+                  <Code className="code-wrap">
+                    {report.helpSource.snapshotPath}
+                  </Code>
+                  {report.helpSource.stored.hash && (
+                    <Text size="xs">
+                      {report.helpSource.stored.hash.slice(0, 12)}
+                    </Text>
+                  )}
+                </Group>
+                <Group gap="xs" wrap="wrap">
+                  <Text c="dimmed" size="xs">
+                    Current help
+                  </Text>
+                  <Code className="code-wrap">
+                    {report.helpSource.current.path}
+                  </Code>
+                  {report.helpSource.current.hash && (
+                    <Text size="xs">
+                      {report.helpSource.current.hash.slice(0, 12)}
+                    </Text>
+                  )}
+                </Group>
                 <Group gap="xs" wrap="wrap">
                   <Text c="dimmed" size="xs">
                     Docs
@@ -659,7 +715,6 @@ export function ArgumentsView() {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [helpRuDraft, setHelpRuDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
-  const [workOrderOpened, setWorkOrderOpened] = useState(false);
   const [defaultValueDrafts, setDefaultValueDrafts] = useState<
     Record<string, string>
   >({});
@@ -683,16 +738,6 @@ export function ArgumentsView() {
     enabled: Boolean(argsCatalog),
     retry: false,
     staleTime: 30_000,
-  });
-  const workOrderQuery = useQuery({
-    queryKey: ["llama-arg-docs-work-order", activeBinaryPathKey],
-    queryFn: () =>
-      getLlamaArgumentDocsWorkOrder({
-        binaryPath: activeBinaryPathKey,
-        limit: 10,
-      }),
-    enabled: workOrderOpened && Boolean(argsCatalog),
-    retry: false,
   });
   const options = argsCatalog?.options ?? [];
   const categories = useMemo(
@@ -1070,28 +1115,6 @@ export function ArgumentsView() {
       );
   }
 
-  function copyWorkOrder() {
-    const markdown = workOrderQuery.data?.data.markdown;
-    if (!markdown) {
-      return;
-    }
-    navigator.clipboard
-      .writeText(markdown)
-      .then(() =>
-        notifications.show({
-          title: "Work order copied",
-          message: `${workOrderQuery.data?.data.items.length ?? 0} items`,
-        }),
-      )
-      .catch((error: unknown) =>
-        notifications.show({
-          color: "red",
-          title: "Copy failed",
-          message: (error as Error).message,
-        }),
-      );
-  }
-
   function saveArgumentDefault(
     scope: "instance" | "preset",
     enabled: boolean,
@@ -1344,7 +1367,6 @@ export function ArgumentsView() {
           fetching={docsSyncQuery.isFetching}
           error={docsSyncQuery.isError ? (docsSyncQuery.error as Error) : null}
           onAudit={() => void docsSyncQuery.refetch()}
-          onWorkOrder={() => setWorkOrderOpened(true)}
         />
       )}
 
@@ -1738,59 +1760,6 @@ export function ArgumentsView() {
           )}
         </Paper>
       </div>
-
-      <Modal
-        opened={workOrderOpened}
-        onClose={() => setWorkOrderOpened(false)}
-        title="Argument docs work order"
-        size="xl"
-      >
-        <Stack gap="sm">
-          {workOrderQuery.isError && (
-            <Alert
-              color="red"
-              icon={<AlertTriangle size={16} />}
-              variant="light"
-            >
-              {(workOrderQuery.error as Error).message}
-            </Alert>
-          )}
-          <Group gap="xs" wrap="wrap">
-            <Badge variant="light">
-              {workOrderQuery.data?.data.items.length ?? 0} items
-            </Badge>
-            {workOrderQuery.data?.data.totalCandidates !== undefined && (
-              <Badge variant="outline">
-                {workOrderQuery.data.data.totalCandidates} candidates
-              </Badge>
-            )}
-          </Group>
-          <Textarea
-            aria-label="Generated argument docs work order"
-            autosize
-            minRows={18}
-            maxRows={28}
-            value={
-              workOrderQuery.data?.data.markdown ??
-              (workOrderQuery.isFetching ? "Loading..." : "")
-            }
-            readOnly
-            styles={{ input: { fontFamily: "monospace", fontSize: 12 } }}
-          />
-          <Group justify="flex-end" gap="xs">
-            <Button variant="default" onClick={() => setWorkOrderOpened(false)}>
-              Close
-            </Button>
-            <Button
-              leftSection={<Copy size={16} />}
-              disabled={!workOrderQuery.data?.data.markdown}
-              onClick={copyWorkOrder}
-            >
-              Copy
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </Stack>
   );
 }

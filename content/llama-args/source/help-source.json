@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "source": "tools/server/README.md",
+  "block": "HELP_START..HELP_END",
+  "hash": "daa8505caab31ee51d16ec84d23d0bf7238f0c5eef020864bd8a165b8572198e",
+  "llamaCppCommit": "22d66b567eef11cf2e9832f04db64ee0323a0fd0",
+  "updatedAt": "2026-05-29T21:13:26.274Z"
+}

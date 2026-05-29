@@ -20,17 +20,9 @@ import {
   argumentDocsDirectory,
   parseArgumentDocFile,
 } from "./docs.js";
+import { getLlamaArgumentHelpSourceSync } from "./docs-source.js";
 
-const sourceFingerprintFiles = [
-  "common/arg.cpp",
-  "common/arg.h",
-  "tools/server/main.cpp",
-  "tools/server/server.cpp",
-  "tools/server/server-common.cpp",
-  "tools/server/server-context.cpp",
-  "tools/server/server-http.cpp",
-  "tools/server/server-models.cpp",
-];
+const sourceFingerprintFiles = ["tools/server/README.md"];
 
 function nowIso() {
   return new Date().toISOString();
@@ -200,6 +192,7 @@ export function getLlamaArgumentDocsSyncReport(
   const sourceFiles = sourceFingerprintFiles.map((relativePath) =>
     sourceFileFingerprint(source.settings.repoPath, relativePath),
   );
+  const helpSource = getLlamaArgumentHelpSourceSync();
   const catalog = getLlamaArgumentCatalog(binaryPath);
   const statusCounts = emptyStatusCounts();
   const items = catalog.options.map((option) => {
@@ -217,6 +210,7 @@ export function getLlamaArgumentDocsSyncReport(
     source,
     sourceFingerprint: sourceFingerprint(sourceFiles),
     sourceFiles,
+    helpSource,
     docsDirectory: argumentDocsDirectory,
     binaryPath: catalog.binaryPath,
     helpHash: catalog.source.hash,

@@ -357,7 +357,6 @@ app.get("/api/llama-args/docs/:primaryName", (c) => {
       data: readArgumentEngineeringDoc({
         primaryName,
         option,
-        currentHelpHash: catalog.source.hash,
         currentLlamaCppCommit: option?.doc.currentLlamaCppCommit ?? null,
       }),
     });

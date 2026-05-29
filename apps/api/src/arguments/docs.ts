@@ -38,7 +38,6 @@ type ParsedDocFile = {
 };
 
 type ArgumentDocContext = {
-  currentHelpHash?: string | null | undefined;
   currentLlamaCppCommit?: string | null | undefined;
 };
 
@@ -170,28 +169,7 @@ function firstMarkdownParagraph(markdown: string) {
   return paragraph?.replace(/\s+/g, " ").slice(0, 240) ?? null;
 }
 
-function docStatus(input: {
-  fileStatus: LlamaArgumentDocStatus;
-  reviewedHelpHash: string | null;
-  reviewedLlamaCppCommit: string | null;
-  context: ArgumentDocContext;
-}) {
-  if (input.fileStatus !== "current") {
-    return input.fileStatus;
-  }
-
-  if (input.context.currentLlamaCppCommit) {
-    return input.reviewedLlamaCppCommit === input.context.currentLlamaCppCommit
-      ? input.fileStatus
-      : "needs-review";
-  }
-
-  if (input.reviewedHelpHash && input.context.currentHelpHash) {
-    return input.reviewedHelpHash === input.context.currentHelpHash
-      ? input.fileStatus
-      : "needs-review";
-  }
-
+function docStatus(input: { fileStatus: LlamaArgumentDocStatus }) {
   return input.fileStatus;
 }
 
@@ -225,9 +203,6 @@ export function getArgumentDocIndex(
   return {
     status: docStatus({
       fileStatus,
-      reviewedHelpHash,
-      reviewedLlamaCppCommit,
-      context,
     }),
     path,
     summary:
@@ -253,7 +228,6 @@ export function withArgumentDocIndex(
 export function readArgumentEngineeringDoc(input: {
   primaryName: string;
   option?: LlamaArgumentOption | null;
-  currentHelpHash?: string | null;
   currentLlamaCppCommit?: string | null;
 }): LlamaArgumentEngineeringDoc {
   const path = argumentDocPath(input.primaryName);
@@ -296,12 +270,6 @@ export function readArgumentEngineeringDoc(input: {
     exists: true,
     status: docStatus({
       fileStatus,
-      reviewedHelpHash,
-      reviewedLlamaCppCommit,
-      context: {
-        currentHelpHash: input.currentHelpHash,
-        currentLlamaCppCommit: input.currentLlamaCppCommit,
-      },
     }),
     title,
     summary:

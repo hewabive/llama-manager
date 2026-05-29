@@ -19,8 +19,8 @@
 Статусы:
 
 - `draft` - черновик, создан автоматически или еще не проверен по исходному коду.
-- `current` - документ проверен для указанного `reviewedHelpHash` и commit llama.cpp.
-- `needs-review` - справка `llama-server --help` изменилась после проверки.
+- `current` - документ проверен и пригоден для текущей инженерной справки.
+- `needs-review` - ручная метка для документа, который требует отдельной проверки.
 - `deprecated` - аргумент устарел, но еще может встречаться у пользователей.
 - `orphaned` - файл остался, а аргумента больше нет в текущем `--help`.
 
@@ -42,12 +42,14 @@
 pnpm --filter @llama-manager/api args:docs:audit
 pnpm --filter @llama-manager/api args:docs:audit -- --write
 pnpm --filter @llama-manager/api args:docs:audit -- --write --rewrite-drafts
+pnpm --filter @llama-manager/api args:docs:source-sync -- --diff
+pnpm --filter @llama-manager/api args:docs:source-sync -- --write
 pnpm --filter @llama-manager/api args:docs:quality -- --changed --strict
 ```
 
 `--write` создает недостающие файлы по текущему `llama-server --help`, но не
 делает документы финальными. После ручной или агентной проверки обновите
-frontmatter, укажите commit llama.cpp и поставьте `docStatus: current`.
+frontmatter и поставьте `docStatus: current`.
 
 `--rewrite-drafts` перегенерирует только файлы со статусом `draft`. Документы
 со статусом `current` не перезаписываются, чтобы не потерять ручную или
@@ -55,17 +57,26 @@ frontmatter, укажите commit llama.cpp и поставьте `docStatus: c
 
 ## Агентная обработка
 
-Для подробного наполнения документов используйте общий промпт
+Для синхронизации после обновлений llama.cpp используйте repo-local Codex skill
+`.codex/skills/llama-arg-help-sync/SKILL.md`. Он опирается на diff между
+сохраненным generated help snapshot и текущим блоком
+`tools/server/README.md`.
+
+Для подробного наполнения документов можно также использовать общий промпт
 `_agent-prompt.md`. Он фиксирует источники, границы редактирования и критерии
 качества, чтобы несколько кодинг-агентов могли параллельно обновлять разные
 группы аргументов без конфликтов.
 
 Практический порядок работы:
 
-- запустить `args:docs:audit` после обновления llama.cpp и сборки нового
-  `llama-server`;
-- разбить Markdown-файлы на непересекающиеся тематические группы;
-- каждому агенту выдать только его список файлов и ссылку на `_agent-prompt.md`;
+- запустить `args:docs:source-sync -- --diff` после обновления llama.cpp;
+- по diff определить затронутые аргументы;
+- при большой пачке разбить Markdown-файлы на непересекающиеся тематические
+  группы;
+- каждому агенту выдать только его список файлов и ссылку на skill или
+  `_agent-prompt.md`;
+- после обновления справки выполнить `args:docs:source-sync -- --write`;
 - после завершения проверить, что в измененных файлах не осталось шаблонных
   фраз, `TODO` и неподтвержденных утверждений через `args:docs:quality`;
-- снова запустить аудит, общий check проекта и только после этого коммитить.
+- снова запустить `args:docs:source-sync`, общий check проекта и только после
+  этого коммитить.

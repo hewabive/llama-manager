@@ -785,11 +785,31 @@ export const LlamaArgumentDocOrphanSchema = z.object({
   reviewedLlamaCppCommit: z.string().nullable(),
 });
 
+export const LlamaArgumentHelpSourceSnapshotSchema = z.object({
+  path: z.string(),
+  exists: z.boolean(),
+  hash: z.string().nullable(),
+  llamaCppCommit: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
+export const LlamaArgumentHelpSourceSyncSchema = z.object({
+  sourcePath: z.string(),
+  block: z.string(),
+  snapshotPath: z.string(),
+  metadataPath: z.string(),
+  stored: LlamaArgumentHelpSourceSnapshotSchema,
+  current: LlamaArgumentHelpSourceSnapshotSchema,
+  inSync: z.boolean().nullable(),
+});
+
 export const LlamaArgumentDocsSyncReportSchema = z.object({
   checkedAt: z.string(),
   source: LlamaSourceStatusSchema,
   sourceFingerprint: z.string().nullable(),
   sourceFiles: z.array(LlamaSourceFileFingerprintSchema),
+  helpSource: LlamaArgumentHelpSourceSyncSchema,
   docsDirectory: z.string(),
   binaryPath: z.string(),
   helpHash: z.string(),
@@ -1127,6 +1147,12 @@ export type LlamaArgumentDocSyncItem = z.infer<
 >;
 export type LlamaArgumentDocOrphan = z.infer<
   typeof LlamaArgumentDocOrphanSchema
+>;
+export type LlamaArgumentHelpSourceSnapshot = z.infer<
+  typeof LlamaArgumentHelpSourceSnapshotSchema
+>;
+export type LlamaArgumentHelpSourceSync = z.infer<
+  typeof LlamaArgumentHelpSourceSyncSchema
 >;
 export type LlamaArgumentDocsSyncReport = z.infer<
   typeof LlamaArgumentDocsSyncReportSchema

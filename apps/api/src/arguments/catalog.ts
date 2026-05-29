@@ -593,17 +593,15 @@ function mergeWithArgumentRegistry(
 
 function withArgumentDocsAndCompatibility(
   options: LlamaArgumentOption[],
-  currentHelpHash?: string,
   currentLlamaCppCommit?: string | null,
 ) {
   return withArgumentDocIndex(options, {
-    currentHelpHash,
     currentLlamaCppCommit,
   }).map((option) => ({
     ...option,
     compatibility: {
       ...option.compatibility,
-      helpChanged: option.doc.status === "needs-review",
+      helpChanged: false,
     },
   }));
 }
@@ -630,7 +628,6 @@ function toCatalog(input: {
     cache: input.cache,
     options: withArgumentDocsAndCompatibility(
       applyHelpOverrides(mergeWithArgumentRegistry(input.cached.options)),
-      input.cached.helpHash,
       currentLlamaCppCommit(),
     ),
   };

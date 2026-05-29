@@ -8,7 +8,8 @@
 Актуальный локальный checkout llama.cpp для сверки:
 
 - `/home/maxim/llama/llama.cpp`
-- commit: `751ebd17a58a8a513994509214373bb9e6a3d66c`
+- commit смотри через `pnpm --filter @llama-manager/api args:docs:source-sync`
+  или `git -C /home/maxim/llama/llama.cpp rev-parse HEAD`
 
 ## Задача
 
@@ -61,7 +62,8 @@
 - `summary`: 1-2 практичных предложения, без шаблонных формулировок.
 - `docStatus`: ставь `current`, только если проверил аргумент по исходникам
   и справке текущего commit. Иначе ставь `needs-review`.
-- `reviewedLlamaCppCommit`: `751ebd17a58a8a513994509214373bb9e6a3d66c`.
+- `reviewedLlamaCppCommit`: можно обновить для реально проверенного файла, но
+  не делай массовую замену во всех документах только из-за нового commit.
 - `related`: оставляй только реально связанные аргументы.
 - Не ломай `primaryName`, `aliases`, `reviewedHelpHash`, `category`,
   `valueType`, `valueHint`, `allowedValues`, `env`, если не нашел явную ошибку.
