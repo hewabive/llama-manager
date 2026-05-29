@@ -59,6 +59,23 @@ function buildStepLabel(name: BuildJob["steps"][number]["name"]) {
   return name;
 }
 
+function BuildSwitch(props: {
+  label: string;
+  tooltip: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <Tooltip label={props.tooltip} withArrow>
+      <Switch
+        label={props.label}
+        checked={props.checked}
+        onChange={(event) => props.onChange(event.currentTarget.checked)}
+      />
+    </Tooltip>
+  );
+}
+
 function parseExtraCmakeArgs(value: string) {
   return value
     .split(/\r?\n/)
@@ -331,47 +348,47 @@ export function BuildView() {
         />
 
         <Group gap="lg" wrap="wrap">
-          <Switch
-            label="git pull --ff-only"
+          <BuildSwitch
+            label="Pull updates"
+            tooltip="Runs git pull --ff-only in the llama.cpp repository."
             checked={runPull}
-            onChange={(event) => setRunPull(event.currentTarget.checked)}
+            onChange={setRunPull}
           />
-          <Tooltip
-            label="Runs npm install and npm run build in tools/ui."
-            withArrow
-          >
-            <Switch
-              label="Rebuild embedded UI"
-              checked={runUiRebuild}
-              onChange={(event) => setRunUiRebuild(event.currentTarget.checked)}
-            />
-          </Tooltip>
-          <Switch
-            label="Clean build directory"
+          <BuildSwitch
+            label="Rebuild UI"
+            tooltip="Removes tools/ui/dist, then runs npm install and npm run build in tools/ui."
+            checked={runUiRebuild}
+            onChange={setRunUiRebuild}
+          />
+          <BuildSwitch
+            label="Clean build dir"
+            tooltip="Deletes the selected build directory before CMake runs."
             checked={runCleanBuildDir}
-            onChange={(event) =>
-              setRunCleanBuildDir(event.currentTarget.checked)
-            }
+            onChange={setRunCleanBuildDir}
           />
-          <Switch
-            label="Configure"
+          <BuildSwitch
+            label="Configure CMake"
+            tooltip="Runs cmake configure with the selected repository, build directory and CMake options."
             checked={runConfigure}
-            onChange={(event) => setRunConfigure(event.currentTarget.checked)}
+            onChange={setRunConfigure}
           />
-          <Switch
+          <BuildSwitch
             label="Build target"
+            tooltip="Runs cmake --build for the selected target."
             checked={runBuild}
-            onChange={(event) => setRunBuild(event.currentTarget.checked)}
+            onChange={setRunBuild}
           />
-          <Switch
-            label="CUDA (GGML_CUDA)"
+          <BuildSwitch
+            label="CUDA backend"
+            tooltip="Configures GGML_CUDA=ON and tries to discover nvcc/CUDACXX."
             checked={cuda}
-            onChange={(event) => setCuda(event.currentTarget.checked)}
+            onChange={setCuda}
           />
-          <Switch
-            label="Native (GGML_NATIVE)"
+          <BuildSwitch
+            label="Native CPU"
+            tooltip="Configures GGML_NATIVE=ON; the binary may be optimized for this CPU and less portable."
             checked={native}
-            onChange={(event) => setNative(event.currentTarget.checked)}
+            onChange={setNative}
           />
         </Group>
 
