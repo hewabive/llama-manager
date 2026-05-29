@@ -2,7 +2,7 @@
 schema: 1
 primaryName: "--cache-type-v"
 title: "--cache-type-v"
-summary: "Тип данных V-части KV-cache. Снижает или повышает память контекста вместе с `--cache-type-k`."
+summary: "Тип данных V-части KV-cache. Квантованный V-cache экономит память, но требует Flash Attention и аккуратной проверки качества."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
 reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
@@ -40,6 +40,8 @@ related:
 
 По умолчанию используется `f16`. Практически всегда этот аргумент оценивают вместе с `--cache-type-k`, потому что общий размер KV-cache складывается из K и V.
 
+Полная таблица типов, расчет памяти, различия `f16`/`bf16`, `q4_0`/`q4_1`/`iq4_nl` и общая стратегия выбора описаны в [--cache-type-k](./cache-type-k.md). Здесь собраны особенности именно V-cache.
+
 ## Оригинальная справка llama.cpp
 
 ```text
@@ -57,27 +59,64 @@ allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1
 - Поле llama.cpp: `common_params::cache_type_v`
 - Этап применения: создание `llama_context` и выделение KV-cache
 
-## Что меняет в llama-server
+## Что именно меняется
 
 Тип передается в `cparams.type_v` перед `llama_init_from_model()`. При выделении KV-cache llama.cpp логирует фактический тип и размер V-части: `V (...): ... MiB`.
 
 Аргумент не меняет модельный файл и не переквантует веса. Он влияет только на runtime cache.
 
-## Значения и формат
+Values в attention - это сохраненное содержимое, которое смешивается весами внимания после выбора релевантных позиций через K. Поэтому агрессивная квантизация V может не только "смазать" отдельные числа, но и ухудшить извлечение информации из длинного контекста, даже если модель стартует и не показывает явных ошибок.
+
+## Значения
 
 Допустимые значения: `f32`, `f16`, `bf16`, `q8_0`, `q4_0`, `q4_1`, `iq4_nl`, `q5_0`, `q5_1`.
 
 Неверное значение приводит к ошибке разбора KV-cache type.
 
+Подробная таблица памяти находится в `--cache-type-k`. Короткая практическая шкала:
+
+- `f16`: default и baseline.
+- `q8_0`: первый разумный шаг при нехватке памяти.
+- `q5_0`/`q5_1`: промежуточные варианты, но скорость зависит от backend kernels.
+- `q4_0`/`q4_1`/`iq4_nl`: сильная экономия с обязательной проверкой качества.
+- `bf16`: не экономит память относительно `f16`; используйте только осознанно.
+- `f32`: почти никогда не нужен для production llama-server.
+
+## Главное ограничение V-cache
+
+Квантованный V-cache требует Flash Attention. Если указать `--cache-type-v q8_0`, `q5_0`, `q4_0` и т.п. при отключенном Flash Attention, llama.cpp завершит старт ошибкой `V cache quantization requires flash_attn`.
+
+Практически:
+
+- Оставляйте `--flash-attn auto` или явно включайте `--flash-attn on`.
+- При `--split-mode tensor` quantized KV-cache сейчас не поддерживается; используйте `f16`, `bf16` или `f32`.
+- Для квантованных V-типов block size должен делить `n_embd_head_v`; иначе сервер завершится ошибкой на старте.
+
 ## Когда использовать
 
-Используйте квантованный V-cache, когда именно KV-cache не помещается при нужном `--ctx-size` или `--parallel`. Если цель только снизить вес модели в VRAM, меняйте квантизацию модели или `--gpu-layers`, а не этот аргумент.
+Используйте квантованный V-cache, когда именно KV-cache не помещается при нужном `--ctx-size`, `--parallel` или числе router-слотов. Если цель только снизить вес модели в VRAM, меняйте GGUF-квантизацию модели или `--gpu-layers`, а не `--cache-type-v`.
 
-Для чувствительных к качеству задач проверяйте ответы на длинном контексте: V-cache влияет на сохраненную информацию внимания.
+Рекомендуемый порядок:
 
-## Влияние на производительность и память
+1. `f16/f16` для baseline.
+2. `q8_0/q8_0`, если не хватает памяти.
+3. `q5_0/q5_0`, `q5_1/q5_1` или `q4_0/q4_0`, если нужна дальнейшая экономия.
+4. Смешанные типы, например `--cache-type-k q8_0 --cache-type-v q4_0`, только после проверки качества, скорости и логов device placement.
 
-`--cache-type-v` может дать такой же порядок экономии памяти, как `--cache-type-k`, но эффект зависит от архитектуры модели и backend. Слишком агрессивная квантизация может ухудшить качество или дать неочевидную скорость из-за kernel support.
+Не занижайте V без benchmark для tool/function calling, кода, задач с длинными инструкциями, RAG с важными фактами в начале контекста и любых production-пресетов, где деградация качества дороже экономии VRAM.
+
+## Делать V ниже K?
+
+Да, иногда это имеет смысл: K влияет на attention scores, а V хранит смешиваемое содержимое. Исследование "More for Keys, Less for Values" прямо поддерживает идею, что keys часто заслуживают больше битов, чем values. Поэтому `q8_0/q4_0` или `q8_0/q5_0` может быть разумным экспериментом, если `q8_0/q8_0` почти помещается, но нужна еще экономия.
+
+Но для llama.cpp это именно экспериментальная настройка:
+
+- mixed K/V-типы могут не иметь быстрого CUDA/Vulkan/Metal path;
+- одинаковые пары иногда быстрее, чем более "логичная" смешанная пара;
+- если V quantization включена, Flash Attention обязателен;
+- для качества сравнивайте ответы на длинном контексте, а не только короткий smoke test.
+
+Если после изменения V вы видите резкое падение prompt speed, рост Host memory или странное качество, верните V на `q8_0` или `f16` и повторите измерение.
 
 ## Взаимодействие с другими аргументами
 
@@ -86,6 +125,8 @@ allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1
 - `--parallel`: меняет `n_seq_max` и организацию KV.
 - `--kv-unified`: включает общий KV-буфер.
 - `--kv-offload`: влияет на размещение KV/KQV на device или host.
+- `--flash-attn`: обязателен для квантованного V-cache.
+- `--split-mode tensor`: несовместим с quantized KV-cache.
 
 ## INI-пресеты и router-режим
 
@@ -93,8 +134,10 @@ allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1
 
 ## Типовые проблемы и диагностика
 
-- Смотрите лог `llama-kv-cache: ... V (...): ... MiB`.
+- Смотрите лог `llama_kv_cache` или `llama-kv-cache`: там должна быть строка `V (...): ... MiB`.
+- При ошибке `V cache quantization requires flash_attn` включите `--flash-attn on`/`auto` или верните V на `f16`.
 - При compute errors или падении качества вернитесь на `f16` и меняйте только один из `--cache-type-k`/`--cache-type-v` за раз.
+- При резком замедлении проверьте, не оказалась ли выбранная mixed-пара без fast-path на вашем backend.
 - Если память почти не изменилась, проверьте, что изменили оба типа или что OOM был не в KV-cache.
 
 ## Примеры
@@ -107,9 +150,20 @@ llama-server --model /models/model.gguf --ctx-size 65536 --cache-type-k q8_0 --c
 llama-server --model /models/model.gguf --cache-type-k f16 --cache-type-v q4_0
 ```
 
+```bash
+llama-server --model /models/model.gguf --flash-attn on --cache-type-k q8_0 --cache-type-v q4_0
+```
+
 ## Источники
 
 - `/home/maxim/llama/llama.cpp/common/arg.cpp`
 - `/home/maxim/llama/llama.cpp/common/common.h`
 - `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
+- `/home/maxim/llama/llama.cpp/src/llama-kv-cache.cpp`
+- `/home/maxim/llama/llama.cpp/docs/multi-gpu.md`
+- <https://arxiv.org/abs/2402.02750>
+- <https://arxiv.org/abs/2502.15075>
+- <https://huggingface.co/docs/transformers/v4.56.1/en/kv_cache>
+- <https://github.com/ggml-org/llama.cpp/issues/20866>
+- <https://github.com/ggml-org/llama.cpp/issues/21295>
