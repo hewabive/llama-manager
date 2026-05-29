@@ -352,6 +352,13 @@ export const InstanceMemoryPlacementKindSchema = z.enum([
   "other",
 ]);
 
+export const InstanceMemoryLayoutSourceSchema = z.enum([
+  "none",
+  "log-buffers",
+  "log-projection",
+  "process-telemetry",
+]);
+
 export const InstanceMemoryPlacementSchema = z.object({
   label: z.string(),
   kind: InstanceMemoryPlacementKindSchema,
@@ -365,6 +372,9 @@ export const InstanceMemoryPlacementSchema = z.object({
 });
 
 export const InstanceMemoryLayoutSchema = z.object({
+  source: InstanceMemoryLayoutSourceSchema,
+  sourceDetail: z.string().nullable(),
+  processIds: z.array(z.number().int().positive()),
   entries: z.array(InstanceMemoryPlacementSchema),
   deviceBytes: z.number().int().nonnegative(),
   hostBytes: z.number().int().nonnegative(),
@@ -945,6 +955,9 @@ export type InstanceLoadProgressStage = z.infer<
 export type InstanceLoadProgress = z.infer<typeof InstanceLoadProgressSchema>;
 export type InstanceMemoryPlacement = z.infer<
   typeof InstanceMemoryPlacementSchema
+>;
+export type InstanceMemoryLayoutSource = z.infer<
+  typeof InstanceMemoryLayoutSourceSchema
 >;
 export type InstanceMemoryLayout = z.infer<typeof InstanceMemoryLayoutSchema>;
 export type InstanceLogSummary = z.infer<typeof InstanceLogSummarySchema>;

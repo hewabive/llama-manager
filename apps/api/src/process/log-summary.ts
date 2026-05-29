@@ -7,6 +7,7 @@ import type {
 } from "@llama-manager/core";
 
 import { latestProcessRun } from "./runs-repository.js";
+import { getRuntimeMemoryLayout } from "./runtime-memory.js";
 import { readTailLines } from "../utils/log-tail.js";
 
 const MAX_SUMMARY_LINES = 1_000;
@@ -23,8 +24,50 @@ type MemoryByteField =
   | "adapterBytes"
   | "otherBytes";
 
+const runtimeStatuses = new Set<RuntimeState["status"]>([
+  "stopped",
+  "starting",
+  "running",
+  "stopping",
+  "exited",
+  "stale",
+  "error",
+]);
+
 function nowIso() {
   return new Date().toISOString();
+}
+
+function isRuntimeStatus(
+  value: string | null | undefined,
+): value is RuntimeState["status"] {
+  return Boolean(value && runtimeStatuses.has(value as RuntimeState["status"]));
+}
+
+function runtimeFromLatestRun(
+  instanceId: string,
+  latestRun: ReturnType<typeof latestProcessRun>,
+): RuntimeState | undefined {
+  if (!latestRun) {
+    return undefined;
+  }
+
+  const pid = latestRun.pid ? Number(latestRun.pid) : null;
+  const exitCode =
+    latestRun.exitCode === null || latestRun.exitCode === undefined
+      ? null
+      : Number(latestRun.exitCode);
+
+  return {
+    instanceId,
+    pid: pid && Number.isFinite(pid) ? pid : null,
+    status: isRuntimeStatus(latestRun.status) ? latestRun.status : "stopped",
+    startedAt: latestRun.startedAt,
+    stoppedAt: latestRun.stoppedAt,
+    exitCode: exitCode === null || Number.isFinite(exitCode) ? exitCode : null,
+    logPath: latestRun.logPath,
+    rawLogPath: latestRun.rawLogPath,
+  };
 }
 
 function lastMatch(lines: string[], pattern: RegExp) {
@@ -194,6 +237,9 @@ function emptyMemoryPlacement(
 
 function emptyMemoryLayout(): InstanceMemoryLayout {
   return {
+    source: "none",
+    sourceDetail: null,
+    processIds: [],
     entries: [],
     deviceBytes: 0,
     hostBytes: 0,
@@ -297,7 +343,24 @@ function parseMemoryLayout(lines: string[]): InstanceMemoryLayout {
   }
 
   const entries = [...placements.values()].sort(compareMemoryPlacements);
+  const totalBytes = entries.reduce((sum, entry) => sum + entry.totalBytes, 0);
+  const hasProjection =
+    projected.projectedHostBytes !== null && projected.projectedHostBytes > 0;
+
   return {
+    source:
+      totalBytes > 0
+        ? "log-buffers"
+        : hasProjection
+          ? "log-projection"
+          : "none",
+    sourceDetail:
+      totalBytes > 0
+        ? "Exact llama.cpp buffer allocation lines parsed from the instance log."
+        : hasProjection
+          ? "Host memory projection parsed from llama.cpp fit logs; per-buffer placement is unavailable."
+          : null,
+    processIds: [],
     entries,
     deviceBytes: entries
       .filter((entry) => entry.kind === "device")
@@ -308,10 +371,27 @@ function parseMemoryLayout(lines: string[]): InstanceMemoryLayout {
     otherBytes: entries
       .filter((entry) => entry.kind === "other")
       .reduce((sum, entry) => sum + entry.totalBytes, 0),
-    totalBytes: entries.reduce((sum, entry) => sum + entry.totalBytes, 0),
+    totalBytes,
     projectedHostBytes: projected.projectedHostBytes,
     projectedHostTotalBytes: projected.projectedHostTotalBytes,
   };
+}
+
+function resolveMemoryLayout(input: {
+  lines: string[];
+  runtime: RuntimeState | undefined;
+}) {
+  const logLayout = parseMemoryLayout(input.lines);
+  if (logLayout.totalBytes > 0) {
+    return logLayout;
+  }
+  return (
+    getRuntimeMemoryLayout({
+      runtime: input.runtime,
+      lines: input.lines,
+      baseLayout: logLayout,
+    }) ?? logLayout
+  );
 }
 
 function pendingLoadProgress() {
@@ -438,10 +518,10 @@ export function summarizeInstanceLog(input: {
   instanceId: string;
   runtime: RuntimeState | undefined;
 }): InstanceLogSummary {
-  const logPath =
-    input.runtime?.logPath ??
-    latestProcessRun(input.instanceId)?.logPath ??
-    null;
+  const latestRun = latestProcessRun(input.instanceId);
+  const runtime =
+    input.runtime ?? runtimeFromLatestRun(input.instanceId, latestRun);
+  const logPath = runtime?.logPath ?? latestRun?.logPath ?? null;
 
   if (!logPath) {
     return {
@@ -465,6 +545,10 @@ export function summarizeInstanceLog(input: {
 
   try {
     const { lines } = readTailLines(logPath, MAX_SUMMARY_LINES);
+    const memoryLayout = resolveMemoryLayout({
+      lines,
+      runtime,
+    });
     return {
       instanceId: input.instanceId,
       logPath,
@@ -483,7 +567,7 @@ export function summarizeInstanceLog(input: {
         10,
       ),
       loadProgress: parseLoadProgress(lines),
-      memoryLayout: parseMemoryLayout(lines),
+      memoryLayout,
       updatedAt: nowIso(),
     };
   } catch (error) {

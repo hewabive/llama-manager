@@ -1431,12 +1431,43 @@ function MemoryMetric(props: { label: string; value: number }) {
   );
 }
 
+function memoryLayoutSourceText(layout: InstanceMemoryLayout | undefined) {
+  if (!layout) {
+    return "Waiting for memory telemetry.";
+  }
+  if (layout.sourceDetail) {
+    return layout.sourceDetail;
+  }
+  if (layout.source === "process-telemetry") {
+    return "Process-level runtime memory from nvidia-smi and /proc.";
+  }
+  if (layout.source === "log-projection") {
+    return "Host memory projection parsed from llama.cpp logs.";
+  }
+  if (layout.source === "log-buffers") {
+    return "Exact llama.cpp buffer allocation lines parsed from logs.";
+  }
+  return "No memory telemetry is available yet.";
+}
+
+function memoryLayoutBadge(layout: InstanceMemoryLayout | undefined) {
+  if (!layout) return "no data";
+  if (layout.totalBytes > 0) {
+    return formatMemoryBytes(layout.totalBytes);
+  }
+  if (layout.projectedHostBytes !== null && layout.projectedHostBytes > 0) {
+    return `estimate ${formatMemoryBytes(layout.projectedHostBytes)}`;
+  }
+  return "no data";
+}
+
 function MemoryLayoutPanel(props: {
   layout: InstanceMemoryLayout | undefined;
 }) {
   const layout = props.layout;
   const entries = layout?.entries ?? [];
-  const exactLayout = layout && layout.totalBytes > 0 ? layout : null;
+  const hasRuntimeEntries = layout && layout.totalBytes > 0 ? layout : null;
+  const processTelemetry = layout?.source === "process-telemetry";
   const projectedHostBytes = layout?.projectedHostBytes ?? null;
   const projectedHostTotalBytes = layout?.projectedHostTotalBytes ?? null;
   const hasProjection = projectedHostBytes !== null && projectedHostBytes > 0;
@@ -1449,25 +1480,32 @@ function MemoryLayoutPanel(props: {
             Memory layout
           </Text>
           <Text c="dimmed" size="xs">
-            Parsed from llama.cpp buffer allocation log lines.
+            {memoryLayoutSourceText(layout)}
           </Text>
         </Stack>
-        <Badge variant="light">
-          {exactLayout
-            ? formatMemoryBytes(exactLayout.totalBytes)
-            : hasProjection
-              ? `estimate ${formatMemoryBytes(projectedHostBytes ?? 0)}`
-              : "no data"}
+        <Badge {...(processTelemetry ? { color: "cyan" } : {})} variant="light">
+          {memoryLayoutBadge(layout)}
         </Badge>
       </Group>
 
-      {exactLayout ? (
+      {hasRuntimeEntries ? (
         <Stack gap="xs">
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs">
-            <MemoryMetric label="VRAM total" value={exactLayout.deviceBytes} />
-            <MemoryMetric label="RAM total" value={exactLayout.hostBytes} />
-            <MemoryMetric label="Other" value={exactLayout.otherBytes} />
+            <MemoryMetric
+              label="VRAM total"
+              value={hasRuntimeEntries.deviceBytes}
+            />
+            <MemoryMetric
+              label={processTelemetry ? "Process RAM" : "RAM total"}
+              value={hasRuntimeEntries.hostBytes}
+            />
+            <MemoryMetric label="Other" value={hasRuntimeEntries.otherBytes} />
           </SimpleGrid>
+          {processTelemetry && layout.processIds.length > 0 && (
+            <Text c="dimmed" size="xs">
+              PIDs: {layout.processIds.join(", ")}
+            </Text>
+          )}
 
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
             {entries.map((entry) => (
@@ -1490,17 +1528,36 @@ function MemoryLayoutPanel(props: {
                       </Badge>
                     </Group>
                   </Group>
-                  <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={4}>
-                    <MemoryMetric label="Model" value={entry.modelBytes} />
-                    <MemoryMetric
-                      label="KV/context"
-                      value={entry.contextBytes}
-                    />
-                    <MemoryMetric label="Compute" value={entry.computeBytes} />
-                    <MemoryMetric label="Output" value={entry.outputBytes} />
-                    <MemoryMetric label="Adapters" value={entry.adapterBytes} />
-                    <MemoryMetric label="Other" value={entry.otherBytes} />
-                  </SimpleGrid>
+                  {processTelemetry ? (
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={4}>
+                      <MemoryMetric
+                        label="Process memory"
+                        value={entry.totalBytes}
+                      />
+                      <MemoryMetric
+                        label="Unclassified"
+                        value={entry.otherBytes}
+                      />
+                    </SimpleGrid>
+                  ) : (
+                    <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={4}>
+                      <MemoryMetric label="Model" value={entry.modelBytes} />
+                      <MemoryMetric
+                        label="KV/context"
+                        value={entry.contextBytes}
+                      />
+                      <MemoryMetric
+                        label="Compute"
+                        value={entry.computeBytes}
+                      />
+                      <MemoryMetric label="Output" value={entry.outputBytes} />
+                      <MemoryMetric
+                        label="Adapters"
+                        value={entry.adapterBytes}
+                      />
+                      <MemoryMetric label="Other" value={entry.otherBytes} />
+                    </SimpleGrid>
+                  )}
                 </Stack>
               </Paper>
             ))}
