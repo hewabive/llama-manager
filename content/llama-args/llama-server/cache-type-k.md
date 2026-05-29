@@ -5,7 +5,7 @@ title: "--cache-type-k"
 summary: "Тип данных K-части KV-cache. Главный регулятор памяти длинного контекста вместе с `--cache-type-v`; требует проверки качества и backend support."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
+reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "enum"
 valueHint: "TYPE"
@@ -143,6 +143,8 @@ allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1
 - `--split-mode tensor`: требует Flash Attention, но в llama.cpp одновременно не поддерживает quantized KV-cache; используйте `f16`, `bf16` или `f32`.
 
 Для квантованных K/V llama.cpp также проверяет, что block size типа делит `n_embd_head_k`/`n_embd_head_v`. Если не делит, сервер завершится ошибкой на старте.
+
+В актуальных исходниках KV-cache дополнительно может создавать Hadamard rotation tensors для quantized K/V, когда размерность head подходит под этот путь. Для DeepSeek V3.2 DSA lightning indexer rotation для K включается принудительно отдельной веткой, поэтому на таких моделях особенно важно проверять фактические логи backend и скорость, а не только расчет памяти.
 
 На CUDA сборочный параметр `GGML_CUDA_FA_ALL_QUANTS` расширяет поддержку комбинаций KV quantization для Flash Attention kernels, но заметно увеличивает время компиляции. Без него некоторые смешанные или редкие пары могут быть медленными или не теми, что вы ожидали.
 

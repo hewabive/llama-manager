@@ -5,7 +5,7 @@ title: "--completion-bash"
 summary: "Печатает bash completion script для llama.cpp tools и завершает процесс. Используется для shell-интеграции, не для постоянного запуска `llama-server`."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
+reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "flag"
 valueHint: null
@@ -16,7 +16,6 @@ env: []
 related:
   - "--help"
   - "--version"
-  - "--license"
 ---
 
 # --completion-bash
@@ -46,6 +45,8 @@ print source-able bash completion script for llama.cpp
 В `common/arg.cpp` обработчик ставит `params.completion = true`. После успешного разбора `common_params_parse` вызывает `common_params_print_completion(ctx_arg)` и `exit(0)`. Проверка обязательной модели пропускается для completion path.
 
 Скрипт генерируется из текущего набора аргументов parser-а, поэтому он отражает именно установленную версию llama.cpp.
+
+В проверенной версии `llama.cpp` отдельного аргумента `--license` в `llama-server --help` уже нет: его удаление не влияет на completion path, но устаревшие shell completion файлы могли все еще содержать старую опцию.
 
 ## Значения и формат
 

@@ -5,7 +5,7 @@ title: "--cache-type-v"
 summary: "Тип данных V-части KV-cache. Квантованный V-cache экономит память, но требует Flash Attention и аккуратной проверки качества."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
+reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "enum"
 valueHint: "TYPE"
@@ -127,6 +127,8 @@ Values в attention - это сохраненное содержимое, кот
 - `--kv-offload`: влияет на размещение KV/KQV на device или host.
 - `--flash-attn`: обязателен для квантованного V-cache.
 - `--split-mode tensor`: несовместим с quantized KV-cache.
+
+Актуальная реализация KV-cache может создавать Hadamard rotation tensors для quantized K/V при подходящей размерности head. Это не меняет список допустимых значений, но влияет на то, какой fast path реально используется backend.
 
 ## INI-пресеты и router-режим
 
