@@ -337,9 +337,7 @@ function ArgumentDefaultMarker(props: {
 
 function SourceSyncPanel(props: {
   report: LlamaArgumentDocsSyncReport | undefined;
-  fetching: boolean;
   error: Error | null;
-  onAudit: () => void;
 }) {
   const report = props.report;
 
@@ -359,17 +357,6 @@ function SourceSyncPanel(props: {
               </Text>
             )}
           </div>
-          <Group gap="xs" wrap="wrap">
-            <Button
-              aria-label="Audit argument docs against source repository"
-              variant="light"
-              leftSection={<RefreshCw size={16} />}
-              loading={props.fetching}
-              onClick={props.onAudit}
-            >
-              Refresh
-            </Button>
-          </Group>
         </Group>
 
         {props.error && (
@@ -604,7 +591,9 @@ export function ArgumentsView() {
     queryKey: ["llama-arg-docs-sync"],
     queryFn: () => getLlamaArgumentDocsSyncReport(),
     retry: false,
-    staleTime: 30_000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const options = argsCatalog?.options ?? [];
   const categories = useMemo(
@@ -669,6 +658,9 @@ export function ArgumentsView() {
       getLlamaArgumentDoc(selectedOption!.primaryName, activeBinaryPathKey),
     enabled: Boolean(selectedOption),
     retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const selectedDoc = selectedDocQuery.data?.data;
   const argumentDefaultsQuery = useQuery({
@@ -842,9 +834,6 @@ export function ArgumentsView() {
         ["llama-args", nextBinaryPath || undefined],
         result,
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["llama-arg-docs-sync"],
-      });
       notifications.show({
         title: "Arguments refreshed",
         message: `${result.data.options.length} options loaded`,
@@ -1231,9 +1220,7 @@ export function ArgumentsView() {
       {argsCatalog && (
         <SourceSyncPanel
           report={docsSyncQuery.data?.data}
-          fetching={docsSyncQuery.isFetching}
           error={docsSyncQuery.isError ? (docsSyncQuery.error as Error) : null}
-          onAudit={() => void docsSyncQuery.refetch()}
         />
       )}
 
