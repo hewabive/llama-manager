@@ -5,7 +5,7 @@ title: "--help"
 summary: "Печатает usage/help для текущего `llama-server` и завершает процесс с кодом 0. Это диагностический флаг, а не параметр постоянной конфигурации сервера."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
+reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "flag"
 valueHint: null
@@ -17,7 +17,6 @@ allowedValues: []
 env: []
 related:
   - "--version"
-  - "--license"
   - "--completion-bash"
 ---
 
@@ -48,6 +47,8 @@ print usage and exit
 В `common/arg.cpp` обработчик ставит `params.usage = true`. После разбора аргументов `common_params_parse` вызывает `common_params_print_usage(ctx_arg)`, затем example-specific `print_usage`, если он передан, и вызывает `exit(0)`.
 
 Проверка обязательного `--model` пропускается для help/completion paths, поэтому `llama-server --help` работает без модели.
+
+В проверенной версии `llama.cpp` отдельный `--license` больше не входит в общий набор аргументов `llama-server`; для сверки доступных диагностических флагов ориентируйтесь на фактический вывод `--help` текущего бинарника.
 
 ## Значения и формат
 
