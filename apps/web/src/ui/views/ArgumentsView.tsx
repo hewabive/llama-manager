@@ -168,6 +168,10 @@ function docStatusColor(status: LlamaArgumentDocStatus) {
   return "gray";
 }
 
+function docStatusNeedsAttention(status: LlamaArgumentDocStatus) {
+  return status !== "current";
+}
+
 function presetSupportLabel(support: LlamaArgumentPresetSupport) {
   if (support === "preset-only") return "preset only";
   if (support === "model-managed") return "managed field";
@@ -215,9 +219,14 @@ function ArgumentBadges(props: { option: LlamaArgumentOption }) {
           ? props.option.compatibility.metadataSource
           : "not in binary"}
       </Badge>
-      <Badge color={docStatusColor(props.option.doc.status)} variant="outline">
-        docs {props.option.doc.status}
-      </Badge>
+      {docStatusNeedsAttention(props.option.doc.status) && (
+        <Badge
+          color={docStatusColor(props.option.doc.status)}
+          variant="outline"
+        >
+          docs {props.option.doc.status}
+        </Badge>
+      )}
       {props.option.control.presetSupport !== "supported" && (
         <Badge
           color={presetSupportColor(props.option.control.presetSupport)}
@@ -1321,22 +1330,21 @@ export function ArgumentsView() {
 
               <Stack gap="xs">
                 <Group justify="space-between" align="flex-start" wrap="wrap">
-                  <div>
-                    <Text fw={600} size="sm">
-                      Engineering help
-                    </Text>
-                    <Text c="dimmed" size="xs">
-                      {selectedDoc?.path ?? selectedOption.doc.path ?? "-"}
-                    </Text>
-                  </div>
-                  <Badge
-                    color={docStatusColor(
-                      selectedDoc?.status ?? selectedOption.doc.status,
-                    )}
-                    variant="light"
-                  >
-                    {selectedDoc?.status ?? selectedOption.doc.status}
-                  </Badge>
+                  <Text fw={600} size="sm">
+                    Engineering help
+                  </Text>
+                  {docStatusNeedsAttention(
+                    selectedDoc?.status ?? selectedOption.doc.status,
+                  ) && (
+                    <Badge
+                      color={docStatusColor(
+                        selectedDoc?.status ?? selectedOption.doc.status,
+                      )}
+                      variant="light"
+                    >
+                      {selectedDoc?.status ?? selectedOption.doc.status}
+                    </Badge>
+                  )}
                 </Group>
 
                 {selectedDocQuery.isFetching && (
@@ -1357,18 +1365,6 @@ export function ArgumentsView() {
 
                 {selectedDoc && selectedDoc.exists ? (
                   <Stack gap="xs">
-                    <Group gap="xs" wrap="wrap">
-                      {selectedDoc.updatedAt && (
-                        <Text c="dimmed" size="xs">
-                          Updated {formatLocalDateTime(selectedDoc.updatedAt)}
-                        </Text>
-                      )}
-                      {selectedDoc.reviewedHelpHash && (
-                        <Badge variant="outline" color="gray">
-                          reviewed help hash
-                        </Badge>
-                      )}
-                    </Group>
                     <ScrollArea h={520} type="auto" offsetScrollbars>
                       <EngineeringMarkdown
                         markdown={visibleEngineeringMarkdown}
@@ -1385,9 +1381,6 @@ export function ArgumentsView() {
                         Create this Markdown file and refresh the page. Agents
                         can work on it independently from the application code.
                       </Text>
-                      <Code className="code-wrap">
-                        {selectedDoc?.path ?? selectedOption.doc.path ?? "-"}
-                      </Code>
                     </Stack>
                   </Paper>
                 )}
