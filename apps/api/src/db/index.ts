@@ -125,8 +125,14 @@ export function migrate() {
       repo_path TEXT NOT NULL,
       build_dir TEXT NOT NULL,
       build_type TEXT NOT NULL,
+      build_profile TEXT NOT NULL DEFAULT 'server',
       cuda TEXT NOT NULL,
       native TEXT NOT NULL,
+      cuda_architectures TEXT,
+      cuda_fa_all_quants TEXT NOT NULL DEFAULT 'false',
+      cuda_graphs TEXT NOT NULL DEFAULT 'default',
+      cuda_no_vmm TEXT NOT NULL DEFAULT 'false',
+      llguidance TEXT NOT NULL DEFAULT 'default',
       extra_cmake_args_json TEXT NOT NULL,
       env_json TEXT NOT NULL DEFAULT '{}',
       target TEXT NOT NULL,
@@ -139,6 +145,48 @@ export function migrate() {
     db.run(sql`
       ALTER TABLE llama_build_settings
       ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}'
+    `);
+  }
+
+  if (!columnExists("llama_build_settings", "build_profile")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN build_profile TEXT NOT NULL DEFAULT 'server'
+    `);
+  }
+
+  if (!columnExists("llama_build_settings", "cuda_architectures")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN cuda_architectures TEXT
+    `);
+  }
+
+  if (!columnExists("llama_build_settings", "cuda_fa_all_quants")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN cuda_fa_all_quants TEXT NOT NULL DEFAULT 'false'
+    `);
+  }
+
+  if (!columnExists("llama_build_settings", "cuda_graphs")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN cuda_graphs TEXT NOT NULL DEFAULT 'default'
+    `);
+  }
+
+  if (!columnExists("llama_build_settings", "cuda_no_vmm")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN cuda_no_vmm TEXT NOT NULL DEFAULT 'false'
+    `);
+  }
+
+  if (!columnExists("llama_build_settings", "llguidance")) {
+    db.run(sql`
+      ALTER TABLE llama_build_settings
+      ADD COLUMN llguidance TEXT NOT NULL DEFAULT 'default'
     `);
   }
 

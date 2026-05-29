@@ -82,23 +82,46 @@ type BuildFormState = {
   repoPath: string;
   buildDir: string;
   buildType: BuildSettings["buildType"];
+  buildProfile: BuildSettings["buildProfile"];
   target: string;
   parallelJobs: number | "";
   cuda: boolean;
   native: boolean;
+  cudaArchitectureMode: "default" | "native" | "custom";
+  cudaArchitectureValue: string;
+  cudaFaAllQuants: boolean;
+  cudaGraphs: BuildSettings["cudaGraphs"];
+  cudaNoVmm: boolean;
+  llguidance: BuildSettings["llguidance"];
   extraCmakeArgs: string;
   buildEnvJson: string;
 };
 
 function buildFormFromSettings(settings: BuildSettings): BuildFormState {
+  const cudaArchitectures = settings.cudaArchitectures?.trim() ?? "";
+  const cudaArchitectureMode =
+    cudaArchitectures === ""
+      ? "default"
+      : cudaArchitectures === "native"
+        ? "native"
+        : "custom";
+
   return {
     repoPath: settings.repoPath,
     buildDir: settings.buildDir,
     buildType: settings.buildType,
+    buildProfile: settings.buildProfile,
     target: settings.target,
     parallelJobs: settings.parallelJobs ?? "",
     cuda: settings.cuda,
     native: settings.native,
+    cudaArchitectureMode,
+    cudaArchitectureValue:
+      cudaArchitectureMode === "custom" ? cudaArchitectures : "",
+    cudaFaAllQuants: settings.cudaFaAllQuants,
+    cudaGraphs: settings.cudaGraphs,
+    cudaNoVmm: settings.cudaNoVmm,
+    llguidance: settings.llguidance,
     extraCmakeArgs: settings.extraCmakeArgs.join("\n"),
     buildEnvJson: JSON.stringify(settings.env, null, 2),
   };
@@ -130,6 +153,21 @@ function parseBuildEnv(value: string) {
   );
 }
 
+function cudaArchitecturesFromForm(form: BuildFormState) {
+  if (form.cudaArchitectureMode === "default") {
+    return null;
+  }
+  if (form.cudaArchitectureMode === "native") {
+    return "native";
+  }
+
+  const value = form.cudaArchitectureValue.trim();
+  if (!value) {
+    throw new Error("CUDA architecture list is required in custom mode");
+  }
+  return value;
+}
+
 export function BuildView() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<BuildFormState | null>(null);
@@ -157,10 +195,17 @@ export function BuildView() {
   const repoPath = form?.repoPath ?? "";
   const buildDir = form?.buildDir ?? "";
   const buildType = form?.buildType ?? null;
+  const buildProfile = form?.buildProfile ?? null;
   const target = form?.target ?? "";
   const parallelJobs = form?.parallelJobs ?? "";
   const cuda = form?.cuda ?? false;
   const native = form?.native ?? false;
+  const cudaArchitectureMode = form?.cudaArchitectureMode ?? "default";
+  const cudaArchitectureValue = form?.cudaArchitectureValue ?? "";
+  const cudaFaAllQuants = form?.cudaFaAllQuants ?? false;
+  const cudaGraphs = form?.cudaGraphs ?? "default";
+  const cudaNoVmm = form?.cudaNoVmm ?? false;
+  const llguidance = form?.llguidance ?? "default";
   const extraCmakeArgs = form?.extraCmakeArgs ?? "";
   const buildEnvJson = form?.buildEnvJson ?? "";
   const selectedSteps = [
@@ -202,8 +247,14 @@ export function BuildView() {
       repoPath: form.repoPath,
       buildDir: form.buildDir,
       buildType: form.buildType,
+      buildProfile: form.buildProfile,
       cuda: form.cuda,
       native: form.native,
+      cudaArchitectures: cudaArchitecturesFromForm(form),
+      cudaFaAllQuants: form.cudaFaAllQuants,
+      cudaGraphs: form.cudaGraphs,
+      cudaNoVmm: form.cudaNoVmm,
+      llguidance: form.llguidance,
       extraCmakeArgs: parseExtraCmakeArgs(form.extraCmakeArgs),
       env: parseBuildEnv(form.buildEnvJson),
       target: form.target,
@@ -406,52 +457,170 @@ export function BuildView() {
           placeholder='{"CUDACXX": "/usr/local/cuda/bin/nvcc"}'
         />
 
-        <Group gap="lg" wrap="wrap">
-          <BuildSwitch
-            label="Pull updates"
-            tooltip="Runs git pull --ff-only in the llama.cpp repository."
-            checked={runPull}
-            onChange={setRunPull}
-          />
-          <BuildSwitch
-            label="Rebuild UI"
-            tooltip="Removes tools/ui/dist, then runs npm install and npm run build in tools/ui."
-            checked={runUiRebuild}
-            onChange={setRunUiRebuild}
-          />
-          <BuildSwitch
-            label="Clean build dir"
-            tooltip="Deletes the selected build directory before CMake runs."
-            checked={runCleanBuildDir}
-            onChange={setRunCleanBuildDir}
-          />
-          <BuildSwitch
-            label="Configure CMake"
-            tooltip="Runs cmake configure with the selected repository, build directory and CMake options."
-            checked={runConfigure}
-            onChange={setRunConfigure}
-          />
-          <BuildSwitch
-            label="Build target"
-            tooltip="Runs cmake --build for the selected target."
-            checked={runBuild}
-            onChange={setRunBuild}
-          />
-          <BuildSwitch
-            label="CUDA backend"
-            tooltip="Configures GGML_CUDA=ON and tries to discover nvcc/CUDACXX."
-            checked={cuda}
-            disabled={!settingsReady}
-            onChange={(value) => setFormField("cuda", value)}
-          />
-          <BuildSwitch
-            label="Native CPU"
-            tooltip="Configures GGML_NATIVE=ON; the binary may be optimized for this CPU and less portable."
-            checked={native}
-            disabled={!settingsReady}
-            onChange={(value) => setFormField("native", value)}
-          />
-        </Group>
+        <Stack gap="xs">
+          <Text fw={600} size="sm">
+            Build steps
+          </Text>
+          <Group gap="lg" wrap="wrap">
+            <BuildSwitch
+              label="Pull updates"
+              tooltip="Runs git pull --ff-only in the llama.cpp repository."
+              checked={runPull}
+              onChange={setRunPull}
+            />
+            <BuildSwitch
+              label="Rebuild UI"
+              tooltip="Removes tools/ui/dist, then runs npm install and npm run build in tools/ui."
+              checked={runUiRebuild}
+              onChange={setRunUiRebuild}
+            />
+            <BuildSwitch
+              label="Clean build dir"
+              tooltip="Deletes the selected build directory before CMake runs."
+              checked={runCleanBuildDir}
+              onChange={setRunCleanBuildDir}
+            />
+            <BuildSwitch
+              label="Configure CMake"
+              tooltip="Runs cmake configure with the selected repository, build directory and CMake options."
+              checked={runConfigure}
+              onChange={setRunConfigure}
+            />
+            <BuildSwitch
+              label="Build target"
+              tooltip="Runs cmake --build for the selected target."
+              checked={runBuild}
+              onChange={setRunBuild}
+            />
+          </Group>
+        </Stack>
+
+        <Stack gap="xs">
+          <Text fw={600} size="sm">
+            CMake options
+          </Text>
+          <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="sm">
+            <Select
+              label="Build profile"
+              data={[
+                { value: "server", label: "Server only" },
+                { value: "full", label: "Full upstream" },
+              ]}
+              value={buildProfile}
+              allowDeselect={false}
+              disabled={!settingsReady}
+              onChange={(value) => {
+                if (value) {
+                  setFormField(
+                    "buildProfile",
+                    value as BuildSettings["buildProfile"],
+                  );
+                }
+              }}
+            />
+            <Select
+              label="CUDA architectures"
+              data={[
+                { value: "default", label: "Auto" },
+                { value: "native", label: "Native GPU" },
+                { value: "custom", label: "Custom list" },
+              ]}
+              value={cudaArchitectureMode}
+              allowDeselect={false}
+              disabled={!settingsReady || !cuda}
+              onChange={(value) => {
+                if (value) {
+                  setFormField(
+                    "cudaArchitectureMode",
+                    value as BuildFormState["cudaArchitectureMode"],
+                  );
+                }
+              }}
+            />
+            {cudaArchitectureMode === "custom" && (
+              <TextInput
+                label="CUDA architecture list"
+                placeholder="86;89"
+                value={cudaArchitectureValue}
+                disabled={!settingsReady || !cuda}
+                onChange={(event) =>
+                  setFormField(
+                    "cudaArchitectureValue",
+                    event.currentTarget.value,
+                  )
+                }
+              />
+            )}
+            <Select
+              label="CUDA graphs"
+              data={[
+                { value: "default", label: "Default" },
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+              ]}
+              value={cudaGraphs}
+              allowDeselect={false}
+              disabled={!settingsReady || !cuda}
+              onChange={(value) => {
+                if (value) {
+                  setFormField(
+                    "cudaGraphs",
+                    value as BuildSettings["cudaGraphs"],
+                  );
+                }
+              }}
+            />
+            <Select
+              label="LLGuidance"
+              data={[
+                { value: "default", label: "Default" },
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+              ]}
+              value={llguidance}
+              allowDeselect={false}
+              disabled={!settingsReady}
+              onChange={(value) => {
+                if (value) {
+                  setFormField(
+                    "llguidance",
+                    value as BuildSettings["llguidance"],
+                  );
+                }
+              }}
+            />
+          </SimpleGrid>
+          <Group gap="lg" wrap="wrap">
+            <BuildSwitch
+              label="CUDA backend"
+              tooltip="Configures GGML_CUDA=ON and tries to discover nvcc/CUDACXX."
+              checked={cuda}
+              disabled={!settingsReady}
+              onChange={(value) => setFormField("cuda", value)}
+            />
+            <BuildSwitch
+              label="Native CPU"
+              tooltip="Configures GGML_NATIVE=ON; the binary may be optimized for this CPU and less portable."
+              checked={native}
+              disabled={!settingsReady}
+              onChange={(value) => setFormField("native", value)}
+            />
+            <BuildSwitch
+              label="CUDA FA all quants"
+              tooltip="Configures GGML_CUDA_FA_ALL_QUANTS=ON; more KV-cache quant choices, longer CUDA compile."
+              checked={cudaFaAllQuants}
+              disabled={!settingsReady || !cuda}
+              onChange={(value) => setFormField("cudaFaAllQuants", value)}
+            />
+            <BuildSwitch
+              label="Disable CUDA VMM"
+              tooltip="Configures GGML_CUDA_NO_VMM=ON for CUDA driver or memory mapping compatibility issues."
+              checked={cudaNoVmm}
+              disabled={!settingsReady || !cuda}
+              onChange={(value) => setFormField("cudaNoVmm", value)}
+            />
+          </Group>
+        </Stack>
 
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
           <Box>

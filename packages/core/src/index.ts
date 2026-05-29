@@ -463,12 +463,21 @@ export const InstanceBulkActionResultSchema = z.object({
   items: z.array(InstanceBulkActionItemSchema),
 });
 
+export const BuildProfileSchema = z.enum(["server", "full"]);
+export const CmakeBooleanModeSchema = z.enum(["default", "on", "off"]);
+
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
   buildType: z.enum(["Release", "Debug", "RelWithDebInfo", "MinSizeRel"]),
+  buildProfile: BuildProfileSchema.default("server"),
   cuda: z.boolean(),
   native: z.boolean(),
+  cudaArchitectures: z.string().trim().min(1).nullable().default(null),
+  cudaFaAllQuants: z.boolean().default(false),
+  cudaGraphs: CmakeBooleanModeSchema.default("default"),
+  cudaNoVmm: z.boolean().default(false),
+  llguidance: CmakeBooleanModeSchema.default("default"),
   extraCmakeArgs: z.array(z.string()),
   env: z.record(z.string(), z.string()).default({}),
   target: z.string().min(1),

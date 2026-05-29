@@ -149,6 +149,28 @@ function cmakeDefinitionIfMissing(args: string[], name: string, value: string) {
   return hasCmakeDefinition(args, name) ? [] : [`-D${name}=${value}`];
 }
 
+function cmakeBooleanModeDefinition(
+  args: string[],
+  name: string,
+  mode: "default" | "on" | "off",
+) {
+  if (mode === "default") {
+    return [];
+  }
+  return cmakeDefinitionIfMissing(args, name, mode === "on" ? "ON" : "OFF");
+}
+
+function serverBuildProfileDefinitions(args: string[]) {
+  return [
+    ...cmakeDefinitionIfMissing(args, "LLAMA_BUILD_COMMON", "ON"),
+    ...cmakeDefinitionIfMissing(args, "LLAMA_BUILD_TESTS", "OFF"),
+    ...cmakeDefinitionIfMissing(args, "LLAMA_BUILD_EXAMPLES", "OFF"),
+    ...cmakeDefinitionIfMissing(args, "LLAMA_BUILD_APP", "OFF"),
+    ...cmakeDefinitionIfMissing(args, "LLAMA_BUILD_TOOLS", "ON"),
+    ...cmakeDefinitionIfMissing(args, "LLAMA_BUILD_SERVER", "ON"),
+  ];
+}
+
 export function buildProcessEnv(settings: BuildSettings): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...settings.env };
 
@@ -168,7 +190,7 @@ export function buildProcessEnv(settings: BuildSettings): NodeJS.ProcessEnv {
   return env;
 }
 
-function buildSteps(
+export function buildSteps(
   settings: BuildSettings,
   input: BuildJobStart,
   env: NodeJS.ProcessEnv,
@@ -201,6 +223,42 @@ function buildSteps(
         `-DCMAKE_BUILD_TYPE=${settings.buildType}`,
         `-DGGML_CUDA=${settings.cuda ? "ON" : "OFF"}`,
         `-DGGML_NATIVE=${settings.native ? "ON" : "OFF"}`,
+        ...(settings.buildProfile === "server"
+          ? serverBuildProfileDefinitions(settings.extraCmakeArgs)
+          : []),
+        ...(settings.cuda && settings.cudaArchitectures
+          ? cmakeDefinitionIfMissing(
+              settings.extraCmakeArgs,
+              "CMAKE_CUDA_ARCHITECTURES",
+              settings.cudaArchitectures,
+            )
+          : []),
+        ...(settings.cuda && settings.cudaFaAllQuants
+          ? cmakeDefinitionIfMissing(
+              settings.extraCmakeArgs,
+              "GGML_CUDA_FA_ALL_QUANTS",
+              "ON",
+            )
+          : []),
+        ...(settings.cuda
+          ? cmakeBooleanModeDefinition(
+              settings.extraCmakeArgs,
+              "GGML_CUDA_GRAPHS",
+              settings.cudaGraphs,
+            )
+          : []),
+        ...(settings.cuda && settings.cudaNoVmm
+          ? cmakeDefinitionIfMissing(
+              settings.extraCmakeArgs,
+              "GGML_CUDA_NO_VMM",
+              "ON",
+            )
+          : []),
+        ...cmakeBooleanModeDefinition(
+          settings.extraCmakeArgs,
+          "LLAMA_LLGUIDANCE",
+          settings.llguidance,
+        ),
         ...(cudaCompiler &&
         !hasCmakeDefinition(settings.extraCmakeArgs, "CMAKE_CUDA_COMPILER")
           ? [`-DCMAKE_CUDA_COMPILER=${cudaCompiler}`]
