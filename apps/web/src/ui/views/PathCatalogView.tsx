@@ -490,12 +490,13 @@ export function PathCatalogView() {
           <TextInput
             label="Name"
             value={draft.name}
-            onChange={(event) =>
+            onChange={(event) => {
+              const value = event.currentTarget.value;
               setDraft((current) => ({
                 ...current,
-                name: event.currentTarget.value,
-              }))
-            }
+                name: value,
+              }));
+            }}
           />
           <PathPickerInput
             label="Path"
