@@ -48,6 +48,10 @@
 - Argument schema sync: extract `llama-server --help` or `common/arg.cpp` from
   the canonical source repository into generated JSON, then store Russian help
   as an overlay.
+- Argument documentation sync: `/api/llama-args/docs-sync` hashes key
+  `llama.cpp` source files and compares Markdown help frontmatter with the
+  canonical source commit. This is the audit surface for agent-driven help
+  updates.
 - Model scanner: scan GGUF directories, cache metadata by path, size and mtime.
 - Router presets: generate official `llama-server --models-preset` INI files.
 - Process health: combine child process state with `/health`, `/props`, `/slots` and `/metrics`.

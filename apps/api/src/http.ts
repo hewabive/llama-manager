@@ -45,6 +45,7 @@ import {
   saveArgumentDefaults,
 } from "./arguments/defaults-repository.js";
 import { readArgumentEngineeringDoc } from "./arguments/docs.js";
+import { getLlamaArgumentDocsSyncReport } from "./arguments/docs-sync.js";
 import {
   deleteArgumentHelpOverride,
   listArgumentHelpOverrides,
@@ -357,6 +358,16 @@ app.get("/api/llama-args/docs/:primaryName", (c) => {
         currentHelpHash: catalog.source.hash,
         currentLlamaCppCommit: option?.doc.currentLlamaCppCommit ?? null,
       }),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.get("/api/llama-args/docs-sync", (c) => {
+  try {
+    return c.json({
+      data: getLlamaArgumentDocsSyncReport(c.req.query("binaryPath")),
     });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);

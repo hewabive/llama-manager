@@ -487,6 +487,16 @@ export const LlamaSourceStatusSchema = z.object({
   error: z.string().nullable(),
 });
 
+export const LlamaSourceFileFingerprintSchema = z.object({
+  relativePath: z.string(),
+  path: z.string(),
+  exists: z.boolean(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  modifiedAt: z.string().nullable(),
+  hash: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
@@ -745,6 +755,51 @@ export const LlamaArgumentEngineeringDocSchema = z.object({
   currentLlamaCppCommit: z.string().nullable(),
   frontmatter: z.record(z.string(), z.unknown()),
   markdown: z.string(),
+});
+
+export const LlamaArgumentDocStatusCountsSchema = z.object({
+  missing: z.number().int().nonnegative(),
+  draft: z.number().int().nonnegative(),
+  current: z.number().int().nonnegative(),
+  needsReview: z.number().int().nonnegative(),
+  deprecated: z.number().int().nonnegative(),
+  orphaned: z.number().int().nonnegative(),
+});
+
+export const LlamaArgumentDocSyncItemSchema = z.object({
+  primaryName: z.string(),
+  path: z.string().nullable(),
+  status: LlamaArgumentDocStatusSchema,
+  summary: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  reviewedLlamaCppCommit: z.string().nullable(),
+  currentLlamaCppCommit: z.string().nullable(),
+});
+
+export const LlamaArgumentDocOrphanSchema = z.object({
+  slug: z.string(),
+  path: z.string(),
+  primaryName: z.string().nullable(),
+  fileStatus: LlamaArgumentDocStatusSchema,
+  updatedAt: z.string().nullable(),
+  reviewedLlamaCppCommit: z.string().nullable(),
+});
+
+export const LlamaArgumentDocsSyncReportSchema = z.object({
+  checkedAt: z.string(),
+  source: LlamaSourceStatusSchema,
+  sourceFingerprint: z.string().nullable(),
+  sourceFiles: z.array(LlamaSourceFileFingerprintSchema),
+  docsDirectory: z.string(),
+  binaryPath: z.string(),
+  helpHash: z.string(),
+  totalArguments: z.number().int().nonnegative(),
+  statusCounts: LlamaArgumentDocStatusCountsSchema,
+  missing: z.array(LlamaArgumentDocSyncItemSchema),
+  draft: z.array(LlamaArgumentDocSyncItemSchema),
+  needsReview: z.array(LlamaArgumentDocSyncItemSchema),
+  deprecated: z.array(LlamaArgumentDocSyncItemSchema),
+  orphaned: z.array(LlamaArgumentDocOrphanSchema),
 });
 
 export const NetworkInterfaceAddressSchema = z.object({
@@ -1019,6 +1074,21 @@ export type LlamaSourceSettingsUpdate = z.infer<
   typeof LlamaSourceSettingsUpdateSchema
 >;
 export type LlamaSourceStatus = z.infer<typeof LlamaSourceStatusSchema>;
+export type LlamaSourceFileFingerprint = z.infer<
+  typeof LlamaSourceFileFingerprintSchema
+>;
+export type LlamaArgumentDocStatusCounts = z.infer<
+  typeof LlamaArgumentDocStatusCountsSchema
+>;
+export type LlamaArgumentDocSyncItem = z.infer<
+  typeof LlamaArgumentDocSyncItemSchema
+>;
+export type LlamaArgumentDocOrphan = z.infer<
+  typeof LlamaArgumentDocOrphanSchema
+>;
+export type LlamaArgumentDocsSyncReport = z.infer<
+  typeof LlamaArgumentDocsSyncReportSchema
+>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;

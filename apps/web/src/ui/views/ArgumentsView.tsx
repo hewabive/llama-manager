@@ -1,6 +1,7 @@
 import type {
   LlamaArgumentDefault,
   LlamaArgumentDefaults,
+  LlamaArgumentDocsSyncReport,
   LlamaArgumentDocStatus,
   LlamaArgumentOption,
   LlamaArgumentPresetSupport,
@@ -16,6 +17,7 @@ import {
   Paper,
   ScrollArea,
   Select,
+  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -41,6 +43,7 @@ import {
   deleteLlamaArgumentOverride,
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
+  getLlamaArgumentDocsSyncReport,
   getLlamaArguments,
   listPathCatalog,
   updateLlamaArgumentDefaults,
@@ -170,6 +173,39 @@ function docStatusColor(status: LlamaArgumentDocStatus) {
 
 function docStatusNeedsAttention(status: LlamaArgumentDocStatus) {
   return status !== "current";
+}
+
+function sourceSyncColor(report: LlamaArgumentDocsSyncReport) {
+  if (
+    report.source.error ||
+    !report.source.exists ||
+    !report.source.isGitRepo
+  ) {
+    return "red";
+  }
+  if (report.source.dirty) {
+    return "yellow";
+  }
+  return "green";
+}
+
+function sourceSyncLabel(report: LlamaArgumentDocsSyncReport) {
+  if (!report.source.exists) return "source missing";
+  if (!report.source.isGitRepo) return "not git";
+  if (report.source.dirty) return "source dirty";
+  return "source clean";
+}
+
+function statusCountBadges(report: LlamaArgumentDocsSyncReport) {
+  const counts = report.statusCounts;
+  return [
+    { key: "current", label: "current", value: counts.current },
+    { key: "needsReview", label: "needs review", value: counts.needsReview },
+    { key: "draft", label: "draft", value: counts.draft },
+    { key: "missing", label: "missing", value: counts.missing },
+    { key: "deprecated", label: "deprecated", value: counts.deprecated },
+    { key: "orphaned", label: "orphaned", value: counts.orphaned },
+  ];
 }
 
 function presetSupportLabel(support: LlamaArgumentPresetSupport) {
@@ -334,6 +370,192 @@ function ArgumentDefaultMarker(props: {
   );
 }
 
+function SourceSyncPanel(props: {
+  report: LlamaArgumentDocsSyncReport | undefined;
+  fetching: boolean;
+  error: Error | null;
+  onAudit: () => void;
+}) {
+  const report = props.report;
+  const needsAttention = report
+    ? report.statusCounts.needsReview +
+      report.statusCounts.draft +
+      report.statusCounts.missing +
+      report.statusCounts.orphaned
+    : 0;
+  const docSamples = report
+    ? [
+        ...report.needsReview.slice(0, 8),
+        ...report.draft.slice(0, Math.max(0, 8 - report.needsReview.length)),
+        ...report.missing.slice(
+          0,
+          Math.max(0, 8 - report.needsReview.length - report.draft.length),
+        ),
+      ]
+    : [];
+
+  return (
+    <Paper withBorder p="md" radius="sm">
+      <Stack gap="xs">
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <div className="section-heading">
+            <Text fw={600}>Source sync</Text>
+            {report ? (
+              <Text c="dimmed" size="sm">
+                {formatLocalDateTime(report.checkedAt)}
+              </Text>
+            ) : (
+              <Text c="dimmed" size="sm">
+                Waiting for audit data
+              </Text>
+            )}
+          </div>
+          <Button
+            aria-label="Audit argument docs against source repository"
+            variant="light"
+            leftSection={<RefreshCw size={16} />}
+            loading={props.fetching}
+            onClick={props.onAudit}
+          >
+            Audit docs
+          </Button>
+        </Group>
+
+        {props.error && (
+          <Alert color="red" icon={<AlertTriangle size={16} />} variant="light">
+            {props.error.message}
+          </Alert>
+        )}
+
+        {!report && !props.error && (
+          <Text c="dimmed" size="sm">
+            Loading source sync report...
+          </Text>
+        )}
+
+        {report && (
+          <Stack gap="xs">
+            <Group gap="xs" wrap="wrap">
+              <Badge color={sourceSyncColor(report)} variant="light">
+                {sourceSyncLabel(report)}
+              </Badge>
+              {report.source.branch && (
+                <Text c="dimmed" size="xs">
+                  {report.source.branch}
+                </Text>
+              )}
+              {report.source.currentCommit && (
+                <Code>{report.source.currentCommit.slice(0, 12)}</Code>
+              )}
+              {report.sourceFingerprint && (
+                <Badge variant="outline">
+                  source {report.sourceFingerprint.slice(0, 12)}
+                </Badge>
+              )}
+              <Badge
+                color={needsAttention > 0 ? "yellow" : "green"}
+                variant="light"
+              >
+                {needsAttention} need attention
+              </Badge>
+            </Group>
+
+            {report.source.error && (
+              <Text c="red" size="sm">
+                {report.source.error}
+              </Text>
+            )}
+
+            <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="xs">
+              {statusCountBadges(report).map((item) => (
+                <Badge
+                  key={item.key}
+                  color={docStatusColor(
+                    item.key === "needsReview"
+                      ? "needs-review"
+                      : (item.key as LlamaArgumentDocStatus),
+                  )}
+                  variant={item.value > 0 ? "light" : "outline"}
+                >
+                  {item.label}: {item.value}
+                </Badge>
+              ))}
+            </SimpleGrid>
+
+            <details className="argument-secondary-details">
+              <Text component="summary" fw={600} size="sm">
+                Source files and docs needing attention
+              </Text>
+              <Stack gap="xs" mt="xs">
+                <Group gap="xs" wrap="wrap">
+                  <Text c="dimmed" size="xs">
+                    Docs
+                  </Text>
+                  <Code className="code-wrap">{report.docsDirectory}</Code>
+                </Group>
+                <Group gap="xs" wrap="wrap">
+                  <Text c="dimmed" size="xs">
+                    Binary
+                  </Text>
+                  <Code className="code-wrap">{report.binaryPath}</Code>
+                </Group>
+                <Stack gap={4}>
+                  {report.sourceFiles.map((file) => (
+                    <Group key={file.relativePath} gap="xs" wrap="wrap">
+                      <Badge
+                        color={file.exists ? "gray" : "red"}
+                        variant="outline"
+                      >
+                        {file.exists ? "tracked" : "missing"}
+                      </Badge>
+                      <Code>{file.relativePath}</Code>
+                      {file.hash && (
+                        <Text size="xs">{file.hash.slice(0, 12)}</Text>
+                      )}
+                    </Group>
+                  ))}
+                </Stack>
+                {docSamples.length > 0 && (
+                  <Stack gap={4}>
+                    {docSamples.map((item) => (
+                      <Group key={item.primaryName} gap="xs" wrap="wrap">
+                        <Badge
+                          color={docStatusColor(item.status)}
+                          variant="outline"
+                        >
+                          {item.status}
+                        </Badge>
+                        <Code>{item.primaryName}</Code>
+                        {item.reviewedLlamaCppCommit && (
+                          <Text c="dimmed" size="xs">
+                            reviewed {item.reviewedLlamaCppCommit.slice(0, 12)}
+                          </Text>
+                        )}
+                      </Group>
+                    ))}
+                  </Stack>
+                )}
+                {report.orphaned.length > 0 && (
+                  <Stack gap={4}>
+                    {report.orphaned.slice(0, 8).map((item) => (
+                      <Group key={item.path} gap="xs" wrap="wrap">
+                        <Badge color="orange" variant="outline">
+                          orphaned
+                        </Badge>
+                        <Code>{item.primaryName ?? item.slug}</Code>
+                      </Group>
+                    ))}
+                  </Stack>
+                )}
+              </Stack>
+            </details>
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
 function upsertDefault(
   defaults: LlamaArgumentDefault[],
   nextDefault: LlamaArgumentDefault,
@@ -440,6 +662,13 @@ export function ArgumentsView() {
   });
 
   const argsCatalog = argsCatalogQuery.data?.data;
+  const docsSyncQuery = useQuery({
+    queryKey: ["llama-arg-docs-sync", activeBinaryPathKey],
+    queryFn: () => getLlamaArgumentDocsSyncReport(activeBinaryPathKey),
+    enabled: Boolean(argsCatalog),
+    retry: false,
+    staleTime: 30_000,
+  });
   const options = argsCatalog?.options ?? [];
   const categories = useMemo(
     () =>
@@ -676,6 +905,9 @@ export function ArgumentsView() {
         ["llama-args", nextBinaryPath || undefined],
         result,
       );
+      void queryClient.invalidateQueries({
+        queryKey: ["llama-arg-docs-sync"],
+      });
       notifications.show({
         title: "Arguments refreshed",
         message: `${result.data.options.length} options loaded`,
@@ -1057,6 +1289,15 @@ export function ArgumentsView() {
         <Alert color="red" icon={<AlertTriangle size={18} />} variant="light">
           {(argsCatalogQuery.error as Error).message}
         </Alert>
+      )}
+
+      {argsCatalog && (
+        <SourceSyncPanel
+          report={docsSyncQuery.data?.data}
+          fetching={docsSyncQuery.isFetching}
+          error={docsSyncQuery.isError ? (docsSyncQuery.error as Error) : null}
+          onAudit={() => void docsSyncQuery.refetch()}
+        />
       )}
 
       <Paper withBorder p="md" radius="sm">
