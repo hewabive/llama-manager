@@ -1,6 +1,7 @@
 import type {
   Instance,
   InstanceHealthSummary,
+  InstanceLoadProgress,
   InstanceMemoryLayout,
   InstanceMemoryPlacement,
   LlamaEndpointProbe,
@@ -515,6 +516,81 @@ function modelCanUnload(status: string | null) {
   );
 }
 
+function isModelLoading(status: string | null) {
+  return status?.toLowerCase() === "loading";
+}
+
+function samePath(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
+  return Boolean(left && right && left.trim() === right.trim());
+}
+
+function modelLoadProgress(input: {
+  model: V1ModelInfo;
+  models: V1ModelInfo[];
+  statusSummary: InstanceHealthSummary["logSummary"] | undefined;
+  pendingAction: { model: string; action: RouterModelAction } | null;
+}): InstanceLoadProgress | null {
+  if (!isModelLoading(input.model.status)) {
+    return null;
+  }
+
+  const progress = input.statusSummary?.loadProgress;
+  if (!progress) {
+    return null;
+  }
+  if (progress.stage === "ready") {
+    return null;
+  }
+
+  if (samePath(input.statusSummary?.modelPath, input.model.modelPath)) {
+    return progress;
+  }
+
+  const loadingModels = input.models.filter((model) =>
+    isModelLoading(model.status),
+  );
+  const progressHasDifferentModel =
+    Boolean(input.statusSummary?.modelPath) &&
+    !samePath(input.statusSummary?.modelPath, input.model.modelPath);
+
+  if (
+    input.pendingAction?.model === input.model.id &&
+    input.pendingAction.action === "load" &&
+    !progressHasDifferentModel
+  ) {
+    return progress;
+  }
+
+  if (loadingModels.length === 1 && !progressHasDifferentModel) {
+    return progress;
+  }
+
+  return null;
+}
+
+function fallbackModelLoadProgress(): InstanceLoadProgress {
+  return {
+    stage: "pending",
+    percent: null,
+    message:
+      "Router reports that this model is loading; waiting for matching child loading log lines.",
+    estimated: true,
+  };
+}
+
+function loadProgressColor(progress: InstanceLoadProgress) {
+  if (progress.stage === "error") return "red";
+  if (progress.stage === "ready") return "green";
+  return "yellow";
+}
+
+function loadProgressValue(progress: InstanceLoadProgress) {
+  return progress.percent ?? 10;
+}
+
 function endpointErrorText(probe: LlamaEndpointProbe | undefined) {
   return probeEndpointMessage(probe);
 }
@@ -832,6 +908,7 @@ function RuntimeProbeLine(props: {
 function V1ModelsPanel(props: {
   probe: LlamaEndpointProbe | undefined;
   modelDiagnostics: Record<string, LlamaModelDiagnostics>;
+  statusSummary: InstanceHealthSummary["logSummary"] | undefined;
   onReload: () => void;
   reloadPending: boolean;
   onModelAction: (model: string, action: RouterModelAction) => void;
@@ -893,6 +970,13 @@ function V1ModelsPanel(props: {
           const runtime = props.modelDiagnostics[model.id];
           const loraAdapters = loraAdaptersFromProbe(runtime?.loraAdapters);
           const slotRows = slotRowsFromProbe(runtime?.slots);
+          const progress =
+            modelLoadProgress({
+              model,
+              models,
+              statusSummary: props.statusSummary,
+              pendingAction: props.pendingAction,
+            }) ?? fallbackModelLoadProgress();
 
           return (
             <Paper key={model.id} withBorder p="xs" radius="sm">
@@ -1005,27 +1089,32 @@ function V1ModelsPanel(props: {
                 )}
               </SimpleGrid>
 
-              {model.status?.toLowerCase() === "loading" && (
+              {isModelLoading(model.status) && (
                 <Stack gap={4} mt="xs">
                   <Group justify="space-between">
                     <Text fw={600} size="xs">
                       Model load
                     </Text>
                     <Text c="dimmed" size="xs">
-                      loading
+                      {progress.percent === null
+                        ? progress.stage
+                        : `${progress.percent}%`}
                     </Text>
                   </Group>
                   <Progress
-                    animated
+                    animated={progress.stage !== "ready"}
                     striped
-                    color="yellow"
+                    color={loadProgressColor(progress)}
                     radius="xs"
                     size="sm"
-                    value={35}
+                    value={loadProgressValue(progress)}
                   />
-                  <Text c="dimmed" size="xs">
-                    Router reports that this model is loading. Exact progress is
-                    not exposed by the llama-server API.
+                  <Text
+                    c={progress.stage === "error" ? "red" : "dimmed"}
+                    size="xs"
+                  >
+                    {progress.message}
+                    {progress.estimated ? " Estimated from logs." : ""}
                   </Text>
                 </Stack>
               )}
@@ -1648,7 +1737,7 @@ export function InstanceDetails(props: {
     queryKey: ["instance-status-summary", id],
     queryFn: () => getInstanceStatusSummary(id!),
     enabled: Boolean(id),
-    refetchInterval: 3_000,
+    refetchInterval: 1_000,
   });
 
   useEffect(() => {
@@ -1995,6 +2084,7 @@ export function InstanceDetails(props: {
         <V1ModelsPanel
           probe={llama?.models}
           modelDiagnostics={llama?.modelDiagnostics ?? {}}
+          statusSummary={statusSummary}
           onReload={() => reloadModelsMutation.mutate()}
           reloadPending={reloadModelsMutation.isPending}
           onModelAction={(model, action) =>

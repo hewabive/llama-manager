@@ -392,17 +392,32 @@ function parseLoadProgress(lines: string[]): InstanceLoadProgress {
   const tensorIndex = lastIndex(window, /\bload_tensors:/i);
   if (tensorIndex >= 0) {
     const dots = countProgressDots(window.slice(tensorIndex + 1));
-    const percent = Math.min(85, 45 + Math.round(Math.min(dots, 90) * 0.45));
+    const percent =
+      dots > 0 ? Math.min(85, 40 + Math.round(Math.min(dots, 90) * 0.5)) : 40;
     return loadProgress(
       "tensors",
       percent,
-      "Loading model tensors; progress is estimated from llama.cpp loader output.",
+      dots > 0
+        ? "Loading model tensors; progress is estimated from llama.cpp loader output."
+        : "Loading model tensors; no tensor progress markers have appeared in the log yet.",
+    );
+  }
+
+  const fittingIndex = lastIndex(
+    window,
+    /\b(fitting params|common_params_fit_impl|projected to use)\b/i,
+  );
+  if (fittingIndex >= 0) {
+    return loadProgress(
+      "metadata",
+      25,
+      "llama.cpp is fitting model launch parameters; exact tensor progress is not available until loader progress markers appear.",
     );
   }
 
   const metadataIndex = lastIndex(
     window,
-    /\b(loaded meta data|dumping metadata|print_info|fitting params|common_params_fit_impl|llama_model_loader)\b/i,
+    /\b(loaded meta data|dumping metadata|print_info|llama_model_loader)\b/i,
   );
   if (metadataIndex >= 0) {
     return loadProgress(

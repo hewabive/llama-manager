@@ -83,6 +83,57 @@ test("summarizeInstanceLog estimates tensor loading progress from loader dots", 
   }
 });
 
+test("summarizeInstanceLog reports staged loading when tensor dots are absent", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "srv    load_model: loading model '/models/big.gguf'",
+        "common_init_result: fitting params to device memory ...",
+        "common_params_fit_impl: projected to use 48000 MiB of host memory vs. 64000 MiB of total host memory",
+      ].join("\n"),
+    );
+
+    const summary = summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.loadProgress.stage, "metadata");
+    assert.equal(summary.loadProgress.percent, 25);
+    assert.match(summary.loadProgress.message, /exact tensor progress/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("summarizeInstanceLog handles load_tensors without progress dots", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "srv    load_model: loading model '/models/big.gguf'",
+        "load_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)",
+      ].join("\n"),
+    );
+
+    const summary = summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.loadProgress.stage, "tensors");
+    assert.equal(summary.loadProgress.percent, 40);
+    assert.match(summary.loadProgress.message, /no tensor progress markers/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("summarizeInstanceLog parses per-device memory layout from buffer lines", () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
