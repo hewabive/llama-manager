@@ -14,6 +14,7 @@ import {
   Code,
   Divider,
   Group,
+  Modal,
   Paper,
   ScrollArea,
   Select,
@@ -31,6 +32,7 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ClipboardList,
   Copy,
   RefreshCw,
   Save,
@@ -44,6 +46,7 @@ import {
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArgumentDocsSyncReport,
+  getLlamaArgumentDocsWorkOrder,
   getLlamaArguments,
   listPathCatalog,
   updateLlamaArgumentDefaults,
@@ -375,6 +378,7 @@ function SourceSyncPanel(props: {
   fetching: boolean;
   error: Error | null;
   onAudit: () => void;
+  onWorkOrder: () => void;
 }) {
   const report = props.report;
   const needsAttention = report
@@ -410,15 +414,25 @@ function SourceSyncPanel(props: {
               </Text>
             )}
           </div>
-          <Button
-            aria-label="Audit argument docs against source repository"
-            variant="light"
-            leftSection={<RefreshCw size={16} />}
-            loading={props.fetching}
-            onClick={props.onAudit}
-          >
-            Audit docs
-          </Button>
+          <Group gap="xs" wrap="wrap">
+            <Button
+              aria-label="Open argument docs work order"
+              variant="light"
+              leftSection={<ClipboardList size={16} />}
+              onClick={props.onWorkOrder}
+            >
+              Work order
+            </Button>
+            <Button
+              aria-label="Audit argument docs against source repository"
+              variant="light"
+              leftSection={<RefreshCw size={16} />}
+              loading={props.fetching}
+              onClick={props.onAudit}
+            >
+              Audit docs
+            </Button>
+          </Group>
         </Group>
 
         {props.error && (
@@ -645,6 +659,7 @@ export function ArgumentsView() {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [helpRuDraft, setHelpRuDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
+  const [workOrderOpened, setWorkOrderOpened] = useState(false);
   const [defaultValueDrafts, setDefaultValueDrafts] = useState<
     Record<string, string>
   >({});
@@ -668,6 +683,16 @@ export function ArgumentsView() {
     enabled: Boolean(argsCatalog),
     retry: false,
     staleTime: 30_000,
+  });
+  const workOrderQuery = useQuery({
+    queryKey: ["llama-arg-docs-work-order", activeBinaryPathKey],
+    queryFn: () =>
+      getLlamaArgumentDocsWorkOrder({
+        binaryPath: activeBinaryPathKey,
+        limit: 10,
+      }),
+    enabled: workOrderOpened && Boolean(argsCatalog),
+    retry: false,
   });
   const options = argsCatalog?.options ?? [];
   const categories = useMemo(
@@ -1045,6 +1070,28 @@ export function ArgumentsView() {
       );
   }
 
+  function copyWorkOrder() {
+    const markdown = workOrderQuery.data?.data.markdown;
+    if (!markdown) {
+      return;
+    }
+    navigator.clipboard
+      .writeText(markdown)
+      .then(() =>
+        notifications.show({
+          title: "Work order copied",
+          message: `${workOrderQuery.data?.data.items.length ?? 0} items`,
+        }),
+      )
+      .catch((error: unknown) =>
+        notifications.show({
+          color: "red",
+          title: "Copy failed",
+          message: (error as Error).message,
+        }),
+      );
+  }
+
   function saveArgumentDefault(
     scope: "instance" | "preset",
     enabled: boolean,
@@ -1297,6 +1344,7 @@ export function ArgumentsView() {
           fetching={docsSyncQuery.isFetching}
           error={docsSyncQuery.isError ? (docsSyncQuery.error as Error) : null}
           onAudit={() => void docsSyncQuery.refetch()}
+          onWorkOrder={() => setWorkOrderOpened(true)}
         />
       )}
 
@@ -1690,6 +1738,59 @@ export function ArgumentsView() {
           )}
         </Paper>
       </div>
+
+      <Modal
+        opened={workOrderOpened}
+        onClose={() => setWorkOrderOpened(false)}
+        title="Argument docs work order"
+        size="xl"
+      >
+        <Stack gap="sm">
+          {workOrderQuery.isError && (
+            <Alert
+              color="red"
+              icon={<AlertTriangle size={16} />}
+              variant="light"
+            >
+              {(workOrderQuery.error as Error).message}
+            </Alert>
+          )}
+          <Group gap="xs" wrap="wrap">
+            <Badge variant="light">
+              {workOrderQuery.data?.data.items.length ?? 0} items
+            </Badge>
+            {workOrderQuery.data?.data.totalCandidates !== undefined && (
+              <Badge variant="outline">
+                {workOrderQuery.data.data.totalCandidates} candidates
+              </Badge>
+            )}
+          </Group>
+          <Textarea
+            aria-label="Generated argument docs work order"
+            autosize
+            minRows={18}
+            maxRows={28}
+            value={
+              workOrderQuery.data?.data.markdown ??
+              (workOrderQuery.isFetching ? "Loading..." : "")
+            }
+            readOnly
+            styles={{ input: { fontFamily: "monospace", fontSize: 12 } }}
+          />
+          <Group justify="flex-end" gap="xs">
+            <Button variant="default" onClick={() => setWorkOrderOpened(false)}>
+              Close
+            </Button>
+            <Button
+              leftSection={<Copy size={16} />}
+              disabled={!workOrderQuery.data?.data.markdown}
+              onClick={copyWorkOrder}
+            >
+              Copy
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
