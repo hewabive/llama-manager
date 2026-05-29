@@ -113,7 +113,7 @@ export function BuildView() {
   const [target, setTarget] = useState("llama-server");
   const [parallelJobs, setParallelJobs] = useState<number | "">("");
   const [cuda, setCuda] = useState(true);
-  const [native, setNative] = useState(false);
+  const [native, setNative] = useState(true);
   const [extraCmakeArgs, setExtraCmakeArgs] = useState("");
   const [buildEnvJson, setBuildEnvJson] = useState("{}");
   const [runPull, setRunPull] = useState(true);

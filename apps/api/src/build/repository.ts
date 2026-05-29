@@ -35,7 +35,7 @@ function defaultSettings(): BuildSettings {
     buildDir: resolve(repoPath, "build-cuda"),
     buildType: "Release",
     cuda: true,
-    native: false,
+    native: true,
     extraCmakeArgs: [],
     env: {},
     target: "llama-server",
