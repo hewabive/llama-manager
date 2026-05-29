@@ -19,6 +19,7 @@ import {
   Textarea,
   TextInput,
   Title,
+  Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -335,12 +336,16 @@ export function BuildView() {
             checked={runPull}
             onChange={(event) => setRunPull(event.currentTarget.checked)}
           />
-          <Switch
-            label="Rebuild embedded UI"
-            description="Runs npm install and npm run build in tools/ui."
-            checked={runUiRebuild}
-            onChange={(event) => setRunUiRebuild(event.currentTarget.checked)}
-          />
+          <Tooltip
+            label="Runs npm install and npm run build in tools/ui."
+            withArrow
+          >
+            <Switch
+              label="Rebuild embedded UI"
+              checked={runUiRebuild}
+              onChange={(event) => setRunUiRebuild(event.currentTarget.checked)}
+            />
+          </Tooltip>
           <Switch
             label="Clean build directory"
             checked={runCleanBuildDir}
