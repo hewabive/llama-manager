@@ -160,27 +160,6 @@ function sourceColor(source: LlamaArgumentOption["helpRuSource"]) {
   return "gray";
 }
 
-function sourceSyncColor(report: LlamaArgumentDocsSyncReport) {
-  if (
-    report.source.error ||
-    !report.source.exists ||
-    !report.source.isGitRepo
-  ) {
-    return "red";
-  }
-  if (report.source.dirty) {
-    return "yellow";
-  }
-  return "green";
-}
-
-function sourceSyncLabel(report: LlamaArgumentDocsSyncReport) {
-  if (!report.source.exists) return "source missing";
-  if (!report.source.isGitRepo) return "not git";
-  if (report.source.dirty) return "source dirty";
-  return "source clean";
-}
-
 function presetSupportLabel(support: LlamaArgumentPresetSupport) {
   if (support === "preset-only") return "preset only";
   if (support === "model-managed") return "managed field";
@@ -340,144 +319,91 @@ function SourceSyncPanel(props: {
   error: Error | null;
 }) {
   const report = props.report;
+  if (props.error) {
+    return (
+      <Alert color="red" icon={<AlertTriangle size={16} />} variant="light">
+        Не удалось проверить актуальность справки по аргументам:{" "}
+        {props.error.message}
+      </Alert>
+    );
+  }
+
+  if (!report) {
+    return null;
+  }
+
+  const sourceUnavailable =
+    Boolean(report.source.error) ||
+    !report.source.exists ||
+    !report.source.isGitRepo;
+  const helpUnavailable =
+    report.helpSource.inSync === null ||
+    Boolean(report.helpSource.current.error) ||
+    Boolean(report.helpSource.stored.error);
+  const helpChanged = report.helpSource.inSync === false;
+  const sourceDirty = report.source.dirty === true;
+
+  if (!sourceUnavailable && !helpUnavailable && !helpChanged && !sourceDirty) {
+    return null;
+  }
 
   return (
-    <Paper withBorder p="md" radius="sm">
-      <Stack gap="xs">
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <div className="section-heading">
-            <Text fw={600}>Source sync</Text>
-            {report ? (
-              <Text c="dimmed" size="sm">
-                {formatLocalDateTime(report.checkedAt)}
-              </Text>
-            ) : (
-              <Text c="dimmed" size="sm">
-                Waiting for source data
-              </Text>
-            )}
-          </div>
-        </Group>
+    <Stack gap="xs">
+      {sourceUnavailable && (
+        <Alert color="red" icon={<AlertTriangle size={16} />} variant="light">
+          Не удалось проверить актуальность справки по аргументам. Если список
+          аргументов выглядит неверно, проверьте путь к llama.cpp в настройках и
+          сверяйте спорные параметры через <Code>llama-server --help</Code>{" "}
+          текущего бинарника.
+          {report.source.error && (
+            <Text mt={4} size="sm">
+              {report.source.error}
+            </Text>
+          )}
+        </Alert>
+      )}
 
-        {props.error && (
-          <Alert color="red" icon={<AlertTriangle size={16} />} variant="light">
-            {props.error.message}
-          </Alert>
-        )}
+      {helpUnavailable && (
+        <Alert color="red" icon={<AlertTriangle size={16} />} variant="light">
+          Не удалось сравнить сохраненный справочник аргументов с текущим
+          llama.cpp. Если вы видите странное описание аргумента, сверяйте его
+          через <Code>llama-server --help</Code> текущего бинарника.
+          {(report.helpSource.current.error ||
+            report.helpSource.stored.error) && (
+            <Text mt={4} size="sm">
+              {report.helpSource.current.error ??
+                report.helpSource.stored.error}
+            </Text>
+          )}
+        </Alert>
+      )}
 
-        {!report && !props.error && (
-          <Text c="dimmed" size="sm">
-            Loading source sync report...
-          </Text>
-        )}
+      {helpChanged && !helpUnavailable && (
+        <Alert
+          color="yellow"
+          icon={<AlertTriangle size={16} />}
+          variant="light"
+        >
+          Справка по аргументам может не соответствовать текущей версии
+          llama.cpp. Если вы недавно обновляли llama.cpp или llama-manager,
+          дождитесь завершения обновления и перезагрузите страницу. Спорные
+          параметры сверяйте через <Code>llama-server --help</Code> текущего
+          бинарника.
+        </Alert>
+      )}
 
-        {report && (
-          <Stack gap="xs">
-            <Group gap="xs" wrap="wrap">
-              <Badge
-                color={
-                  report.helpSource.inSync === true
-                    ? "green"
-                    : report.helpSource.inSync === false
-                      ? "yellow"
-                      : "red"
-                }
-                variant="light"
-              >
-                {report.helpSource.inSync === true
-                  ? "help snapshot current"
-                  : report.helpSource.inSync === false
-                    ? "help snapshot changed"
-                    : "help snapshot unavailable"}
-              </Badge>
-              <Badge color={sourceSyncColor(report)} variant="light">
-                {sourceSyncLabel(report)}
-              </Badge>
-              {report.source.branch && (
-                <Text c="dimmed" size="xs">
-                  {report.source.branch}
-                </Text>
-              )}
-              {report.source.currentCommit && (
-                <Code>{report.source.currentCommit.slice(0, 12)}</Code>
-              )}
-            </Group>
-
-            {report.helpSource.inSync === false && (
-              <Alert
-                color="yellow"
-                icon={<AlertTriangle size={16} />}
-                variant="light"
-              >
-                Argument reference may not match the configured llama.cpp
-                source. Update llama-manager and llama.cpp first. Developers can
-                run the repo Codex skill{" "}
-                <Code>.codex/skills/llama-arg-help-sync</Code> to refresh
-                Engineering help.
-              </Alert>
-            )}
-
-            {report.helpSource.current.error && (
-              <Text c="red" size="sm">
-                {report.helpSource.current.error}
-              </Text>
-            )}
-
-            {report.helpSource.stored.error && (
-              <Text c="yellow" size="sm">
-                {report.helpSource.stored.error}
-              </Text>
-            )}
-
-            {report.source.error && (
-              <Text c="red" size="sm">
-                {report.source.error}
-              </Text>
-            )}
-
-            <details className="argument-secondary-details">
-              <Text component="summary" fw={600} size="sm">
-                Snapshot and source
-              </Text>
-              <Stack gap="xs" mt="xs">
-                <Group gap="xs" wrap="wrap">
-                  <Text c="dimmed" size="xs">
-                    Stored help
-                  </Text>
-                  <Code className="code-wrap">
-                    {report.helpSource.snapshotPath}
-                  </Code>
-                  {report.helpSource.stored.hash && (
-                    <Text size="xs">
-                      {report.helpSource.stored.hash.slice(0, 12)}
-                    </Text>
-                  )}
-                </Group>
-                <Group gap="xs" wrap="wrap">
-                  <Text c="dimmed" size="xs">
-                    Current help
-                  </Text>
-                  <Code className="code-wrap">
-                    {report.helpSource.current.path}
-                  </Code>
-                  {report.helpSource.current.hash && (
-                    <Text size="xs">
-                      {report.helpSource.current.hash.slice(0, 12)}
-                    </Text>
-                  )}
-                </Group>
-                <Group gap="xs" wrap="wrap">
-                  <Text c="dimmed" size="xs">
-                    Docs
-                  </Text>
-                  <Code className="code-wrap">{report.docsDirectory}</Code>
-                </Group>
-              </Stack>
-            </details>
-          </Stack>
-        )}
-      </Stack>
-    </Paper>
+      {sourceDirty && !sourceUnavailable && (
+        <Alert
+          color="yellow"
+          icon={<AlertTriangle size={16} />}
+          variant="light"
+        >
+          Проверка справки использует локально измененный checkout llama.cpp.
+          Если изменения не ваши или описание аргументов выглядит неожиданно,
+          дождитесь завершения обновления и перезагрузите страницу.
+        </Alert>
+      )}
+    </Stack>
   );
 }
 
