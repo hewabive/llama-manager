@@ -1,4 +1,8 @@
-import type { GgufModel, ModelPresetEntry } from "@llama-manager/core";
+import type {
+  GgufModel,
+  LlamaArgumentOption,
+  ModelPresetEntry,
+} from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
@@ -44,8 +48,10 @@ import {
   PresetKnownArgRow,
   PresetRawArgRow,
   buildPresetArgOptionMap,
+  canWritePresetArgument,
   isSelectablePresetArgument,
   optionForPresetRow,
+  presetArgumentBlockReason,
   presetOnlyArgumentOptions,
   presetKeyFromArgument,
   replacePresetArgRow,
@@ -93,7 +99,10 @@ function presetRowsFromEntry(entry: ModelPresetEntry) {
     : [{ id: createUiId("preset-arg"), key: "", value: "" }];
 }
 
-function entryArgsFromRows(rows: PresetExtraArgRow[]) {
+function entryArgsFromRows(
+  rows: PresetExtraArgRow[],
+  knownArgByPresetKey: Map<string, LlamaArgumentOption>,
+) {
   const args = rowsToExtraArgs(rows);
   const gpuEntry = Object.entries(args).find(([key]) =>
     gpuPresetKeys.has(normalizePresetArgKey(key)),
@@ -105,6 +114,15 @@ function entryArgsFromRows(rows: PresetExtraArgRow[]) {
   }
 
   const stopTimeout = stopTimeoutRaw ? Number(stopTimeoutRaw) : null;
+  const droppedArgs: string[] = [];
+  for (const key of Object.keys(args)) {
+    const option = knownArgByPresetKey.get(normalizePresetArgKey(key));
+    if (option && presetArgumentBlockReason(option)) {
+      droppedArgs.push(key);
+      delete args[key];
+    }
+  }
+
   return {
     extraArgs: args,
     nGpuLayers: gpuEntry ? parseGpuLayersInput(gpuEntry[1]) : null,
@@ -112,6 +130,7 @@ function entryArgsFromRows(rows: PresetExtraArgRow[]) {
       stopTimeout && Number.isInteger(stopTimeout) && stopTimeout > 0
         ? stopTimeout
         : null,
+    droppedArgs,
   };
 }
 
@@ -202,7 +221,19 @@ function PresetEntryDetailModal(props: {
     if (!draft) {
       return;
     }
-    const parsedArgs = entryArgsFromRows(extraRows);
+    const parsedArgs = entryArgsFromRows(extraRows, knownArgByPresetKey);
+    if (parsedArgs.droppedArgs.length > 0) {
+      const firstDropped = parsedArgs.droppedArgs[0]!;
+      const option = knownArgByPresetKey.get(normalizePresetArgKey(firstDropped));
+      notifications.show({
+        color: "yellow",
+        title: "Some INI arguments were not saved",
+        message:
+          option && presetArgumentBlockReason(option)
+            ? `${firstDropped}: ${presetArgumentBlockReason(option)}`
+            : parsedArgs.droppedArgs.join(", "),
+      });
+    }
     props.onSave({
       ...draft,
       name: draft.name.trim() || "model",

@@ -9,6 +9,7 @@ reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "PORT"
+presetSupport: "router-managed"
 aliases:
   - "--port"
 allowedValues: []

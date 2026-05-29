@@ -27,6 +27,14 @@ const requiredFrontmatter = [
   "related",
 ];
 
+const validPresetSupport = new Set([
+  "supported",
+  "unsupported",
+  "preset-only",
+  "model-managed",
+  "router-managed",
+]);
+
 type Issue = {
   path: string;
   severity: "error" | "warning";
@@ -114,6 +122,15 @@ function lintFile(path: string) {
   const status = stringValue(parsed.frontmatter.docStatus);
   const summary = stringValue(parsed.frontmatter.summary);
   const reviewedCommit = stringValue(parsed.frontmatter.reviewedLlamaCppCommit);
+  const presetSupport = stringValue(parsed.frontmatter.presetSupport);
+
+  if (presetSupport && !validPresetSupport.has(presetSupport)) {
+    issues.push({
+      path,
+      severity: "error",
+      message: `invalid presetSupport: ${presetSupport}`,
+    });
+  }
 
   if (
     !summary ||

@@ -1,4 +1,7 @@
-import type { LlamaArgumentOption } from "@llama-manager/core";
+import type {
+  LlamaArgumentOption,
+  LlamaArgumentPresetSupport,
+} from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
@@ -24,39 +27,42 @@ import { createUiId } from "../utils/id";
 import type { PresetExtraArgRow } from "../utils/preset-args";
 import { normalizePresetArgKey } from "../utils/preset-args";
 
-const managedPresetKeys = new Set([
-  "model",
-  "ctx-size",
-  "c",
-  "mmproj",
-  "load-on-startup",
-]);
-
-const globalPresetKeys = new Set([
-  "api-prefix",
-  "host",
-  "port",
-  "api-key",
-  "api-key-file",
-  "ssl-key-file",
-  "ssl-cert-file",
-  "log-file",
-  "media-path",
-  "metrics",
-  "models-dir",
-  "models-preset",
-  "models-max",
-  "models-autoload",
-  "no-models-autoload",
-  "props",
-  "slots",
-  "no-slots",
-  "timeout",
-  "threads-http",
-  "ui",
-]);
-
 export const presetOnlyArgumentOptions: LlamaArgumentOption[] = [
+  {
+    primaryName: "load-on-startup",
+    names: ["load-on-startup"],
+    category: "Пресеты",
+    valueHint: null,
+    valueType: "boolean",
+    env: [],
+    allowedValues: [],
+    help: "in server router mode, load this model preset when the router starts",
+    helpRu:
+      "Загружает модель из INI-пресета при старте или reload router-а. В llama-manager это управляется отдельным переключателем модели.",
+    helpRuSource: "builtin",
+    notes:
+      "Это preset-only ключ llama.cpp: он пишется в models-preset INI без ведущих дефисов и управляется отдельным полем редактора.",
+    doc: {
+      status: "missing",
+      path: null,
+      summary: null,
+      updatedAt: null,
+      reviewedHelpHash: null,
+    },
+    control: {
+      kind: "toggle",
+      cliEncoding: "value",
+      presetSupport: "model-managed",
+    },
+    compatibility: {
+      metadataSource: "registry",
+      presentInBinary: true,
+      binaryPrimaryName: null,
+      binaryNames: [],
+      helpChanged: false,
+    },
+    deprecated: false,
+  },
   {
     primaryName: "stop-timeout",
     names: ["stop-timeout"],
@@ -106,14 +112,52 @@ export function presetKeyFromArgument(option: LlamaArgumentOption) {
   return key;
 }
 
+export function canWritePresetArgument(option: LlamaArgumentOption) {
+  return (
+    option.control.presetSupport === "supported" ||
+    option.control.presetSupport === "preset-only"
+  );
+}
+
+function presetSupportLabel(support: LlamaArgumentPresetSupport) {
+  if (support === "preset-only") return "preset only";
+  if (support === "model-managed") return "managed field";
+  if (support === "router-managed") return "router level";
+  if (support === "unsupported") return "not for INI";
+  return "INI";
+}
+
+function presetSupportColor(support: LlamaArgumentPresetSupport) {
+  if (support === "preset-only") return "blue";
+  if (support === "model-managed") return "violet";
+  if (support === "router-managed") return "orange";
+  if (support === "unsupported") return "red";
+  return "gray";
+}
+
+export function presetArgumentBlockReason(option: LlamaArgumentOption) {
+  if (!option.compatibility.presentInBinary) {
+    return "Этот аргумент отсутствует в выбранном бинарнике llama-server.";
+  }
+  if (option.control.presetSupport === "model-managed") {
+    return "Этот ключ управляется отдельным полем редактора модели и не пишется как extra argument.";
+  }
+  if (option.control.presetSupport === "router-managed") {
+    return "Этот параметр относится к router/server процессу и не должен записываться в модельную секцию INI.";
+  }
+  if (option.control.presetSupport === "unsupported") {
+    return "Этот аргумент не поддерживается в model preset INI.";
+  }
+  return null;
+}
+
 export function isSelectablePresetArgument(option: LlamaArgumentOption) {
   const key = presetKeyFromArgument(option);
   return (
     key &&
     !option.deprecated &&
     option.compatibility.presentInBinary &&
-    !managedPresetKeys.has(key) &&
-    !globalPresetKeys.has(key)
+    canWritePresetArgument(option)
   );
 }
 
@@ -187,6 +231,8 @@ export function PresetKnownArgRow(props: {
 }) {
   const presetKey = presetKeyFromArgument(props.option);
   const canOpenEngineeringHelp = Boolean(props.option.doc.path);
+  const blockReason = presetArgumentBlockReason(props.option);
+  const canEditValue = !blockReason;
 
   function updateValue(value: string) {
     props.onChange({
@@ -208,6 +254,7 @@ export function PresetKnownArgRow(props: {
           value={props.row.value || "true"}
           allowDeselect={false}
           onChange={(value) => updateValue(value ?? "true")}
+          disabled={!canEditValue}
           w={110}
           size="xs"
         />
@@ -224,6 +271,7 @@ export function PresetKnownArgRow(props: {
           onChange={(value) =>
             updateValue(value ?? defaultPresetValue(props.option))
           }
+          disabled={!canEditValue}
           w={120}
           size="xs"
         />
@@ -244,6 +292,7 @@ export function PresetKnownArgRow(props: {
           value={props.row.value || null}
           searchable
           onChange={(value) => updateValue(value ?? "")}
+          disabled={!canEditValue}
           style={{ flex: 1, minWidth: 160 }}
           size="xs"
         />
@@ -261,6 +310,7 @@ export function PresetKnownArgRow(props: {
           onChange={(value) =>
             updateValue(typeof value === "number" ? String(value) : "")
           }
+          disabled={!canEditValue}
           style={{ flex: 1, minWidth: 110 }}
           size="xs"
         />
@@ -274,6 +324,7 @@ export function PresetKnownArgRow(props: {
           minRows={2}
           value={props.row.value}
           onChange={(event) => updateValue(event.currentTarget.value)}
+          disabled={!canEditValue}
           style={{ flex: 1, minWidth: 180 }}
           size="xs"
         />
@@ -290,6 +341,7 @@ export function PresetKnownArgRow(props: {
         }
         value={props.row.value}
         onChange={(event) => updateValue(event.currentTarget.value)}
+        disabled={!canEditValue}
         style={{ flex: 1, minWidth: 150 }}
         size="xs"
       />
@@ -309,10 +361,25 @@ export function PresetKnownArgRow(props: {
                 deprecated
               </Badge>
             )}
+            {props.option.control.presetSupport !== "supported" && (
+              <Badge
+                color={presetSupportColor(props.option.control.presetSupport)}
+                variant="light"
+                size="xs"
+              >
+                {presetSupportLabel(props.option.control.presetSupport)}
+              </Badge>
+            )}
           </Group>
         </Box>
 
         {valueControl()}
+
+        {blockReason && (
+          <Text c="dimmed" size="xs" style={{ flex: "1 1 220px" }}>
+            {blockReason}
+          </Text>
+        )}
 
         <Group gap={4} wrap="nowrap" ml="auto">
           <Popover width={340} position="bottom-end" withArrow shadow="md">
@@ -332,6 +399,13 @@ export function PresetKnownArgRow(props: {
                 </Badge>
                 <Badge variant="outline" size="xs">
                   {props.option.valueType}
+                </Badge>
+                <Badge
+                  color={presetSupportColor(props.option.control.presetSupport)}
+                  variant="outline"
+                  size="xs"
+                >
+                  {presetSupportLabel(props.option.control.presetSupport)}
                 </Badge>
                 {!props.option.compatibility.presentInBinary && (
                   <Badge color="red" variant="light" size="xs">

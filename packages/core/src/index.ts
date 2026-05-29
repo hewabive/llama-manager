@@ -561,6 +561,7 @@ export const LlamaArgumentPresetSupportSchema = z.enum([
   "supported",
   "unsupported",
   "preset-only",
+  "model-managed",
   "router-managed",
 ]);
 

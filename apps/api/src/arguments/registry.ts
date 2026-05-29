@@ -86,21 +86,7 @@ function cliEncodingForValueType(
   return "value";
 }
 
-function defaultPresetSupport(primaryName: string): LlamaArgumentPresetSupport {
-  const key = primaryName.replace(/^-+/, "");
-  if (
-    [
-      "host",
-      "port",
-      "models-preset",
-      "models-dir",
-      "models-max",
-      "models-autoload",
-      "no-models-autoload",
-    ].includes(key)
-  ) {
-    return "router-managed";
-  }
+function defaultPresetSupport(): LlamaArgumentPresetSupport {
   return "supported";
 }
 
@@ -116,7 +102,7 @@ export function defaultArgumentControl(input: {
       input.primaryName,
     ),
     cliEncoding: cliEncodingForValueType(input.valueType),
-    presetSupport: defaultPresetSupport(input.primaryName),
+    presetSupport: defaultPresetSupport(),
   };
 }
 

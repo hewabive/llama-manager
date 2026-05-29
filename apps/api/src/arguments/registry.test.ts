@@ -43,3 +43,15 @@ test("optionFromArgumentDocFrontmatter allows explicit control overrides", () =>
   assert.equal(option?.control.cliEncoding, "csv");
   assert.equal(option?.control.presetSupport, "router-managed");
 });
+
+test("optionFromArgumentDocFrontmatter reads model-managed preset policy", () => {
+  const option = optionFromArgumentDocFrontmatter({
+    primaryName: "--model",
+    summary: "Model path.",
+    valueType: "path",
+    aliases: ["-m", "--model"],
+    presetSupport: "model-managed",
+  });
+
+  assert.equal(option?.control.presetSupport, "model-managed");
+});
