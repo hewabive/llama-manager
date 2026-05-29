@@ -63,6 +63,7 @@ function BuildSwitch(props: {
   label: string;
   tooltip: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
@@ -70,10 +71,37 @@ function BuildSwitch(props: {
       <Switch
         label={props.label}
         checked={props.checked}
+        disabled={props.disabled ?? false}
         onChange={(event) => props.onChange(event.currentTarget.checked)}
       />
     </Tooltip>
   );
+}
+
+type BuildFormState = {
+  repoPath: string;
+  buildDir: string;
+  buildType: BuildSettings["buildType"];
+  target: string;
+  parallelJobs: number | "";
+  cuda: boolean;
+  native: boolean;
+  extraCmakeArgs: string;
+  buildEnvJson: string;
+};
+
+function buildFormFromSettings(settings: BuildSettings): BuildFormState {
+  return {
+    repoPath: settings.repoPath,
+    buildDir: settings.buildDir,
+    buildType: settings.buildType,
+    target: settings.target,
+    parallelJobs: settings.parallelJobs ?? "",
+    cuda: settings.cuda,
+    native: settings.native,
+    extraCmakeArgs: settings.extraCmakeArgs.join("\n"),
+    buildEnvJson: JSON.stringify(settings.env, null, 2),
+  };
 }
 
 function parseExtraCmakeArgs(value: string) {
@@ -104,18 +132,7 @@ function parseBuildEnv(value: string) {
 
 export function BuildView() {
   const queryClient = useQueryClient();
-  const [repoPath, setRepoPath] = useState("/home/maxim/llama/llama.cpp");
-  const [buildDir, setBuildDir] = useState(
-    "/home/maxim/llama/llama.cpp/build-cuda",
-  );
-  const [buildType, setBuildType] =
-    useState<BuildSettings["buildType"]>("Release");
-  const [target, setTarget] = useState("llama-server");
-  const [parallelJobs, setParallelJobs] = useState<number | "">("");
-  const [cuda, setCuda] = useState(true);
-  const [native, setNative] = useState(true);
-  const [extraCmakeArgs, setExtraCmakeArgs] = useState("");
-  const [buildEnvJson, setBuildEnvJson] = useState("{}");
+  const [form, setForm] = useState<BuildFormState | null>(null);
   const [runPull, setRunPull] = useState(true);
   const [runUiRebuild, setRunUiRebuild] = useState(true);
   const [runCleanBuildDir, setRunCleanBuildDir] = useState(false);
@@ -136,6 +153,16 @@ export function BuildView() {
   const jobs = jobsQuery.data?.data ?? [];
   const runningJob = jobs.find((job) => job.status === "running") ?? null;
   const selectedJob = runningJob ?? jobs[0] ?? null;
+  const settingsReady = form !== null;
+  const repoPath = form?.repoPath ?? "";
+  const buildDir = form?.buildDir ?? "";
+  const buildType = form?.buildType ?? null;
+  const target = form?.target ?? "";
+  const parallelJobs = form?.parallelJobs ?? "";
+  const cuda = form?.cuda ?? false;
+  const native = form?.native ?? false;
+  const extraCmakeArgs = form?.extraCmakeArgs ?? "";
+  const buildEnvJson = form?.buildEnvJson ?? "";
   const selectedSteps = [
     ...(runPull ? ["git pull --ff-only"] : []),
     ...(runUiRebuild ? ["Rebuild embedded UI assets"] : []),
@@ -143,7 +170,7 @@ export function BuildView() {
     ...(runConfigure ? ["Configure CMake"] : []),
     ...(runBuild ? [`Build ${target || "target"}`] : []),
   ];
-  const canStartJob = selectedSteps.length > 0 && !runningJob;
+  const canStartJob = settingsReady && selectedSteps.length > 0 && !runningJob;
 
   const logsQuery = useQuery({
     queryKey: ["build-job-logs", selectedJob?.id],
@@ -157,28 +184,31 @@ export function BuildView() {
     if (!settings) {
       return;
     }
-    setRepoPath(settings.repoPath);
-    setBuildDir(settings.buildDir);
-    setBuildType(settings.buildType);
-    setTarget(settings.target);
-    setParallelJobs(settings.parallelJobs ?? "");
-    setCuda(settings.cuda);
-    setNative(settings.native);
-    setExtraCmakeArgs(settings.extraCmakeArgs.join("\n"));
-    setBuildEnvJson(JSON.stringify(settings.env, null, 2));
+    setForm(buildFormFromSettings(settings));
   }, [settingsQuery.data?.data]);
 
+  function setFormField<K extends keyof BuildFormState>(
+    key: K,
+    value: BuildFormState[K],
+  ) {
+    setForm((current) => (current ? { ...current, [key]: value } : current));
+  }
+
   function currentSettings(): BuildSettings {
+    if (!form) {
+      throw new Error("Build settings are still loading");
+    }
     return {
-      repoPath,
-      buildDir,
-      buildType,
-      cuda,
-      native,
-      extraCmakeArgs: parseExtraCmakeArgs(extraCmakeArgs),
-      env: parseBuildEnv(buildEnvJson),
-      target,
-      parallelJobs: typeof parallelJobs === "number" ? parallelJobs : null,
+      repoPath: form.repoPath,
+      buildDir: form.buildDir,
+      buildType: form.buildType,
+      cuda: form.cuda,
+      native: form.native,
+      extraCmakeArgs: parseExtraCmakeArgs(form.extraCmakeArgs),
+      env: parseBuildEnv(form.buildEnvJson),
+      target: form.target,
+      parallelJobs:
+        typeof form.parallelJobs === "number" ? form.parallelJobs : null,
     };
   }
 
@@ -259,6 +289,7 @@ export function BuildView() {
               variant="light"
               leftSection={<Save size={16} />}
               loading={saveMutation.isPending}
+              disabled={!settingsReady}
               onClick={() => saveMutation.mutate()}
             >
               Save
@@ -292,40 +323,64 @@ export function BuildView() {
           </Text>
         )}
 
+        {!settingsReady && settingsQuery.isLoading && (
+          <Text c="dimmed" size="sm">
+            Loading build settings from API...
+          </Text>
+        )}
+
+        {!settingsReady && settingsQuery.isError && (
+          <Text c="red" size="sm">
+            {(settingsQuery.error as Error).message}
+          </Text>
+        )}
+
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
           <PathPickerInput
             label="llama.cpp repository"
             mode="directory"
             value={repoPath}
-            onChange={setRepoPath}
+            disabled={!settingsReady}
+            onChange={(value) => setFormField("repoPath", value)}
           />
           <PathPickerInput
             label="Build directory"
             mode="directory"
             value={buildDir}
-            onChange={setBuildDir}
+            disabled={!settingsReady}
+            onChange={(value) => setFormField("buildDir", value)}
           />
           <Select
             label="Build type"
             data={["Release", "Debug", "RelWithDebInfo", "MinSizeRel"]}
             value={buildType}
             allowDeselect={false}
-            onChange={(value) =>
-              setBuildType((value ?? "Release") as BuildSettings["buildType"])
-            }
+            disabled={!settingsReady}
+            onChange={(value) => {
+              if (value) {
+                setFormField("buildType", value as BuildSettings["buildType"]);
+              }
+            }}
           />
           <TextInput
             label="Target"
             value={target}
-            onChange={(event) => setTarget(event.currentTarget.value)}
+            disabled={!settingsReady}
+            onChange={(event) =>
+              setFormField("target", event.currentTarget.value)
+            }
           />
           <NumberInput
             label="Parallel jobs"
             min={1}
             max={256}
             value={parallelJobs}
+            disabled={!settingsReady}
             onChange={(value) =>
-              setParallelJobs(typeof value === "number" ? value : "")
+              setFormField(
+                "parallelJobs",
+                typeof value === "number" ? value : "",
+              )
             }
           />
           <Textarea
@@ -333,7 +388,10 @@ export function BuildView() {
             placeholder="-DGGML_CUDA_FA_ALL_QUANTS=ON"
             minRows={1}
             value={extraCmakeArgs}
-            onChange={(event) => setExtraCmakeArgs(event.currentTarget.value)}
+            disabled={!settingsReady}
+            onChange={(event) =>
+              setFormField("extraCmakeArgs", event.currentTarget.value)
+            }
           />
         </SimpleGrid>
 
@@ -343,7 +401,8 @@ export function BuildView() {
           minRows={3}
           formatOnBlur
           value={buildEnvJson}
-          onChange={setBuildEnvJson}
+          disabled={!settingsReady}
+          onChange={(value) => setFormField("buildEnvJson", value)}
           placeholder='{"CUDACXX": "/usr/local/cuda/bin/nvcc"}'
         />
 
@@ -382,13 +441,15 @@ export function BuildView() {
             label="CUDA backend"
             tooltip="Configures GGML_CUDA=ON and tries to discover nvcc/CUDACXX."
             checked={cuda}
-            onChange={setCuda}
+            disabled={!settingsReady}
+            onChange={(value) => setFormField("cuda", value)}
           />
           <BuildSwitch
             label="Native CPU"
             tooltip="Configures GGML_NATIVE=ON; the binary may be optimized for this CPU and less portable."
             checked={native}
-            onChange={setNative}
+            disabled={!settingsReady}
+            onChange={(value) => setFormField("native", value)}
           />
         </Group>
 
