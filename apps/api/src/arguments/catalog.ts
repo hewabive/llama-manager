@@ -199,6 +199,28 @@ function parseHelpOutput(helpOutput: string): ParsedHelpOption[] {
     }
   };
 
+  const splitOptionLine = (line: string) => {
+    const trimmed = line.trimEnd();
+    const separators = [...trimmed.matchAll(/\s{2,}/g)]
+      .map((match) => ({
+        index: match.index ?? -1,
+        length: match[0].length,
+      }))
+      .filter(({ index, length }) => {
+        const before = trimmed.slice(0, index).trim();
+        const after = trimmed.slice(index + length).trim();
+        return before && after && !after.startsWith("-");
+      });
+    const separator = separators.at(-1);
+    if (!separator) {
+      return { optionText: trimmed.trim(), help: "" };
+    }
+    return {
+      optionText: trimmed.slice(0, separator.index).trim(),
+      help: trimmed.slice(separator.index + separator.length).trim(),
+    };
+  };
+
   for (const line of lines) {
     const section = line.match(/^-{5}\s+(.+?)\s+-{5}$/);
     if (section) {
@@ -212,40 +234,16 @@ function parseHelpOutput(helpOutput: string): ParsedHelpOption[] {
       continue;
     }
 
-    const fixedOptionPart = line.length >= 40 ? line.slice(0, 40).trim() : "";
-    const fixedHelpPart = line.length >= 40 ? line.slice(40).trim() : "";
     const startsOption =
       line.trimStart().startsWith("-") && line.search(/\S/) < 10;
 
-    if (fixedOptionPart.startsWith("-")) {
-      let optionText = fixedOptionPart;
-      let help = fixedHelpPart;
-      const optionHasOpenHint =
-        (optionText.includes("{") && !optionText.includes("}")) ||
-        (optionText.includes("[") && !optionText.includes("]")) ||
-        (optionText.includes("<") && !optionText.includes(">"));
-
-      if (optionHasOpenHint && help) {
-        const [firstHelpToken, ...restHelp] = help.split(/\s+/);
-        optionText = `${optionText}${firstHelpToken ?? ""}`;
-        help = restHelp.join(" ");
-      }
-
+    if (startsOption) {
+      const { optionText, help } = splitOptionLine(line);
       flush();
       current = {
         category,
         optionText,
         help,
-      };
-      continue;
-    }
-
-    if (startsOption) {
-      flush();
-      current = {
-        category,
-        optionText: line.trim(),
-        help: "",
       };
       continue;
     }
@@ -271,9 +269,15 @@ function valueHintFromOptionText(optionText: string, names: string[]) {
     rest = rest.replace(name, " ");
   }
   rest = rest
-    .replace(/(^|\s),+\s*/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  rest = rest
+    .split(/\s+/)
+    .filter((item) => !/^,+$/.test(item))
+    .join(" ");
+  if (!rest.replace(/,/g, "").trim()) {
+    return null;
+  }
   return rest || null;
 }
 
@@ -342,14 +346,14 @@ function inferValueType(input: {
   }
 
   if (hint.includes("json")) return "json";
+  if (hint.includes(",") || /comma[- ]separated/.test(help)) return "list";
   if (/\b(file|fname|path|dir|jinja_template_file)\b/.test(hint)) return "path";
   if (
-    /^(n|port|index|seconds|similarity|seed|start|end|mib0,mib1,mib2,\.\.\.)$/i.test(
+    /^(n|port|index|seconds|similarity|seed|start|end)$/i.test(
       input.valueHint ?? "",
     )
   )
     return "number";
-  if (hint.includes(",") || help.includes("comma-separated")) return "list";
   if (hint === "<0|1>" || hint === "[on|off]" || hint === "[on|off|auto]")
     return "boolean";
   return "string";
@@ -508,14 +512,7 @@ function generateCatalog(
 ) {
   const helpOutput = runHelp(binaryPath);
   const helpHash = createHash("sha256").update(helpOutput).digest("hex");
-  const options = parseHelpOutput(helpOutput)
-    .map(toOption)
-    .filter((option): option is LlamaArgumentOption => Boolean(option))
-    .sort(
-      (left, right) =>
-        left.category.localeCompare(right.category) ||
-        left.primaryName.localeCompare(right.primaryName),
-    );
+  const options = parseLlamaArgumentOptions(helpOutput);
 
   return saveArgumentCatalog({
     binaryPath,
@@ -526,6 +523,17 @@ function generateCatalog(
     options,
     generatedAt: nowIso(),
   });
+}
+
+export function parseLlamaArgumentOptions(helpOutput: string) {
+  return parseHelpOutput(helpOutput)
+    .map(toOption)
+    .filter((option): option is LlamaArgumentOption => Boolean(option))
+    .sort(
+      (left, right) =>
+        left.category.localeCompare(right.category) ||
+        left.primaryName.localeCompare(right.primaryName),
+    );
 }
 
 export function getLlamaArgumentCatalog(

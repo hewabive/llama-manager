@@ -103,10 +103,7 @@ function rowsToArgs(rows: ArgRow[]) {
     } else if (row.valueType === "boolean") {
       args[key] = !row.value || row.value === "true";
     } else if (row.valueType === "list") {
-      args[key] = row.value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+      args[key] = row.value.trim();
     } else {
       args[key] = row.value;
     }
@@ -176,10 +173,7 @@ export function rowsToArgsWithCatalog(
     }
 
     if (option.valueType === "list") {
-      args[primaryName] = row.value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+      args[primaryName] = row.value.trim();
       continue;
     }
 

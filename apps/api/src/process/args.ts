@@ -13,8 +13,12 @@ export function argsToCli(args: InstanceArgs): string[] {
       continue;
     }
     if (Array.isArray(value)) {
-      for (const item of value) {
-        result.push(key, item);
+      const joined = value
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join(",");
+      if (joined) {
+        result.push(key, joined);
       }
       continue;
     }
