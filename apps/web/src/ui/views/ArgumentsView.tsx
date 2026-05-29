@@ -3,6 +3,7 @@ import type {
   LlamaArgumentDefaults,
   LlamaArgumentDocStatus,
   LlamaArgumentOption,
+  LlamaArgumentPresetSupport,
 } from "@llama-manager/core";
 import {
   ActionIcon,
@@ -123,12 +124,17 @@ function writeArgumentsBinarySelection(selection: ArgumentsBinarySelection) {
 }
 
 function optionSearchText(option: LlamaArgumentOption) {
+  const withoutDashes = option.primaryName.replace(/^-+/, "");
+  const dashVariant = withoutDashes ? `--${withoutDashes}` : null;
   return [
     option.primaryName,
+    withoutDashes,
+    dashVariant,
     option.names.join(" "),
     option.category,
     option.valueHint,
     option.valueType,
+    option.control.presetSupport,
     option.env.join(" "),
     option.allowedValues.join(" "),
     option.help,
@@ -154,6 +160,22 @@ function docStatusColor(status: LlamaArgumentDocStatus) {
   if (status === "needs-review") return "yellow";
   if (status === "draft") return "blue";
   if (status === "deprecated" || status === "orphaned") return "orange";
+  return "gray";
+}
+
+function presetSupportLabel(support: LlamaArgumentPresetSupport) {
+  if (support === "preset-only") return "preset only";
+  if (support === "model-managed") return "managed field";
+  if (support === "router-managed") return "router level";
+  if (support === "unsupported") return "not for INI";
+  return "INI";
+}
+
+function presetSupportColor(support: LlamaArgumentPresetSupport) {
+  if (support === "preset-only") return "blue";
+  if (support === "model-managed") return "violet";
+  if (support === "router-managed") return "orange";
+  if (support === "unsupported") return "red";
   return "gray";
 }
 
@@ -191,6 +213,14 @@ function ArgumentBadges(props: { option: LlamaArgumentOption }) {
       <Badge color={docStatusColor(props.option.doc.status)} variant="outline">
         docs {props.option.doc.status}
       </Badge>
+      {props.option.control.presetSupport !== "supported" && (
+        <Badge
+          color={presetSupportColor(props.option.control.presetSupport)}
+          variant="light"
+        >
+          {presetSupportLabel(props.option.control.presetSupport)}
+        </Badge>
+      )}
       {props.option.deprecated && (
         <Badge color="red" variant="light">
           deprecated
@@ -229,6 +259,47 @@ function defaultScopeLabel(
   ].filter(Boolean);
 
   return scopes.length > 0 ? `Default for ${scopes.join(" and ")}` : null;
+}
+
+function canUseAsInstanceDefault(option: LlamaArgumentOption) {
+  return (
+    option.primaryName.startsWith("-") &&
+    option.compatibility.presentInBinary &&
+    option.compatibility.binaryNames.length > 0
+  );
+}
+
+function canUseAsPresetDefault(option: LlamaArgumentOption) {
+  return (
+    option.compatibility.presentInBinary &&
+    (option.control.presetSupport === "supported" ||
+      option.control.presetSupport === "preset-only")
+  );
+}
+
+function canUseAsDefault(
+  option: LlamaArgumentOption,
+  scope: "instance" | "preset",
+) {
+  return scope === "instance"
+    ? canUseAsInstanceDefault(option)
+    : canUseAsPresetDefault(option);
+}
+
+function defaultUnavailableMessage(option: LlamaArgumentOption) {
+  if (canUseAsInstanceDefault(option) || canUseAsPresetDefault(option)) {
+    return null;
+  }
+  if (option.control.presetSupport === "model-managed") {
+    return "This option is managed by a dedicated model field, so it is not added as a raw default argument.";
+  }
+  if (option.control.presetSupport === "router-managed") {
+    return "This option belongs to the router process and is not written as a model preset default.";
+  }
+  if (option.control.presetSupport === "unsupported") {
+    return "This option is not supported as a model preset default.";
+  }
+  return "This registry entry is not exposed as a CLI argument by the selected binary.";
 }
 
 function ArgumentDefaultMarker(props: {
@@ -735,6 +806,17 @@ export function ArgumentsView() {
     if (!selectedOption) {
       return;
     }
+    if (!canUseAsDefault(selectedOption, scope)) {
+      notifications.show({
+        color: "yellow",
+        title: "Default argument is not applicable",
+        message:
+          scope === "instance"
+            ? "This option cannot be passed as a llama-server CLI argument."
+            : "This option cannot be written as a model preset extra argument.",
+      });
+      return;
+    }
     const base = argumentDefaultFromOption(selectedOption, scope);
     const current = findDefault(argumentDefaults, scope, selectedOption);
     const nextDefault = { ...base, ...current, ...patch };
@@ -766,6 +848,9 @@ export function ArgumentsView() {
     current: LlamaArgumentDefault | null,
   ) {
     if (!selectedOption) {
+      return null;
+    }
+    if (!canUseAsDefault(selectedOption, scope)) {
       return null;
     }
     const suggested = argumentDefaultFromOption(selectedOption, scope);
@@ -821,6 +906,9 @@ export function ArgumentsView() {
 
   const isLoading =
     argsCatalogQuery.isFetching || refreshArgsMutation.isPending;
+  const selectedDefaultUnavailableMessage = selectedOption
+    ? defaultUnavailableMessage(selectedOption)
+    : null;
 
   return (
     <Stack gap="md">
@@ -1131,6 +1219,11 @@ export function ArgumentsView() {
                     "preset",
                     "New model preset",
                     selectedPresetDefault,
+                  )}
+                  {selectedDefaultUnavailableMessage && (
+                    <Text c="dimmed" size="xs">
+                      {selectedDefaultUnavailableMessage}
+                    </Text>
                   )}
                 </Stack>
               </Paper>

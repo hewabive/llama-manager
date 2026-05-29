@@ -537,7 +537,12 @@ function validateArgumentCompatibility(
     return;
   }
 
-  if (!catalog.options.some((option) => option.compatibility.presentInBinary)) {
+  const hasBinaryHelpOptions = catalog.options.some(
+    (option) =>
+      option.compatibility.presentInBinary &&
+      option.compatibility.binaryNames.length > 0,
+  );
+  if (!hasBinaryHelpOptions) {
     return;
   }
 
@@ -568,6 +573,17 @@ function validateArgumentCompatibility(
         level: "error",
         field: `args.${key}`,
         message: `Argument ${option.primaryName} is in the canonical registry, but is not supported by the selected binary.`,
+      });
+      continue;
+    }
+    if (
+      option.compatibility.binaryNames.length === 0 &&
+      !option.primaryName.startsWith("-")
+    ) {
+      issues.push({
+        level: "error",
+        field: `args.${key}`,
+        message: `Argument ${option.primaryName} is a preset-only key and cannot be passed as a llama-server CLI argument. Put it in --models-preset instead.`,
       });
       continue;
     }

@@ -27,79 +27,6 @@ import { createUiId } from "../utils/id";
 import type { PresetExtraArgRow } from "../utils/preset-args";
 import { normalizePresetArgKey } from "../utils/preset-args";
 
-export const presetOnlyArgumentOptions: LlamaArgumentOption[] = [
-  {
-    primaryName: "load-on-startup",
-    names: ["load-on-startup"],
-    category: "Пресеты",
-    valueHint: null,
-    valueType: "boolean",
-    env: [],
-    allowedValues: [],
-    help: "in server router mode, load this model preset when the router starts",
-    helpRu:
-      "Загружает модель из INI-пресета при старте или reload router-а. В llama-manager это управляется отдельным переключателем модели.",
-    helpRuSource: "builtin",
-    notes:
-      "Это preset-only ключ llama.cpp: он пишется в models-preset INI без ведущих дефисов и управляется отдельным полем редактора.",
-    doc: {
-      status: "missing",
-      path: null,
-      summary: null,
-      updatedAt: null,
-      reviewedHelpHash: null,
-    },
-    control: {
-      kind: "toggle",
-      cliEncoding: "value",
-      presetSupport: "model-managed",
-    },
-    compatibility: {
-      metadataSource: "registry",
-      presentInBinary: true,
-      binaryPrimaryName: null,
-      binaryNames: [],
-      helpChanged: false,
-    },
-    deprecated: false,
-  },
-  {
-    primaryName: "stop-timeout",
-    names: ["stop-timeout"],
-    category: "Пресеты",
-    valueHint: "SECONDS",
-    valueType: "number",
-    env: ["LLAMA_ARG_PRESET_STOP_TIMEOUT"],
-    allowedValues: [],
-    help: "in server router mode, force-kill model instance after this many seconds of graceful shutdown",
-    helpRu:
-      "Таймаут остановки модели в router-режиме: после запроса на выгрузку llama-server ждёт указанное число секунд перед принудительным завершением процесса модели.",
-    helpRuSource: "builtin",
-    notes:
-      "Это preset-only ключ llama.cpp: он пишется в models-preset INI без ведущих дефисов и не является обычным CLI-аргументом.",
-    doc: {
-      status: "missing",
-      path: null,
-      summary: null,
-      updatedAt: null,
-      reviewedHelpHash: null,
-    },
-    control: {
-      kind: "number",
-      cliEncoding: "value",
-      presetSupport: "preset-only",
-    },
-    compatibility: {
-      metadataSource: "registry",
-      presentInBinary: true,
-      binaryPrimaryName: null,
-      binaryNames: [],
-      helpChanged: false,
-    },
-    deprecated: false,
-  },
-];
-
 export function presetKeyFromArgument(option: LlamaArgumentOption) {
   const preferredName =
     option.compatibility.presentInBinary && option.compatibility.binaryPrimaryName
@@ -178,9 +105,6 @@ export function buildPresetArgOptionMap(options: LlamaArgumentOption[]) {
 }
 
 function defaultPresetValue(option: LlamaArgumentOption) {
-  if (option.primaryName === "stop-timeout") {
-    return "10";
-  }
   return defaultArgumentValue(option, "preset");
 }
 

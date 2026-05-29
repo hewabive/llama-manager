@@ -55,3 +55,20 @@ test("optionFromArgumentDocFrontmatter reads model-managed preset policy", () =>
 
   assert.equal(option?.control.presetSupport, "model-managed");
 });
+
+test("optionFromArgumentDocFrontmatter treats dashless preset-only keys as runtime supported", () => {
+  const option = optionFromArgumentDocFrontmatter({
+    primaryName: "stop-timeout",
+    summary: "Preset-only stop timeout.",
+    valueType: "number",
+    valueHint: "SECONDS",
+    aliases: ["stop-timeout"],
+    presetSupport: "preset-only",
+  });
+
+  assert.equal(option?.primaryName, "stop-timeout");
+  assert.deepEqual(option?.names, ["stop-timeout"]);
+  assert.equal(option?.control.presetSupport, "preset-only");
+  assert.equal(option?.compatibility.metadataSource, "registry");
+  assert.equal(option?.compatibility.presentInBinary, true);
+});

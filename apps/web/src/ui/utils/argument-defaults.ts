@@ -18,6 +18,9 @@ export function defaultArgumentValue(
   option: LlamaArgumentOption,
   scope: "instance" | "preset",
 ) {
+  if (scope === "preset" && option.primaryName === "stop-timeout") {
+    return "10";
+  }
   if (argumentAcceptsAutoAll(option)) {
     return "auto";
   }

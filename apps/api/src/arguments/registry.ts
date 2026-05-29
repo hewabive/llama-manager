@@ -131,6 +131,17 @@ function controlFromFrontmatter(input: {
   return { kind, cliEncoding, presetSupport };
 }
 
+function registryOnlyOptionIsRuntimeSupported(input: {
+  primaryName: string;
+  control: LlamaArgumentControl;
+}) {
+  return (
+    !input.primaryName.startsWith("-") &&
+    (input.control.presetSupport === "preset-only" ||
+      input.control.presetSupport === "model-managed")
+  );
+}
+
 export function optionFromArgumentDocFrontmatter(
   frontmatter: Record<string, unknown>,
 ): LlamaArgumentOption | null {
@@ -149,6 +160,16 @@ export function optionFromArgumentDocFrontmatter(
   const allowedValues = stringArrayField(frontmatter, "allowedValues");
   const summary = stringField(frontmatter, "summary");
   const docStatus = stringField(frontmatter, "docStatus");
+  const control = controlFromFrontmatter({
+    frontmatter,
+    primaryName,
+    valueType,
+    allowedValues,
+  });
+  const runtimeSupported = registryOnlyOptionIsRuntimeSupported({
+    primaryName,
+    control,
+  });
 
   return {
     primaryName,
@@ -163,15 +184,10 @@ export function optionFromArgumentDocFrontmatter(
     helpRuSource: "registry",
     notes: null,
     doc: emptyDoc,
-    control: controlFromFrontmatter({
-      frontmatter,
-      primaryName,
-      valueType,
-      allowedValues,
-    }),
+    control,
     compatibility: {
       metadataSource: "registry",
-      presentInBinary: false,
+      presentInBinary: runtimeSupported,
       binaryPrimaryName: null,
       binaryNames: [],
       helpChanged: false,

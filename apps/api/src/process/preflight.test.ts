@@ -161,6 +161,47 @@ common params:
   }
 });
 
+test("validateInstancePreflight blocks preset-only keys in instance CLI args", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  try {
+    writeHelpBinary(
+      binaryPath,
+      `
+----- common params -----
+--model FNAME        model path
+--port PORT          server port
+`,
+    );
+    writeFileSync(modelPath, "");
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--model": modelPath,
+          "stop-timeout": 10,
+        },
+      }),
+    );
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.stop-timeout"),
+      {
+        level: "error",
+        field: "args.stop-timeout",
+        message:
+          "Argument stop-timeout is a preset-only key and cannot be passed as a llama-server CLI argument. Put it in --models-preset instead.",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("validateInstanceStartPreflight allows an edited instance to keep its active port", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
   const binaryPath = join(dir, "llama-server");

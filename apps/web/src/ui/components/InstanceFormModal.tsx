@@ -130,6 +130,14 @@ function hasConfiguredArg(args: Instance["args"], key: string) {
   return true;
 }
 
+function isSelectableInstanceArgument(option: LlamaArgumentOption) {
+  return (
+    option.primaryName.startsWith("-") &&
+    option.compatibility.presentInBinary &&
+    option.compatibility.binaryNames.length > 0
+  );
+}
+
 function hasModelSource(args: Instance["args"]) {
   return (
     hasConfiguredArg(args, "--model") ||
@@ -284,9 +292,11 @@ export function InstanceFormModal(props: {
     }
     return map;
   }, [knownArgs]);
-  const visibleKnownArgs = showDeprecatedArgs
-    ? knownArgs
-    : knownArgs.filter((option) => !option.deprecated);
+  const visibleKnownArgs = knownArgs.filter(
+    (option) =>
+      isSelectableInstanceArgument(option) &&
+      (showDeprecatedArgs || !option.deprecated),
+  );
   const visibleArgRows = useMemo(
     () => argRows.filter((row) => !isManagedArgRow(row)),
     [argRows],

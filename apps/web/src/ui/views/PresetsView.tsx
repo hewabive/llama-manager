@@ -52,7 +52,6 @@ import {
   isSelectablePresetArgument,
   optionForPresetRow,
   presetArgumentBlockReason,
-  presetOnlyArgumentOptions,
   presetKeyFromArgument,
   replacePresetArgRow,
 } from "../components/PresetArgumentRows";
@@ -163,10 +162,7 @@ function PresetEntryDetailModal(props: {
     retry: false,
   });
   const argsCatalog = argsCatalogQuery.data?.data;
-  const knownArgs = useMemo(
-    () => [...(argsCatalog?.options ?? []), ...presetOnlyArgumentOptions],
-    [argsCatalog?.options],
-  );
+  const knownArgs = useMemo(() => argsCatalog?.options ?? [], [argsCatalog]);
   const knownArgByPresetKey = useMemo(
     () => buildPresetArgOptionMap(knownArgs),
     [knownArgs],
