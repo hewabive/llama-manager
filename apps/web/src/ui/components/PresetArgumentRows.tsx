@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Button,
   Group,
   NumberInput,
   Popover,
@@ -12,12 +13,13 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { Info, Trash2 } from "lucide-react";
+import { ExternalLink, Info, Trash2 } from "lucide-react";
 
 import {
   argumentAcceptsAutoAll,
   defaultArgumentValue,
 } from "../utils/argument-defaults";
+import { argumentHelpHref } from "../utils/argument-links";
 import { createUiId } from "../utils/id";
 import type { PresetExtraArgRow } from "../utils/preset-args";
 import { normalizePresetArgKey } from "../utils/preset-args";
@@ -158,11 +160,13 @@ function booleanValueOptions(option: LlamaArgumentOption) {
 export function PresetKnownArgRow(props: {
   row: PresetExtraArgRow;
   option: LlamaArgumentOption;
+  binaryPath?: string;
   canRemove: boolean;
   onChange: (row: PresetExtraArgRow) => void;
   onRemove: () => void;
 }) {
   const presetKey = presetKeyFromArgument(props.option);
+  const canOpenEngineeringHelp = Boolean(props.option.doc.path);
 
   function updateValue(value: string) {
     props.onChange({
@@ -324,6 +328,23 @@ export function PresetKnownArgRow(props: {
               <Text c="dimmed" size="xs" mt={6}>
                 INI key: {presetKey}
               </Text>
+              {canOpenEngineeringHelp && (
+                <Button
+                  component="a"
+                  href={argumentHelpHref(
+                    props.option.primaryName,
+                    props.binaryPath,
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="light"
+                  size="xs"
+                  mt="xs"
+                  leftSection={<ExternalLink size={14} />}
+                >
+                  Engineering help
+                </Button>
+              )}
             </Popover.Dropdown>
           </Popover>
           <Tooltip label="Remove">

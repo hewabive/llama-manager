@@ -48,6 +48,7 @@ import {
 import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultBinaryPath } from "../constants";
 import { argumentDefaultFromOption } from "../utils/argument-defaults";
+import { readArgumentHelpRouteParams } from "../utils/argument-links";
 import { formatLocalDateTime } from "../utils/time";
 
 const allFilterValue = "__all__";
@@ -261,8 +262,53 @@ function validateArgumentDefault(input: LlamaArgumentDefault) {
   return null;
 }
 
+function findOptionByRouteArg(
+  options: LlamaArgumentOption[],
+  routeArg: string,
+) {
+  const normalizedRouteArg = routeArg.trim();
+  const withoutDashes = normalizedRouteArg.replace(/^-+/, "");
+  return (
+    options.find(
+      (option) =>
+        option.primaryName === normalizedRouteArg ||
+        option.names.includes(normalizedRouteArg),
+    ) ??
+    options.find(
+      (option) =>
+        option.primaryName.replace(/^-+/, "") === withoutDashes ||
+        option.names.some((name) => name.replace(/^-+/, "") === withoutDashes),
+    ) ??
+    null
+  );
+}
+
+function binarySelectionForPath(
+  path: string,
+  current: ArgumentsBinarySelection,
+  catalogEntries: Array<{ id: string; path: string }> | undefined,
+): ArgumentsBinarySelection {
+  if (current.source === "catalog" && current.path === path) {
+    return current;
+  }
+
+  const catalogEntry = catalogEntries?.find((entry) => entry.path === path);
+  if (catalogEntry) {
+    return {
+      source: "catalog",
+      refId: catalogEntry.id,
+      path: catalogEntry.path,
+    };
+  }
+
+  return { source: "path", path };
+}
+
 export function ArgumentsView() {
   const queryClient = useQueryClient();
+  const [routeParams, setRouteParams] = useState(() =>
+    readArgumentHelpRouteParams(),
+  );
   const [binarySelection, setBinarySelection] =
     useState<ArgumentsBinarySelection>(() => readArgumentsBinarySelection());
   const [binaryPath, setBinaryPath] = useState(binarySelection.path);
@@ -371,6 +417,71 @@ export function ArgumentsView() {
   const selectedPresetDefault = selectedOption
     ? findDefault(argumentDefaults, "preset", selectedOption)
     : null;
+
+  useEffect(() => {
+    const onHashChange = () => setRouteParams(readArgumentHelpRouteParams());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const routeBinaryPath = routeParams.binaryPath;
+    if (!routeBinaryPath) {
+      return;
+    }
+
+    const nextSelection = binarySelectionForPath(
+      routeBinaryPath,
+      binarySelection,
+      pathCatalogQuery.data?.data,
+    );
+
+    if (
+      nextSelection.source !== binarySelection.source ||
+      nextSelection.path !== binarySelection.path ||
+      (nextSelection.source === "catalog" &&
+        binarySelection.source === "catalog" &&
+        nextSelection.refId !== binarySelection.refId)
+    ) {
+      setBinarySelection(nextSelection);
+      writeArgumentsBinarySelection(nextSelection);
+    }
+
+    if (binaryPath !== nextSelection.path) {
+      setBinaryPath(nextSelection.path);
+    }
+    if (activeBinaryPath !== nextSelection.path) {
+      setActiveBinaryPath(nextSelection.path);
+    }
+  }, [
+    activeBinaryPath,
+    binaryPath,
+    binarySelection,
+    pathCatalogQuery.data?.data,
+    routeParams.binaryPath,
+  ]);
+
+  useEffect(() => {
+    const routeArg = routeParams.arg;
+    if (!routeArg) {
+      return;
+    }
+
+    setCategory(allFilterValue);
+    setValueType(allFilterValue);
+
+    const match = findOptionByRouteArg(options, routeArg);
+    if (!match) {
+      setSearch(routeArg);
+      return;
+    }
+
+    if (match.deprecated) {
+      setShowDeprecated(true);
+    }
+    setSearch(match.primaryName);
+    setSelectedName(match.primaryName);
+  }, [options, routeParams.arg]);
 
   useEffect(() => {
     if (filteredOptions.length === 0) {

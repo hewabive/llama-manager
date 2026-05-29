@@ -7,6 +7,7 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Button,
   Group,
   NumberInput,
   Popover,
@@ -17,13 +18,14 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { Info, Trash2 } from "lucide-react";
+import { ExternalLink, Info, Trash2 } from "lucide-react";
 
 import { createUiId } from "../utils/id";
 import {
   argumentAcceptsAutoAll,
   defaultArgumentValue,
 } from "../utils/argument-defaults";
+import { argumentHelpHref } from "../utils/argument-links";
 
 export type ArgRow = {
   id: string;
@@ -289,12 +291,14 @@ export function SmartArgRow(props: {
   row: ArgRow;
   index: number;
   option: LlamaArgumentOption;
+  binaryPath?: string;
   canRemove: boolean;
   onChange: (row: ArgRow) => void;
   onRemove: () => void;
 }) {
   const enabled = props.row.valueType !== "null";
   const rowValueType = valueTypeFromArgument(props.option);
+  const canOpenEngineeringHelp = Boolean(props.option.doc.path);
 
   function updateValue(value: string) {
     props.onChange({
@@ -477,6 +481,23 @@ export function SmartArgRow(props: {
               <Text c="dimmed" size="xs" mt={6}>
                 {props.option.names.join(", ")}
               </Text>
+              {canOpenEngineeringHelp && (
+                <Button
+                  component="a"
+                  href={argumentHelpHref(
+                    props.option.primaryName,
+                    props.binaryPath,
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="light"
+                  size="xs"
+                  mt="xs"
+                  leftSection={<ExternalLink size={14} />}
+                >
+                  Engineering help
+                </Button>
+              )}
             </Popover.Dropdown>
           </Popover>
           <Tooltip label="Remove">

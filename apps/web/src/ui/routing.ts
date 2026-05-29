@@ -76,7 +76,8 @@ export const appRoutes: {
 const routeIds = new Set(appRoutes.map((route) => route.id));
 
 function routeFromHash(): AppRoute {
-  const raw = window.location.hash.replace(/^#\/?/, "").split("/")[0];
+  const routePath = window.location.hash.replace(/^#\/?/, "").split("?")[0];
+  const raw = (routePath ?? "").split("/")[0] ?? "";
   return routeIds.has(raw as AppRoute) ? (raw as AppRoute) : "status";
 }
 

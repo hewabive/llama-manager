@@ -375,6 +375,7 @@ function PresetEntryDetailModal(props: {
                     key={row.id}
                     row={row}
                     option={option}
+                    binaryPath={props.binaryPath}
                     canRemove={canRemove}
                     onChange={onChange}
                     onRemove={onRemove}
