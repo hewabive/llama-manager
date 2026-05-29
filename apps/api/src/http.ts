@@ -360,10 +360,7 @@ app.get("/api/llama-args/reference", (c) => {
 
 app.get("/api/llama-args/docs/:primaryName", (c) => {
   try {
-    const binaryPath = c.req.query("binaryPath");
-    const catalog = binaryPath
-      ? getLlamaArgumentCatalog(binaryPath)
-      : getLlamaArgumentReferenceCatalog();
+    const catalog = getLlamaArgumentReferenceCatalog();
     const primaryName = decodeURIComponent(c.req.param("primaryName"));
     const option =
       catalog.options.find((item) => item.primaryName === primaryName) ?? null;

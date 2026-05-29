@@ -237,17 +237,10 @@ export async function getLlamaArgumentReference() {
   return request<{ data: LlamaArgumentCatalog }>("/api/llama-args/reference");
 }
 
-export async function getLlamaArgumentDoc(
-  primaryName: string,
-  binaryPath?: string,
-) {
+export async function getLlamaArgumentDoc(primaryName: string) {
   const name = encodeURIComponent(primaryName);
-  const params = new URLSearchParams({
-    ...(binaryPath ? { binaryPath } : {}),
-  });
-  const query = params.size > 0 ? `?${params.toString()}` : "";
   return request<{ data: LlamaArgumentEngineeringDoc }>(
-    `/api/llama-args/docs/${name}${query}`,
+    `/api/llama-args/docs/${name}`,
   );
 }
 

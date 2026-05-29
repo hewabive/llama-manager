@@ -29,7 +29,8 @@ import { normalizePresetArgKey } from "../utils/preset-args";
 
 export function presetKeyFromArgument(option: LlamaArgumentOption) {
   const preferredName =
-    option.compatibility.presentInBinary && option.compatibility.binaryPrimaryName
+    option.compatibility.presentInBinary &&
+    option.compatibility.binaryPrimaryName
       ? option.compatibility.binaryPrimaryName
       : option.primaryName;
   const key = normalizePresetArgKey(preferredName);
@@ -148,7 +149,6 @@ function booleanValueOptions(option: LlamaArgumentOption) {
 export function PresetKnownArgRow(props: {
   row: PresetExtraArgRow;
   option: LlamaArgumentOption;
-  binaryPath?: string;
   canRemove: boolean;
   onChange: (row: PresetExtraArgRow) => void;
   onRemove: () => void;
@@ -354,10 +354,7 @@ export function PresetKnownArgRow(props: {
               {canOpenEngineeringHelp && (
                 <Button
                   component="a"
-                  href={argumentHelpHref(
-                    props.option.primaryName,
-                    props.binaryPath,
-                  )}
+                  href={argumentHelpHref(props.option.primaryName)}
                   target="_blank"
                   rel="noreferrer"
                   variant="light"

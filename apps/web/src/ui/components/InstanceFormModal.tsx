@@ -1183,7 +1183,6 @@ export function InstanceFormModal(props: {
                     row={row}
                     index={index}
                     option={option}
-                    binaryPath={form.values.binaryPath}
                     canRemove
                     onChange={onChange}
                     onRemove={onRemove}

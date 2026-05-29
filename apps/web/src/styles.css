@@ -136,11 +136,6 @@ code {
   background: var(--mantine-color-blue-0);
 }
 
-.args-binary-input {
-  flex: 1 1 420px;
-  min-width: 0;
-}
-
 .args-filter-controls {
   flex: 1 1 640px;
   min-width: 0;

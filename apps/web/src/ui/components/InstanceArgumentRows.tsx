@@ -282,7 +282,6 @@ export function SmartArgRow(props: {
   row: ArgRow;
   index: number;
   option: LlamaArgumentOption;
-  binaryPath?: string;
   canRemove: boolean;
   onChange: (row: ArgRow) => void;
   onRemove: () => void;
@@ -396,10 +395,7 @@ export function SmartArgRow(props: {
               {canOpenEngineeringHelp && (
                 <Button
                   component="a"
-                  href={argumentHelpHref(
-                    props.option.primaryName,
-                    props.binaryPath,
-                  )}
+                  href={argumentHelpHref(props.option.primaryName)}
                   target="_blank"
                   rel="noreferrer"
                   variant="light"

@@ -220,7 +220,9 @@ function PresetEntryDetailModal(props: {
     const parsedArgs = entryArgsFromRows(extraRows, knownArgByPresetKey);
     if (parsedArgs.droppedArgs.length > 0) {
       const firstDropped = parsedArgs.droppedArgs[0]!;
-      const option = knownArgByPresetKey.get(normalizePresetArgKey(firstDropped));
+      const option = knownArgByPresetKey.get(
+        normalizePresetArgKey(firstDropped),
+      );
       notifications.show({
         color: "yellow",
         title: "Some INI arguments were not saved",
@@ -403,7 +405,6 @@ function PresetEntryDetailModal(props: {
                     key={row.id}
                     row={row}
                     option={option}
-                    binaryPath={props.binaryPath}
                     canRemove={canRemove}
                     onChange={onChange}
                     onRemove={onRemove}
