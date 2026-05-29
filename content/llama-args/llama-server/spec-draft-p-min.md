@@ -5,7 +5,7 @@ title: "--spec-draft-p-min"
 summary: "Задает минимальную вероятность top draft-кандидата для greedy draft-model/MTP speculative decoding. Чем выше порог, тем короче и надежнее draft."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
+reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "P"
