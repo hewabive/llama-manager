@@ -11,9 +11,12 @@ import { desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
-import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { llamaBuildJobs, llamaBuildSettings } from "../db/schema.js";
+import {
+  getLlamaSourceSettings,
+  saveLlamaSourceSettings,
+} from "../llama/source-repository.js";
 
 const SETTINGS_ID = "default";
 
@@ -24,12 +27,9 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function defaultRepoPath() {
-  return resolve(config.rootDir, "..", "llama.cpp");
-}
-
-function defaultSettings(): BuildSettings {
-  const repoPath = defaultRepoPath();
+function defaultSettings(
+  repoPath = getLlamaSourceSettings().repoPath,
+): BuildSettings {
   return {
     repoPath,
     buildDir: resolve(repoPath, "build-cuda"),
@@ -111,16 +111,28 @@ function toBuildJob(row: BuildJobRow): BuildJob {
 }
 
 export function getBuildSettings(): BuildSettings {
+  const sourceSettings = getLlamaSourceSettings();
   const row = db
     .select()
     .from(llamaBuildSettings)
     .where(eq(llamaBuildSettings.id, SETTINGS_ID))
     .get();
-  return row ? toBuildSettings(row) : defaultSettings();
+  const settings = row
+    ? toBuildSettings(row)
+    : defaultSettings(sourceSettings.repoPath);
+  return {
+    ...settings,
+    repoPath: sourceSettings.repoPath,
+  };
 }
 
 export function saveBuildSettings(input: BuildSettings): BuildSettings {
-  const settings = BuildSettingsSchema.parse(input);
+  const parsed = BuildSettingsSchema.parse(input);
+  const sourceSettings = saveLlamaSourceSettings({ repoPath: parsed.repoPath });
+  const settings = {
+    ...parsed,
+    repoPath: sourceSettings.repoPath,
+  };
   const current = db
     .select()
     .from(llamaBuildSettings)

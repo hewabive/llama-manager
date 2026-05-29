@@ -1,4 +1,8 @@
-import type { BuildJob, BuildSettings } from "@llama-manager/core";
+import type {
+  BuildJob,
+  BuildSettings,
+  LlamaSourceStatus,
+} from "@llama-manager/core";
 import {
   Badge,
   Box,
@@ -30,6 +34,7 @@ import {
   cancelBuildJob,
   getBuildJobLogs,
   getBuildSettings,
+  getLlamaSourceStatus,
   listBuildJobs,
   startBuildJob,
   updateBuildSettings,
@@ -57,6 +62,19 @@ function buildStepLabel(name: BuildJob["steps"][number]["name"]) {
   if (name === "git-pull") return "git pull";
   if (name === "clean-build-dir") return "clean build dir";
   return name;
+}
+
+function sourceStatusColor(status: LlamaSourceStatus) {
+  if (status.error || !status.exists || !status.isGitRepo) return "red";
+  if (status.dirty) return "yellow";
+  return "green";
+}
+
+function sourceStatusLabel(status: LlamaSourceStatus) {
+  if (!status.exists) return "missing";
+  if (!status.isGitRepo) return "not git";
+  if (status.dirty) return "dirty";
+  return "clean";
 }
 
 function BuildSwitch(props: {
@@ -187,6 +205,11 @@ export function BuildView() {
     queryFn: () => listBuildJobs(8),
     refetchInterval: 2_500,
   });
+  const sourceStatusQuery = useQuery({
+    queryKey: ["llama-source-status"],
+    queryFn: getLlamaSourceStatus,
+    refetchInterval: 30_000,
+  });
 
   const jobs = jobsQuery.data?.data ?? [];
   const runningJob = jobs.find((job) => job.status === "running") ?? null;
@@ -208,6 +231,11 @@ export function BuildView() {
   const llguidance = form?.llguidance ?? "default";
   const extraCmakeArgs = form?.extraCmakeArgs ?? "";
   const buildEnvJson = form?.buildEnvJson ?? "";
+  const sourceStatus = sourceStatusQuery.data?.data ?? null;
+  const sourceStatusMatchesForm =
+    sourceStatus !== null &&
+    form !== null &&
+    sourceStatus.settings.repoPath === repoPath;
   const selectedSteps = [
     ...(runPull ? ["git pull --ff-only"] : []),
     ...(runUiRebuild ? ["Rebuild embedded UI assets"] : []),
@@ -267,6 +295,9 @@ export function BuildView() {
     mutationFn: () => updateBuildSettings(currentSettings()),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["build-settings"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-source-status"],
+      });
       notifications.show({ title: "Build settings saved", message: buildDir });
     },
     onError: (error) => {
@@ -291,6 +322,9 @@ export function BuildView() {
     onSuccess: async (result) => {
       setStartConfirmOpened(false);
       await queryClient.invalidateQueries({ queryKey: ["build-settings"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-source-status"],
+      });
       await queryClient.invalidateQueries({ queryKey: ["build-jobs"] });
       notifications.show({
         title: "Build job started",
@@ -387,13 +421,45 @@ export function BuildView() {
         )}
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-          <PathPickerInput
-            label="llama.cpp repository"
-            mode="directory"
-            value={repoPath}
-            disabled={!settingsReady}
-            onChange={(value) => setFormField("repoPath", value)}
-          />
+          <Stack gap={4}>
+            <PathPickerInput
+              label="llama.cpp repository"
+              mode="directory"
+              value={repoPath}
+              disabled={!settingsReady}
+              onChange={(value) => setFormField("repoPath", value)}
+            />
+            {sourceStatus && (
+              <Group gap="xs" wrap="wrap">
+                <Badge color={sourceStatusColor(sourceStatus)} variant="light">
+                  {sourceStatusLabel(sourceStatus)}
+                </Badge>
+                {sourceStatus.branch && (
+                  <Text c="dimmed" size="xs">
+                    {sourceStatus.branch}
+                  </Text>
+                )}
+                {sourceStatus.currentCommit && (
+                  <Code>{sourceStatus.currentCommit.slice(0, 12)}</Code>
+                )}
+                {sourceStatus.dirty && (
+                  <Badge color="yellow" variant="outline">
+                    dirty
+                  </Badge>
+                )}
+                {sourceStatus.error && (
+                  <Text c="red" size="xs">
+                    {sourceStatus.error}
+                  </Text>
+                )}
+                {!sourceStatusMatchesForm && (
+                  <Text c="dimmed" size="xs">
+                    Save to update source status.
+                  </Text>
+                )}
+              </Group>
+            )}
+          </Stack>
           <PathPickerInput
             label="Build directory"
             mode="directory"

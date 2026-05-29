@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 
 import { config } from "../config.js";
 import { getBuildSettings, listBuildJobs } from "../build/repository.js";
+import { getLlamaSourceCurrentCommit } from "../llama/source-repository.js";
 import {
   getCachedArgumentCatalog,
   listArgumentHelpOverrides,
@@ -273,9 +274,7 @@ function valueHintFromOptionText(optionText: string, names: string[]) {
   for (const name of names) {
     rest = rest.replace(name, " ");
   }
-  rest = rest
-    .replace(/\s+/g, " ")
-    .trim();
+  rest = rest.replace(/\s+/g, " ").trim();
   rest = rest
     .split(/\s+/)
     .filter((item) => !/^,+$/.test(item))
@@ -417,6 +416,8 @@ function toOption(parsed: ParsedHelpOption): LlamaArgumentOption | null {
       summary: null,
       updatedAt: null,
       reviewedHelpHash: null,
+      reviewedLlamaCppCommit: null,
+      currentLlamaCppCommit: null,
     },
     control: defaultArgumentControl({
       primaryName: name,
@@ -523,7 +524,11 @@ function mergeWithArgumentRegistry(
   for (const binaryOption of binaryOptions) {
     const registryEntry =
       binaryOption.names
-        .map((name) => registryByName.get(name) ?? registryByName.get(name.replace(/^-+/, "")))
+        .map(
+          (name) =>
+            registryByName.get(name) ??
+            registryByName.get(name.replace(/^-+/, "")),
+        )
         .find(Boolean) ??
       registryByName.get(binaryOption.primaryName) ??
       null;
@@ -589,14 +594,22 @@ function mergeWithArgumentRegistry(
 function withArgumentDocsAndCompatibility(
   options: LlamaArgumentOption[],
   currentHelpHash?: string,
+  currentLlamaCppCommit?: string | null,
 ) {
-  return withArgumentDocIndex(options, currentHelpHash).map((option) => ({
+  return withArgumentDocIndex(options, {
+    currentHelpHash,
+    currentLlamaCppCommit,
+  }).map((option) => ({
     ...option,
     compatibility: {
       ...option.compatibility,
       helpChanged: option.doc.status === "needs-review",
     },
   }));
+}
+
+function currentLlamaCppCommit() {
+  return getLlamaSourceCurrentCommit();
 }
 
 function toCatalog(input: {
@@ -618,6 +631,7 @@ function toCatalog(input: {
     options: withArgumentDocsAndCompatibility(
       applyHelpOverrides(mergeWithArgumentRegistry(input.cached.options)),
       input.cached.helpHash,
+      currentLlamaCppCommit(),
     ),
   };
 }

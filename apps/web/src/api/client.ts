@@ -25,6 +25,9 @@ import type {
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
+  LlamaSourceSettings,
+  LlamaSourceSettingsUpdate,
+  LlamaSourceStatus,
   LlamaModelActionName,
   LlamaModelActionResult,
   LlamaSlotActionName,
@@ -286,6 +289,23 @@ export async function updateLlamaArgumentDefaults(
 
 export async function getBuildSettings() {
   return request<{ data: BuildSettings }>("/api/build/settings");
+}
+
+export async function getLlamaSourceSettings() {
+  return request<{ data: LlamaSourceSettings }>("/api/llama-source/settings");
+}
+
+export async function updateLlamaSourceSettings(
+  input: LlamaSourceSettingsUpdate,
+) {
+  return request<{ data: LlamaSourceSettings }>("/api/llama-source/settings", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getLlamaSourceStatus() {
+  return request<{ data: LlamaSourceStatus }>("/api/llama-source/status");
 }
 
 export async function updateBuildSettings(input: BuildSettings) {

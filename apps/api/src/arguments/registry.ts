@@ -32,6 +32,8 @@ const emptyDoc = {
   summary: null,
   updatedAt: null,
   reviewedHelpHash: null,
+  reviewedLlamaCppCommit: null,
+  currentLlamaCppCommit: null,
 };
 
 function stringField(frontmatter: Record<string, unknown>, key: string) {

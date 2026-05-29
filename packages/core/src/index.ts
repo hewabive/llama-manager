@@ -466,6 +466,27 @@ export const InstanceBulkActionResultSchema = z.object({
 export const BuildProfileSchema = z.enum(["server", "full"]);
 export const CmakeBooleanModeSchema = z.enum(["default", "on", "off"]);
 
+export const LlamaSourceSettingsSchema = z.object({
+  repoPath: z.string().min(1),
+  updatedAt: z.string().nullable().default(null),
+});
+
+export const LlamaSourceSettingsUpdateSchema = z.object({
+  repoPath: z.string().min(1),
+});
+
+export const LlamaSourceStatusSchema = z.object({
+  settings: LlamaSourceSettingsSchema,
+  exists: z.boolean(),
+  isGitRepo: z.boolean(),
+  currentCommit: z.string().nullable(),
+  branch: z.string().nullable(),
+  remoteUrl: z.string().nullable(),
+  dirty: z.boolean().nullable(),
+  checkedAt: z.string(),
+  error: z.string().nullable(),
+});
+
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
@@ -628,6 +649,8 @@ export const LlamaArgumentDocIndexSchema = z
     summary: z.string().nullable(),
     updatedAt: z.string().nullable(),
     reviewedHelpHash: z.string().nullable(),
+    reviewedLlamaCppCommit: z.string().nullable().default(null),
+    currentLlamaCppCommit: z.string().nullable().default(null),
   })
   .default({
     status: "missing",
@@ -635,6 +658,8 @@ export const LlamaArgumentDocIndexSchema = z
     summary: null,
     updatedAt: null,
     reviewedHelpHash: null,
+    reviewedLlamaCppCommit: null,
+    currentLlamaCppCommit: null,
   });
 
 export const LlamaArgumentOptionSchema = z.object({
@@ -716,6 +741,8 @@ export const LlamaArgumentEngineeringDocSchema = z.object({
   summary: z.string().nullable(),
   updatedAt: z.string().nullable(),
   reviewedHelpHash: z.string().nullable(),
+  reviewedLlamaCppCommit: z.string().nullable(),
+  currentLlamaCppCommit: z.string().nullable(),
   frontmatter: z.record(z.string(), z.unknown()),
   markdown: z.string(),
 });
@@ -987,6 +1014,11 @@ export type InstanceBulkActionItem = z.infer<
 export type InstanceBulkActionResult = z.infer<
   typeof InstanceBulkActionResultSchema
 >;
+export type LlamaSourceSettings = z.infer<typeof LlamaSourceSettingsSchema>;
+export type LlamaSourceSettingsUpdate = z.infer<
+  typeof LlamaSourceSettingsUpdateSchema
+>;
+export type LlamaSourceStatus = z.infer<typeof LlamaSourceStatusSchema>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;

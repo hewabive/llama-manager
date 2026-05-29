@@ -120,6 +120,14 @@ export function migrate() {
   `);
 
   db.run(sql`
+    CREATE TABLE IF NOT EXISTS llama_source_settings (
+      id TEXT PRIMARY KEY NOT NULL,
+      repo_path TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_build_settings (
       id TEXT PRIMARY KEY NOT NULL,
       repo_path TEXT NOT NULL,
@@ -189,6 +197,16 @@ export function migrate() {
       ADD COLUMN llguidance TEXT NOT NULL DEFAULT 'default'
     `);
   }
+
+  db.run(sql`
+    INSERT INTO llama_source_settings (id, repo_path, updated_at)
+    SELECT 'default', repo_path, updated_at
+    FROM llama_build_settings
+    WHERE id = 'default'
+      AND NOT EXISTS (
+        SELECT 1 FROM llama_source_settings WHERE id = 'default'
+      )
+  `);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_build_jobs (

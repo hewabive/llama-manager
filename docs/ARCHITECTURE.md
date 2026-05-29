@@ -37,12 +37,17 @@
 ## Durable Data
 
 - `data/llama-manager.db`: instance definitions and process run metadata
+- `llama_source_settings`: canonical local `llama.cpp` source repository path.
+  Build settings, source status and argument documentation sync use this record
+  instead of carrying independent repository paths.
 - `runtime/logs`: stdout/stderr logs for managed processes
 
 ## Extension Points
 
 - Build jobs: add a job table and a build runner for `git pull`, CMake configure and CMake build.
-- Argument schema sync: extract `llama-server --help` or `common/arg.cpp` into generated JSON, then store Russian help as an overlay.
+- Argument schema sync: extract `llama-server --help` or `common/arg.cpp` from
+  the canonical source repository into generated JSON, then store Russian help
+  as an overlay.
 - Model scanner: scan GGUF directories, cache metadata by path, size and mtime.
 - Router presets: generate official `llama-server --models-preset` INI files.
 - Process health: combine child process state with `/health`, `/props`, `/slots` and `/metrics`.

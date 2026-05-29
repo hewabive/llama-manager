@@ -8,6 +8,7 @@ import {
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
   LlamaApiProbeRequestSchema,
+  LlamaSourceSettingsUpdateSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
   PathCatalogCreateSchema,
@@ -81,6 +82,11 @@ import {
   pruneLlamaApiProbeHistory,
   updateLlamaApiProbeHistory,
 } from "./llama/probe-history-repository.js";
+import {
+  getLlamaSourceSettings,
+  getLlamaSourceStatus,
+  saveLlamaSourceSettings,
+} from "./llama/source-repository.js";
 import {
   getModelScanSettings,
   saveModelScanSettings,
@@ -349,6 +355,7 @@ app.get("/api/llama-args/docs/:primaryName", (c) => {
         primaryName,
         option,
         currentHelpHash: catalog.source.hash,
+        currentLlamaCppCommit: option?.doc.currentLlamaCppCommit ?? null,
       }),
     });
   } catch (error) {
@@ -387,6 +394,22 @@ app.put("/api/llama-args/defaults", async (c) => {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
   return c.json({ data: saveArgumentDefaults(parsed.data) });
+});
+
+app.get("/api/llama-source/settings", (c) => {
+  return c.json({ data: getLlamaSourceSettings() });
+});
+
+app.put("/api/llama-source/settings", async (c) => {
+  const parsed = LlamaSourceSettingsUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  return c.json({ data: saveLlamaSourceSettings(parsed.data) });
+});
+
+app.get("/api/llama-source/status", (c) => {
+  return c.json({ data: getLlamaSourceStatus() });
 });
 
 app.get("/api/build/settings", (c) => {
