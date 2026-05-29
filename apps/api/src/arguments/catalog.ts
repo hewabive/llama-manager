@@ -434,7 +434,6 @@ function toOption(parsed: ParsedHelpOption): LlamaArgumentOption | null {
       presentInBinary: true,
       binaryPrimaryName: name,
       binaryNames: names,
-      helpChanged: false,
     },
     deprecated:
       /\bdeprecated\b/i.test(parsed.help) ||
@@ -546,7 +545,6 @@ function mergeWithArgumentRegistry(
           presentInBinary: true,
           binaryPrimaryName: binaryOption.primaryName,
           binaryNames: binaryOption.names,
-          helpChanged: false,
         },
       });
       continue;
@@ -571,7 +569,6 @@ function mergeWithArgumentRegistry(
         presentInBinary: true,
         binaryPrimaryName: binaryOption.primaryName,
         binaryNames: binaryOption.names,
-        helpChanged: false,
       },
       deprecated: binaryOption.deprecated || registryOption.deprecated,
     });
@@ -597,13 +594,7 @@ function withArgumentDocsAndCompatibility(
 ) {
   return withArgumentDocIndex(options, {
     currentLlamaCppCommit,
-  }).map((option) => ({
-    ...option,
-    compatibility: {
-      ...option.compatibility,
-      helpChanged: false,
-    },
-  }));
+  });
 }
 
 function currentLlamaCppCommit() {

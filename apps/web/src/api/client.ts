@@ -23,7 +23,6 @@ import type {
   LlamaArgumentCatalog,
   LlamaArgumentDefaults,
   LlamaArgumentDocsSyncReport,
-  LlamaArgumentDocsWorkOrder,
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
@@ -255,24 +254,6 @@ export async function getLlamaArgumentDocsSyncReport(binaryPath?: string) {
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return request<{ data: LlamaArgumentDocsSyncReport }>(
     `/api/llama-args/docs-sync${query}`,
-  );
-}
-
-export async function getLlamaArgumentDocsWorkOrder(input: {
-  binaryPath?: string | undefined;
-  limit?: number | undefined;
-  status?: string | undefined;
-  arg?: string | undefined;
-}) {
-  const params = new URLSearchParams({
-    ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
-    ...(input.limit ? { limit: String(input.limit) } : {}),
-    ...(input.status ? { status: input.status } : {}),
-    ...(input.arg ? { arg: input.arg } : {}),
-  });
-  const query = params.size > 0 ? `?${params.toString()}` : "";
-  return request<{ data: LlamaArgumentDocsWorkOrder }>(
-    `/api/llama-args/docs-work-order${query}`,
   );
 }
 

@@ -7,9 +7,7 @@ import {
   type LlamaArgumentDocStatusCounts,
   type LlamaArgumentDocSyncItem,
   type LlamaArgumentDocsSyncReport,
-  type LlamaSourceFileFingerprint,
 } from "@llama-manager/core";
-import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
@@ -22,73 +20,8 @@ import {
 } from "./docs.js";
 import { getLlamaArgumentHelpSourceSync } from "./docs-source.js";
 
-const sourceFingerprintFiles = ["tools/server/README.md"];
-
 function nowIso() {
   return new Date().toISOString();
-}
-
-function sha256(input: Buffer | string) {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-function sourceFileFingerprint(
-  repoPath: string,
-  relativePath: string,
-): LlamaSourceFileFingerprint {
-  const path = resolve(repoPath, relativePath);
-  if (!existsSync(path)) {
-    return {
-      relativePath,
-      path,
-      exists: false,
-      sizeBytes: null,
-      modifiedAt: null,
-      hash: null,
-      error: "source file not found",
-    };
-  }
-
-  try {
-    const stat = statSync(path);
-    return {
-      relativePath,
-      path,
-      exists: true,
-      sizeBytes: stat.size,
-      modifiedAt: stat.mtime.toISOString(),
-      hash: sha256(readFileSync(path)),
-      error: null,
-    };
-  } catch (error) {
-    return {
-      relativePath,
-      path,
-      exists: false,
-      sizeBytes: null,
-      modifiedAt: null,
-      hash: null,
-      error: (error as Error).message,
-    };
-  }
-}
-
-function sourceFingerprint(files: LlamaSourceFileFingerprint[]) {
-  const present = files
-    .filter((file) => file.exists && file.hash)
-    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-  if (present.length === 0) {
-    return null;
-  }
-
-  const hash = createHash("sha256");
-  for (const file of present) {
-    hash.update(file.relativePath);
-    hash.update("\0");
-    hash.update(file.hash ?? "");
-    hash.update("\0");
-  }
-  return hash.digest("hex");
 }
 
 function emptyStatusCounts(): LlamaArgumentDocStatusCounts {
@@ -189,9 +122,6 @@ export function getLlamaArgumentDocsSyncReport(
 ): LlamaArgumentDocsSyncReport {
   const checkedAt = nowIso();
   const source = getLlamaSourceStatus();
-  const sourceFiles = sourceFingerprintFiles.map((relativePath) =>
-    sourceFileFingerprint(source.settings.repoPath, relativePath),
-  );
   const helpSource = getLlamaArgumentHelpSourceSync();
   const catalog = getLlamaArgumentCatalog(binaryPath);
   const statusCounts = emptyStatusCounts();
@@ -208,8 +138,6 @@ export function getLlamaArgumentDocsSyncReport(
   return LlamaArgumentDocsSyncReportSchema.parse({
     checkedAt,
     source,
-    sourceFingerprint: sourceFingerprint(sourceFiles),
-    sourceFiles,
     helpSource,
     docsDirectory: argumentDocsDirectory,
     binaryPath: catalog.binaryPath,

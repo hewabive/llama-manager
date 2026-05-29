@@ -465,11 +465,6 @@ function SourceSyncPanel(props: {
               {report.source.currentCommit && (
                 <Code>{report.source.currentCommit.slice(0, 12)}</Code>
               )}
-              {report.sourceFingerprint && (
-                <Badge variant="outline">
-                  source {report.sourceFingerprint.slice(0, 12)}
-                </Badge>
-              )}
               <Badge
                 color={docsNeedingAttention > 0 ? "yellow" : "green"}
                 variant="light"
@@ -569,22 +564,6 @@ function SourceSyncPanel(props: {
                   </Text>
                   <Code className="code-wrap">{report.binaryPath}</Code>
                 </Group>
-                <Stack gap={4}>
-                  {report.sourceFiles.map((file) => (
-                    <Group key={file.relativePath} gap="xs" wrap="wrap">
-                      <Badge
-                        color={file.exists ? "gray" : "red"}
-                        variant="outline"
-                      >
-                        {file.exists ? "tracked" : "missing"}
-                      </Badge>
-                      <Code>{file.relativePath}</Code>
-                      {file.hash && (
-                        <Text size="xs">{file.hash.slice(0, 12)}</Text>
-                      )}
-                    </Group>
-                  ))}
-                </Stack>
                 {docSamples.length > 0 && (
                   <Stack gap={4}>
                     {docSamples.map((item) => (

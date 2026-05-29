@@ -8,7 +8,6 @@ import {
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
   LlamaApiProbeRequestSchema,
-  LlamaArgumentDocsWorkOrderRequestSchema,
   LlamaSourceSettingsUpdateSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
@@ -47,7 +46,6 @@ import {
 } from "./arguments/defaults-repository.js";
 import { readArgumentEngineeringDoc } from "./arguments/docs.js";
 import { getLlamaArgumentDocsSyncReport } from "./arguments/docs-sync.js";
-import { getLlamaArgumentDocsWorkOrder } from "./arguments/docs-work-order.js";
 import {
   deleteArgumentHelpOverride,
   listArgumentHelpOverrides,
@@ -370,29 +368,6 @@ app.get("/api/llama-args/docs-sync", (c) => {
     return c.json({
       data: getLlamaArgumentDocsSyncReport(c.req.query("binaryPath")),
     });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-});
-
-app.get("/api/llama-args/docs-work-order", (c) => {
-  const statuses = c.req
-    .query("status")
-    ?.split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const parsed = LlamaArgumentDocsWorkOrderRequestSchema.safeParse({
-    binaryPath: c.req.query("binaryPath"),
-    limit: c.req.query("limit"),
-    statuses,
-    primaryName: c.req.query("arg"),
-  });
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-
-  try {
-    return c.json({ data: getLlamaArgumentDocsWorkOrder(parsed.data) });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }

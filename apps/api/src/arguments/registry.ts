@@ -192,7 +192,6 @@ export function optionFromArgumentDocFrontmatter(
       presentInBinary: runtimeSupported,
       binaryPrimaryName: null,
       binaryNames: [],
-      helpChanged: false,
     },
     deprecated: docStatus === "deprecated" || docStatus === "orphaned",
   };

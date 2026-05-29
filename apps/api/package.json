@@ -11,7 +11,6 @@
     "args:docs:audit": "tsx src/arguments/docs-audit.ts",
     "args:docs:quality": "tsx src/arguments/docs-quality.ts",
     "args:docs:source-sync": "tsx src/arguments/docs-source-sync-cli.ts",
-    "args:docs:work-order": "tsx src/arguments/docs-work-order-cli.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

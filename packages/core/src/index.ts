@@ -487,16 +487,6 @@ export const LlamaSourceStatusSchema = z.object({
   error: z.string().nullable(),
 });
 
-export const LlamaSourceFileFingerprintSchema = z.object({
-  relativePath: z.string(),
-  path: z.string(),
-  exists: z.boolean(),
-  sizeBytes: z.number().int().nonnegative().nullable(),
-  modifiedAt: z.string().nullable(),
-  hash: z.string().nullable(),
-  error: z.string().nullable(),
-});
-
 export const BuildSettingsSchema = z.object({
   repoPath: z.string().min(1),
   buildDir: z.string().min(1),
@@ -633,14 +623,12 @@ export const LlamaArgumentCompatibilitySchema = z
     presentInBinary: z.boolean(),
     binaryPrimaryName: z.string().nullable(),
     binaryNames: z.array(z.string()),
-    helpChanged: z.boolean(),
   })
   .default({
     metadataSource: "binary",
     presentInBinary: true,
     binaryPrimaryName: null,
     binaryNames: [],
-    helpChanged: false,
   });
 
 export const LlamaArgumentDocStatusSchema = z.enum([
@@ -807,8 +795,6 @@ export const LlamaArgumentHelpSourceSyncSchema = z.object({
 export const LlamaArgumentDocsSyncReportSchema = z.object({
   checkedAt: z.string(),
   source: LlamaSourceStatusSchema,
-  sourceFingerprint: z.string().nullable(),
-  sourceFiles: z.array(LlamaSourceFileFingerprintSchema),
   helpSource: LlamaArgumentHelpSourceSyncSchema,
   docsDirectory: z.string(),
   binaryPath: z.string(),
@@ -820,48 +806,6 @@ export const LlamaArgumentDocsSyncReportSchema = z.object({
   needsReview: z.array(LlamaArgumentDocSyncItemSchema),
   deprecated: z.array(LlamaArgumentDocSyncItemSchema),
   orphaned: z.array(LlamaArgumentDocOrphanSchema),
-});
-
-export const LlamaArgumentDocsWorkOrderRequestSchema = z.object({
-  binaryPath: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(10),
-  statuses: z
-    .array(LlamaArgumentDocStatusSchema)
-    .default(["missing", "needs-review", "draft"]),
-  primaryName: z.string().min(1).optional(),
-});
-
-export const LlamaArgumentDocsWorkOrderItemSchema = z.object({
-  primaryName: z.string(),
-  docPath: z.string().nullable(),
-  status: LlamaArgumentDocStatusSchema,
-  category: z.string(),
-  valueType: LlamaArgumentValueTypeSchema,
-  valueHint: z.string().nullable(),
-  names: z.array(z.string()),
-  allowedValues: z.array(z.string()),
-  env: z.array(z.string()),
-  help: z.string(),
-  helpRu: z.string(),
-  summary: z.string().nullable(),
-  reviewedLlamaCppCommit: z.string().nullable(),
-  currentLlamaCppCommit: z.string().nullable(),
-  sourceSearchUrls: z.array(z.string()),
-});
-
-export const LlamaArgumentDocsWorkOrderSchema = z.object({
-  generatedAt: z.string(),
-  source: LlamaSourceStatusSchema,
-  sourceFingerprint: z.string().nullable(),
-  sourceFiles: z.array(LlamaSourceFileFingerprintSchema),
-  docsDirectory: z.string(),
-  binaryPath: z.string(),
-  helpHash: z.string(),
-  statuses: z.array(LlamaArgumentDocStatusSchema),
-  limit: z.number().int().min(1).max(50),
-  totalCandidates: z.number().int().nonnegative(),
-  items: z.array(LlamaArgumentDocsWorkOrderItemSchema),
-  markdown: z.string(),
 });
 
 export const NetworkInterfaceAddressSchema = z.object({
@@ -1136,9 +1080,6 @@ export type LlamaSourceSettingsUpdate = z.infer<
   typeof LlamaSourceSettingsUpdateSchema
 >;
 export type LlamaSourceStatus = z.infer<typeof LlamaSourceStatusSchema>;
-export type LlamaSourceFileFingerprint = z.infer<
-  typeof LlamaSourceFileFingerprintSchema
->;
 export type LlamaArgumentDocStatusCounts = z.infer<
   typeof LlamaArgumentDocStatusCountsSchema
 >;
@@ -1156,15 +1097,6 @@ export type LlamaArgumentHelpSourceSync = z.infer<
 >;
 export type LlamaArgumentDocsSyncReport = z.infer<
   typeof LlamaArgumentDocsSyncReportSchema
->;
-export type LlamaArgumentDocsWorkOrderRequest = z.infer<
-  typeof LlamaArgumentDocsWorkOrderRequestSchema
->;
-export type LlamaArgumentDocsWorkOrderItem = z.infer<
-  typeof LlamaArgumentDocsWorkOrderItemSchema
->;
-export type LlamaArgumentDocsWorkOrder = z.infer<
-  typeof LlamaArgumentDocsWorkOrderSchema
 >;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
