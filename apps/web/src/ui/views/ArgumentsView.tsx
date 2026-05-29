@@ -27,14 +27,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Copy,
-  RefreshCw,
-  Save,
-  Star,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, Copy, Save, Star, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -42,8 +35,7 @@ import {
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArgumentDocsSyncReport,
-  getLlamaArguments,
-  listPathCatalog,
+  getLlamaArgumentReference,
   updateLlamaArgumentDefaults,
   updateLlamaArgumentOverride,
 } from "../../api/client";
@@ -52,8 +44,6 @@ import {
   EngineeringMarkdown,
   displayEngineeringMarkdown,
 } from "../components/EngineeringMarkdown";
-import { PathPickerInput } from "../components/PathPickerInput";
-import { defaultBinaryPath } from "../constants";
 import { argumentDefaultFromOption } from "../utils/argument-defaults";
 import { readArgumentHelpRouteParams } from "../utils/argument-links";
 import { formatLocalDateTime } from "../utils/time";
@@ -64,70 +54,6 @@ const emptyArgumentDefaults: LlamaArgumentDefaults = {
   preset: [],
   updatedAt: null,
 };
-const argumentsBinarySelectionStorageKey =
-  "llama-manager:arguments-binary-selection";
-
-type ArgumentsBinarySelection =
-  | { source: "path"; path: string }
-  | { source: "catalog"; refId: string; path: string };
-
-function fallbackBinarySelection(): ArgumentsBinarySelection {
-  return { source: "path", path: defaultBinaryPath };
-}
-
-function readArgumentsBinarySelection(): ArgumentsBinarySelection {
-  if (typeof window === "undefined") {
-    return fallbackBinarySelection();
-  }
-
-  try {
-    const raw = window.localStorage.getItem(argumentsBinarySelectionStorageKey);
-    if (!raw) {
-      return fallbackBinarySelection();
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return fallbackBinarySelection();
-    }
-
-    const record = parsed as Record<string, unknown>;
-    if (
-      record.source === "catalog" &&
-      typeof record.refId === "string" &&
-      record.refId.trim() &&
-      typeof record.path === "string" &&
-      record.path.trim()
-    ) {
-      return {
-        source: "catalog",
-        refId: record.refId,
-        path: record.path,
-      };
-    }
-    if (
-      record.source === "path" &&
-      typeof record.path === "string" &&
-      record.path.trim()
-    ) {
-      return { source: "path", path: record.path };
-    }
-  } catch {
-    return fallbackBinarySelection();
-  }
-
-  return fallbackBinarySelection();
-}
-
-function writeArgumentsBinarySelection(selection: ArgumentsBinarySelection) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    argumentsBinarySelectionStorageKey,
-    JSON.stringify(selection),
-  );
-}
 
 function optionSearchText(option: LlamaArgumentOption) {
   const withoutDashes = option.primaryName.replace(/^-+/, "");
@@ -193,20 +119,6 @@ function ArgumentBadges(props: { option: LlamaArgumentOption }) {
       <Badge color={sourceColor(props.option.helpRuSource)} variant="outline">
         {props.option.helpRuSource}
       </Badge>
-      <Badge
-        color={
-          props.option.compatibility.presentInBinary
-            ? props.option.compatibility.metadataSource === "registry"
-              ? "blue"
-              : "gray"
-            : "red"
-        }
-        variant="outline"
-      >
-        {props.option.compatibility.presentInBinary
-          ? props.option.compatibility.metadataSource
-          : "not in binary"}
-      </Badge>
       {props.option.control.presetSupport !== "supported" && (
         <Badge
           color={presetSupportColor(props.option.control.presetSupport)}
@@ -258,16 +170,16 @@ function defaultScopeLabel(
 function canUseAsInstanceDefault(option: LlamaArgumentOption) {
   return (
     option.primaryName.startsWith("-") &&
-    option.compatibility.presentInBinary &&
-    option.compatibility.binaryNames.length > 0
+    option.control.presetSupport !== "model-managed" &&
+    option.control.presetSupport !== "preset-only" &&
+    option.control.presetSupport !== "unsupported"
   );
 }
 
 function canUseAsPresetDefault(option: LlamaArgumentOption) {
   return (
-    option.compatibility.presentInBinary &&
-    (option.control.presetSupport === "supported" ||
-      option.control.presetSupport === "preset-only")
+    option.control.presetSupport === "supported" ||
+    option.control.presetSupport === "preset-only"
   );
 }
 
@@ -293,7 +205,7 @@ function defaultUnavailableMessage(option: LlamaArgumentOption) {
   if (option.control.presetSupport === "unsupported") {
     return "This option is not supported as a model preset default.";
   }
-  return "This registry entry is not exposed as a CLI argument by the selected binary.";
+  return "This option is not available as a raw default argument in the reference catalog.";
 }
 
 function ArgumentDefaultMarker(props: {
@@ -457,37 +369,10 @@ function findOptionByRouteArg(
   );
 }
 
-function binarySelectionForPath(
-  path: string,
-  current: ArgumentsBinarySelection,
-  catalogEntries: Array<{ id: string; path: string }> | undefined,
-): ArgumentsBinarySelection {
-  if (current.source === "catalog" && current.path === path) {
-    return current;
-  }
-
-  const catalogEntry = catalogEntries?.find((entry) => entry.path === path);
-  if (catalogEntry) {
-    return {
-      source: "catalog",
-      refId: catalogEntry.id,
-      path: catalogEntry.path,
-    };
-  }
-
-  return { source: "path", path };
-}
-
 export function ArgumentsView() {
   const queryClient = useQueryClient();
   const [routeParams, setRouteParams] = useState(() =>
     readArgumentHelpRouteParams(),
-  );
-  const [binarySelection, setBinarySelection] =
-    useState<ArgumentsBinarySelection>(() => readArgumentsBinarySelection());
-  const [binaryPath, setBinaryPath] = useState(binarySelection.path);
-  const [activeBinaryPath, setActiveBinaryPath] = useState(
-    binarySelection.path,
   );
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState(allFilterValue);
@@ -500,16 +385,13 @@ export function ArgumentsView() {
     Record<string, string>
   >({});
 
-  const activeBinaryPathKey = activeBinaryPath.trim() || undefined;
   const argsCatalogQuery = useQuery({
-    queryKey: ["llama-args", activeBinaryPathKey],
-    queryFn: () => getLlamaArguments(activeBinaryPathKey),
+    queryKey: ["llama-args-reference"],
+    queryFn: getLlamaArgumentReference,
     retry: false,
-  });
-  const pathCatalogQuery = useQuery({
-    queryKey: ["path-catalog"],
-    queryFn: () => listPathCatalog("binary"),
-    staleTime: 60_000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const argsCatalog = argsCatalogQuery.data?.data;
@@ -536,24 +418,6 @@ export function ArgumentsView() {
       ),
     [options],
   );
-  const binaryPathRefId =
-    binarySelection.source === "catalog" ? binarySelection.refId : null;
-  const binaryCatalogOptions = useMemo(() => {
-    const catalogOptions = (pathCatalogQuery.data?.data ?? []).map((entry) => ({
-      value: entry.id,
-      label: entry.name,
-    }));
-    if (
-      binarySelection.source === "catalog" &&
-      !catalogOptions.some((option) => option.value === binarySelection.refId)
-    ) {
-      catalogOptions.push({
-        value: binarySelection.refId,
-        label: `Missing catalog entry · ${binarySelection.path}`,
-      });
-    }
-    return catalogOptions;
-  }, [binarySelection, pathCatalogQuery.data?.data]);
   const filteredOptions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return options.filter((option) => {
@@ -575,13 +439,8 @@ export function ArgumentsView() {
   const selectedOption =
     options.find((option) => option.primaryName === selectedName) ?? null;
   const selectedDocQuery = useQuery({
-    queryKey: [
-      "llama-arg-doc",
-      activeBinaryPathKey,
-      selectedOption?.primaryName,
-    ],
-    queryFn: () =>
-      getLlamaArgumentDoc(selectedOption!.primaryName, activeBinaryPathKey),
+    queryKey: ["llama-arg-doc", selectedOption?.primaryName],
+    queryFn: () => getLlamaArgumentDoc(selectedOption!.primaryName),
     enabled: Boolean(selectedOption),
     retry: false,
     staleTime: Infinity,
@@ -608,43 +467,6 @@ export function ArgumentsView() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-
-  useEffect(() => {
-    const routeBinaryPath = routeParams.binaryPath;
-    if (!routeBinaryPath) {
-      return;
-    }
-
-    const nextSelection = binarySelectionForPath(
-      routeBinaryPath,
-      binarySelection,
-      pathCatalogQuery.data?.data,
-    );
-
-    if (
-      nextSelection.source !== binarySelection.source ||
-      nextSelection.path !== binarySelection.path ||
-      (nextSelection.source === "catalog" &&
-        binarySelection.source === "catalog" &&
-        nextSelection.refId !== binarySelection.refId)
-    ) {
-      setBinarySelection(nextSelection);
-      writeArgumentsBinarySelection(nextSelection);
-    }
-
-    if (binaryPath !== nextSelection.path) {
-      setBinaryPath(nextSelection.path);
-    }
-    if (activeBinaryPath !== nextSelection.path) {
-      setActiveBinaryPath(nextSelection.path);
-    }
-  }, [
-    activeBinaryPath,
-    binaryPath,
-    binarySelection,
-    pathCatalogQuery.data?.data,
-    routeParams.binaryPath,
-  ]);
 
   useEffect(() => {
     const routeArg = routeParams.arg;
@@ -713,71 +535,12 @@ export function ArgumentsView() {
     selectedPresetDefault?.valueType,
   ]);
 
-  useEffect(() => {
-    if (binarySelection.source !== "catalog") {
-      return;
-    }
-
-    const entry =
-      pathCatalogQuery.data?.data.find(
-        (item) => item.id === binarySelection.refId,
-      ) ?? null;
-    if (!entry) {
-      return;
-    }
-
-    if (binaryPath !== entry.path) {
-      setBinaryPath(entry.path);
-    }
-    if (activeBinaryPath !== entry.path) {
-      setActiveBinaryPath(entry.path);
-    }
-    if (binarySelection.path !== entry.path) {
-      const nextSelection: ArgumentsBinarySelection = {
-        source: "catalog",
-        refId: binarySelection.refId,
-        path: entry.path,
-      };
-      setBinarySelection(nextSelection);
-      writeArgumentsBinarySelection(nextSelection);
-    }
-  }, [
-    activeBinaryPath,
-    binaryPath,
-    binarySelection,
-    pathCatalogQuery.data?.data,
-  ]);
-
-  const refreshArgsMutation = useMutation({
-    mutationFn: () => {
-      const nextBinaryPath = binaryPath.trim() || undefined;
-      return getLlamaArguments(nextBinaryPath, true);
-    },
-    onSuccess: (result) => {
-      const nextBinaryPath = binaryPath.trim();
-      setActiveBinaryPath(nextBinaryPath);
-      queryClient.setQueryData(
-        ["llama-args", nextBinaryPath || undefined],
-        result,
-      );
-      notifications.show({
-        title: "Arguments refreshed",
-        message: `${result.data.options.length} options loaded`,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Argument refresh failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
   const helpOverrideMutation = useMutation({
     mutationFn: updateLlamaArgumentOverride,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["llama-args"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-args-reference"],
+      });
       notifications.show({
         title: "Argument help saved",
         message: selectedOption?.primaryName,
@@ -795,7 +558,9 @@ export function ArgumentsView() {
   const deleteHelpOverrideMutation = useMutation({
     mutationFn: deleteLlamaArgumentOverride,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["llama-args"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-args-reference"],
+      });
       notifications.show({
         title: "Argument help reset",
         message: selectedOption?.primaryName,
@@ -827,50 +592,6 @@ export function ArgumentsView() {
       });
     },
   });
-
-  function loadFromBinaryPath() {
-    const nextPath = binaryPath.trim();
-    if (!nextPath) {
-      return;
-    }
-    setActiveBinaryPath(nextPath);
-    if (
-      binarySelection.source === "path" &&
-      binarySelection.path !== nextPath
-    ) {
-      const nextSelection: ArgumentsBinarySelection = {
-        source: "path",
-        path: nextPath,
-      };
-      setBinarySelection(nextSelection);
-      writeArgumentsBinarySelection(nextSelection);
-    }
-  }
-
-  function applyBinaryPathRef(refId: string | null) {
-    const entry =
-      pathCatalogQuery.data?.data.find((item) => item.id === refId) ?? null;
-    if (entry) {
-      const nextSelection: ArgumentsBinarySelection = {
-        source: "catalog",
-        refId: entry.id,
-        path: entry.path,
-      };
-      setBinarySelection(nextSelection);
-      writeArgumentsBinarySelection(nextSelection);
-      setBinaryPath(entry.path);
-      setActiveBinaryPath(entry.path);
-      return;
-    }
-
-    const nextPath = binaryPath.trim() || defaultBinaryPath;
-    const nextSelection: ArgumentsBinarySelection = {
-      source: "path",
-      path: nextPath,
-    };
-    setBinarySelection(nextSelection);
-    writeArgumentsBinarySelection(nextSelection);
-  }
 
   function selectArgument(option: LlamaArgumentOption) {
     setSelectedName(option.primaryName);
@@ -1021,8 +742,6 @@ export function ArgumentsView() {
     );
   }
 
-  const isLoading =
-    argsCatalogQuery.isFetching || refreshArgsMutation.isPending;
   const selectedDefaultUnavailableMessage = selectedOption
     ? defaultUnavailableMessage(selectedOption)
     : null;
@@ -1049,91 +768,9 @@ export function ArgumentsView() {
             {argsCatalog && (
               <Group gap="xs" wrap="wrap">
                 <Badge variant="light">{argsCatalog.options.length} args</Badge>
-                <Badge
-                  color={argsCatalog.cache.hit ? "green" : "yellow"}
-                  variant="outline"
-                >
-                  {argsCatalog.cache.hit ? "cache hit" : "refreshed"}
-                </Badge>
-                {argsCatalog.cache.stale && (
-                  <Badge color="yellow" variant="light">
-                    stale
-                  </Badge>
-                )}
               </Group>
             )}
           </Group>
-
-          <Group align="flex-end" gap="xs" wrap="wrap">
-            <Select
-              aria-label="Binary catalog"
-              label="Binary catalog"
-              placeholder={
-                pathCatalogQuery.isFetching
-                  ? "Loading catalog..."
-                  : "Select managed binary"
-              }
-              searchable
-              clearable
-              value={binaryPathRefId}
-              onChange={applyBinaryPathRef}
-              data={binaryCatalogOptions}
-              w={220}
-              nothingFoundMessage="No binary paths in catalog"
-            />
-            <PathPickerInput
-              aria-label="llama-server binary path"
-              label="Binary"
-              mode="file"
-              filter="binary"
-              value={binaryPath}
-              onChange={(value) => {
-                setBinaryPath(value);
-                const nextPath = value.trim();
-                if (!nextPath) {
-                  return;
-                }
-                const nextSelection: ArgumentsBinarySelection = {
-                  source: "path",
-                  path: nextPath,
-                };
-                setBinarySelection(nextSelection);
-                writeArgumentsBinarySelection(nextSelection);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  loadFromBinaryPath();
-                }
-              }}
-              className="args-binary-input"
-            />
-            <Button
-              aria-label="Load arguments from binary"
-              variant="light"
-              onClick={loadFromBinaryPath}
-            >
-              Load
-            </Button>
-            <Tooltip label="Reload from binary --help">
-              <ActionIcon
-                aria-label="Reload arguments from binary help"
-                variant="subtle"
-                loading={isLoading}
-                onClick={() => refreshArgsMutation.mutate()}
-              >
-                <RefreshCw size={16} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-
-          {argsCatalog && (
-            <Group gap="xs" wrap="wrap">
-              <Text c="dimmed" size="xs">
-                Generated {formatLocalDateTime(argsCatalog.generatedAt)}
-              </Text>
-              <Code className="code-wrap">{argsCatalog.binaryPath}</Code>
-            </Group>
-          )}
         </Stack>
       </Paper>
 

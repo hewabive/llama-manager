@@ -39,7 +39,10 @@ import {
   setSessionCookie,
   verifyAdminPassword,
 } from "./auth.js";
-import { getLlamaArgumentCatalog } from "./arguments/catalog.js";
+import {
+  getLlamaArgumentCatalog,
+  getLlamaArgumentReferenceCatalog,
+} from "./arguments/catalog.js";
 import {
   getArgumentDefaults,
   saveArgumentDefaults,
@@ -345,9 +348,22 @@ app.get("/api/llama-args", (c) => {
   }
 });
 
+app.get("/api/llama-args/reference", (c) => {
+  try {
+    return c.json({
+      data: getLlamaArgumentReferenceCatalog(),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
 app.get("/api/llama-args/docs/:primaryName", (c) => {
   try {
-    const catalog = getLlamaArgumentCatalog(c.req.query("binaryPath"));
+    const binaryPath = c.req.query("binaryPath");
+    const catalog = binaryPath
+      ? getLlamaArgumentCatalog(binaryPath)
+      : getLlamaArgumentReferenceCatalog();
     const primaryName = decodeURIComponent(c.req.param("primaryName"));
     const option =
       catalog.options.find((item) => item.primaryName === primaryName) ?? null;

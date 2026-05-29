@@ -233,6 +233,10 @@ export async function getLlamaArguments(binaryPath?: string, refresh = false) {
   return request<{ data: LlamaArgumentCatalog }>(`/api/llama-args${query}`);
 }
 
+export async function getLlamaArgumentReference() {
+  return request<{ data: LlamaArgumentCatalog }>("/api/llama-args/reference");
+}
+
 export async function getLlamaArgumentDoc(
   primaryName: string,
   binaryPath?: string,

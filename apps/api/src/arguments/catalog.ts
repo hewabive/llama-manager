@@ -3,6 +3,7 @@ import type {
   LlamaArgumentOption,
   LlamaArgumentValueType,
 } from "@llama-manager/core";
+import { LlamaArgumentCatalogSchema } from "@llama-manager/core";
 import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -16,7 +17,7 @@ import {
   saveArgumentCatalog,
   type CachedArgumentCatalog,
 } from "./repository.js";
-import { withArgumentDocIndex } from "./docs.js";
+import { argumentDocsDirectory, withArgumentDocIndex } from "./docs.js";
 import {
   defaultArgumentControl,
   loadArgumentRegistry,
@@ -586,6 +587,53 @@ function mergeWithArgumentRegistry(
 
 function withArgumentDocsAndCompatibility(options: LlamaArgumentOption[]) {
   return withArgumentDocIndex(options);
+}
+
+function referenceCatalogHash(options: LlamaArgumentOption[]) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        options.map((option) => ({
+          primaryName: option.primaryName,
+          names: option.names,
+          category: option.category,
+          valueHint: option.valueHint,
+          valueType: option.valueType,
+          env: option.env,
+          allowedValues: option.allowedValues,
+          help: option.help,
+          helpRu: option.helpRu,
+          notes: option.notes,
+          control: option.control,
+        })),
+      ),
+    )
+    .digest("hex");
+}
+
+export function getLlamaArgumentReferenceCatalog(): LlamaArgumentCatalog {
+  const options = withArgumentDocsAndCompatibility(
+    applyHelpOverrides(loadArgumentRegistry().map((entry) => entry.option)),
+  );
+  const generatedAt = nowIso();
+
+  return LlamaArgumentCatalogSchema.parse({
+    binaryPath: argumentDocsDirectory,
+    generatedAt,
+    source: {
+      kind: "help",
+      command: ["llama-manager", "argument-registry"],
+      hash: referenceCatalogHash(options),
+      binarySize: 0,
+      binaryModifiedAt: generatedAt,
+    },
+    cache: {
+      hit: true,
+      refreshed: false,
+      stale: false,
+    },
+    options,
+  });
 }
 
 function toCatalog(input: {
