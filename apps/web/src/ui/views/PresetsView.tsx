@@ -982,7 +982,7 @@ export function PresetsView() {
                 {preview?.path ?? preset?.path ?? "-"}
               </Text>
               <ScrollArea h={260} type="auto" offsetScrollbars>
-                <Code block className="code-wrap">
+                <Code block className="ini-preview-code">
                   {preview?.content ?? "; no preset loaded\n"}
                 </Code>
               </ScrollArea>
