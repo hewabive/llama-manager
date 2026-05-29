@@ -748,12 +748,13 @@ function SlotDetailsBlock(props: {
                 value={filename}
                 className="min-w-0"
                 style={{ flex: "1 1 180px" }}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
                   setFilenames((current) => ({
                     ...current,
-                    [slot.id]: event.currentTarget.value,
-                  }))
-                }
+                    [slot.id]: value,
+                  }));
+                }}
               />
               <Button
                 size="xs"

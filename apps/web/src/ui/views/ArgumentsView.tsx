@@ -884,19 +884,23 @@ export function ArgumentsView() {
               disabled={defaultsMutation.isPending}
               size="xs"
               w={180}
-              onChange={(event) =>
+              onChange={(event) => {
+                const value = event.currentTarget.value;
                 setDefaultValueDrafts((drafts) => ({
                   ...drafts,
-                  [draftKey]: event.currentTarget.value,
-                }))
-              }
-              onBlur={(event) =>
-                current &&
+                  [draftKey]: value,
+                }));
+              }}
+              onBlur={(event) => {
+                const value = event.currentTarget.value;
+                if (!current) {
+                  return;
+                }
                 saveArgumentDefault(scope, true, {
-                  value: event.currentTarget.value,
+                  value,
                   valueType,
-                })
-              }
+                });
+              }}
             />
           )}
         </Group>
