@@ -756,24 +756,6 @@ export function ArgumentsView() {
 
   return (
     <Stack gap="md">
-      <Paper withBorder p="md" radius="sm">
-        <Stack gap="sm">
-          <Group justify="space-between" align="flex-start" wrap="wrap">
-            <div className="section-heading">
-              <Title order={3}>Arguments</Title>
-              <Text c="dimmed" size="sm">
-                Search llama-server options and engineering documentation
-              </Text>
-            </div>
-            {argsCatalog && (
-              <Group gap="xs" wrap="wrap">
-                <Badge variant="light">{argsCatalog.options.length} args</Badge>
-              </Group>
-            )}
-          </Group>
-        </Stack>
-      </Paper>
-
       {argsCatalogQuery.isError && (
         <Alert color="red" icon={<AlertTriangle size={18} />} variant="light">
           {(argsCatalogQuery.error as Error).message}
