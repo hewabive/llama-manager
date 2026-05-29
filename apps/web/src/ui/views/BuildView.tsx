@@ -51,6 +51,13 @@ function buildStepColor(status: BuildJob["steps"][number]["status"]) {
   return "blue";
 }
 
+function buildStepLabel(name: BuildJob["steps"][number]["name"]) {
+  if (name === "ui-install") return "ui rebuild";
+  if (name === "git-pull") return "git pull";
+  if (name === "clean-build-dir") return "clean build dir";
+  return name;
+}
+
 function parseExtraCmakeArgs(value: string) {
   return value
     .split(/\r?\n/)
@@ -92,7 +99,7 @@ export function BuildView() {
   const [extraCmakeArgs, setExtraCmakeArgs] = useState("");
   const [buildEnvJson, setBuildEnvJson] = useState("{}");
   const [runPull, setRunPull] = useState(true);
-  const [runUiInstall, setRunUiInstall] = useState(true);
+  const [runUiRebuild, setRunUiRebuild] = useState(true);
   const [runCleanBuildDir, setRunCleanBuildDir] = useState(false);
   const [runConfigure, setRunConfigure] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
@@ -113,7 +120,7 @@ export function BuildView() {
   const selectedJob = runningJob ?? jobs[0] ?? null;
   const selectedSteps = [
     ...(runPull ? ["git pull --ff-only"] : []),
-    ...(runUiInstall ? ["npm install in tools/ui"] : []),
+    ...(runUiRebuild ? ["Rebuild embedded UI assets"] : []),
     ...(runCleanBuildDir ? ["Clean build directory"] : []),
     ...(runConfigure ? ["Configure CMake"] : []),
     ...(runBuild ? [`Build ${target || "target"}`] : []),
@@ -177,7 +184,7 @@ export function BuildView() {
       startBuildJob({
         settings: currentSettings(),
         pull: runPull,
-        installUiDeps: runUiInstall,
+        installUiDeps: runUiRebuild,
         cleanBuildDir: runCleanBuildDir,
         configure: runConfigure,
         build: runBuild,
@@ -329,9 +336,10 @@ export function BuildView() {
             onChange={(event) => setRunPull(event.currentTarget.checked)}
           />
           <Switch
-            label="npm install tools/ui"
-            checked={runUiInstall}
-            onChange={(event) => setRunUiInstall(event.currentTarget.checked)}
+            label="Rebuild embedded UI"
+            description="Runs npm install and npm run build in tools/ui."
+            checked={runUiRebuild}
+            onChange={(event) => setRunUiRebuild(event.currentTarget.checked)}
           />
           <Switch
             label="Clean build directory"
@@ -397,7 +405,7 @@ export function BuildView() {
                           color={buildStepColor(item.status)}
                           variant="outline"
                         >
-                          {item.name}
+                          {buildStepLabel(item.name)}
                         </Badge>
                       ))}
                     </Group>
@@ -455,7 +463,7 @@ export function BuildView() {
                               color={buildStepColor(item.status)}
                               variant="outline"
                             >
-                              {item.name}
+                              {buildStepLabel(item.name)}
                             </Badge>
                           ))}
                         </Group>

@@ -145,6 +145,10 @@ function hasCmakeDefinition(args: string[], name: string) {
   );
 }
 
+function cmakeDefinitionIfMissing(args: string[], name: string, value: string) {
+  return hasCmakeDefinition(args, name) ? [] : [`-D${name}=${value}`];
+}
+
 export function buildProcessEnv(settings: BuildSettings): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...settings.env };
 
@@ -176,7 +180,9 @@ function buildSteps(
   }
 
   if (input.installUiDeps) {
-    steps.push(step("ui-install", ["npm", "install"]));
+    steps.push(
+      step("ui-install", ["npm", "install", "&&", "npm", "run", "build"]),
+    );
   }
 
   if (input.cleanBuildDir) {
@@ -199,6 +205,16 @@ function buildSteps(
         !hasCmakeDefinition(settings.extraCmakeArgs, "CMAKE_CUDA_COMPILER")
           ? [`-DCMAKE_CUDA_COMPILER=${cudaCompiler}`]
           : []),
+        ...cmakeDefinitionIfMissing(
+          settings.extraCmakeArgs,
+          "LLAMA_BUILD_UI",
+          input.installUiDeps ? "ON" : "OFF",
+        ),
+        ...cmakeDefinitionIfMissing(
+          settings.extraCmakeArgs,
+          "LLAMA_USE_PREBUILT_UI",
+          "OFF",
+        ),
         ...settings.extraCmakeArgs,
       ]),
     );
@@ -420,16 +436,22 @@ export class LlamaBuildRunner {
           exitCode: null,
         });
 
-        logStream.write(`$ ${plannedStep.command.join(" ")}\n`);
-        const exitCode =
-          plannedStep.name === "clean-build-dir"
-            ? (cleanBuildDirectory(job.settings, logStream), 0)
-            : await this.runCommand(
-                plannedStep.command,
-                commandCwd(job.settings, plannedStep.name),
-                logStream,
-                env,
-              );
+        let exitCode: number;
+        if (plannedStep.name === "clean-build-dir") {
+          logStream.write(`$ ${plannedStep.command.join(" ")}\n`);
+          cleanBuildDirectory(job.settings, logStream);
+          exitCode = 0;
+        } else if (plannedStep.name === "ui-install") {
+          exitCode = await this.rebuildUiAssets(job.settings, logStream, env);
+        } else {
+          logStream.write(`$ ${plannedStep.command.join(" ")}\n`);
+          exitCode = await this.runCommand(
+            plannedStep.command,
+            commandCwd(job.settings, plannedStep.name),
+            logStream,
+            env,
+          );
+        }
 
         if (this.running?.jobId === jobId && this.running.canceled) {
           this.markStep(jobId, plannedStep.name, {
@@ -515,6 +537,32 @@ export class LlamaBuildRunner {
       binaryPath,
       error,
     });
+  }
+
+  private async rebuildUiAssets(
+    settings: BuildSettings,
+    logStream: WriteStream,
+    env: NodeJS.ProcessEnv,
+  ) {
+    const uiDir = uiDirectory(settings);
+    const distDir = resolve(uiDir, "dist");
+    if (existsSync(distDir)) {
+      logStream.write(`# removing stale UI source dist ${distDir}\n`);
+      rmSync(distDir, { recursive: true, force: true });
+    }
+
+    const uiEnv = { ...env, LLAMA_UI_OUT_DIR: distDir };
+    for (const command of [
+      ["npm", "install"],
+      ["npm", "run", "build"],
+    ]) {
+      logStream.write(`$ ${command.join(" ")}\n`);
+      const exitCode = await this.runCommand(command, uiDir, logStream, uiEnv);
+      if (exitCode !== 0) {
+        return exitCode;
+      }
+    }
+    return 0;
   }
 
   private runCommand(
