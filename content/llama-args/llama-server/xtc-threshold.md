@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--xtc-threshold"
 title: "--xtc-threshold"
 summary: "Порог XTC sampler-а: кандидаты с вероятностью не ниже threshold считаются слишком очевидными и могут быть удалены при срабатывании XTC. Значения выше `0.5` отключают XTC в реализации."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

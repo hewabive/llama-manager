@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--repeat-last-n"
 title: "--repeat-last-n"
 summary: "Задает размер окна предыдущих токенов, по которому llama-server считает обычные repeat/frequency/presence penalties. `0` отключает это окно, `-1` разворачивается до размера контекста слота."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

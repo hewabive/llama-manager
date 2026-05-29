@@ -27,13 +27,10 @@ type ArgumentRegistryEntry = {
 };
 
 const emptyDoc = {
-  status: "missing" as const,
+  exists: false,
   path: null,
   summary: null,
   updatedAt: null,
-  reviewedHelpHash: null,
-  reviewedLlamaCppCommit: null,
-  currentLlamaCppCommit: null,
 };
 
 function stringField(frontmatter: Record<string, unknown>, key: string) {
@@ -161,7 +158,6 @@ export function optionFromArgumentDocFrontmatter(
   const names = Array.from(new Set([primaryName, ...aliases]));
   const allowedValues = stringArrayField(frontmatter, "allowedValues");
   const summary = stringField(frontmatter, "summary");
-  const docStatus = stringField(frontmatter, "docStatus");
   const control = controlFromFrontmatter({
     frontmatter,
     primaryName,
@@ -193,7 +189,7 @@ export function optionFromArgumentDocFrontmatter(
       binaryPrimaryName: null,
       binaryNames: [],
     },
-    deprecated: docStatus === "deprecated" || docStatus === "orphaned",
+    deprecated: false,
   };
 }
 

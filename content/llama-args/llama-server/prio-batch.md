@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--prio-batch"
 title: "--prio-batch"
 summary: "Задает scheduler priority для batch/prompt worker threads. В отличие от основного `--prio`, batch-вариант принимает только `0..3`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"

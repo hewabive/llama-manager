@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--fit-target"
 title: "--fit-target"
 summary: "Задает запас свободной памяти в MiB, который `--fit` должен оставить на каждом устройстве. Одно значение распространяется на все устройства, список задает разные запасы."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "list"
 valueHint: "MiB0,MiB1,MiB2,..."

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--min-p"
 title: "--min-p"
 summary: "Фильтрует токены по вероятности относительно лучшего кандидата: остаются токены с `p_i >= min_p * p_max`. `0.0` и ниже отключают фильтр; HTTP-запрос может заменить дефолт полем `min_p`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

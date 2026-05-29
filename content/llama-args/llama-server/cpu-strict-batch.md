@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--cpu-strict-batch"
 title: "--cpu-strict-batch"
 summary: "Включает strict CPU placement для batch/prompt CPU-профиля. Если не задано, batch-профиль наследует значение `--cpu-strict`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: "<0|1>"

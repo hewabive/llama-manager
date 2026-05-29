@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--control-vector-layer-range"
 title: "--control-vector-layer-range"
 summary: "Ограничивает inclusive диапазон слоев, к которым применяется control vector. Если диапазон не задан, используется `1..n_layer`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "START END"

@@ -60,13 +60,11 @@
 Сохраняй YAML frontmatter, но обновляй его по смыслу:
 
 - `summary`: 1-2 практичных предложения, без шаблонных формулировок.
-- `docStatus`: ставь `current`, только если проверил аргумент по исходникам
-  и справке текущего commit. Иначе ставь `needs-review`.
-- `reviewedLlamaCppCommit`: можно обновить для реально проверенного файла, но
-  не делай массовую замену во всех документах только из-за нового commit.
 - `related`: оставляй только реально связанные аргументы.
-- Не ломай `primaryName`, `aliases`, `reviewedHelpHash`, `category`,
-  `valueType`, `valueHint`, `allowedValues`, `env`, если не нашел явную ошибку.
+- Не ломай `primaryName`, `aliases`, `category`, `valueType`, `valueHint`,
+  `allowedValues`, `env`, если не нашел явную ошибку.
+- Не добавляй `docStatus`, `reviewedHelpHash` и `reviewedLlamaCppCommit`:
+  синхронизация теперь хранится в одном source snapshot.
 
 Текст документа пиши на русском языке. Английские цитаты из `--help` можно
 оставлять в блоке "Оригинальная справка llama.cpp".

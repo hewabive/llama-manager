@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-n-max"
 title: "--spec-draft-n-max"
 summary: "Задает максимальную длину draft-последовательности для draft-model/MTP speculative decoding. Большее значение может повысить throughput при высокой acceptance, но увеличивает работу на неудачные draft."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

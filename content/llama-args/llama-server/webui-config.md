@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--webui-config"
 title: "--webui-config"
 summary: "Deprecated-алиас для `--ui-config`: JSON-настройки Web UI по умолчанию. Новые конфигурации должны использовать `--ui-config`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "json"
 valueHint: "JSON"

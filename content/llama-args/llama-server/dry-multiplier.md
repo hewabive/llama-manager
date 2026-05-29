@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--dry-multiplier"
 title: "--dry-multiplier"
 summary: "Включает и масштабирует DRY repetition penalty. Значение `0.0` отключает DRY, даже если остальные `--dry-*` параметры заданы."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

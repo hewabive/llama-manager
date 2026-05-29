@@ -13,7 +13,6 @@ test("optionFromArgumentDocFrontmatter builds canonical argument metadata", () =
     aliases: ["-dev", "--device"],
     allowedValues: [],
     env: ["LLAMA_ARG_DEVICE"],
-    docStatus: "current",
   });
 
   assert.equal(option?.primaryName, "--device");

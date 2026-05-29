@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--top-nsigma"
 title: "--top-nsigma"
 summary: "Фильтр по расстоянию logits от лучшего токена: отсекает кандидатов ниже `max_logit - N * std`. По умолчанию отключен; в HTTP API соответствует полю `top_n_sigma`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

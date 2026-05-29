@@ -10,7 +10,6 @@ import { spawnSync } from "node:child_process";
 
 import { config } from "../config.js";
 import { getBuildSettings, listBuildJobs } from "../build/repository.js";
-import { getLlamaSourceCurrentCommit } from "../llama/source-repository.js";
 import {
   getCachedArgumentCatalog,
   listArgumentHelpOverrides,
@@ -411,13 +410,10 @@ function toOption(parsed: ParsedHelpOption): LlamaArgumentOption | null {
     helpRuSource: helpRuOverlay[name] ? "builtin" : "fallback",
     notes: null,
     doc: {
-      status: "missing",
+      exists: false,
       path: null,
       summary: null,
       updatedAt: null,
-      reviewedHelpHash: null,
-      reviewedLlamaCppCommit: null,
-      currentLlamaCppCommit: null,
     },
     control: defaultArgumentControl({
       primaryName: name,
@@ -588,17 +584,8 @@ function mergeWithArgumentRegistry(
   );
 }
 
-function withArgumentDocsAndCompatibility(
-  options: LlamaArgumentOption[],
-  currentLlamaCppCommit?: string | null,
-) {
-  return withArgumentDocIndex(options, {
-    currentLlamaCppCommit,
-  });
-}
-
-function currentLlamaCppCommit() {
-  return getLlamaSourceCurrentCommit();
+function withArgumentDocsAndCompatibility(options: LlamaArgumentOption[]) {
+  return withArgumentDocIndex(options);
 }
 
 function toCatalog(input: {
@@ -619,7 +606,6 @@ function toCatalog(input: {
     cache: input.cache,
     options: withArgumentDocsAndCompatibility(
       applyHelpOverrides(mergeWithArgumentRegistry(input.cached.options)),
-      currentLlamaCppCommit(),
     ),
   };
 }

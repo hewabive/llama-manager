@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-cpu-mask"
 title: "--spec-draft-cpu-mask"
 summary: "Парсит hex-маску CPU affinity для generation-профиля draft-модели и наследует `--cpu-mask`, если draft-профиль не задан. В текущем server load path явно применяется только draft thread count, поэтому affinity draft-модели требует проверки на сборке."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "string"
 valueHint: "M"

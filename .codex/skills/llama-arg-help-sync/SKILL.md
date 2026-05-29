@@ -28,8 +28,8 @@ pnpm --filter @llama-manager/api args:docs:source-sync -- --diff
    nearby argument docs as style references. Include practical behavior, safe
    defaults, interactions, diagnostics, and relevant source/issue links when useful.
 
-5. If an argument disappeared, mark the matching doc `docStatus: orphaned` only
-   after confirming it is not just renamed or moved.
+5. If an argument disappeared, delete the matching doc only after confirming it
+   is not just renamed or moved.
 
 6. After the docs match the new generated help, update the stored snapshot and
    hash:
@@ -55,6 +55,6 @@ The final source-sync report should show `"inSync": true`.
 - If scratch notes are unavoidable, put them under
   `runtime/tmp/argument-help/`, start with `TEMPORARY - remove after task`, and
   delete them before finishing.
-- Do not mass-edit `reviewedLlamaCppCommit` or `reviewedHelpHash` in every doc.
-  The source snapshot hash is the synchronization signal.
+- Do not add `docStatus`, `reviewedLlamaCppCommit`, or `reviewedHelpHash` to
+  docs. The source snapshot hash is the synchronization signal.
 - Prefer `rg` and targeted source inspection in the configured llama.cpp repo.

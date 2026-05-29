@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--ui-mcp-proxy"
 title: "--ui-mcp-proxy"
 summary: "Экспериментально включает MCP CORS proxy для Web UI на `/cors-proxy`. Не следует включать в недоверенной сети."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null

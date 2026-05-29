@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-cpu-moe"
 title: "--spec-draft-cpu-moe"
 summary: "Оставляет все MoE expert tensor draft-модели на CPU. Это shorthand поверх tensor buffer override для экономии VRAM на MoE draft-моделях."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "flag"
 valueHint: null

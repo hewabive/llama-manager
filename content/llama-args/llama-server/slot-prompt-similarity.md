@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--slot-prompt-similarity"
 title: "--slot-prompt-similarity"
 summary: "Порог совпадения нового prompt с уже закешированным prompt слота для повторного выбора этого слота. `0.0` отключает выбор по similarity."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "SIMILARITY"

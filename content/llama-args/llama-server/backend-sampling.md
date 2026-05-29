@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--backend-sampling"
 title: "--backend-sampling"
 summary: "Экспериментально переносит совместимые sampler-операции в backend llama.cpp. Режим может автоматически отключаться для конкретного запроса при grammar, reasoning budget, speculative decoding или pre-sampling logprobs."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "flag"
 valueHint: null

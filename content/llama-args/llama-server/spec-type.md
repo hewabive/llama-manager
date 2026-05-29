@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-type"
 title: "--spec-type"
 summary: "Выбирает реализации speculative decoding: draft-модель, MTP или n-gram варианты. Значение задается списком через запятую и применяется при инициализации speculative-контекста сервера."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "list"
 valueHint: "none,draft-simple,draft-eagle3,draft-mtp,ngram-simple,ngram-map-k,ngram-map-k4v,ngram-mod,ngram-cache"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--reasoning-budget-message"
 title: "--reasoning-budget-message"
 summary: "Сообщение, которое sampler вставляет перед end-of-thinking tag, когда `--reasoning-budget` исчерпан. Не действует без активного reasoning budget и thinking tags в template."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "MESSAGE"

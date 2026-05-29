@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-type-v"
 title: "--spec-draft-type-v"
 summary: "Задает тип данных V-части KV-cache для draft-модели или MTP draft-контекста. Используется отдельно от `--cache-type-v` основной модели."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "enum"
 valueHint: "TYPE"

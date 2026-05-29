@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--context-shift"
 title: "--context-shift"
 summary: "Разрешает сдвиг контекста при бесконечной генерации, чтобы не останавливаться на заполнении `n_ctx`. По умолчанию выключено."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--argument-name"
 title: "--argument-name"
 summary: Короткое техническое резюме в 1-2 предложения.
-docStatus: draft
-reviewedHelpHash: null
-reviewedLlamaCppCommit: null
 category: null
 valueType: null
 valueHint: null
@@ -71,13 +68,13 @@ related:
 llama-server --argument-name value
 ```
 
-## Что проверить агенту перед переводом в current
+## Что проверить агенту перед завершением
 
 - Найти объявление аргумента в актуальном исходном коде llama.cpp.
 - Проверить недавние PR/issues/discussions по аргументу.
 - Запустить тестовый `llama-server` с аргументом и записать наблюдения.
 - Добавить практические примеры и типовые ошибки.
-- Обновить `summary`, `related`, `reviewedLlamaCppCommit` и поставить `docStatus: current`.
+- Обновить `summary` и `related`.
 
 ## Источники
 

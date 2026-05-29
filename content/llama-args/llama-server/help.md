@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--help"
 title: "--help"
 summary: "Печатает usage/help для текущего `llama-server` и завершает процесс с кодом 0. Это диагностический флаг, а не параметр постоянной конфигурации сервера."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "flag"
 valueHint: null
@@ -57,7 +54,7 @@ print usage and exit
 ## Когда использовать
 
 - Проверить фактический набор аргументов у установленного бинарника.
-- Сверить `reviewedHelpHash` или изменения после обновления llama.cpp.
+- Сверить изменения после обновления llama.cpp через source snapshot.
 - Быстро увидеть env-переменные и default values из текущей сборки.
 
 ## Влияние на производительность и память

@@ -6,9 +6,8 @@ import { argumentDocsDirectory, parseArgumentDocFile } from "./docs.js";
 
 const stalePatterns = [
   /Этот файл создан автоматически/i,
-  /Перед переводом `docStatus`/i,
   /Для точного описания механики нужно проверить/i,
-  /Что проверить агенту перед переводом/i,
+  /Что проверить агенту перед завершением/i,
   /Автоматически связанные аргументы/i,
   /\bTODO\b/i,
 ];
@@ -18,13 +17,16 @@ const requiredFrontmatter = [
   "primaryName",
   "title",
   "summary",
-  "docStatus",
-  "reviewedHelpHash",
-  "reviewedLlamaCppCommit",
   "category",
   "valueType",
   "aliases",
   "related",
+];
+
+const obsoleteFrontmatter = [
+  "docStatus",
+  "reviewedHelpHash",
+  "reviewedLlamaCppCommit",
 ];
 
 const validPresetSupport = new Set([
@@ -47,7 +49,7 @@ function hasFlag(name: string) {
 
 function argValue(name: string) {
   const index = process.argv.indexOf(name);
-  return index === -1 ? null : process.argv[index + 1] ?? null;
+  return index === -1 ? null : (process.argv[index + 1] ?? null);
 }
 
 function docFilesInDirectory() {
@@ -119,10 +121,18 @@ function lintFile(path: string) {
     }
   }
 
-  const status = stringValue(parsed.frontmatter.docStatus);
   const summary = stringValue(parsed.frontmatter.summary);
-  const reviewedCommit = stringValue(parsed.frontmatter.reviewedLlamaCppCommit);
   const presetSupport = stringValue(parsed.frontmatter.presetSupport);
+
+  for (const key of obsoleteFrontmatter) {
+    if (key in parsed.frontmatter) {
+      issues.push({
+        path,
+        severity: "error",
+        message: `obsolete frontmatter field: ${key}`,
+      });
+    }
+  }
 
   if (presetSupport && !validPresetSupport.has(presetSupport)) {
     issues.push({
@@ -144,19 +154,11 @@ function lintFile(path: string) {
     });
   }
 
-  if (["current", "needs-review"].includes(status) && !reviewedCommit) {
-    issues.push({
-      path,
-      severity: "error",
-      message: `${status} doc must set reviewedLlamaCppCommit`,
-    });
-  }
-
   for (const pattern of stalePatterns) {
     if (pattern.test(raw)) {
       issues.push({
         path,
-        severity: status === "draft" ? "warning" : "error",
+        severity: "error",
         message: `stale generated text matched ${pattern}`,
       });
     }

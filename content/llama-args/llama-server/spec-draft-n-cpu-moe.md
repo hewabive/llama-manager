@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-n-cpu-moe"
 title: "--spec-draft-n-cpu-moe"
 summary: "Оставляет MoE expert tensor первых N слоев draft-модели на CPU. Полезно для частичной экономии VRAM без полного CPU-размещения всех experts."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--cpu-strict"
 title: "--cpu-strict"
 summary: "Включает strict CPU placement для основного CPU-профиля: потоки получают отдельные CPU из affinity mask по кругу, а не всю маску целиком."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: "<0|1>"

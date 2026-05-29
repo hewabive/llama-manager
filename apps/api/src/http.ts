@@ -355,7 +355,6 @@ app.get("/api/llama-args/docs/:primaryName", (c) => {
       data: readArgumentEngineeringDoc({
         primaryName,
         option,
-        currentLlamaCppCommit: option?.doc.currentLlamaCppCommit ?? null,
       }),
     });
   } catch (error) {
@@ -366,7 +365,7 @@ app.get("/api/llama-args/docs/:primaryName", (c) => {
 app.get("/api/llama-args/docs-sync", (c) => {
   try {
     return c.json({
-      data: getLlamaArgumentDocsSyncReport(c.req.query("binaryPath")),
+      data: getLlamaArgumentDocsSyncReport(),
     });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);

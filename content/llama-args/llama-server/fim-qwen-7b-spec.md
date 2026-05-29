@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--fim-qwen-7b-spec"
 title: "--fim-qwen-7b-spec"
 summary: "Встроенный пресет Qwen2.5-Coder 7B Q8_0 с Qwen2.5-Coder 0.5B draft-моделью для speculative decoding."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null

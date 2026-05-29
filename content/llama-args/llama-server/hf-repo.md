@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--hf-repo"
 title: "--hf-repo"
 summary: "Выбирает основной GGUF из Hugging Face repo в формате `<user>/<model>[:quant]`. Downloader использует HF cache, умеет split GGUF и автоматически подбирает `mmproj`, если он найден и не отключен."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "<user>/<model>[:quant]"

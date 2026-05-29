@@ -2,7 +2,6 @@ import type {
   LlamaArgumentDefault,
   LlamaArgumentDefaults,
   LlamaArgumentDocsSyncReport,
-  LlamaArgumentDocStatus,
   LlamaArgumentOption,
   LlamaArgumentPresetSupport,
 } from "@llama-manager/core";
@@ -17,7 +16,6 @@ import {
   Paper,
   ScrollArea,
   Select,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -148,7 +146,6 @@ function optionSearchText(option: LlamaArgumentOption) {
     option.help,
     option.helpRu,
     option.notes,
-    option.doc.status,
     option.doc.summary,
   ]
     .filter(Boolean)
@@ -161,18 +158,6 @@ function sourceColor(source: LlamaArgumentOption["helpRuSource"]) {
   if (source === "registry") return "blue";
   if (source === "fallback") return "yellow";
   return "gray";
-}
-
-function docStatusColor(status: LlamaArgumentDocStatus) {
-  if (status === "current") return "green";
-  if (status === "needs-review") return "yellow";
-  if (status === "draft") return "blue";
-  if (status === "deprecated" || status === "orphaned") return "orange";
-  return "gray";
-}
-
-function docStatusNeedsAttention(status: LlamaArgumentDocStatus) {
-  return status !== "current";
 }
 
 function sourceSyncColor(report: LlamaArgumentDocsSyncReport) {
@@ -194,18 +179,6 @@ function sourceSyncLabel(report: LlamaArgumentDocsSyncReport) {
   if (!report.source.isGitRepo) return "not git";
   if (report.source.dirty) return "source dirty";
   return "source clean";
-}
-
-function statusCountBadges(report: LlamaArgumentDocsSyncReport) {
-  const counts = report.statusCounts;
-  return [
-    { key: "current", label: "current", value: counts.current },
-    { key: "needsReview", label: "needs review", value: counts.needsReview },
-    { key: "draft", label: "draft", value: counts.draft },
-    { key: "missing", label: "missing", value: counts.missing },
-    { key: "deprecated", label: "deprecated", value: counts.deprecated },
-    { key: "orphaned", label: "orphaned", value: counts.orphaned },
-  ];
 }
 
 function presetSupportLabel(support: LlamaArgumentPresetSupport) {
@@ -255,14 +228,6 @@ function ArgumentBadges(props: { option: LlamaArgumentOption }) {
           ? props.option.compatibility.metadataSource
           : "not in binary"}
       </Badge>
-      {docStatusNeedsAttention(props.option.doc.status) && (
-        <Badge
-          color={docStatusColor(props.option.doc.status)}
-          variant="outline"
-        >
-          docs {props.option.doc.status}
-        </Badge>
-      )}
       {props.option.control.presetSupport !== "supported" && (
         <Badge
           color={presetSupportColor(props.option.control.presetSupport)}
@@ -377,22 +342,6 @@ function SourceSyncPanel(props: {
   onAudit: () => void;
 }) {
   const report = props.report;
-  const docsNeedingAttention = report
-    ? report.statusCounts.needsReview +
-      report.statusCounts.draft +
-      report.statusCounts.missing +
-      report.statusCounts.orphaned
-    : 0;
-  const docSamples = report
-    ? [
-        ...report.needsReview.slice(0, 8),
-        ...report.draft.slice(0, Math.max(0, 8 - report.needsReview.length)),
-        ...report.missing.slice(
-          0,
-          Math.max(0, 8 - report.needsReview.length - report.draft.length),
-        ),
-      ]
-    : [];
 
   return (
     <Paper withBorder p="md" radius="sm">
@@ -406,7 +355,7 @@ function SourceSyncPanel(props: {
               </Text>
             ) : (
               <Text c="dimmed" size="sm">
-                Waiting for audit data
+                Waiting for source data
               </Text>
             )}
           </div>
@@ -465,12 +414,6 @@ function SourceSyncPanel(props: {
               {report.source.currentCommit && (
                 <Code>{report.source.currentCommit.slice(0, 12)}</Code>
               )}
-              <Badge
-                color={docsNeedingAttention > 0 ? "yellow" : "green"}
-                variant="light"
-              >
-                {docsNeedingAttention} doc issues
-              </Badge>
             </Group>
 
             {report.helpSource.inSync === false && (
@@ -505,25 +448,9 @@ function SourceSyncPanel(props: {
               </Text>
             )}
 
-            <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="xs">
-              {statusCountBadges(report).map((item) => (
-                <Badge
-                  key={item.key}
-                  color={docStatusColor(
-                    item.key === "needsReview"
-                      ? "needs-review"
-                      : (item.key as LlamaArgumentDocStatus),
-                  )}
-                  variant={item.value > 0 ? "light" : "outline"}
-                >
-                  {item.label}: {item.value}
-                </Badge>
-              ))}
-            </SimpleGrid>
-
             <details className="argument-secondary-details">
               <Text component="summary" fw={600} size="sm">
-                Snapshot, source and docs needing attention
+                Snapshot and source
               </Text>
               <Stack gap="xs" mt="xs">
                 <Group gap="xs" wrap="wrap">
@@ -558,44 +485,6 @@ function SourceSyncPanel(props: {
                   </Text>
                   <Code className="code-wrap">{report.docsDirectory}</Code>
                 </Group>
-                <Group gap="xs" wrap="wrap">
-                  <Text c="dimmed" size="xs">
-                    Binary
-                  </Text>
-                  <Code className="code-wrap">{report.binaryPath}</Code>
-                </Group>
-                {docSamples.length > 0 && (
-                  <Stack gap={4}>
-                    {docSamples.map((item) => (
-                      <Group key={item.primaryName} gap="xs" wrap="wrap">
-                        <Badge
-                          color={docStatusColor(item.status)}
-                          variant="outline"
-                        >
-                          {item.status}
-                        </Badge>
-                        <Code>{item.primaryName}</Code>
-                        {item.reviewedLlamaCppCommit && (
-                          <Text c="dimmed" size="xs">
-                            reviewed {item.reviewedLlamaCppCommit.slice(0, 12)}
-                          </Text>
-                        )}
-                      </Group>
-                    ))}
-                  </Stack>
-                )}
-                {report.orphaned.length > 0 && (
-                  <Stack gap={4}>
-                    {report.orphaned.slice(0, 8).map((item) => (
-                      <Group key={item.path} gap="xs" wrap="wrap">
-                        <Badge color="orange" variant="outline">
-                          orphaned
-                        </Badge>
-                        <Code>{item.primaryName ?? item.slug}</Code>
-                      </Group>
-                    ))}
-                  </Stack>
-                )}
               </Stack>
             </details>
           </Stack>
@@ -712,9 +601,8 @@ export function ArgumentsView() {
 
   const argsCatalog = argsCatalogQuery.data?.data;
   const docsSyncQuery = useQuery({
-    queryKey: ["llama-arg-docs-sync", activeBinaryPathKey],
-    queryFn: () => getLlamaArgumentDocsSyncReport(activeBinaryPathKey),
-    enabled: Boolean(argsCatalog),
+    queryKey: ["llama-arg-docs-sync"],
+    queryFn: () => getLlamaArgumentDocsSyncReport(),
     retry: false,
     staleTime: 30_000,
   });
@@ -1623,18 +1511,6 @@ export function ArgumentsView() {
                   <Text fw={600} size="sm">
                     Engineering help
                   </Text>
-                  {docStatusNeedsAttention(
-                    selectedDoc?.status ?? selectedOption.doc.status,
-                  ) && (
-                    <Badge
-                      color={docStatusColor(
-                        selectedDoc?.status ?? selectedOption.doc.status,
-                      )}
-                      variant="light"
-                    >
-                      {selectedDoc?.status ?? selectedOption.doc.status}
-                    </Badge>
-                  )}
                 </Group>
 
                 {selectedDocQuery.isFetching && (

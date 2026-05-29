@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-simple-min-hits"
 title: "--spec-ngram-simple-min-hits"
 summary: "Параметр парсится в `common_params.speculative.ngram_simple.min_hits`, но в текущем commit не влияет на алгоритм `ngram-simple`: runtime config передает только `size_n` и `size_m`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

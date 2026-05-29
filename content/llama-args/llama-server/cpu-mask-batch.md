@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--cpu-mask-batch"
 title: "--cpu-mask-batch"
 summary: "Задает CPU affinity для batch/prompt CPU-профиля как hex-маску. Если batch-маска не задана, batch-профиль наследует основную маску `--cpu-mask`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "M"

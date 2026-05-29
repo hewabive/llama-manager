@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--lora-init-without-apply"
 title: "--lora-init-without-apply"
 summary: "Загружает LoRA adapters в память, но не применяет их к контексту на старте. Их можно включить позже через `POST /lora-adapters` или per-request `lora`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null

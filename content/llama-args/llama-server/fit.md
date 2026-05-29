@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--fit"
 title: "--fit"
 summary: "Включает автоматический подбор незаданных параметров под доступную память устройства. По умолчанию включен и может изменить `n_gpu_layers`, `tensor_split` и context size перед загрузкой модели."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: "[on|off]"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--control-vector"
 title: "--control-vector"
 summary: "Загружает control vector GGUF со strength `1.0` и применяет его к слоям модели. Несколько файлов можно передать CSV-списком."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "list"
 valueHint: "FNAME"

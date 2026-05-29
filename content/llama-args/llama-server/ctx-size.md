@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--ctx-size"
 title: "--ctx-size"
 summary: "Общий размер контекста, который выделяется для llama-context. В обычном KV-режиме он делится между слотами, а при `--kv-unified` становится размером общего KV-буфера."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"

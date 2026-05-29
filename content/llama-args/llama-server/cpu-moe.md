@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--cpu-moe"
 title: "--cpu-moe"
 summary: "Оставляет все веса Mixture of Experts на CPU через tensor buffer override для MoE expert tensors. Полезно для экономии VRAM на MoE-моделях, но обычно увеличивает latency."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "flag"
 valueHint: null

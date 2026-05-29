@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--chat-template"
 title: "--chat-template"
 summary: "Задает chat template вручную и тем самым переопределяет шаблон из metadata GGUF. В Jinja-режиме это полноценный Jinja template, без `--jinja` принимаются только известные встроенные имена шаблонов."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "JINJA_TEMPLATE"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-poll-batch"
 title: "--spec-draft-poll-batch"
 summary: "Задает polling для batch/prompt CPU-профиля draft-модели. Help показывает `<0|1>` и fallback от `--spec-draft-poll`; обработчик сохраняет целое значение в `uint32_t`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "boolean"
 valueHint: "<0|1>"

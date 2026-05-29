@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-type-k"
 title: "--spec-draft-type-k"
 summary: "Задает тип данных K-части KV-cache для draft-модели или MTP draft-контекста. Квантованные типы уменьшают память draft-контекста, но могут менять скорость и acceptance."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "enum"
 valueHint: "TYPE"

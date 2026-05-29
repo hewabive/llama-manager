@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--timeout"
 title: "--timeout"
 summary: "Read/write timeout HTTP-сервера в секундах. Одно значение применяется сразу к чтению и записи ответа."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"

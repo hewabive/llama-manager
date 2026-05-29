@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-prio"
 title: "--spec-draft-prio"
 summary: "Задает scheduler priority для generation CPU-профиля draft-модели: `0` normal, `1` medium, `2` high, `3` realtime. В отличие от основного `--prio`, значение `-1` здесь запрещено."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-size-n"
 title: "--spec-ngram-size-n"
 summary: "Удаленный legacy-аргумент. В текущем llama.cpp его использование завершает парсинг ошибкой; вместо него нужно задавать variant-specific `--spec-ngram-*-size-n` или `--spec-ngram-mod-n-match`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

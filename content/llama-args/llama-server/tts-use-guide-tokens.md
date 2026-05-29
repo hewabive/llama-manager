@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--tts-use-guide-tokens"
 title: "--tts-use-guide-tokens"
 summary: "Включает guide tokens для TTS vocoder pipeline, чтобы улучшить word recall. Имеет смысл только в TTS-сценариях с vocoder/model setup, не влияет на обычный chat или embeddings."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null

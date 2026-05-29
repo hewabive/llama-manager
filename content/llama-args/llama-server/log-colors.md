@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--log-colors"
 title: "--log-colors"
 summary: "Управляет ANSI-цветами common logger: `on`, `off` или `auto`. Режим `auto` включает цвета только для terminal output."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "[on|off|auto]"

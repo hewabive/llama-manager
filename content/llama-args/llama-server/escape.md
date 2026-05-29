@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--escape"
 title: "--escape"
 summary: "Включает или отключает обработку escape-последовательностей в prompt-related CLI строках. По умолчанию включено; `--no-escape` оставляет `\\n`, `\\t` и похожие последовательности буквальным текстом."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: null

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--mirostat-ent"
 title: "--mirostat-ent"
 summary: "Задает целевую энтропию Mirostat, параметр `tau`. Используется только в режимах `--mirostat 1` и `--mirostat 2`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

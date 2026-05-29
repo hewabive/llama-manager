@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-mod-n-max"
 title: "--spec-ngram-mod-n-max"
 summary: "Максимальная длина черновика, который `ngram-mod` может предложить за один speculative шаг. Ограничивает объем проверки главным контекстом и должен быть согласован с `--spec-ngram-mod-n-min` и `--spec-draft-n-max`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-hf"
 title: "--spec-draft-hf"
 summary: "Задает Hugging Face repo для draft-модели в формате `<user>/<model>[:quant]`. Работает как `--hf-repo`, но заполняет параметры draft-модели и скачивает GGUF перед загрузкой speculative-контекста."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "string"
 valueHint: "<user>/<model>[:quant]"

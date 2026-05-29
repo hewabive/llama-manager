@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--fim-qwen-1.5b-default"
 title: "--fim-qwen-1.5b-default"
 summary: "Встроенный пресет для Qwen2.5-Coder 1.5B Q8_0. Задает HF repo/file, порт 8012, auto context и cache reuse для FIM/code сценариев."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null

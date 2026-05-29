@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--logit-bias"
 title: "--logit-bias"
 summary: "Сдвигает logit конкретного token id до остальных CPU samplers. CLI принимает форму `TOKEN_ID+BIAS` или `TOKEN_ID-BIAS`; HTTP API дополнительно принимает массивы, строки и OpenAI-style объект."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "string"
 valueHint: "TOKEN_ID(+/-)BIAS"

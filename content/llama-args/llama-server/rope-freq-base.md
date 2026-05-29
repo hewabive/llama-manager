@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--rope-freq-base"
 title: "--rope-freq-base"
 summary: "Переопределяет базовую частоту RoPE (`rope_freq_base`) для контекста. Значение `0` или отсутствие аргумента оставляет частоту из метаданных модели."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"

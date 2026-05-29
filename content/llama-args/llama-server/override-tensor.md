@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--override-tensor"
 title: "--override-tensor"
 summary: "Принудительно задает buffer type для тензоров, имена которых совпадают с regex-паттерном. Это опасный низкоуровневый инструмент для ручного размещения весов."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "list"
 valueHint: "<tensor name pattern>=<buffer type>,..."

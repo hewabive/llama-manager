@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--split-mode"
 title: "--split-mode"
 summary: "Выбирает стратегию распределения модели между несколькими GPU: один GPU, послойное распределение, row split или экспериментальный tensor parallelism."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "enum"
 valueHint: "{none,layer,row,tensor}"

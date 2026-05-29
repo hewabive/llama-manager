@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--reverse-prompt"
 title: "--reverse-prompt"
 summary: "Добавляет stop/anti-prompt строку, на которой generation останавливается. В server это становится default stop sequence для completion/chat задач, если request не передал собственный `stop`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "string"
 valueHint: "PROMPT"

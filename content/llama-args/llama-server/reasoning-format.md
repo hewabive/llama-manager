@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--reasoning-format"
 title: "--reasoning-format"
 summary: "Выбирает, как server распознает и возвращает thought/reasoning теги в ответе. `none` оставляет все в content, `deepseek` выносит мысли в `reasoning_content`, `deepseek-legacy` дублирует legacy `<think>` в content."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "enum"
 valueHint: "FORMAT"

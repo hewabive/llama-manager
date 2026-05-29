@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-cpu-strict-batch"
 title: "--spec-draft-cpu-strict-batch"
 summary: "Переключает strict CPU placement для batch/prompt CPU-профиля draft-модели. Help задает fallback от `--spec-draft-cpu-strict`, но текущий server load path не копирует этот флаг явно в draft runtime."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "boolean"
 valueHint: "<0|1>"

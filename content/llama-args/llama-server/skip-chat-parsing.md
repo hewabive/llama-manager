@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--skip-chat-parsing"
 title: "--skip-chat-parsing"
 summary: "Принудительно использует pure content parser для chat responses. Formatting template остается, но reasoning и tool calls не извлекаются в отдельные поля."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null

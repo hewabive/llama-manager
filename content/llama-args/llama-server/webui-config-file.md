@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--webui-config-file"
 title: "--webui-config-file"
 summary: "Deprecated-алиас для `--ui-config-file`: читает JSON-настройки Web UI из файла. Новое имя предпочтительнее."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "PATH"

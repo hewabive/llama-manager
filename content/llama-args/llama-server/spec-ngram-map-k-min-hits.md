@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-map-k-min-hits"
 title: "--spec-ngram-map-k-min-hits"
 summary: "Параметр сохраняется в конфигурации `ngram-map-k`, но в текущем коде не фильтрует drafts: ветка `key_only` создает draft до проверки `min_hits`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

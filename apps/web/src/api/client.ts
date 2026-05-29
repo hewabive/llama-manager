@@ -247,13 +247,9 @@ export async function getLlamaArgumentDoc(
   );
 }
 
-export async function getLlamaArgumentDocsSyncReport(binaryPath?: string) {
-  const params = new URLSearchParams({
-    ...(binaryPath ? { binaryPath } : {}),
-  });
-  const query = params.size > 0 ? `?${params.toString()}` : "";
+export async function getLlamaArgumentDocsSyncReport() {
   return request<{ data: LlamaArgumentDocsSyncReport }>(
-    `/api/llama-args/docs-sync${query}`,
+    "/api/llama-args/docs-sync",
   );
 }
 

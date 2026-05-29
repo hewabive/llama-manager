@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--model"
 title: "--model"
 summary: "Задает локальный путь к основному GGUF-файлу модели. Это базовый источник весов, если модель не выбирается через `--hf-repo`, `--model-url` или `--docker-repo`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "path"
 valueHint: "FNAME"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--flash-attn"
 title: "--flash-attn"
 summary: "Управляет Flash Attention: `auto`, принудительно `on` или принудительно `off`. Режим влияет на создание context, совместимость KV-cache и tensor split."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: "[on|off|auto]"

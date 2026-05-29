@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--op-offload"
 title: "--op-offload"
 summary: "Включает или отключает перенос host tensor operations на устройство в scheduler. По умолчанию включено; `--no-op-offload` оставляет такие операции на host."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: null

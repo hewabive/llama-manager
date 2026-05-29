@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--image-min-tokens"
 title: "--image-min-tokens"
 summary: "Задает нижнюю границу числа токенов на изображение для vision-моделей с dynamic resolution. По умолчанию значение читается из projector/model metadata."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "N"

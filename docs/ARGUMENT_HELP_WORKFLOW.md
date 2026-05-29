@@ -20,9 +20,8 @@ content/llama-args/source/server-help.generated.md
 content/llama-args/source/help-source.json
 ```
 
-The stored hash is the only automatic stale signal. `reviewedHelpHash` and
-`reviewedLlamaCppCommit` in individual Markdown files are historical diagnostics,
-not mass-review triggers.
+The stored hash is the only automatic stale signal. Individual Markdown files do
+not carry review statuses or per-file reviewed hashes.
 
 ## User Signal
 
@@ -34,8 +33,8 @@ help block from the configured source repo.
   match the current llama.cpp source.
 - Missing source/snapshot: show a source-sync error.
 
-The app does not mark every argument `needs-review` when llama.cpp gets a new
-commit.
+The app does not mark individual argument docs as needing review when llama.cpp
+gets a new commit.
 
 ## Agent Workflow
 
@@ -55,7 +54,8 @@ pnpm --filter @llama-manager/api args:docs:quality
 ```
 
 The agent reviews the generated help diff, edits only affected Engineering help
-files, then writes the new snapshot/hash with `--write`.
+files, deletes docs for removed arguments after checking they were not renamed,
+then writes the new snapshot/hash with `--write`.
 
 ## Hygiene Rules
 
@@ -70,6 +70,7 @@ files, then writes the new snapshot/hash with `--write`.
 ## Completion Criteria
 
 - The generated help diff has been reviewed.
-- Affected docs are updated or intentionally marked `orphaned`.
+- Affected docs are updated.
+- Docs for removed arguments are deleted, not kept with a legacy status.
 - `args:docs:source-sync` reports `"inSync": true`.
 - `args:docs:quality` passes.

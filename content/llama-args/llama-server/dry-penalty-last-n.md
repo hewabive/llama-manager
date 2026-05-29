@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--dry-penalty-last-n"
 title: "--dry-penalty-last-n"
 summary: "Ограничивает, сколько последних токенов DRY сканирует в поиске повторов. `0` отключает DRY penalty по истории, `-1` в server task заменяется на размер контекста слота."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

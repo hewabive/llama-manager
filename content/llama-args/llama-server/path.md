@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--path"
 title: "--path"
 summary: "Каталог статических файлов, которые `llama-server` будет отдавать вместо встроенных UI-ассетов. Применяется только когда Web UI включен."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "path"
 valueHint: "PATH"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-mod-n-min"
 title: "--spec-ngram-mod-n-min"
 summary: "Минимальная длина черновика для `ngram-mod`: если общий n-gram hash pool не может продолжить последовательность хотя бы на это число токенов, черновик отбрасывается. Работает только при включенном `--spec-type ngram-mod` или `--spec-default`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

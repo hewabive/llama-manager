@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--offline"
 title: "--offline"
 summary: "Запрещает сетевые обращения общего downloader-а и заставляет использовать уже подготовленный cache. Применяется к HF/URL downloads, включая `mmproj`, draft и vocoder модели."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "flag"
 valueHint: null

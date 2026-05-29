@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--override-kv"
 title: "--override-kv"
 summary: "Переопределяет отдельные GGUF metadata keys до загрузки модели. Формат строгий: `KEY=TYPE:VALUE`, типы только `int`, `float`, `bool`, `str`; ошибка формата останавливает запуск."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "list"
 valueHint: "KEY=TYPE:VALUE,..."

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--dynatemp-range"
 title: "--dynatemp-range"
 summary: "Включает динамическую температуру вокруг `--temp`: фактическая температура выбирается по энтропии распределения в диапазоне `[max(0, temp-range), temp+range]`. `0.0` отключает dynamic temperature."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

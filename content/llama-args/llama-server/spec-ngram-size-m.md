@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-size-m"
 title: "--spec-ngram-size-m"
 summary: "Удаленный legacy-аргумент общего размера m-gram. Текущий `llama-server` отклоняет его; используйте `--spec-ngram-simple-size-m`, `--spec-ngram-map-k-size-m` или `--spec-ngram-map-k4v-size-m`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

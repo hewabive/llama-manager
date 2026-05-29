@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--log-prefix"
 title: "--log-prefix"
 summary: "Включает или отключает prefix перед log messages. `common_init()` включает prefix по умолчанию, но paired flags позволяют явно управлять форматом."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: null

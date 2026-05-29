@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-simple-size-n"
 title: "--spec-ngram-simple-size-n"
 summary: "Размер n-gram ключа для `ngram-simple`: сколько последних токенов используется для поиска предыдущего совпадения в истории. Работает только при включенном `--spec-type ngram-simple`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

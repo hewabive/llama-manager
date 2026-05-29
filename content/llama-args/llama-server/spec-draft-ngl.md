@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-ngl"
 title: "--spec-draft-ngl"
 summary: "Управляет числом слоев draft-модели, размещаемых в VRAM. Поддерживает точное число, `auto` и `all`; применяется отдельно от `--gpu-layers` основной модели."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "string"
 valueHint: "N"

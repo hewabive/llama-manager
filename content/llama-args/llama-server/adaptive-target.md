@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--adaptive-target"
 title: "--adaptive-target"
 summary: "Целевая вероятность для experimental `adaptive_p` sampler-а. Отрицательное значение отключает адаптацию; sampler начинает работать только если явно добавить `adaptive_p` в `--samplers` или `a` в `--sampler-seq`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--mirostat"
 title: "--mirostat"
 summary: "Включает Mirostat sampling: `0` выключено, `1` Mirostat, `2` Mirostat 2.0. При включении обычная sampler chain с `top_k`, `top_p`, `typ_p`, `penalties` и `dry` не используется."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

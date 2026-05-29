@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--sleep-idle-seconds"
 title: "--sleep-idle-seconds"
 summary: "Включает sleep-on-idle: после заданного числа секунд без задач сервер выгружает модель и KV-cache, а следующий запрос будит и перезагружает модель. `-1` отключает режим, `0` и значения меньше `-1` запрещены."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "number"
 valueHint: "SECONDS"

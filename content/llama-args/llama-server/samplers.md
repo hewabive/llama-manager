@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--samplers"
 title: "--samplers"
 summary: "Задает полный порядок sampler-ов по именам через `;`. В отличие от `--sampler-seq`, явно помечает sequence как пользовательскую настройку, поэтому GGUF metadata `general.sampling.sequence` не перезапишет ее при загрузке модели."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "string"
 valueHint: "SAMPLERS"

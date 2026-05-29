@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--ignore-eos"
 title: "--ignore-eos"
 summary: "Запрещает выбор EOS/EOG токенов через logit bias `-INFINITY`, чтобы генерация не останавливалась на штатном конце потока. Длина ответа тогда должна ограничиваться `--predict`, stop-строками или клиентским `max_tokens`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "flag"
 valueHint: null

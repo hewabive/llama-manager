@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--embd-gemma-default"
 title: "--embd-gemma-default"
 summary: "Встроенный пресет для EmbeddingGemma 300M QAT Q4_0. Настраивает HF repo/file, embedding mode, порт 8011 и параметры batch/parallel/context."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "flag"
 valueHint: null

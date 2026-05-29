@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--threads-batch"
 title: "--threads-batch"
 summary: "Задает число CPU-потоков для prompt/batch processing. Если параметр не указан, batch CPU-профиль наследуется от `--threads` после постобработки."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"

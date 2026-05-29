@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--rope-freq-scale"
 title: "--rope-freq-scale"
 summary: "Задает внутренний RoPE frequency scale напрямую: контекст расширяется примерно в `1/N` раз. Это низкоуровневая форма того же поля, которое `--rope-scale` задает как обратный коэффициент."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"

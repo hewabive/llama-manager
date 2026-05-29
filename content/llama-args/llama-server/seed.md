@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--seed"
 title: "--seed"
 summary: "Задает seed RNG для sampler-ов `dist`, `xtc` и `adaptive_p`. Значение `-1` соответствует `LLAMA_DEFAULT_SEED` и дает случайный seed при инициализации sampler-а."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "SEED"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--ubatch-size"
 title: "--ubatch-size"
 summary: "Физический maximum micro-batch size для backend-вычисления. Обычно это первый параметр, который уменьшают при OOM на prompt processing."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "number"
 valueHint: "N"

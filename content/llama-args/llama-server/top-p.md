@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--top-p"
 title: "--top-p"
 summary: "Включает nucleus sampling: оставляет минимальный набор самых вероятных токенов с суммарной вероятностью не ниже P. `1.0` и выше отключают фильтр; HTTP-запрос может заменить дефолт полем `top_p`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

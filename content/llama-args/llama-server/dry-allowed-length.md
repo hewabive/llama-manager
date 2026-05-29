@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--dry-allowed-length"
 title: "--dry-allowed-length"
 summary: "Задает, сколько токенов повторяющейся последовательности DRY допускает без штрафа. Default `2` начинает штрафовать только продолжение более длинного повтора."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "number"
 valueHint: "N"

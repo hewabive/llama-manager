@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-ngram-min-hits"
 title: "--spec-ngram-min-hits"
 summary: "Удаленный legacy-аргумент общего порога hits для ngram speculative decoding. Текущий `llama-server` отклоняет его; используйте variant-specific `--spec-ngram-*-min-hits` с учетом реального поведения каждого варианта."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "N"

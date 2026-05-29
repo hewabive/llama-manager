@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--hf-file-v"
 title: "--hf-file-v"
 summary: "Выбирает конкретный GGUF-файл vocoder-модели внутри `--hf-repo-v`. Это точный путь файла в HF repo, а не локальный путь."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "path"
 valueHint: "FILE"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--spec-draft-p-split"
 title: "--spec-draft-p-split"
 summary: "Записывает split probability draft speculative decoding в `common_params.speculative.draft.p_split`. В проверенном commit значение парсится и хранится, но не используется в активной server/speculative логике."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры speculative decoding"
 valueType: "number"
 valueHint: "P"

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--cache-prompt"
 title: "--cache-prompt"
 summary: "Включает reuse KV-cache для общего prefix между запросами в слоте. По умолчанию включено и может быть переопределено в JSON-запросе `cache_prompt`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null

@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--json-schema-file"
 title: "--json-schema-file"
 summary: "Читает JSON Schema из файла, парсит ее на старте и конвертирует в grammar для constrained JSON generation. Ошибка открытия файла или невалидный JSON прерывает запуск."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Параметры сэмплинга"
 valueType: "path"
 valueHint: "FILE"

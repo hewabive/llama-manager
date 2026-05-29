@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--hf-repo-v"
 title: "--hf-repo-v"
 summary: "Выбирает Hugging Face repo для vocoder-модели, используемой аудио/TTS функциональностью. Формат и cache-поведение такие же, как у `--hf-repo`, но значение пишется в `params.vocoder.model`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "<user>/<model>[:quant]"

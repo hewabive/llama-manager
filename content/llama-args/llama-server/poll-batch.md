@@ -3,9 +3,6 @@ schema: 1
 primaryName: "--poll-batch"
 title: "--poll-batch"
 summary: "Задает polling для batch/prompt CPU-профиля. Help показывает `0|1`, но поле хранит числовой уровень `uint32_t`, как и основной `--poll`."
-docStatus: current
-reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "boolean"
 valueHint: "<0|1>"
