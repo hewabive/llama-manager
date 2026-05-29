@@ -15,6 +15,7 @@ import { createServer } from "node:net";
 import { dirname } from "node:path";
 
 import { getSystemResources } from "../system/resources.js";
+import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
 
 type PreflightOptions = {
   peers?: Instance[] | undefined;
@@ -520,6 +521,70 @@ function validateGpuLayerRequests(
   }
 }
 
+function validateArgumentCompatibility(
+  instance: Instance,
+  issues: ProcessPreflightIssue[],
+) {
+  let catalog: ReturnType<typeof getLlamaArgumentCatalog>;
+  try {
+    catalog = getLlamaArgumentCatalog(instance.binaryPath);
+  } catch (error) {
+    issues.push({
+      level: "warning",
+      field: "args",
+      message: `Unable to inspect llama-server argument compatibility: ${(error as Error).message}`,
+    });
+    return;
+  }
+
+  if (!catalog.options.some((option) => option.compatibility.presentInBinary)) {
+    return;
+  }
+
+  const optionByName = new Map(
+    catalog.options.flatMap((option) => [
+      [option.primaryName, option] as const,
+      ...option.names.map((name) => [name, option] as const),
+      ...option.compatibility.binaryNames.map((name) => [name, option] as const),
+    ]),
+  );
+
+  for (const key of Object.keys(instance.args)) {
+    if (!hasConfiguredArg(instance, key)) {
+      continue;
+    }
+    const option = optionByName.get(key);
+    if (!option) {
+      issues.push({
+        level: "warning",
+        field: `args.${key}`,
+        message:
+          "Argument was not found in the canonical registry or selected binary --help; llama-server may reject it at startup.",
+      });
+      continue;
+    }
+    if (!option.compatibility.presentInBinary) {
+      issues.push({
+        level: "error",
+        field: `args.${key}`,
+        message: `Argument ${option.primaryName} is in the canonical registry, but is not supported by the selected binary.`,
+      });
+      continue;
+    }
+    if (
+      key.startsWith("-") &&
+      option.compatibility.binaryNames.length > 0 &&
+      !option.compatibility.binaryNames.includes(key)
+    ) {
+      issues.push({
+        level: "error",
+        field: `args.${key}`,
+        message: `Argument ${key} is known as ${option.primaryName}, but this selected binary does not expose that spelling in --help. Use one of: ${option.compatibility.binaryNames.join(", ")}.`,
+      });
+    }
+  }
+}
+
 export function validateInstancePreflight(
   instance: Instance,
   options: PreflightOptions = {},
@@ -549,6 +614,7 @@ export function validateInstancePreflight(
   validatePort(instance, issues);
   validatePortConflicts(instance, issues, options.peers ?? []);
   validateKnownPathArgs(instance, issues);
+  validateArgumentCompatibility(instance, issues);
   validateGpuLayerRequests(instance, issues, options);
 
   return {

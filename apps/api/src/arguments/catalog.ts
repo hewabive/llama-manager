@@ -17,6 +17,11 @@ import {
   type CachedArgumentCatalog,
 } from "./repository.js";
 import { withArgumentDocIndex } from "./docs.js";
+import {
+  defaultArgumentControl,
+  loadArgumentRegistry,
+  registryNameMap,
+} from "./registry.js";
 
 type ParsedHelpOption = {
   category: string;
@@ -413,6 +418,23 @@ function toOption(parsed: ParsedHelpOption): LlamaArgumentOption | null {
       updatedAt: null,
       reviewedHelpHash: null,
     },
+    control: defaultArgumentControl({
+      primaryName: name,
+      valueType: inferValueType({
+        names,
+        valueHint,
+        allowedValues: values,
+        help,
+      }),
+      allowedValues: values,
+    }),
+    compatibility: {
+      metadataSource: "binary",
+      presentInBinary: true,
+      binaryPrimaryName: name,
+      binaryNames: names,
+      helpChanged: false,
+    },
     deprecated:
       /\bdeprecated\b/i.test(parsed.help) ||
       /\bdeprecated\b/i.test(parsed.optionText),
@@ -462,6 +484,13 @@ function applyHelpOverrides(options: LlamaArgumentOption[]) {
       };
     }
 
+    if (option.helpRuSource === "registry") {
+      return {
+        ...option,
+        category,
+      };
+    }
+
     const builtinHelp = helpRuOverlay[option.primaryName];
     if (builtinHelp) {
       return {
@@ -483,6 +512,93 @@ function applyHelpOverrides(options: LlamaArgumentOption[]) {
   });
 }
 
+function mergeWithArgumentRegistry(
+  binaryOptions: LlamaArgumentOption[],
+): LlamaArgumentOption[] {
+  const registry = loadArgumentRegistry();
+  const registryByName = registryNameMap(registry);
+  const matchedRegistrySlugs = new Set<string>();
+  const merged: LlamaArgumentOption[] = [];
+
+  for (const binaryOption of binaryOptions) {
+    const registryEntry =
+      binaryOption.names
+        .map((name) => registryByName.get(name) ?? registryByName.get(name.replace(/^-+/, "")))
+        .find(Boolean) ??
+      registryByName.get(binaryOption.primaryName) ??
+      null;
+
+    if (!registryEntry) {
+      merged.push({
+        ...binaryOption,
+        control: defaultArgumentControl({
+          primaryName: binaryOption.primaryName,
+          valueType: binaryOption.valueType,
+          allowedValues: binaryOption.allowedValues,
+        }),
+        compatibility: {
+          metadataSource: "binary",
+          presentInBinary: true,
+          binaryPrimaryName: binaryOption.primaryName,
+          binaryNames: binaryOption.names,
+          helpChanged: false,
+        },
+      });
+      continue;
+    }
+
+    matchedRegistrySlugs.add(registryEntry.slug);
+    const registryOption = registryEntry.option;
+    merged.push({
+      ...binaryOption,
+      primaryName: registryOption.primaryName,
+      names: registryOption.names,
+      category: registryOption.category,
+      valueHint: registryOption.valueHint,
+      valueType: registryOption.valueType,
+      env: registryOption.env,
+      allowedValues: registryOption.allowedValues,
+      helpRu: registryOption.helpRu,
+      helpRuSource: registryOption.helpRuSource,
+      control: registryOption.control,
+      compatibility: {
+        metadataSource: "registry",
+        presentInBinary: true,
+        binaryPrimaryName: binaryOption.primaryName,
+        binaryNames: binaryOption.names,
+        helpChanged: false,
+      },
+      deprecated: binaryOption.deprecated || registryOption.deprecated,
+    });
+  }
+
+  for (const registryEntry of registry) {
+    if (matchedRegistrySlugs.has(registryEntry.slug)) {
+      continue;
+    }
+    merged.push(registryEntry.option);
+  }
+
+  return merged.sort(
+    (left, right) =>
+      left.category.localeCompare(right.category) ||
+      left.primaryName.localeCompare(right.primaryName),
+  );
+}
+
+function withArgumentDocsAndCompatibility(
+  options: LlamaArgumentOption[],
+  currentHelpHash?: string,
+) {
+  return withArgumentDocIndex(options, currentHelpHash).map((option) => ({
+    ...option,
+    compatibility: {
+      ...option.compatibility,
+      helpChanged: option.doc.status === "needs-review",
+    },
+  }));
+}
+
 function toCatalog(input: {
   binaryPath: string;
   cached: CachedArgumentCatalog;
@@ -499,8 +615,8 @@ function toCatalog(input: {
       binaryModifiedAt: input.cached.binaryModifiedAt,
     },
     cache: input.cache,
-    options: withArgumentDocIndex(
-      applyHelpOverrides(input.cached.options),
+    options: withArgumentDocsAndCompatibility(
+      applyHelpOverrides(mergeWithArgumentRegistry(input.cached.options)),
       input.cached.helpHash,
     ),
   };

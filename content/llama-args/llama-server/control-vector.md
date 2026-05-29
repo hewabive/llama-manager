@@ -7,7 +7,7 @@ docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
 reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "path"
+valueType: "list"
 valueHint: "FNAME"
 aliases:
   - "--control-vector"
@@ -39,7 +39,7 @@ note: use comma-separated values to add multiple control vectors
 - Основное имя: `--control-vector`
 - Алиасы: `--control-vector`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `path`
+- Тип значения в llama-manager: `list`
 - Подсказка формата из `--help`: `FNAME`
 - Переменные окружения: не указаны
 - Значение по умолчанию: control vectors не применяются

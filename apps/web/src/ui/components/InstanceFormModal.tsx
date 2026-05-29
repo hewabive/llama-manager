@@ -278,6 +278,9 @@ export function InstanceFormModal(props: {
       for (const name of option.names) {
         map.set(name, option);
       }
+      for (const name of option.compatibility.binaryNames) {
+        map.set(name, option);
+      }
     }
     return map;
   }, [knownArgs]);
@@ -1119,7 +1122,8 @@ export function InstanceFormModal(props: {
                 }}
                 data={visibleKnownArgs.map((option) => ({
                   value: option.primaryName,
-                  label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
+                  label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
+                  disabled: !option.compatibility.presentInBinary,
                 }))}
                 nothingFoundMessage={
                   argsCatalogQuery.isFetching

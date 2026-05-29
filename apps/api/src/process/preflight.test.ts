@@ -27,6 +27,24 @@ function instance(input: Partial<Instance>): Instance {
   };
 }
 
+function writeHelpBinary(binaryPath: string, helpOutput: string) {
+  writeFileSync(
+    binaryPath,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "--help" ]; then',
+      "cat <<'LLAMA_MANAGER_HELP'",
+      helpOutput.trimEnd(),
+      "LLAMA_MANAGER_HELP",
+      "exit 0",
+      "fi",
+      "exit 0",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(binaryPath, 0o755);
+}
+
 test("validateInstancePreflight blocks configs without a model source", () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
   const binaryPath = join(dir, "llama-server");
@@ -53,6 +71,89 @@ test("validateInstancePreflight blocks configs without a model source", () => {
         field: "args",
         message:
           "No --model, --models-preset, --hf-repo or --model-url is configured",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateInstancePreflight blocks registry args missing from selected binary help", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  try {
+    writeHelpBinary(
+      binaryPath,
+      `
+common params:
+  --model FNAME   model path
+  --port PORT     server port
+`,
+    );
+    writeFileSync(modelPath, "");
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--model": modelPath,
+          "--props": "{}",
+        },
+      }),
+    );
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.--props"),
+      {
+        level: "error",
+        field: "args.--props",
+        message:
+          "Argument --props is in the canonical registry, but is not supported by the selected binary.",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateInstancePreflight blocks canonical spellings missing from selected binary help", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  try {
+    writeHelpBinary(
+      binaryPath,
+      `
+common params:
+  --model FNAME        model path
+  --n-gpu-layers N    max. number of layers to store in VRAM
+`,
+    );
+    writeFileSync(modelPath, "");
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--model": modelPath,
+          "--gpu-layers": "1",
+        },
+      }),
+      { accelerators: [] },
+    );
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.--gpu-layers"),
+      {
+        level: "error",
+        field: "args.--gpu-layers",
+        message:
+          "Argument --gpu-layers is known as --gpu-layers, but this selected binary does not expose that spelling in --help. Use one of: --n-gpu-layers.",
       },
     );
   } finally {

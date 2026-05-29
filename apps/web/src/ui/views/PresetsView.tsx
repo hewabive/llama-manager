@@ -330,7 +330,8 @@ function PresetEntryDetailModal(props: {
                   const key = presetKeyFromArgument(option);
                   return {
                     value: key,
-                    label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
+                    label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
+                    disabled: !option.compatibility.presentInBinary,
                   };
                 })}
                 nothingFoundMessage={

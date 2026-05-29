@@ -78,12 +78,28 @@ export const presetOnlyArgumentOptions: LlamaArgumentOption[] = [
       updatedAt: null,
       reviewedHelpHash: null,
     },
+    control: {
+      kind: "number",
+      cliEncoding: "value",
+      presetSupport: "preset-only",
+    },
+    compatibility: {
+      metadataSource: "registry",
+      presentInBinary: true,
+      binaryPrimaryName: null,
+      binaryNames: [],
+      helpChanged: false,
+    },
     deprecated: false,
   },
 ];
 
 export function presetKeyFromArgument(option: LlamaArgumentOption) {
-  const key = normalizePresetArgKey(option.primaryName);
+  const preferredName =
+    option.compatibility.presentInBinary && option.compatibility.binaryPrimaryName
+      ? option.compatibility.binaryPrimaryName
+      : option.primaryName;
+  const key = normalizePresetArgKey(preferredName);
   if (key === "gpu-layers" || key === "ngl") {
     return "n-gpu-layers";
   }
@@ -95,6 +111,7 @@ export function isSelectablePresetArgument(option: LlamaArgumentOption) {
   return (
     key &&
     !option.deprecated &&
+    option.compatibility.presentInBinary &&
     !managedPresetKeys.has(key) &&
     !globalPresetKeys.has(key)
   );
@@ -104,6 +121,9 @@ export function buildPresetArgOptionMap(options: LlamaArgumentOption[]) {
   const map = new Map<string, LlamaArgumentOption>();
   for (const option of options) {
     for (const name of option.names) {
+      map.set(normalizePresetArgKey(name), option);
+    }
+    for (const name of option.compatibility.binaryNames) {
       map.set(normalizePresetArgKey(name), option);
     }
     for (const env of option.env) {
@@ -313,6 +333,11 @@ export function PresetKnownArgRow(props: {
                 <Badge variant="outline" size="xs">
                   {props.option.valueType}
                 </Badge>
+                {!props.option.compatibility.presentInBinary && (
+                  <Badge color="red" variant="light" size="xs">
+                    not in binary
+                  </Badge>
+                )}
               </Group>
               <Text size="sm">{props.option.helpRu}</Text>
               {props.option.allowedValues.length > 0 && (

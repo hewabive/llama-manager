@@ -144,6 +144,7 @@ function optionSearchText(option: LlamaArgumentOption) {
 
 function sourceColor(source: LlamaArgumentOption["helpRuSource"]) {
   if (source === "override") return "green";
+  if (source === "registry") return "blue";
   if (source === "fallback") return "yellow";
   return "gray";
 }
@@ -172,6 +173,20 @@ function ArgumentBadges(props: { option: LlamaArgumentOption }) {
       )}
       <Badge color={sourceColor(props.option.helpRuSource)} variant="outline">
         {props.option.helpRuSource}
+      </Badge>
+      <Badge
+        color={
+          props.option.compatibility.presentInBinary
+            ? props.option.compatibility.metadataSource === "registry"
+              ? "blue"
+              : "gray"
+            : "red"
+        }
+        variant="outline"
+      >
+        {props.option.compatibility.presentInBinary
+          ? props.option.compatibility.metadataSource
+          : "not in binary"}
       </Badge>
       <Badge color={docStatusColor(props.option.doc.status)} variant="outline">
         docs {props.option.doc.status}

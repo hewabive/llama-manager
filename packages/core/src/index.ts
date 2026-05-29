@@ -536,6 +536,62 @@ export const LlamaArgumentValueTypeSchema = z.enum([
   "list",
 ]);
 
+export const LlamaArgumentControlKindSchema = z.enum([
+  "flag",
+  "toggle",
+  "select",
+  "number",
+  "text",
+  "path",
+  "json",
+  "csv-list",
+  "secret",
+  "two-values",
+]);
+
+export const LlamaArgumentCliEncodingSchema = z.enum([
+  "flag",
+  "value",
+  "csv",
+  "repeated",
+  "two-values",
+]);
+
+export const LlamaArgumentPresetSupportSchema = z.enum([
+  "supported",
+  "unsupported",
+  "preset-only",
+  "router-managed",
+]);
+
+export const LlamaArgumentControlSchema = z
+  .object({
+    kind: LlamaArgumentControlKindSchema,
+    cliEncoding: LlamaArgumentCliEncodingSchema,
+    presetSupport: LlamaArgumentPresetSupportSchema,
+  })
+  .default({
+    kind: "text",
+    cliEncoding: "value",
+    presetSupport: "supported",
+  });
+
+export const LlamaArgumentCompatibilitySchema = z
+  .object({
+    metadataSource: z.enum(["registry", "binary"]),
+    presentInBinary: z.boolean(),
+    binaryPrimaryName: z.string().nullable(),
+    binaryNames: z.array(z.string()),
+    helpChanged: z.boolean(),
+  })
+  .default({
+    metadataSource: "binary",
+    presentInBinary: true,
+    binaryPrimaryName: null,
+    binaryNames: [],
+    helpChanged: false,
+  });
+
 export const LlamaArgumentDocStatusSchema = z.enum([
   "missing",
   "draft",
@@ -571,9 +627,11 @@ export const LlamaArgumentOptionSchema = z.object({
   allowedValues: z.array(z.string()),
   help: z.string(),
   helpRu: z.string(),
-  helpRuSource: z.enum(["builtin", "override", "fallback"]),
+  helpRuSource: z.enum(["registry", "builtin", "override", "fallback"]),
   notes: z.string().nullable(),
   doc: LlamaArgumentDocIndexSchema,
+  control: LlamaArgumentControlSchema,
+  compatibility: LlamaArgumentCompatibilitySchema,
   deprecated: z.boolean(),
 });
 
@@ -916,6 +974,19 @@ export type BuildJobStart = z.infer<typeof BuildJobStartSchema>;
 export type BuildLogTail = z.infer<typeof BuildLogTailSchema>;
 export type LlamaArgumentValueType = z.infer<
   typeof LlamaArgumentValueTypeSchema
+>;
+export type LlamaArgumentControlKind = z.infer<
+  typeof LlamaArgumentControlKindSchema
+>;
+export type LlamaArgumentCliEncoding = z.infer<
+  typeof LlamaArgumentCliEncodingSchema
+>;
+export type LlamaArgumentPresetSupport = z.infer<
+  typeof LlamaArgumentPresetSupportSchema
+>;
+export type LlamaArgumentControl = z.infer<typeof LlamaArgumentControlSchema>;
+export type LlamaArgumentCompatibility = z.infer<
+  typeof LlamaArgumentCompatibilitySchema
 >;
 export type LlamaArgumentDocStatus = z.infer<
   typeof LlamaArgumentDocStatusSchema

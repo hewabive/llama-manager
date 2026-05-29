@@ -130,7 +130,7 @@ export function rowsToArgsWithCatalog(
       continue;
     }
 
-    const primaryName = option.primaryName;
+    const primaryName = cliNameForArgument(option);
     if (row.valueType === "null") {
       args[primaryName] = null;
       continue;
@@ -232,11 +232,18 @@ export function defaultValueForArgument(option: LlamaArgumentOption) {
   return defaultArgumentValue(option, "instance");
 }
 
+export function cliNameForArgument(option: LlamaArgumentOption) {
+  return option.compatibility.presentInBinary &&
+    option.compatibility.binaryPrimaryName
+    ? option.compatibility.binaryPrimaryName
+    : option.primaryName;
+}
+
 function rowFromArgument(option: LlamaArgumentOption): ArgRow {
   const valueType = valueTypeFromArgument(option);
   return {
     id: createUiId(),
-    key: option.primaryName,
+    key: cliNameForArgument(option),
     value: defaultValueForArgument(option),
     valueType,
   };
@@ -460,6 +467,11 @@ export function SmartArgRow(props: {
                 <Badge variant="outline" size="xs">
                   {props.option.valueType}
                 </Badge>
+                {!props.option.compatibility.presentInBinary && (
+                  <Badge color="red" variant="light" size="xs">
+                    not in binary
+                  </Badge>
+                )}
               </Group>
               <Text size="sm">{props.option.helpRu}</Text>
               {props.option.allowedValues.length > 0 && (

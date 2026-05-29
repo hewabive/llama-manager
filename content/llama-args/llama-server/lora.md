@@ -7,7 +7,7 @@ docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
 reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
 category: "Общие параметры"
-valueType: "path"
+valueType: "list"
 valueHint: "FNAME"
 aliases:
   - "--lora"
@@ -39,7 +39,7 @@ path to LoRA adapter (use comma-separated values to load multiple adapters)
 - Основное имя: `--lora`
 - Алиасы: `--lora`
 - Категория в `--help`: `Общие параметры`
-- Тип значения в llama-manager: `path`
+- Тип значения в llama-manager: `list`
 - Подсказка формата из `--help`: `FNAME`
 - Переменные окружения: не указаны
 - Значение по умолчанию: adapters не загружаются
