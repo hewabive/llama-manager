@@ -5,7 +5,7 @@ title: "--hf-token"
 summary: "Передает Hugging Face access token downloader-у как bearer token. По умолчанию значение берется из переменной окружения `HF_TOKEN`."
 docStatus: current
 reviewedHelpHash: "9f70bfb21ba6d517e235adeaa5c3bda0a93b661531673fdc4ccfcfa9aa235721"
-reviewedLlamaCppCommit: "751ebd17a58a8a513994509214373bb9e6a3d66c"
+reviewedLlamaCppCommit: "6ed481eea4cf4ed40777db2fa29e8d08eb712b3b"
 category: "Общие параметры"
 valueType: "string"
 valueHint: "TOKEN"
