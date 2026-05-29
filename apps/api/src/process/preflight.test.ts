@@ -202,6 +202,46 @@ test("validateInstancePreflight blocks preset-only keys in instance CLI args", (
   }
 });
 
+test("validateInstancePreflight blocks empty values for value arguments", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
+  const binaryPath = join(dir, "llama-server");
+  const modelPath = join(dir, "model.gguf");
+  try {
+    writeHelpBinary(
+      binaryPath,
+      `
+common params:
+  --model FNAME          model path
+  --cache-type-k TYPE    KV cache key type
+`,
+    );
+    writeFileSync(modelPath, "");
+
+    const result = validateInstancePreflight(
+      instance({
+        binaryPath,
+        cwd: dir,
+        args: {
+          "--model": modelPath,
+          "--cache-type-k": "",
+        },
+      }),
+    );
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.issues.find((issue) => issue.field === "args.--cache-type-k"),
+      {
+        level: "error",
+        field: "args.--cache-type-k",
+        message: "Argument --cache-type-k requires a value.",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("validateInstanceStartPreflight allows an edited instance to keep its active port", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
   const binaryPath = join(dir, "llama-server");

@@ -46,6 +46,7 @@ import {
   updateLlamaArgumentDefaults,
   updateLlamaArgumentOverride,
 } from "../../api/client";
+import { ArgumentValueControl } from "../components/ArgumentValueControl";
 import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultBinaryPath } from "../constants";
 import { argumentDefaultFromOption } from "../utils/argument-defaults";
@@ -339,10 +340,11 @@ function defaultNeedsValue(valueType: LlamaArgumentDefault["valueType"]) {
 }
 
 function validateArgumentDefault(input: LlamaArgumentDefault) {
-  if (defaultNeedsValue(input.valueType) && !input.value.trim()) {
-    return "Default value is required for this argument";
-  }
-  if (input.valueType === "number" && !Number.isFinite(Number(input.value))) {
+  if (
+    input.valueType === "number" &&
+    input.value.trim() &&
+    !Number.isFinite(Number(input.value))
+  ) {
     return "Default value must be a number";
   }
   return null;
@@ -859,9 +861,30 @@ export function ArgumentsView() {
     const needsValue = defaultNeedsValue(valueType);
     const draftKey = defaultDraftKey(scope, suggested.key);
     const draftValue = defaultValueDrafts[draftKey] ?? value;
+    const commitOnChange =
+      selectedOption.valueType === "boolean" ||
+      (selectedOption.valueType === "enum" &&
+        selectedOption.allowedValues.length > 0);
+
+    function setDraftValue(nextValue: string) {
+      setDefaultValueDrafts((drafts) => ({
+        ...drafts,
+        [draftKey]: nextValue,
+      }));
+    }
+
+    function commitValue(nextValue: string) {
+      if (!current) {
+        return;
+      }
+      saveArgumentDefault(scope, true, {
+        value: nextValue,
+        valueType,
+      });
+    }
 
     return (
-      <Group justify="space-between" align="flex-end" gap="xs" wrap="wrap">
+      <Group align="center" gap="xs" wrap="wrap">
         <Switch
           label={label}
           checked={Boolean(current)}
@@ -873,37 +896,30 @@ export function ArgumentsView() {
             })
           }
         />
-        <Group gap="xs" align="flex-end" wrap="wrap">
-          <Badge variant="outline">{suggested.key}</Badge>
-          {needsValue && (
-            <TextInput
-              key={`${scope}-${selectedOption.primaryName}-${current?.value ?? "default"}`}
-              aria-label={`${label} value`}
-              label="Default value"
-              value={draftValue}
-              disabled={defaultsMutation.isPending}
-              size="xs"
-              w={180}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                setDefaultValueDrafts((drafts) => ({
-                  ...drafts,
-                  [draftKey]: value,
-                }));
-              }}
-              onBlur={(event) => {
-                const value = event.currentTarget.value;
-                if (!current) {
-                  return;
-                }
-                saveArgumentDefault(scope, true, {
-                  value,
-                  valueType,
-                });
-              }}
-            />
-          )}
-        </Group>
+        {needsValue && (
+          <ArgumentValueControl
+            key={`${scope}-${selectedOption.primaryName}`}
+            option={selectedOption}
+            scope={scope}
+            ariaLabel={`${label} default value`}
+            value={draftValue}
+            allowEmpty
+            disabled={defaultsMutation.isPending}
+            size="xs"
+            style={{ flex: "1 1 180px", minWidth: 160 }}
+            onChange={(nextValue) => {
+              setDraftValue(nextValue);
+              if (commitOnChange) {
+                commitValue(nextValue);
+              }
+            }}
+            onBlur={(nextValue) => {
+              if (!commitOnChange) {
+                commitValue(nextValue);
+              }
+            }}
+          />
+        )}
       </Group>
     );
   }

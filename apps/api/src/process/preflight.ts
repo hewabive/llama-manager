@@ -96,6 +96,23 @@ function hasConfiguredArg(instance: Instance, key: string) {
   return true;
 }
 
+function isDisabledArgValue(value: unknown) {
+  return value === undefined || value === null || value === false;
+}
+
+function isEmptyArgValue(value: unknown) {
+  if (value === undefined || value === null || value === false) {
+    return true;
+  }
+  if (typeof value === "string") {
+    return !value.trim();
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0 || value.every((item) => !item.trim());
+  }
+  return false;
+}
+
 function argValueIsGpuLayerRequest(value: unknown) {
   if (value === undefined || value === null || value === false) {
     return false;
@@ -550,12 +567,15 @@ function validateArgumentCompatibility(
     catalog.options.flatMap((option) => [
       [option.primaryName, option] as const,
       ...option.names.map((name) => [name, option] as const),
-      ...option.compatibility.binaryNames.map((name) => [name, option] as const),
+      ...option.compatibility.binaryNames.map(
+        (name) => [name, option] as const,
+      ),
     ]),
   );
 
   for (const key of Object.keys(instance.args)) {
-    if (!hasConfiguredArg(instance, key)) {
+    const value = instance.args[key];
+    if (isDisabledArgValue(value)) {
       continue;
     }
     const option = optionByName.get(key);
@@ -565,6 +585,22 @@ function validateArgumentCompatibility(
         field: `args.${key}`,
         message:
           "Argument was not found in the canonical registry or selected binary --help; llama-server may reject it at startup.",
+      });
+      continue;
+    }
+    if (
+      option.valueType !== "flag" &&
+      !(
+        option.valueType === "boolean" &&
+        !option.valueHint &&
+        option.allowedValues.length === 0
+      ) &&
+      isEmptyArgValue(value)
+    ) {
+      issues.push({
+        level: "error",
+        field: `args.${key}`,
+        message: `Argument ${option.primaryName} requires a value.`,
       });
       continue;
     }

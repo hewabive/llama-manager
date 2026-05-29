@@ -9,12 +9,10 @@ import {
   Box,
   Button,
   Group,
-  NumberInput,
   Popover,
   Select,
   Switch,
   Text,
-  Textarea,
   TextInput,
   Tooltip,
 } from "@mantine/core";
@@ -26,6 +24,7 @@ import {
   defaultArgumentValue,
 } from "../utils/argument-defaults";
 import { argumentHelpHref } from "../utils/argument-links";
+import { ArgumentValueControl } from "./ArgumentValueControl";
 
 export type ArgRow = {
   id: string;
@@ -95,6 +94,9 @@ function rowsToArgs(rows: ArgRow[]) {
     } else if (row.valueType === "null") {
       args[key] = null;
     } else if (row.valueType === "number") {
+      if (!row.value.trim()) {
+        throw new Error(`${key}: value must be a number`);
+      }
       const parsed = Number(row.value);
       if (!Number.isFinite(parsed)) {
         throw new Error(`${key}: value must be a number`);
@@ -162,6 +164,10 @@ export function rowsToArgsWithCatalog(
     if (option.valueType === "number") {
       if (argumentAcceptsAutoAll(option)) {
         args[primaryName] = row.value;
+        continue;
+      }
+      if (!row.value.trim()) {
+        args[primaryName] = "";
         continue;
       }
       const parsed = Number(row.value);
@@ -272,22 +278,6 @@ export function replaceCanonicalRow(
   ];
 }
 
-function booleanValueOptions(option: LlamaArgumentOption) {
-  if (option.allowedValues.length > 0) {
-    return option.allowedValues.map((value) => ({ value, label: value }));
-  }
-  if (option.valueHint === "<0|1>") {
-    return [
-      { value: "1", label: "1" },
-      { value: "0", label: "0" },
-    ];
-  }
-  return [
-    { value: "true", label: "true" },
-    { value: "false", label: "false" },
-  ];
-}
-
 export function SmartArgRow(props: {
   row: ArgRow;
   index: number;
@@ -326,96 +316,12 @@ export function SmartArgRow(props: {
       return null;
     }
 
-    if (props.option.valueType === "boolean") {
-      if (!props.option.valueHint && props.option.allowedValues.length === 0) {
-        return (
-          <Select
-            aria-label={`${props.option.primaryName} value`}
-            data={[
-              { value: "true", label: "true" },
-              { value: "false", label: "false" },
-            ]}
-            value={props.row.value || "true"}
-            allowDeselect={false}
-            onChange={(value) => updateValue(value ?? "true")}
-            w={110}
-            size="xs"
-          />
-        );
-      }
-
-      return (
-        <Select
-          aria-label={`${props.option.primaryName} value`}
-          data={booleanValueOptions(props.option)}
-          value={props.row.value || defaultValueForArgument(props.option)}
-          allowDeselect={false}
-          onChange={(value) =>
-            updateValue(value ?? defaultValueForArgument(props.option))
-          }
-          w={120}
-          size="xs"
-        />
-      );
-    }
-
-    if (
-      props.option.valueType === "enum" &&
-      props.option.allowedValues.length > 0
-    ) {
-      return (
-        <Select
-          aria-label={`${props.option.primaryName} value`}
-          data={props.option.allowedValues.map((value) => ({
-            value,
-            label: value,
-          }))}
-          value={props.row.value || null}
-          searchable
-          onChange={(value) => updateValue(value ?? "")}
-          style={{ flex: 1, minWidth: 160 }}
-          size="xs"
-        />
-      );
-    }
-
-    if (props.option.valueType === "number") {
-      return (
-        <NumberInput
-          aria-label={`${props.option.primaryName} value`}
-          value={props.row.value === "" ? "" : Number(props.row.value)}
-          onChange={(value) =>
-            updateValue(typeof value === "number" ? String(value) : "")
-          }
-          style={{ flex: 1, minWidth: 110 }}
-          size="xs"
-        />
-      );
-    }
-
-    if (props.option.valueType === "json") {
-      return (
-        <Textarea
-          aria-label={`${props.option.primaryName} value`}
-          minRows={2}
-          value={props.row.value}
-          onChange={(event) => updateValue(event.currentTarget.value)}
-          style={{ flex: 1, minWidth: 180 }}
-          size="xs"
-        />
-      );
-    }
-
     return (
-      <TextInput
-        aria-label={`${props.option.primaryName} value`}
-        placeholder={
-          props.option.valueType === "list"
-            ? "a, b, c"
-            : (props.option.valueHint ?? "value")
-        }
+      <ArgumentValueControl
+        option={props.option}
+        ariaLabel={`${props.option.primaryName} value`}
         value={props.row.value}
-        onChange={(event) => updateValue(event.currentTarget.value)}
+        onChange={updateValue}
         style={{ flex: 1, minWidth: 150 }}
         size="xs"
       />
