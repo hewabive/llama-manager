@@ -47,6 +47,10 @@ import {
   updateLlamaArgumentOverride,
 } from "../../api/client";
 import { ArgumentValueControl } from "../components/ArgumentValueControl";
+import {
+  EngineeringMarkdown,
+  displayEngineeringMarkdown,
+} from "../components/EngineeringMarkdown";
 import { PathPickerInput } from "../components/PathPickerInput";
 import { defaultBinaryPath } from "../constants";
 import { argumentDefaultFromOption } from "../utils/argument-defaults";
@@ -929,6 +933,14 @@ export function ArgumentsView() {
   const selectedDefaultUnavailableMessage = selectedOption
     ? defaultUnavailableMessage(selectedOption)
     : null;
+  const visibleEngineeringMarkdown =
+    selectedDoc && selectedDoc.exists && selectedOption
+      ? displayEngineeringMarkdown({
+          markdown: selectedDoc.markdown,
+          primaryName: selectedOption.primaryName,
+          title: selectedDoc.title,
+        })
+      : "";
 
   return (
     <Stack gap="md">
@@ -938,7 +950,7 @@ export function ArgumentsView() {
             <div className="section-heading">
               <Title order={3}>Arguments</Title>
               <Text c="dimmed" size="sm">
-                Search llama-server options and maintain Russian help overlays
+                Search llama-server options and engineering documentation
               </Text>
             </div>
             {argsCatalog && (
@@ -1263,45 +1275,47 @@ export function ArgumentsView() {
 
               <Stack gap={4}>
                 <Text fw={600} size="sm">
-                  Russian help
+                  Short help
                 </Text>
                 <Text className="text-wrap" size="sm">
                   {selectedOption.helpRu}
                 </Text>
               </Stack>
 
-              <Stack gap={4}>
-                <Text fw={600} size="sm">
-                  Original help
+              <details className="argument-secondary-details">
+                <Text component="summary" fw={600} size="sm">
+                  Original --help, values and notes
                 </Text>
-                <Text c="dimmed" className="text-wrap" size="sm">
-                  {selectedOption.help}
-                </Text>
-              </Stack>
-
-              {selectedOption.allowedValues.length > 0 && (
-                <Stack gap={4}>
-                  <Text fw={600} size="sm">
-                    Allowed values
-                  </Text>
-                  <Group gap={6} wrap="wrap">
-                    {selectedOption.allowedValues.map((value) => (
-                      <Code key={value}>{value}</Code>
-                    ))}
-                  </Group>
-                </Stack>
-              )}
-
-              {selectedOption.notes && (
-                <Stack gap={4}>
-                  <Text fw={600} size="sm">
-                    Notes
-                  </Text>
+                <Stack gap="xs" mt="xs">
                   <Text c="dimmed" className="text-wrap" size="sm">
-                    {selectedOption.notes}
+                    {selectedOption.help}
                   </Text>
+
+                  {selectedOption.allowedValues.length > 0 && (
+                    <Stack gap={4}>
+                      <Text c="dimmed" size="xs">
+                        Allowed values
+                      </Text>
+                      <Group gap={6} wrap="wrap">
+                        {selectedOption.allowedValues.map((value) => (
+                          <Code key={value}>{value}</Code>
+                        ))}
+                      </Group>
+                    </Stack>
+                  )}
+
+                  {selectedOption.notes && (
+                    <Stack gap={4}>
+                      <Text c="dimmed" size="xs">
+                        Notes
+                      </Text>
+                      <Text c="dimmed" className="text-wrap" size="sm">
+                        {selectedOption.notes}
+                      </Text>
+                    </Stack>
+                  )}
                 </Stack>
-              )}
+              </details>
 
               <Divider />
 
@@ -1343,11 +1357,6 @@ export function ArgumentsView() {
 
                 {selectedDoc && selectedDoc.exists ? (
                   <Stack gap="xs">
-                    {selectedDoc.summary && (
-                      <Text className="text-wrap" size="sm">
-                        {selectedDoc.summary}
-                      </Text>
-                    )}
                     <Group gap="xs" wrap="wrap">
                       {selectedDoc.updatedAt && (
                         <Text c="dimmed" size="xs">
@@ -1360,10 +1369,10 @@ export function ArgumentsView() {
                         </Badge>
                       )}
                     </Group>
-                    <ScrollArea h={360} type="auto" offsetScrollbars>
-                      <Code block className="argument-doc-markdown">
-                        {selectedDoc.markdown}
-                      </Code>
+                    <ScrollArea h={520} type="auto" offsetScrollbars>
+                      <EngineeringMarkdown
+                        markdown={visibleEngineeringMarkdown}
+                      />
                     </ScrollArea>
                   </Stack>
                 ) : (
@@ -1386,48 +1395,59 @@ export function ArgumentsView() {
 
               <Divider />
 
-              <Textarea
-                label="Russian help overlay"
-                minRows={4}
-                value={helpRuDraft}
-                onChange={(event) => setHelpRuDraft(event.currentTarget.value)}
-              />
-              <TextInput
-                label="Notes overlay"
-                value={notesDraft}
-                onChange={(event) => setNotesDraft(event.currentTarget.value)}
-              />
-              <Group justify="flex-end" gap="xs">
-                <Button
-                  variant="light"
-                  leftSection={<Save size={16} />}
-                  loading={helpOverrideMutation.isPending}
-                  disabled={!helpRuDraft.trim()}
-                  onClick={() =>
-                    helpOverrideMutation.mutate({
-                      primaryName: selectedOption.primaryName,
-                      helpRu: helpRuDraft.trim(),
-                      notes: notesDraft.trim() || null,
-                    })
-                  }
-                >
-                  Save help
-                </Button>
-                <Button
-                  color="red"
-                  variant="subtle"
-                  leftSection={<Trash2 size={16} />}
-                  loading={deleteHelpOverrideMutation.isPending}
-                  disabled={selectedOption.helpRuSource !== "override"}
-                  onClick={() =>
-                    deleteHelpOverrideMutation.mutate(
-                      selectedOption.primaryName,
-                    )
-                  }
-                >
-                  Reset
-                </Button>
-              </Group>
+              <details className="argument-overlay-editor">
+                <Text component="summary" fw={600} size="sm">
+                  Edit Russian overlay
+                </Text>
+                <Stack gap="xs" mt="xs">
+                  <Textarea
+                    label="Russian help overlay"
+                    minRows={4}
+                    value={helpRuDraft}
+                    onChange={(event) =>
+                      setHelpRuDraft(event.currentTarget.value)
+                    }
+                  />
+                  <TextInput
+                    label="Notes overlay"
+                    value={notesDraft}
+                    onChange={(event) =>
+                      setNotesDraft(event.currentTarget.value)
+                    }
+                  />
+                  <Group justify="flex-end" gap="xs">
+                    <Button
+                      variant="light"
+                      leftSection={<Save size={16} />}
+                      loading={helpOverrideMutation.isPending}
+                      disabled={!helpRuDraft.trim()}
+                      onClick={() =>
+                        helpOverrideMutation.mutate({
+                          primaryName: selectedOption.primaryName,
+                          helpRu: helpRuDraft.trim(),
+                          notes: notesDraft.trim() || null,
+                        })
+                      }
+                    >
+                      Save help
+                    </Button>
+                    <Button
+                      color="red"
+                      variant="subtle"
+                      leftSection={<Trash2 size={16} />}
+                      loading={deleteHelpOverrideMutation.isPending}
+                      disabled={selectedOption.helpRuSource !== "override"}
+                      onClick={() =>
+                        deleteHelpOverrideMutation.mutate(
+                          selectedOption.primaryName,
+                        )
+                      }
+                    >
+                      Reset
+                    </Button>
+                  </Group>
+                </Stack>
+              </details>
             </Stack>
           ) : (
             <Text c="dimmed" ta="center">

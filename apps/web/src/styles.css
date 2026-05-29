@@ -205,8 +205,54 @@ code {
   text-overflow: ellipsis;
 }
 
-.argument-doc-markdown {
-  white-space: pre-wrap;
+.argument-secondary-details summary,
+.argument-overlay-editor summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.argument-secondary-details summary:hover,
+.argument-overlay-editor summary:hover {
+  color: var(--mantine-color-text);
+}
+
+.argument-doc-rendered {
+  overflow-wrap: anywhere;
+  padding-right: var(--mantine-spacing-xs);
+}
+
+.argument-doc-rendered p {
+  margin: 0;
+}
+
+.argument-doc-list {
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding-left: 22px;
+}
+
+.argument-doc-list li + li {
+  margin-top: 4px;
+}
+
+.argument-doc-code {
+  display: block;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.argument-doc-rendered .mantine-Code-root:not(.argument-doc-code) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.argument-doc-table {
+  font-size: var(--mantine-font-size-sm);
+}
+
+.argument-doc-table th,
+.argument-doc-table td {
+  vertical-align: top;
 }
 
 .path-picker-row {
