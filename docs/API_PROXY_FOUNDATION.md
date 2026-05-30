@@ -40,7 +40,8 @@ endpoint.
   - `ApiProxySchedulerPlan`
 - Runtime collector in `apps/api/src/proxy/runtime.ts`:
   - derives target state from instance health summaries, `/v1/models` and slots
-  - tracks idle time, last request time and saved slot ids in process memory
+  - tracks idle time in process memory
+  - merges persistent saved slot ids and last request time from SQLite
 - Pure scheduler in `apps/api/src/proxy/scheduler.ts`:
   - `planApiProxyRequest`
   - `planApiProxyIdleMaintenance`
@@ -51,6 +52,7 @@ endpoint.
 - Durable configuration in SQLite:
   - `api_proxy_targets`
   - `api_proxy_routes`
+  - `api_proxy_runtime_metadata`
 - Admin UI page:
   - proxy targets
   - proxy routes
@@ -88,14 +90,13 @@ actions into existing operations:
 - `route-request` -> HTTP forwarding layer
 
 The planner intentionally does not decide how long to poll, how to name slot
-save files or how to persist saved-slot metadata. Those belong to the executor
-and persistent proxy state.
+save files or when saved-slot metadata should be updated. Those belong to the
+executor and persistent proxy state.
 
 ## Next Implementation Step
 
 The next safe step is an executor prototype behind admin-only controls:
 
 - executor that can run scheduler actions with logging;
-- persistent saved-slot metadata;
 - dry-run versus execute controls;
 - only then expose actual OpenAI-compatible proxy routes.

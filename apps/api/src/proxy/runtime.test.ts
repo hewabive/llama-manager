@@ -1,4 +1,5 @@
 import type {
+  ApiProxyRuntimeMetadataRecord,
   ApiProxyTargetRecord,
   Instance,
   InstanceHealthSummary,
@@ -199,6 +200,27 @@ test("buildApiProxyRuntimeSnapshot carries saved slot ids for scheduler planning
   });
 
   assert.deepEqual(snapshot.targets[0]?.savedSlotIds, [0, 2]);
+});
+
+test("buildApiProxyRuntimeSnapshot uses persisted runtime metadata", () => {
+  resetApiProxyRuntimeTrackers();
+  const metadata: ApiProxyRuntimeMetadataRecord = {
+    targetId: "target-a",
+    savedSlotIds: [3],
+    lastRequestAt: "2026-05-30T09:59:00.000Z",
+    updatedAt: "2026-05-30T09:59:01.000Z",
+  };
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target()],
+    instances: [instance()],
+    healthByInstanceId: new Map([["instance-a", health()]]),
+    metadataByTargetId: new Map([["target-a", metadata]]),
+  });
+
+  assert.deepEqual(snapshot.targets[0]?.savedSlotIds, [3]);
+  assert.equal(snapshot.targets[0]?.lastRequestAt, metadata.lastRequestAt);
 });
 
 test("buildApiProxyRuntimeSnapshot reports missing instance as target error", () => {

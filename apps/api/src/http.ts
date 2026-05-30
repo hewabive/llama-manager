@@ -124,6 +124,7 @@ import {
   getApiProxyConfig,
   getApiProxyRoute,
   getApiProxyTarget,
+  listApiProxyRuntimeMetadata,
   listApiProxyRoutes,
   listApiProxyTargets,
   updateApiProxyRoute,
@@ -210,6 +211,7 @@ function validateApiProxyRouteRefs(input: { targetId?: string | undefined }) {
 
 async function getApiProxyRuntimeSnapshot() {
   const targets = listApiProxyTargets();
+  const metadata = listApiProxyRuntimeMetadata();
   const instances = listInstances();
   const peers = instances;
   const targetInstanceIds = new Set(targets.map((target) => target.instanceId));
@@ -232,6 +234,9 @@ async function getApiProxyRuntimeSnapshot() {
       targets,
       instances,
       healthByInstanceId: new Map(healthEntries),
+      metadataByTargetId: new Map(
+        metadata.map((item) => [item.targetId, item]),
+      ),
     }),
   };
 }

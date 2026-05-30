@@ -370,6 +370,13 @@ export const ApiProxyConfigSchema = z.object({
   routes: z.array(ApiProxyRouteRecordSchema),
 });
 
+export const ApiProxyRuntimeMetadataRecordSchema = z.object({
+  targetId: ApiProxyIdSchema,
+  savedSlotIds: z.array(z.number().int().min(0)).default([]),
+  lastRequestAt: z.string().nullable().default(null),
+  updatedAt: z.string(),
+});
+
 export const ApiProxyTargetRuntimeSchema = z.object({
   targetId: ApiProxyIdSchema,
   instanceId: z.string().min(1),
@@ -1142,6 +1149,9 @@ export type ApiProxyRouteUpdate = z.infer<typeof ApiProxyRouteUpdateSchema>;
 export type ApiProxyTargetRecord = z.infer<typeof ApiProxyTargetRecordSchema>;
 export type ApiProxyRouteRecord = z.infer<typeof ApiProxyRouteRecordSchema>;
 export type ApiProxyConfig = z.infer<typeof ApiProxyConfigSchema>;
+export type ApiProxyRuntimeMetadataRecord = z.infer<
+  typeof ApiProxyRuntimeMetadataRecordSchema
+>;
 export type ApiProxyTargetRuntime = z.infer<typeof ApiProxyTargetRuntimeSchema>;
 export type ApiProxyTargetPlanInput = z.infer<
   typeof ApiProxyTargetPlanInputSchema

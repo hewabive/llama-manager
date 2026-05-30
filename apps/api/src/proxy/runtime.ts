@@ -2,6 +2,7 @@ import {
   ApiProxyRuntimeSnapshotSchema,
   type ApiProxyModelState,
   type ApiProxyRuntimeSnapshot,
+  type ApiProxyRuntimeMetadataRecord,
   type ApiProxyTargetRecord,
   type ApiProxyTargetRuntime,
   type Instance,
@@ -183,8 +184,14 @@ function updateTracker(input: {
   state: ApiProxyModelState;
   activeRequests: number;
   checkedAt: string;
+  metadata?: ApiProxyRuntimeMetadataRecord | undefined;
 }) {
   const tracker = trackerFor(input.targetId);
+  if (input.metadata) {
+    tracker.savedSlotIds = input.metadata.savedSlotIds;
+    tracker.lastRequestAt =
+      input.metadata.lastRequestAt ?? tracker.lastRequestAt;
+  }
 
   if (input.activeRequests > 0 || input.state === "busy") {
     tracker.idleSince = null;
@@ -205,6 +212,7 @@ export function deriveApiProxyTargetRuntime(input: {
   target: ApiProxyTargetRecord;
   instance?: Instance | undefined;
   health?: InstanceHealthSummary | undefined;
+  metadata?: ApiProxyRuntimeMetadataRecord | undefined;
   checkedAt: string;
 }): ApiProxyTargetRuntime {
   const derived = deriveState({
@@ -217,6 +225,7 @@ export function deriveApiProxyTargetRuntime(input: {
     state: derived.state,
     activeRequests: derived.activeRequests,
     checkedAt: input.checkedAt,
+    metadata: input.metadata,
   });
 
   return {
@@ -236,6 +245,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
   targets: ApiProxyTargetRecord[];
   instances: Instance[];
   healthByInstanceId: Map<string, InstanceHealthSummary>;
+  metadataByTargetId?: Map<string, ApiProxyRuntimeMetadataRecord> | undefined;
 }): ApiProxyRuntimeSnapshot {
   const instanceById = new Map(
     input.instances.map((instance) => [instance.id, instance]),
@@ -254,6 +264,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
         target,
         instance: instanceById.get(target.instanceId),
         health: input.healthByInstanceId.get(target.instanceId),
+        metadata: input.metadataByTargetId?.get(target.id),
         checkedAt: input.checkedAt,
       }),
     ),

@@ -186,3 +186,15 @@ export const apiProxyRoutes = sqliteTable("api_proxy_routes", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const apiProxyRuntimeMetadata = sqliteTable(
+  "api_proxy_runtime_metadata",
+  {
+    targetId: text("target_id")
+      .primaryKey()
+      .references(() => apiProxyTargets.id, { onDelete: "cascade" }),
+    savedSlotIdsJson: text("saved_slot_ids_json").notNull(),
+    lastRequestAt: text("last_request_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
