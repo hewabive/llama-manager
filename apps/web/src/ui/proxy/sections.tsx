@@ -53,7 +53,7 @@ export function ProxyHeader(props: ProxyHeaderProps) {
           <Badge variant="light">{props.targetsCount} targets</Badge>
           <Badge variant="light">{props.routesCount} routes</Badge>
           <Badge color="gray" variant="outline">
-            forwarding disabled
+            guarded forwarding
           </Badge>
         </Group>
         <Group gap="xs" wrap="wrap">
@@ -108,7 +108,8 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
         </Group>
         <Text c="dimmed" size="sm">
           Published model IDs are shared by OpenAI-compatible and
-          Anthropic-compatible public facades. Forwarding is still disabled.
+          Anthropic-compatible public facades. Ready OpenAI-compatible targets
+          can be forwarded.
         </Text>
         <Table.ScrollContainer minWidth={900}>
           <Table striped highlightOnHover verticalSpacing="sm">
@@ -627,7 +628,7 @@ export function ProxyRoutesSection(props: ProxyRoutesSectionProps) {
         <Group justify="space-between" align="center" wrap="wrap">
           <Text fw={600}>Proxy routes</Text>
           <Text c="dimmed" size="sm">
-            Routes are stored now; forwarding will be enabled in a later step.
+            Routes are stored for later custom path routing and transforms.
           </Text>
         </Group>
         <Table.ScrollContainer minWidth={760}>

@@ -147,7 +147,8 @@ import {
 } from "./proxy/repository.js";
 import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
-import { buildApiProxyProtocolGatewayResponse } from "./proxy/gateway.js";
+import { forwardApiProxyRequest } from "./proxy/forwarder.js";
+import { prepareApiProxyProtocolGatewayRequest } from "./proxy/gateway.js";
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
@@ -357,7 +358,7 @@ async function proxyProtocolEndpoint(
     return c.json(resolution.response.body, resolution.response.status);
   }
 
-  const response = await buildApiProxyProtocolGatewayResponse({
+  const decision = await prepareApiProxyProtocolGatewayRequest({
     adapter,
     request: resolution.request,
     getTarget: getApiProxyTarget,
@@ -367,7 +368,48 @@ async function proxyProtocolEndpoint(
         requestedTargetId: targetId,
       }),
   });
-  return c.json(response.body, response.status);
+  if (!decision.ok) {
+    return c.json(decision.response.body, decision.response.status);
+  }
+
+  const upstreamPath = adapter.upstreamPath(operation);
+  if (!upstreamPath) {
+    const response = adapter.notImplemented(resolution.request);
+    return c.json(response.body, response.status);
+  }
+
+  const instance = getInstance(decision.target.instanceId);
+  if (!instance) {
+    const response = adapter.diagnosticError(resolution.request, {
+      status: 503,
+      code: "llama_manager_proxy_instance_not_found",
+      param: "model",
+      message: `Proxy target ${decision.target.name} points to missing instance ${decision.target.instanceId}.`,
+    });
+    return c.json(response.body, response.status);
+  }
+
+  try {
+    return await forwardApiProxyRequest({
+      instance,
+      method: c.req.method,
+      upstreamPath,
+      search: new URL(c.req.url).search,
+      headers: c.req.raw.headers,
+      body,
+      signal: c.req.raw.signal,
+    });
+  } catch (error) {
+    const response = adapter.diagnosticError(resolution.request, {
+      status: 502,
+      code: "llama_manager_proxy_upstream_error",
+      param: "model",
+      message: `Proxy target ${decision.target.name} failed to forward request: ${
+        (error as Error).message
+      }`,
+    });
+    return c.json(response.body, response.status);
+  }
 }
 
 function registerOpenAiProxyRoutes(prefix: string) {

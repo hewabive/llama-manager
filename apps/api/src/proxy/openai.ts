@@ -60,6 +60,12 @@ function endpointLabel(operation: ApiProxyProtocolOperation) {
   return operation.routePath || operation.endpoint;
 }
 
+const upstreamPaths: Record<string, string> = {
+  "chat.completions": "/v1/chat/completions",
+  completions: "/v1/completions",
+  embeddings: "/v1/embeddings",
+};
+
 export const openAiProtocolAdapter: ApiProxyProtocolAdapter = {
   id: "openai",
   displayName: "OpenAI-compatible",
@@ -91,6 +97,7 @@ export const openAiProtocolAdapter: ApiProxyProtocolAdapter = {
       param: diagnostic.param,
     }),
   }),
+  upstreamPath: (operation) => upstreamPaths[operation.endpoint] ?? null,
   notImplemented: (request) => ({
     status: 501,
     body: notImplementedResponse(

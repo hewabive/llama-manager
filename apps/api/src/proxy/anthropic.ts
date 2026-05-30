@@ -58,6 +58,7 @@ export const anthropicProtocolAdapter: ApiProxyProtocolAdapter = {
       type: "api_error",
     }),
   }),
+  upstreamPath: () => null,
   notImplemented: (request) => ({
     status: 501,
     body: anthropicError({

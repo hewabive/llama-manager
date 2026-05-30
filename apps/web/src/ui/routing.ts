@@ -53,7 +53,7 @@ export const appRoutes: {
     label: "Proxy",
     title: "API Proxy",
     description:
-      "Prepare disabled proxy targets and routes for llama-server APIs",
+      "Publish API models and guard forwarding through scheduler plans",
   },
   {
     id: "models",

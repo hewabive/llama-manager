@@ -6,7 +6,7 @@ disabled-by-default configuration, runtime diagnostics, pure planning logic,
 dry-run executor logging, a public OpenAI-compatible stub and HTTP forwarding
 helpers. It also introduces a protocol-adapter boundary for OpenAI-compatible
 and Anthropic-compatible public facades. It does not forward public traffic to
-llama-server yet.
+llama-server unless the scheduler says the selected target is already ready.
 
 ## Problem Shape
 
@@ -68,7 +68,12 @@ endpoint.
   - builds a scheduler request plan for the bound target
   - returns protocol-specific diagnostics when the target is missing, blocked
     or not ready
-  - still stops before real upstream forwarding
+  - allows forwarding only when no scheduler action is needed except
+    `route-request`
+- Forwarder in `apps/api/src/proxy/forwarder.ts`:
+  - forwards ready OpenAI-compatible requests to the bound instance
+  - preserves upstream response status, headers and body stream
+  - uses the instance host, port and API prefix
 - Durable configuration in SQLite:
   - `api_proxy_models`
   - `api_proxy_targets`
@@ -82,7 +87,7 @@ endpoint.
   - runtime state preview
   - scheduler plan preview
   - executor dry-run log
-  - external API listener with forwarding disabled
+  - external API listener with guarded ready-target forwarding
 
 ## External Protocol Facades
 
@@ -98,17 +103,25 @@ The external protocol surfaces are public and intentionally separate from admin
 - `POST /proxy/anthropic/v1/messages` and `POST /v1/messages` validate the
   `model` field and return Anthropic-shaped errors.
 
-At this stage, a request for a known enabled model returns `501` with
-`llama_manager_proxy_not_implemented` for OpenAI-shaped endpoints, or an
-Anthropic `api_error` for Anthropic-shaped endpoints. Unknown or disabled
-models return the protocol-specific `not_found` error.
+At this stage, OpenAI-compatible generation endpoints are forwarded only when
+the bound target is already ready:
+
+- `/v1/chat/completions`
+- `/v1/completions`
+- `/v1/embeddings`
+- the same endpoints under `/proxy/v1/*`
+
+Unknown or disabled models return the protocol-specific `not_found` error.
+OpenAI Responses (`/v1/responses`) and Anthropic Messages (`/v1/messages`) are
+still accepted as public facades, but they return `501` for ready targets until
+request/response transforms are implemented.
 
 If a known enabled model is not bound to a proxy target, or if the scheduler
 would need to start an instance, load a model, unload a competing target, save a
 slot or wait for readiness, the public endpoint returns a protocol-specific
 `503` diagnostic instead of pretending that forwarding is possible. This means
 public requests are now connected to the same scheduling model as the admin
-preview, even though real forwarding is still disabled.
+preview.
 
 ## Admin Diagnostics
 
@@ -122,9 +135,9 @@ The admin API exposes diagnostics for the next implementation step:
 - `POST /api/proxy/executor/runs` records a dry-run executor pass. Requests with
   `execute: true` are rejected and logged as failed.
 
-These endpoints are read-only with respect to llama-server. They do not start
-or stop instances, load or unload models, save slots, restore slots or forward
-user traffic.
+These admin endpoints are read-only with respect to llama-server. They do not
+start or stop instances, load or unload models, save slots, restore slots or
+forward user traffic.
 
 ## Scheduler Model
 
@@ -151,5 +164,5 @@ executor and persistent proxy state.
 The next safe step is an executor prototype behind admin-only controls:
 
 - executor that can run selected scheduler actions with logging;
-- dry-run versus execute controls;
-- then replace the external API stubs with real forwarding.
+- guarded execute controls for start/load/unload/wait actions;
+- then let public requests wait for executor readiness before forwarding.
