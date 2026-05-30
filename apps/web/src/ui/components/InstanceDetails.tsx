@@ -59,7 +59,6 @@ import {
   reloadLlamaModels,
 } from "../../api/client";
 import { healthStatusColor, statusColor } from "./InstanceHealthBadge";
-import { LlamaApiProbePanel } from "./LlamaApiProbePanel";
 import { LlamaCapabilitiesPanel } from "./LlamaCapabilitiesPanel";
 import {
   canOpenLlamaWebUi,
@@ -2173,11 +2172,6 @@ export function InstanceDetails(props: {
               : null
           }
           onRefresh={() => void capabilitiesQuery.refetch()}
-        />
-
-        <LlamaApiProbePanel
-          instanceId={props.instance.id}
-          modelsProbe={llama?.models}
         />
 
         <Paper withBorder p="sm" radius="sm">

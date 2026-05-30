@@ -43,11 +43,23 @@ import {
 } from "../../api/client";
 import { formatLocalDateTime } from "../utils/time";
 
-type ModelOption = {
+export type ModelOption = {
   value: string;
   label: string;
   status: string | null;
 };
+
+type ProbeRunner = (
+  input: LlamaApiProbeRequest,
+) => Promise<{ data: LlamaApiProbeResult }>;
+
+type ProbeHistoryLoader = () => Promise<{
+  data: LlamaApiProbeHistoryEntry[];
+}>;
+
+type ProbeHistoryClearer = () => Promise<{ data: { deleted: number } }>;
+
+type ProbeStreamRunner = typeof streamLlamaApiProbe;
 
 const defaultPrompt =
   "Answer briefly: how can I check that llama-server is working?";
@@ -617,12 +629,30 @@ function ProbeHistory(props: {
 
 export function LlamaApiProbePanel(props: {
   instanceId: string;
-  modelsProbe: LlamaEndpointProbe | undefined;
+  modelsProbe?: LlamaEndpointProbe | undefined;
+  modelOptions?: ModelOption[] | undefined;
+  historyKey?: readonly unknown[] | undefined;
+  historyEnabled?: boolean | undefined;
+  listHistory?: ProbeHistoryLoader | undefined;
+  clearHistory?: ProbeHistoryClearer | undefined;
+  runProbe?: ProbeRunner | undefined;
+  streamProbe?: ProbeStreamRunner | undefined;
+  streamEnabled?: boolean | undefined;
+  modelRequired?: boolean | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
+  invalidateInstanceQueries?: boolean | undefined;
+  onProbeSettled?: (() => void) | undefined;
 }) {
   const queryClient = useQueryClient();
+  const historyKey = props.historyKey ?? [
+    "llama-probe-history",
+    props.instanceId,
+  ];
+  const historyEnabled = props.historyEnabled ?? true;
   const modelOptions = useMemo(
-    () => modelOptionsFromProbe(props.modelsProbe),
-    [props.modelsProbe],
+    () => props.modelOptions ?? modelOptionsFromProbe(props.modelsProbe),
+    [props.modelOptions, props.modelsProbe],
   );
   const [kind, setKind] = useState<LlamaApiProbeKind>("chat");
   const [model, setModel] = useState<string | null>(null);
@@ -668,17 +698,48 @@ export function LlamaApiProbePanel(props: {
     autoload,
   });
 
+  const invalidateProbeState = () => {
+    if (props.invalidateInstanceQueries ?? true) {
+      void queryClient.invalidateQueries({
+        queryKey: ["instance-llama", props.instanceId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["instance-health-summary", props.instanceId],
+      });
+    }
+    if (historyEnabled) {
+      void queryClient.invalidateQueries({ queryKey: historyKey });
+    }
+    props.onProbeSettled?.();
+  };
+
+  const runProbe = (input: LlamaApiProbeRequest) =>
+    props.runProbe
+      ? props.runProbe(input)
+      : runLlamaApiProbe(props.instanceId, input);
+
+  const streamProbe =
+    props.streamEnabled === false
+      ? null
+      : (props.streamProbe ?? streamLlamaApiProbe);
+  const modelRequired = props.modelRequired ?? false;
+
   const historyQuery = useQuery({
-    queryKey: ["llama-probe-history", props.instanceId],
-    queryFn: () => listLlamaApiProbeHistory(props.instanceId),
+    queryKey: historyKey,
+    queryFn: () =>
+      props.listHistory
+        ? props.listHistory()
+        : listLlamaApiProbeHistory(props.instanceId),
+    enabled: historyEnabled,
   });
 
   const clearHistoryMutation = useMutation({
-    mutationFn: () => clearLlamaApiProbeHistory(props.instanceId),
+    mutationFn: () =>
+      props.clearHistory
+        ? props.clearHistory()
+        : clearLlamaApiProbeHistory(props.instanceId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["llama-probe-history", props.instanceId],
-      });
+      void queryClient.invalidateQueries({ queryKey: historyKey });
     },
     onError: (error) => {
       notifications.show({
@@ -706,23 +767,12 @@ export function LlamaApiProbePanel(props: {
   };
 
   const probeMutation = useMutation({
-    mutationFn: (input: LlamaApiProbeRequest) =>
-      runLlamaApiProbe(props.instanceId, input),
+    mutationFn: runProbe,
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["instance-llama", props.instanceId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["instance-health-summary", props.instanceId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["llama-probe-history", props.instanceId],
-      });
+      invalidateProbeState();
     },
     onError: (error) => {
-      void queryClient.invalidateQueries({
-        queryKey: ["llama-probe-history", props.instanceId],
-      });
+      invalidateProbeState();
       notifications.show({
         color: "red",
         title: "API probe failed",
@@ -735,17 +785,27 @@ export function LlamaApiProbePanel(props: {
   const canSubmit =
     !probeMutation.isPending &&
     !isStreaming &&
+    (!modelRequired || Boolean(model)) &&
     (kind === "detokenize"
       ? parseTokenInput(tokensText).length > 0
       : kind === "rerank"
         ? prompt.trim().length > 0 &&
           parseDocumentsInput(documentsText).length > 0
         : prompt.trim().length > 0);
-  const canStream = kindNeedsGenerationControls(kind) && canSubmit;
+  const canStream =
+    Boolean(streamProbe) && kindNeedsGenerationControls(kind) && canSubmit;
   const result = probeMutation.data?.data ?? null;
-  const historyEntries = historyQuery.data?.data ?? [];
+  const historyEntries = historyEnabled ? (historyQuery.data?.data ?? []) : [];
 
   const startStream = async (input = buildProbeInput()) => {
+    if (!streamProbe) {
+      notifications.show({
+        color: "red",
+        title: "Streaming probe unavailable",
+        message: "This target does not support streaming probes yet.",
+      });
+      return;
+    }
     streamAbortRef.current?.abort();
     const controller = new AbortController();
     streamAbortRef.current = controller;
@@ -756,7 +816,7 @@ export function LlamaApiProbePanel(props: {
     });
 
     try {
-      await streamLlamaApiProbe(
+      await streamProbe(
         props.instanceId,
         input,
         {
@@ -789,15 +849,7 @@ export function LlamaApiProbePanel(props: {
               usage: done.usage,
               timings: done.timings,
             }));
-            void queryClient.invalidateQueries({
-              queryKey: ["instance-llama", props.instanceId],
-            });
-            void queryClient.invalidateQueries({
-              queryKey: ["instance-health-summary", props.instanceId],
-            });
-            void queryClient.invalidateQueries({
-              queryKey: ["llama-probe-history", props.instanceId],
-            });
+            invalidateProbeState();
           },
           onError: (error) => {
             setStreamResult((current) => ({
@@ -805,9 +857,7 @@ export function LlamaApiProbePanel(props: {
               status: "error",
               error: errorMessage(error),
             }));
-            void queryClient.invalidateQueries({
-              queryKey: ["llama-probe-history", props.instanceId],
-            });
+            invalidateProbeState();
           },
           onCancelled: (payload) => {
             const latency = objectRecord(payload)?.latencyMs;
@@ -817,9 +867,7 @@ export function LlamaApiProbePanel(props: {
               latencyMs:
                 typeof latency === "number" ? latency : current.latencyMs,
             }));
-            void queryClient.invalidateQueries({
-              queryKey: ["llama-probe-history", props.instanceId],
-            });
+            invalidateProbeState();
           },
         },
         controller.signal,
@@ -830,9 +878,7 @@ export function LlamaApiProbePanel(props: {
           ...current,
           status: "cancelled",
         }));
-        void queryClient.invalidateQueries({
-          queryKey: ["llama-probe-history", props.instanceId],
-        });
+        invalidateProbeState();
       } else {
         const message = errorMessage(error);
         setStreamResult((current) => ({
@@ -845,9 +891,7 @@ export function LlamaApiProbePanel(props: {
           title: "Streaming probe failed",
           message,
         });
-        void queryClient.invalidateQueries({
-          queryKey: ["llama-probe-history", props.instanceId],
-        });
+        invalidateProbeState();
       }
     } finally {
       if (streamAbortRef.current === controller) {
@@ -894,11 +938,11 @@ export function LlamaApiProbePanel(props: {
         <Group justify="space-between" align="flex-start">
           <Stack gap={2}>
             <Text fw={600} size="sm">
-              API probe
+              {props.title ?? "API probe"}
             </Text>
             <Text c="dimmed" size="xs">
-              Send small non-streaming or streaming requests through
-              llama-manager.
+              {props.description ??
+                "Send small non-streaming or streaming requests through llama-manager."}
             </Text>
           </Stack>
           <Switch
@@ -937,6 +981,8 @@ export function LlamaApiProbePanel(props: {
             value={model}
             searchable
             clearable
+            withAsterisk={modelRequired}
+            error={modelRequired && !model ? "Model is required" : undefined}
             placeholder={
               modelOptions.length > 0
                 ? "Select model"
@@ -1052,7 +1098,8 @@ export function LlamaApiProbePanel(props: {
             >
               Send
             </Button>
-            {kindNeedsGenerationControls(kind) &&
+            {streamProbe &&
+              kindNeedsGenerationControls(kind) &&
               (isStreaming ? (
                 <Button
                   color="red"
@@ -1079,13 +1126,15 @@ export function LlamaApiProbePanel(props: {
           <StreamProbeResult result={streamResult} />
         )}
         {result && <ProbeResult result={result} />}
-        <ProbeHistory
-          clearing={clearHistoryMutation.isPending}
-          entries={historyEntries}
-          onClear={() => clearHistoryMutation.mutate()}
-          onCopy={(entry) => void copyHistoryRequestBody(entry)}
-          onRepeat={repeatHistoryEntry}
-        />
+        {historyEnabled && (
+          <ProbeHistory
+            clearing={clearHistoryMutation.isPending}
+            entries={historyEntries}
+            onClear={() => clearHistoryMutation.mutate()}
+            onCopy={(entry) => void copyHistoryRequestBody(entry)}
+            onRepeat={repeatHistoryEntry}
+          />
+        )}
       </Stack>
     </Paper>
   );

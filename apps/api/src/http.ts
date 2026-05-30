@@ -27,6 +27,7 @@ import {
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
   type ApiProxySchedulerPlanRequest,
+  type LlamaApiProbeRequest,
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
   LlamaArgumentDefaultsSchema,
@@ -49,6 +50,7 @@ import {
   setSessionCookie,
   verifyAdminPassword,
 } from "./auth.js";
+import { config } from "./config.js";
 import {
   getLlamaArgumentCatalog,
   getLlamaArgumentReferenceCatalog,
@@ -82,9 +84,11 @@ import {
 import { listFilesystemDirectory } from "./filesystem/browser.js";
 import {
   llamaEndpointErrorMessage,
+  llamaApiProbeRequestBody,
   llamaApiProbeTarget,
   probeLlamaCapabilities,
   probeLlamaServer,
+  requestLlamaJson,
   requestLlamaApiProbe,
   requestLlamaModelAction,
   requestLlamaSlotAction,
@@ -318,6 +322,27 @@ function queryLimit(value: string | undefined, fallback = 20) {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function apiSelfBaseUrl() {
+  const host =
+    config.host === "0.0.0.0" || config.host === "::"
+      ? "127.0.0.1"
+      : config.host;
+  return `http://${host}:${config.port}`;
+}
+
+function proxyApiProbeTarget(input: LlamaApiProbeRequest) {
+  const { endpoint, body } = llamaApiProbeRequestBody(input);
+  const query = new URLSearchParams({
+    autoload: input.autoload ? "true" : "false",
+  });
+  const endpointWithQuery = `${endpoint}?${query.toString()}`;
+  return {
+    endpoint: endpointWithQuery,
+    requestBody: body,
+    url: `${apiSelfBaseUrl()}${endpointWithQuery}`,
+  };
 }
 
 async function safeJsonBody(c: Context) {
@@ -673,6 +698,35 @@ app.delete("/api/path-catalog/:id", (c) => {
 
 app.get("/api/proxy/config", (c) => {
   return c.json({ data: getApiProxyConfig() });
+});
+
+app.post("/api/proxy/probe", async (c) => {
+  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  if (!parsed.data.model?.trim()) {
+    return c.json({ error: "proxy model is required" }, 400);
+  }
+
+  try {
+    const target = proxyApiProbeTarget(parsed.data);
+    return c.json({
+      data: {
+        kind: parsed.data.kind,
+        endpoint: target.endpoint,
+        requestBody: target.requestBody,
+        response: await requestLlamaJson(target.url, {
+          method: "POST",
+          body: JSON.stringify(target.requestBody),
+          headers: { "content-type": "application/json" },
+          timeoutMs: 10 * 60 * 1_000,
+        }),
+      },
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.post("/api/proxy/models", async (c) => {

@@ -625,7 +625,7 @@ function withModel<T extends Record<string, unknown>>(
   return model ? { ...body, model } : body;
 }
 
-function apiProbeRequestBody(
+export function llamaApiProbeRequestBody(
   input: LlamaApiProbeRequest,
   options: { stream?: boolean } = {},
 ): {
@@ -793,7 +793,7 @@ export function llamaApiProbeTarget(
     throw new Error("UNIX socket API probes are not implemented yet");
   }
 
-  const { endpoint, body } = apiProbeRequestBody(input, options);
+  const { endpoint, body } = llamaApiProbeRequestBody(input, options);
   const query = new URLSearchParams({
     autoload: input.autoload ? "true" : "false",
   });

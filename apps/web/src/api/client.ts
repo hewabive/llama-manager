@@ -581,6 +581,13 @@ export async function runLlamaApiProbe(
   );
 }
 
+export async function runProxyApiProbe(input: LlamaApiProbeRequest) {
+  return request<{ data: LlamaApiProbeResult }>("/api/proxy/probe", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listLlamaApiProbeHistory(id: string, limit = 20) {
   return request<{ data: LlamaApiProbeHistoryEntry[] }>(
     `/api/instances/${id}/llama/probe/history?limit=${limit}`,

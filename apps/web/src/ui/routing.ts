@@ -7,6 +7,7 @@ export type AppRoute =
   | "args"
   | "paths"
   | "proxy"
+  | "api-lab"
   | "models"
   | "presets"
   | "build"
@@ -34,7 +35,7 @@ export const appRoutes: {
     id: "diagnostics",
     label: "Diag",
     title: "Diagnostics",
-    description: "Runtime state, llama-server probes and request checks",
+    description: "Runtime state, llama-server probes and logs",
   },
   {
     id: "args",
@@ -54,6 +55,12 @@ export const appRoutes: {
     title: "API Proxy",
     description:
       "Publish API models and guard forwarding through scheduler plans",
+  },
+  {
+    id: "api-lab",
+    label: "Lab",
+    title: "API Lab",
+    description: "Manual llama-server request probes and history",
   },
   {
     id: "models",

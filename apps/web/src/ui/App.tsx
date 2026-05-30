@@ -28,6 +28,7 @@ import { InstanceFormModal } from "./components/InstanceFormModal";
 import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { argsWithModel } from "./utils/models";
+import { ApiLabView } from "./views/ApiLabView";
 import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
 import { DiagnosticsView } from "./views/DiagnosticsView";
@@ -328,6 +329,15 @@ export function App() {
           {canUseAdmin && route === "paths" && <PathCatalogView />}
 
           {canUseAdmin && route === "proxy" && <ProxyView />}
+
+          {canUseAdmin && route === "api-lab" && (
+            <ApiLabView
+              instances={instances}
+              selectedInstance={selectedInstance}
+              selectedHealth={selectedHealth}
+              onSelect={setSelectedId}
+            />
+          )}
 
           {canUseAdmin && route === "models" && (
             <ModelsView
