@@ -17,7 +17,7 @@ function target(input: {
   instanceId: string;
   model: string;
   priority: number;
-  state: "unloaded" | "loaded" | "idle" | "busy";
+  state: "unloaded" | "loaded" | "idle" | "busy" | "error";
   role?: "interactive" | "background";
   preemptible?: boolean;
   activeRequests?: number;
@@ -131,6 +131,30 @@ test("planApiProxyRequest blocks on non-preemptible busy peer", () => {
 
   assert.equal(plan.ok, false);
   assert.match(plan.blockingReason ?? "", /cannot be preempted/);
+  assert.deepEqual(plan.actions, []);
+});
+
+test("planApiProxyRequest blocks targets in error state", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      targets: [
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "error",
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, false);
+  assert.match(plan.blockingReason ?? "", /error state/);
   assert.deepEqual(plan.actions, []);
 });
 

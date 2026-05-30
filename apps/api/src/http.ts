@@ -394,7 +394,7 @@ async function proxyProtocolEndpoint(
     target: decision.target,
     initialPreview: decision.preview,
     getInstance,
-    startInstance: (instance) => supervisor.start(instance),
+    startInstance: startManagedInstance,
     loadModel: async (instance, model) => {
       const result = await requestLlamaModelAction(instance, "load", model);
       if (!result.response.ok) {

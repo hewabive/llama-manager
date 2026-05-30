@@ -142,6 +142,9 @@ export function planApiProxyRequest(
   if (!target.enabled) {
     return blocked(request, `proxy target ${target.name} is disabled`);
   }
+  if (runtimeState(target) === "error") {
+    return blocked(request, `proxy target ${target.name} is in error state`);
+  }
 
   const actions: ApiProxySchedulerAction[] = [];
   const blockers = request.targets.filter(

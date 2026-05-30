@@ -47,7 +47,7 @@ export type ApiProxyPublicExecutorInput = {
   target: ApiProxyTargetRecord;
   initialPreview: ApiProxyPlanPreview;
   getInstance: (instanceId: string) => Instance | null;
-  startInstance: (instance: Instance) => unknown;
+  startInstance: (instance: Instance) => unknown | Promise<unknown>;
   loadModel: (instance: Instance, model: string) => Promise<void>;
   getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
   sleep?: ((ms: number) => Promise<void>) | undefined;
@@ -193,7 +193,7 @@ export async function executeApiProxyPublicMvpPlan(
         case "route-request":
           return { ok: true, preview };
         case "start-instance":
-          input.startInstance(instance);
+          await input.startInstance(instance);
           preview = await input.getPlanPreview(input.target.id);
           break;
         case "wait-instance-ready": {
