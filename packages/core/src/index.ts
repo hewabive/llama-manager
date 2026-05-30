@@ -424,6 +424,23 @@ export const ApiProxySchedulerPlanSchema = z.object({
   blockingReason: z.string().nullable(),
 });
 
+export const ApiProxyRuntimeSnapshotSchema = z.object({
+  checkedAt: z.string(),
+  targets: z.array(ApiProxyTargetRuntimeSchema),
+});
+
+export const ApiProxyPlanPreviewRequestSchema = z.object({
+  mode: ApiProxySchedulerModeSchema,
+  requestedTargetId: ApiProxyIdSchema.optional(),
+  preferredTargetId: ApiProxyIdSchema.optional(),
+});
+
+export const ApiProxyPlanPreviewSchema = z.object({
+  checkedAt: z.string(),
+  runtime: ApiProxyRuntimeSnapshotSchema,
+  plan: ApiProxySchedulerPlanSchema,
+});
+
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -1140,6 +1157,13 @@ export type ApiProxySchedulerPlanRequest = z.infer<
   typeof ApiProxySchedulerPlanRequestSchema
 >;
 export type ApiProxySchedulerPlan = z.infer<typeof ApiProxySchedulerPlanSchema>;
+export type ApiProxyRuntimeSnapshot = z.infer<
+  typeof ApiProxyRuntimeSnapshotSchema
+>;
+export type ApiProxyPlanPreviewRequest = z.infer<
+  typeof ApiProxyPlanPreviewRequestSchema
+>;
+export type ApiProxyPlanPreview = z.infer<typeof ApiProxyPlanPreviewSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;

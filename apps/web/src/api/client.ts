@@ -1,9 +1,12 @@
 import type {
   AdminLogin,
   ApiProxyConfig,
+  ApiProxyPlanPreview,
+  ApiProxyPlanPreviewRequest,
   ApiProxyRouteCreate,
   ApiProxyRouteRecord,
   ApiProxyRouteUpdate,
+  ApiProxyRuntimeSnapshot,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
   ApiProxyTargetUpdate,
@@ -217,6 +220,17 @@ export async function deletePathCatalogEntry(id: string) {
 
 export async function getApiProxyConfig() {
   return request<{ data: ApiProxyConfig }>("/api/proxy/config");
+}
+
+export async function getApiProxyRuntime() {
+  return request<{ data: ApiProxyRuntimeSnapshot }>("/api/proxy/runtime");
+}
+
+export async function previewApiProxyPlan(input: ApiProxyPlanPreviewRequest) {
+  return request<{ data: ApiProxyPlanPreview }>("/api/proxy/plan", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createApiProxyTarget(input: ApiProxyTargetCreate) {

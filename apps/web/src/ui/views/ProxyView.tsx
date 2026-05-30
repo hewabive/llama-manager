@@ -1,6 +1,9 @@
 import type {
+  ApiProxyPlanPreview,
+  ApiProxyPlanPreviewRequest,
   ApiProxyRouteCreate,
   ApiProxyRouteRecord,
+  ApiProxyTargetRuntime,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
 } from "@llama-manager/core";
@@ -24,8 +27,8 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Save, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Activity, Pencil, Play, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   createApiProxyRoute,
@@ -33,7 +36,9 @@ import {
   deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
+  getApiProxyRuntime,
   listInstances,
+  previewApiProxyPlan,
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "../../api/client";
@@ -166,6 +171,59 @@ function targetStatusColor(enabled: boolean) {
   return enabled ? "green" : "gray";
 }
 
+function runtimeStateColor(state: ApiProxyTargetRuntime["state"] | undefined) {
+  switch (state) {
+    case "busy":
+      return "orange";
+    case "idle":
+    case "loaded":
+      return "green";
+    case "loading":
+    case "starting":
+      return "blue";
+    case "unloaded":
+    case "stopped":
+      return "gray";
+    case "error":
+      return "red";
+    default:
+      return "gray";
+  }
+}
+
+function runtimeDetails(runtime: ApiProxyTargetRuntime | undefined) {
+  if (!runtime) {
+    return ["not checked yet"];
+  }
+
+  const details = [`${runtime.activeRequests} active request(s)`];
+  if (runtime.idleSince) {
+    details.push(`idle since ${formatLocalDateTime(runtime.idleSince)}`);
+  }
+  if (runtime.lastRequestAt) {
+    details.push(`last request ${formatLocalDateTime(runtime.lastRequestAt)}`);
+  }
+  if (runtime.savedSlotIds.length > 0) {
+    details.push(`saved slots ${runtime.savedSlotIds.join(", ")}`);
+  }
+  return details;
+}
+
+const actionLabels: Record<
+  ApiProxyPlanPreview["plan"]["actions"][number]["type"],
+  string
+> = {
+  "start-instance": "Start instance",
+  "wait-instance-ready": "Wait for instance",
+  "save-slot": "Save slot",
+  "restore-slot": "Restore slot",
+  "unload-model": "Unload model",
+  "stop-instance": "Stop instance",
+  "load-model": "Load model",
+  "wait-model-ready": "Wait for model",
+  "route-request": "Route request",
+};
+
 export function ProxyView() {
   const queryClient = useQueryClient();
   const [targetEditor, setTargetEditor] = useState<TargetEditor | null>(null);
@@ -174,6 +232,10 @@ export function ProxyView() {
   const [routeEditor, setRouteEditor] = useState<RouteEditor | null>(null);
   const [routeDraftState, setRouteDraftState] =
     useState<RouteDraft>(emptyRouteDraft);
+  const [requestTargetId, setRequestTargetId] = useState<string | null>(null);
+  const [preferredTargetId, setPreferredTargetId] = useState<string | null>(
+    null,
+  );
 
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
@@ -183,6 +245,11 @@ export function ProxyView() {
     queryKey: ["instances"],
     queryFn: listInstances,
     staleTime: 10_000,
+  });
+  const runtimeQuery = useQuery({
+    queryKey: ["api-proxy-runtime"],
+    queryFn: getApiProxyRuntime,
+    refetchInterval: 5_000,
   });
 
   const config = proxyQuery.data?.data;
@@ -211,9 +278,54 @@ export function ProxyView() {
     value: target.id,
     label: target.name,
   }));
+  const runtimeByTargetId = useMemo(
+    () =>
+      new Map(
+        (runtimeQuery.data?.data.targets ?? []).map((runtime) => [
+          runtime.targetId,
+          runtime,
+        ]),
+      ),
+    [runtimeQuery.data?.data.targets],
+  );
+
+  const planPreviewMutation = useMutation({
+    mutationFn: previewApiProxyPlan,
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Scheduler preview failed",
+        message: (error as Error).message,
+      }),
+  });
+  const planPreview = planPreviewMutation.data?.data;
+
+  useEffect(() => {
+    if (targets.length === 0) {
+      setRequestTargetId(null);
+      setPreferredTargetId(null);
+      return;
+    }
+
+    if (
+      !requestTargetId ||
+      !targets.some((target) => target.id === requestTargetId)
+    ) {
+      setRequestTargetId(targets[0]?.id ?? null);
+    }
+    if (
+      !preferredTargetId ||
+      !targets.some((target) => target.id === preferredTargetId)
+    ) {
+      setPreferredTargetId(targets[0]?.id ?? null);
+    }
+  }, [preferredTargetId, requestTargetId, targets]);
 
   const invalidateProxy = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["api-proxy-config"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["api-proxy-config"] }),
+      queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
+    ]);
   };
 
   const createTargetMutation = useMutation({
@@ -370,6 +482,17 @@ export function ProxyView() {
     createRouteMutation.mutate(input);
   }
 
+  function previewSchedulerPlan(mode: ApiProxyPlanPreviewRequest["mode"]) {
+    const input: ApiProxyPlanPreviewRequest = { mode };
+    if (mode === "request" && requestTargetId) {
+      input.requestedTargetId = requestTargetId;
+    }
+    if (mode === "idle" && preferredTargetId) {
+      input.preferredTargetId = preferredTargetId;
+    }
+    planPreviewMutation.mutate(input);
+  }
+
   const targetBusy =
     createTargetMutation.isPending || updateTargetMutation.isPending;
   const routeBusy =
@@ -414,7 +537,7 @@ export function ProxyView() {
               Targets describe which instance/model can receive proxied traffic.
             </Text>
           </Group>
-          <Table.ScrollContainer minWidth={900}>
+          <Table.ScrollContainer minWidth={1040}>
             <Table striped highlightOnHover verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
@@ -423,94 +546,122 @@ export function ProxyView() {
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Resource</Table.Th>
                   <Table.Th>Policy</Table.Th>
+                  <Table.Th>Runtime</Table.Th>
                   <Table.Th>Updated</Table.Th>
                   <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {targets.map((target) => (
-                  <Table.Tr key={target.id}>
-                    <Table.Td>
-                      <Group gap={6} wrap="wrap">
-                        <Text fw={600}>{target.name}</Text>
-                        <Badge
-                          color={targetStatusColor(target.enabled)}
-                          variant="light"
-                        >
-                          {target.enabled ? "enabled" : "disabled"}
-                        </Badge>
-                        <Badge variant="outline">{target.role}</Badge>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      {instanceOptions.find(
-                        (option) => option.value === target.instanceId,
-                      )?.label ?? target.instanceId}
-                    </Table.Td>
-                    <Table.Td>
-                      {target.model ? (
-                        <Code>{target.model}</Code>
-                      ) : (
-                        <Text c="dimmed" size="sm">
-                          process default
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Stack gap={2}>
-                        <Text size="sm">
-                          {target.resourceGroupId ?? "not exclusive"}
-                        </Text>
-                        <Text c="dimmed" size="xs">
-                          priority {target.priority}
-                        </Text>
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>
-                      <Stack gap={2}>
-                        <Text size="sm">
-                          {target.preemptible ? "preemptible" : "protected"}
-                        </Text>
-                        <Text c="dimmed" size="xs">
-                          {routeCountByTargetId.get(target.id) ?? 0} route(s)
-                        </Text>
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>{formatLocalDateTime(target.updatedAt)}</Table.Td>
-                    <Table.Td>
-                      <Group gap={4} justify="flex-end" wrap="nowrap">
-                        <Tooltip label="Edit target">
-                          <ActionIcon
-                            aria-label="Edit proxy target"
-                            variant="subtle"
-                            onClick={() => openEditTarget(target)}
+                {targets.map((target) => {
+                  const runtime = runtimeByTargetId.get(target.id);
+                  return (
+                    <Table.Tr key={target.id}>
+                      <Table.Td>
+                        <Group gap={6} wrap="wrap">
+                          <Text fw={600}>{target.name}</Text>
+                          <Badge
+                            color={targetStatusColor(target.enabled)}
+                            variant="light"
                           >
-                            <Pencil size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Delete target">
-                          <ActionIcon
-                            aria-label="Delete proxy target"
-                            variant="subtle"
-                            color="red"
-                            loading={deleteTargetMutation.isPending}
-                            disabled={
-                              (routeCountByTargetId.get(target.id) ?? 0) > 0
-                            }
-                            onClick={() =>
-                              deleteTargetMutation.mutate(target.id)
-                            }
-                          >
-                            <Trash2 size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                            {target.enabled ? "enabled" : "disabled"}
+                          </Badge>
+                          <Badge variant="outline">{target.role}</Badge>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        {instanceOptions.find(
+                          (option) => option.value === target.instanceId,
+                        )?.label ?? target.instanceId}
+                      </Table.Td>
+                      <Table.Td>
+                        {target.model ? (
+                          <Code>{target.model}</Code>
+                        ) : (
+                          <Text c="dimmed" size="sm">
+                            process default
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <Text size="sm">
+                            {target.resourceGroupId ?? "not exclusive"}
+                          </Text>
+                          <Text c="dimmed" size="xs">
+                            priority {target.priority}
+                          </Text>
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <Text size="sm">
+                            {target.preemptible ? "preemptible" : "protected"}
+                          </Text>
+                          <Text c="dimmed" size="xs">
+                            {routeCountByTargetId.get(target.id) ?? 0} route(s)
+                          </Text>
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <Group gap={6} wrap="wrap">
+                            <Badge
+                              color={runtimeStateColor(runtime?.state)}
+                              variant="light"
+                            >
+                              {runtime?.state ?? "unknown"}
+                            </Badge>
+                            {runtimeQuery.isFetching && (
+                              <Badge color="gray" variant="outline">
+                                refreshing
+                              </Badge>
+                            )}
+                          </Group>
+                          {runtimeDetails(runtime).map((detail) => (
+                            <Text key={detail} c="dimmed" size="xs">
+                              {detail}
+                            </Text>
+                          ))}
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        {formatLocalDateTime(target.updatedAt)}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} justify="flex-end" wrap="nowrap">
+                          <Tooltip label="Edit target">
+                            <ActionIcon
+                              aria-label="Edit proxy target"
+                              variant="subtle"
+                              onClick={() => openEditTarget(target)}
+                            >
+                              <Pencil size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Delete target">
+                            <ActionIcon
+                              aria-label="Delete proxy target"
+                              variant="subtle"
+                              color="red"
+                              loading={deleteTargetMutation.isPending}
+                              disabled={
+                                (routeCountByTargetId.get(target.id) ?? 0) > 0
+                              }
+                              onClick={() =>
+                                deleteTargetMutation.mutate(target.id)
+                              }
+                            >
+                              <Trash2 size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
                 {targets.length === 0 && (
                   <Table.Tr>
-                    <Table.Td colSpan={7}>
+                    <Table.Td colSpan={8}>
                       <Text c="dimmed" ta="center" py="lg">
                         No proxy targets configured
                       </Text>
@@ -520,6 +671,125 @@ export function ProxyView() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+        </Stack>
+      </Paper>
+
+      <Paper withBorder p="md" radius="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Group gap="xs">
+              <Activity size={18} />
+              <Text fw={600}>Scheduler preview</Text>
+            </Group>
+            <Text c="dimmed" size="sm">
+              Preview only: no process or model action is executed here.
+            </Text>
+          </Group>
+          <Group align="flex-end" wrap="wrap">
+            <Select
+              label="Incoming request target"
+              placeholder="Select target"
+              data={targetOptions}
+              value={requestTargetId}
+              onChange={setRequestTargetId}
+              miw={260}
+              searchable
+            />
+            <Button
+              leftSection={<Play size={16} />}
+              disabled={!requestTargetId}
+              loading={planPreviewMutation.isPending}
+              onClick={() => previewSchedulerPlan("request")}
+            >
+              Preview request
+            </Button>
+            <Select
+              label="Preferred idle target"
+              placeholder="Select target"
+              data={targetOptions}
+              value={preferredTargetId}
+              onChange={setPreferredTargetId}
+              miw={260}
+              searchable
+            />
+            <Button
+              variant="light"
+              leftSection={<Play size={16} />}
+              disabled={targets.length === 0}
+              loading={planPreviewMutation.isPending}
+              onClick={() => previewSchedulerPlan("idle")}
+            >
+              Preview idle
+            </Button>
+          </Group>
+
+          {planPreview && (
+            <Stack gap="xs">
+              <Group gap="xs" wrap="wrap">
+                <Badge color={planPreview.plan.ok ? "green" : "red"}>
+                  {planPreview.plan.ok ? "ok" : "blocked"}
+                </Badge>
+                <Badge variant="light">{planPreview.plan.mode}</Badge>
+                <Text c="dimmed" size="sm">
+                  checked {formatLocalDateTime(planPreview.checkedAt)}
+                </Text>
+              </Group>
+              {planPreview.plan.blockingReason && (
+                <Text c="red" size="sm">
+                  {planPreview.plan.blockingReason}
+                </Text>
+              )}
+              <Table.ScrollContainer minWidth={760}>
+                <Table striped verticalSpacing="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Action</Table.Th>
+                      <Table.Th>Target</Table.Th>
+                      <Table.Th>Model / slot</Table.Th>
+                      <Table.Th>Reason</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {planPreview.plan.actions.map((action, index) => (
+                      <Table.Tr
+                        key={`${action.type}-${action.targetId}-${index}`}
+                      >
+                        <Table.Td>{actionLabels[action.type]}</Table.Td>
+                        <Table.Td>
+                          {targetById.get(action.targetId)?.name ??
+                            action.targetId}
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={2}>
+                            <Text size="sm">
+                              {action.model ?? "process action"}
+                            </Text>
+                            {action.slotId !== null && (
+                              <Text c="dimmed" size="xs">
+                                slot {action.slotId}
+                              </Text>
+                            )}
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{action.reason}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                    {planPreview.plan.actions.length === 0 && (
+                      <Table.Tr>
+                        <Table.Td colSpan={4}>
+                          <Text c="dimmed" ta="center" py="sm">
+                            No scheduler action is needed
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Stack>
+          )}
         </Stack>
       </Paper>
 

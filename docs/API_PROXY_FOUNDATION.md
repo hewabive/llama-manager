@@ -2,8 +2,8 @@
 
 This document captures the intended shape of the future `llama-manager` API
 proxy. The current implementation adds shared contracts, durable
-disabled-by-default configuration, pure planning logic and HTTP forwarding
-helpers. It does not expose a public proxy endpoint yet.
+disabled-by-default configuration, runtime diagnostics, pure planning logic and
+HTTP forwarding helpers. It does not expose a public proxy endpoint yet.
 
 ## Problem Shape
 
@@ -38,6 +38,9 @@ endpoint.
   - `ApiProxyTargetRuntime`
   - `ApiProxySchedulerPlanRequest`
   - `ApiProxySchedulerPlan`
+- Runtime collector in `apps/api/src/proxy/runtime.ts`:
+  - derives target state from instance health summaries, `/v1/models` and slots
+  - tracks idle time, last request time and saved slot ids in process memory
 - Pure scheduler in `apps/api/src/proxy/scheduler.ts`:
   - `planApiProxyRequest`
   - `planApiProxyIdleMaintenance`
@@ -51,7 +54,22 @@ endpoint.
 - Admin UI page:
   - proxy targets
   - proxy routes
+  - runtime state preview
+  - scheduler plan preview
   - no external proxy listener yet
+
+## Admin Diagnostics
+
+The admin API exposes diagnostics for the next implementation step:
+
+- `GET /api/proxy/runtime` returns a runtime snapshot for configured proxy
+  targets.
+- `POST /api/proxy/plan` returns the scheduler plan for either an incoming
+  request or an idle-maintenance pass.
+
+Both endpoints are read-only with respect to llama-server. They do not start or
+stop instances, load or unload models, save slots, restore slots or forward user
+traffic.
 
 ## Scheduler Model
 
@@ -75,8 +93,9 @@ and persistent proxy state.
 
 ## Next Implementation Step
 
-The next safe step is an executor prototype behind admin-only diagnostics:
+The next safe step is an executor prototype behind admin-only controls:
 
-- runtime state collector from health summaries;
 - executor that can run scheduler actions with logging;
+- persistent saved-slot metadata;
+- dry-run versus execute controls;
 - only then expose actual OpenAI-compatible proxy routes.

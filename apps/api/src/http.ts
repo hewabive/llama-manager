@@ -2,6 +2,8 @@ import {
   AdminLoginSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteUpdateSchema,
+  ApiProxyPlanPreviewRequestSchema,
+  ApiProxyPlanPreviewSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetUpdateSchema,
   BuildJobStartSchema,
@@ -21,6 +23,7 @@ import {
   type Instance,
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
+  type ApiProxySchedulerPlanRequest,
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
   LlamaArgumentDefaultsSchema,
@@ -122,9 +125,15 @@ import {
   getApiProxyRoute,
   getApiProxyTarget,
   listApiProxyRoutes,
+  listApiProxyTargets,
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "./proxy/repository.js";
+import { buildApiProxyRuntimeSnapshot } from "./proxy/runtime.js";
+import {
+  planApiProxyIdleMaintenance,
+  planApiProxyRequest,
+} from "./proxy/scheduler.js";
 import { getPublicStatus } from "./public-status.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
 import {
@@ -197,6 +206,70 @@ function validateApiProxyRouteRefs(input: { targetId?: string | undefined }) {
     return "proxy route target not found";
   }
   return null;
+}
+
+async function getApiProxyRuntimeSnapshot() {
+  const targets = listApiProxyTargets();
+  const instances = listInstances();
+  const peers = instances;
+  const targetInstanceIds = new Set(targets.map((target) => target.instanceId));
+  const healthEntries = await Promise.all(
+    instances
+      .filter((instance) => targetInstanceIds.has(instance.id))
+      .map(
+        async (instance) =>
+          [
+            instance.id,
+            await getInstanceHealthSummary(instance, { peers }),
+          ] as const,
+      ),
+  );
+
+  return {
+    targets,
+    snapshot: buildApiProxyRuntimeSnapshot({
+      checkedAt: new Date().toISOString(),
+      targets,
+      instances,
+      healthByInstanceId: new Map(healthEntries),
+    }),
+  };
+}
+
+async function getApiProxyPlanPreview(input: {
+  mode: "request" | "idle";
+  requestedTargetId?: string | undefined;
+  preferredTargetId?: string | undefined;
+}) {
+  const runtime = await getApiProxyRuntimeSnapshot();
+  const runtimeByTargetId = new Map(
+    runtime.snapshot.targets.map((target) => [target.targetId, target]),
+  );
+  const targets = runtime.targets.map((target) => {
+    const targetRuntime = runtimeByTargetId.get(target.id);
+    return targetRuntime ? { ...target, runtime: targetRuntime } : target;
+  });
+  const request: ApiProxySchedulerPlanRequest = {
+    mode: input.mode,
+    now: runtime.snapshot.checkedAt,
+    targets,
+  };
+  if (input.requestedTargetId) {
+    request.requestedTargetId = input.requestedTargetId;
+  }
+  if (input.preferredTargetId) {
+    request.preferredTargetId = input.preferredTargetId;
+  }
+  const plan =
+    input.mode === "request"
+      ? planApiProxyRequest(request)
+      : planApiProxyIdleMaintenance(request);
+
+  return ApiProxyPlanPreviewSchema.parse({
+    checkedAt: runtime.snapshot.checkedAt,
+    runtime: runtime.snapshot,
+    plan,
+  });
 }
 
 app.use(
@@ -331,6 +404,28 @@ app.delete("/api/path-catalog/:id", (c) => {
 
 app.get("/api/proxy/config", (c) => {
   return c.json({ data: getApiProxyConfig() });
+});
+
+app.get("/api/proxy/runtime", async (c) => {
+  try {
+    const runtime = await getApiProxyRuntimeSnapshot();
+    return c.json({ data: runtime.snapshot });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.post("/api/proxy/plan", async (c) => {
+  const parsed = ApiProxyPlanPreviewRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  try {
+    return c.json({ data: await getApiProxyPlanPreview(parsed.data) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.post("/api/proxy/targets", async (c) => {
