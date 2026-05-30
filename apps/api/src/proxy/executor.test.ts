@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   API_PROXY_EXECUTION_DISABLED_ERROR,
   buildApiProxyExecutorRun,
+  buildApiProxyPublicExecutorRun,
 } from "./executor.js";
 
 function preview(ok = true): ApiProxyPlanPreview {
@@ -83,4 +84,42 @@ test("buildApiProxyExecutorRun refuses real execution for now", () => {
 
   assert.equal(run.status, "failed");
   assert.equal(run.error, API_PROXY_EXECUTION_DISABLED_ERROR);
+});
+
+test("buildApiProxyPublicExecutorRun records completed public execution", () => {
+  const run = buildApiProxyPublicExecutorRun({
+    request: {
+      mode: "request",
+      requestedTargetId: "urgent",
+      execute: true,
+    },
+    preview: preview(),
+    status: "completed",
+    error: null,
+    startedAt: "2026-05-30T10:00:00.000Z",
+    finishedAt: "2026-05-30T10:00:01.000Z",
+  });
+
+  assert.equal(run.status, "completed");
+  assert.equal(run.execute, true);
+  assert.equal(run.error, null);
+  assert.equal(run.plan.actions.length, 1);
+});
+
+test("buildApiProxyPublicExecutorRun records failed public execution", () => {
+  const run = buildApiProxyPublicExecutorRun({
+    request: {
+      mode: "request",
+      requestedTargetId: "urgent",
+      execute: true,
+    },
+    preview: preview(),
+    status: "failed",
+    error: "target did not become ready",
+    startedAt: "2026-05-30T10:00:00.000Z",
+    finishedAt: "2026-05-30T10:00:01.000Z",
+  });
+
+  assert.equal(run.status, "failed");
+  assert.equal(run.error, "target did not become ready");
 });

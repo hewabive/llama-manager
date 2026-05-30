@@ -122,6 +122,7 @@ import {
 import {
   API_PROXY_EXECUTION_DISABLED_ERROR,
   buildApiProxyExecutorRun,
+  buildApiProxyPublicExecutorRun,
 } from "./proxy/executor.js";
 import {
   createApiProxyExecutorRun,
@@ -380,6 +381,15 @@ async function proxyProtocolEndpoint(
     return c.json(response.body, response.status);
   }
 
+  const executorRequest = {
+    mode: "request" as const,
+    requestedTargetId: decision.target.id,
+    execute: true,
+  };
+  const shouldRecordExecution = decision.preview.plan.actions.some(
+    (action) => action.type !== "route-request",
+  );
+  const executionStartedAt = new Date().toISOString();
   const execution = await executeApiProxyPublicMvpPlan({
     target: decision.target,
     initialPreview: decision.preview,
@@ -397,12 +407,35 @@ async function proxyProtocolEndpoint(
         requestedTargetId: targetId,
       }),
   });
+  const executionFinishedAt = new Date().toISOString();
   if (!execution.ok) {
+    createApiProxyExecutorRun(
+      buildApiProxyPublicExecutorRun({
+        request: executorRequest,
+        preview: decision.preview,
+        status: "failed",
+        error: execution.diagnostic.message,
+        startedAt: executionStartedAt,
+        finishedAt: executionFinishedAt,
+      }),
+    );
     const response = adapter.diagnosticError(
       resolution.request,
       execution.diagnostic,
     );
     return c.json(response.body, response.status);
+  }
+  if (shouldRecordExecution) {
+    createApiProxyExecutorRun(
+      buildApiProxyPublicExecutorRun({
+        request: executorRequest,
+        preview: decision.preview,
+        status: "completed",
+        error: null,
+        startedAt: executionStartedAt,
+        finishedAt: executionFinishedAt,
+      }),
+    );
   }
 
   const instance = getInstance(decision.target.instanceId);

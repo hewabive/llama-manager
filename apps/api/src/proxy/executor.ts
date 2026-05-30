@@ -2,6 +2,7 @@ import {
   ApiProxyExecutorRunRecordSchema,
   type ApiProxyExecutorRunRecord,
   type ApiProxyExecutorRunRequest,
+  type ApiProxyExecutorStatus,
   type ApiProxyPlanPreview,
 } from "@llama-manager/core";
 
@@ -33,6 +34,28 @@ export function buildApiProxyExecutorRun(input: {
     runtime: input.preview.runtime,
     plan: input.preview.plan,
     error,
+    startedAt: input.startedAt,
+    finishedAt: input.finishedAt,
+  });
+}
+
+export function buildApiProxyPublicExecutorRun(input: {
+  request: ApiProxyExecutorRunRequest;
+  preview: ApiProxyPlanPreview;
+  status: Extract<ApiProxyExecutorStatus, "completed" | "failed">;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string;
+}): Omit<ApiProxyExecutorRunRecord, "id"> {
+  return ApiProxyExecutorRunRecordSchema.omit({ id: true }).parse({
+    mode: input.preview.plan.mode,
+    requestedTargetId: input.preview.plan.requestedTargetId,
+    preferredTargetId: input.request.preferredTargetId ?? null,
+    execute: true,
+    status: input.status,
+    runtime: input.preview.runtime,
+    plan: input.preview.plan,
+    error: input.error,
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
   });
