@@ -170,14 +170,13 @@ import {
 } from "./process/external.js";
 import { summarizeInstanceLog } from "./process/log-summary.js";
 import { tailInstanceLog } from "./process/logs.js";
-import { isPidAlive } from "./process/pid.js";
 import {
   ProcessPreflightError,
   validateInstancePreflight,
   validateInstanceStartPreflight,
 } from "./process/preflight.js";
 import { latestProcessRun } from "./process/runs-repository.js";
-import { stopStaleProcess } from "./process/stale.js";
+import { liveStaleProcessRun, stopStaleProcess } from "./process/stale.js";
 import { supervisor } from "./process/supervisor.js";
 import { listNetworkInterfaceAddresses } from "./system/network.js";
 import { getSystemResources } from "./system/resources.js";
@@ -1922,13 +1921,9 @@ app.delete("/api/instances/:id", async (c) => {
 });
 
 function staleProcessConflict(instanceId: string) {
-  const latestRun = latestProcessRun(instanceId);
-  const stalePid =
-    latestRun?.status === "stale" && latestRun.pid
-      ? Number(latestRun.pid)
-      : null;
-  if (stalePid && Number.isFinite(stalePid) && isPidAlive(stalePid)) {
-    return `instance has unmanaged stale process pid=${stalePid}; stop it before starting another`;
+  const stale = liveStaleProcessRun(instanceId);
+  if (stale) {
+    return `instance has unmanaged stale process pid=${stale.pid}; stop it before starting another`;
   }
   return null;
 }

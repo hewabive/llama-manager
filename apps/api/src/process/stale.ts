@@ -1,7 +1,11 @@
 import type { RuntimeState } from "@llama-manager/core";
 
 import { isPidAlive } from "./pid.js";
-import { latestProcessRun, updateProcessRun } from "./runs-repository.js";
+import {
+  listOpenProcessRuns,
+  type ProcessRun,
+  updateProcessRun,
+} from "./runs-repository.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -22,20 +26,33 @@ async function waitForExit(pid: number, timeoutMs: number) {
   return !isPidAlive(pid);
 }
 
+export function liveStaleProcessRun(
+  instanceId: string,
+): { run: ProcessRun; pid: number } | null {
+  for (const run of listOpenProcessRuns()) {
+    const pid = run.pid ? Number(run.pid) : null;
+    if (
+      run.instanceId === instanceId &&
+      run.status === "stale" &&
+      pid &&
+      Number.isFinite(pid) &&
+      isPidAlive(pid)
+    ) {
+      return { run, pid };
+    }
+  }
+  return null;
+}
+
 export async function stopStaleProcess(
   instanceId: string,
   timeoutMs = 5_000,
 ): Promise<RuntimeState | null> {
-  const latestRun = latestProcessRun(instanceId);
-  const pid = latestRun?.pid ? Number(latestRun.pid) : null;
-  if (
-    latestRun?.status !== "stale" ||
-    !pid ||
-    !Number.isFinite(pid) ||
-    !isPidAlive(pid)
-  ) {
+  const stale = liveStaleProcessRun(instanceId);
+  if (!stale) {
     return null;
   }
+  const { run, pid } = stale;
 
   try {
     process.kill(pid, "SIGTERM");
@@ -43,7 +60,7 @@ export async function stopStaleProcess(
     throw new Error((error as Error).message);
   }
 
-  updateProcessRun(latestRun.id, { status: "stopping" });
+  updateProcessRun(run.id, { status: "stopping" });
 
   if (!(await waitForExit(pid, timeoutMs))) {
     try {
@@ -55,7 +72,7 @@ export async function stopStaleProcess(
   }
 
   const stoppedAt = nowIso();
-  updateProcessRun(latestRun.id, {
+  updateProcessRun(run.id, {
     pid: null,
     status: "exited",
     stoppedAt,
@@ -66,10 +83,10 @@ export async function stopStaleProcess(
     instanceId,
     pid: null,
     status: "exited",
-    startedAt: latestRun.startedAt,
+    startedAt: run.startedAt,
     stoppedAt,
     exitCode: null,
-    logPath: latestRun.logPath,
-    rawLogPath: latestRun.rawLogPath,
+    logPath: run.logPath,
+    rawLogPath: run.rawLogPath,
   };
 }
