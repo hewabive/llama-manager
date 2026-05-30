@@ -4,7 +4,7 @@ import type {
   ApiProbeRequest,
   ApiProbeResult,
 } from "@llama-manager/core";
-import type { streamLlamaApiProbe } from "../../../api/client";
+import type { streamInstanceApiProbe } from "../../../api/client";
 
 export type ModelOption = {
   value: string;
@@ -27,7 +27,7 @@ export type ProbeHistoryLoader = () => Promise<{
 
 export type ProbeHistoryClearer = () => Promise<{ data: { deleted: number } }>;
 
-export type ProbeStreamRunner = typeof streamLlamaApiProbe;
+export type ProbeStreamRunner = typeof streamInstanceApiProbe;
 
 export type StreamProbeState = {
   status: "idle" | "streaming" | "done" | "error" | "cancelled";

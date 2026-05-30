@@ -131,7 +131,7 @@ export const llamaArgumentDefaults = sqliteTable("llama_argument_defaults", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const llamaApiProbeHistory = sqliteTable("llama_api_probe_history", {
+export const apiProbeHistory = sqliteTable("api_probe_history", {
   id: text("id").primaryKey(),
   profile: text("profile").notNull(),
   baseUrl: text("base_url").notNull(),

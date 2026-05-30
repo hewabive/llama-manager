@@ -23,10 +23,10 @@ import { Radio, Send, Square } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import {
-  clearLlamaApiProbeHistory,
-  listLlamaApiProbeHistory,
-  runLlamaApiProbe,
-  streamLlamaApiProbe,
+  clearInstanceApiProbeHistory,
+  listInstanceApiProbeHistory,
+  runInstanceApiProbe,
+  streamInstanceApiProbe,
 } from "../../../api/client";
 import { ApiProbeHistory } from "./History";
 import { ApiProbeResultView, StreamProbeResult } from "./Results";
@@ -183,12 +183,12 @@ export function ApiProbePanel(props: {
   const runProbe = (input: ApiProbeRequest) =>
     props.runProbe
       ? props.runProbe(input)
-      : runLlamaApiProbe(props.instanceId, input);
+      : runInstanceApiProbe(props.instanceId, input);
 
   const streamProbe =
     props.streamEnabled === false
       ? null
-      : (props.streamProbe ?? streamLlamaApiProbe);
+      : (props.streamProbe ?? streamInstanceApiProbe);
   const modelRequired = props.modelRequired ?? false;
   const disabledReason = props.disabledReason?.trim() || null;
 
@@ -197,7 +197,7 @@ export function ApiProbePanel(props: {
     queryFn: () =>
       props.listHistory
         ? props.listHistory()
-        : listLlamaApiProbeHistory(props.instanceId),
+        : listInstanceApiProbeHistory(props.instanceId),
     enabled: historyEnabled,
   });
 
@@ -205,7 +205,7 @@ export function ApiProbePanel(props: {
     mutationFn: () =>
       props.clearHistory
         ? props.clearHistory()
-        : clearLlamaApiProbeHistory(props.instanceId),
+        : clearInstanceApiProbeHistory(props.instanceId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: historyKey });
     },

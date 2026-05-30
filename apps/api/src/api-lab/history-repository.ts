@@ -9,9 +9,9 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "../db/index.js";
-import { llamaApiProbeHistory } from "../db/schema.js";
+import { apiProbeHistory } from "../db/schema.js";
 
-type ProbeHistoryRow = typeof llamaApiProbeHistory.$inferSelect;
+type ProbeHistoryRow = typeof apiProbeHistory.$inferSelect;
 
 const HISTORY_LIMIT = 20;
 const OUTPUT_LIMIT = 8_000;
@@ -80,7 +80,7 @@ export function createApiProbeHistory(input: {
   startedAt?: string;
 }) {
   const id = randomUUID();
-  db.insert(llamaApiProbeHistory)
+  db.insert(apiProbeHistory)
     .values({
       id,
       profile: input.profile ?? "llama-server",
@@ -122,7 +122,7 @@ export function updateApiProbeHistory(
     finishedAt?: string | null;
   },
 ) {
-  db.update(llamaApiProbeHistory)
+  db.update(apiProbeHistory)
     .set({
       status: input.status,
       ...(input.endpoint !== undefined ? { endpoint: input.endpoint } : {}),
@@ -156,7 +156,7 @@ export function updateApiProbeHistory(
         : {}),
       finishedAt: input.finishedAt ?? nowIso(),
     })
-    .where(eq(llamaApiProbeHistory.id, id))
+    .where(eq(apiProbeHistory.id, id))
     .run();
 }
 
@@ -168,14 +168,14 @@ export function listApiProbeHistory(
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   return db
     .select()
-    .from(llamaApiProbeHistory)
+    .from(apiProbeHistory)
     .where(
       and(
-        eq(llamaApiProbeHistory.profile, profile),
-        eq(llamaApiProbeHistory.baseUrl, baseUrl),
+        eq(apiProbeHistory.profile, profile),
+        eq(apiProbeHistory.baseUrl, baseUrl),
       ),
     )
-    .orderBy(desc(llamaApiProbeHistory.startedAt))
+    .orderBy(desc(apiProbeHistory.startedAt))
     .limit(safeLimit)
     .all()
     .map(toEntry);
@@ -186,11 +186,11 @@ export function clearApiProbeHistory(
   profile: ApiProbeProfile = "llama-server",
 ) {
   const result = db
-    .delete(llamaApiProbeHistory)
+    .delete(apiProbeHistory)
     .where(
       and(
-        eq(llamaApiProbeHistory.profile, profile),
-        eq(llamaApiProbeHistory.baseUrl, baseUrl),
+        eq(apiProbeHistory.profile, profile),
+        eq(apiProbeHistory.baseUrl, baseUrl),
       ),
     )
     .run();
@@ -202,13 +202,13 @@ export function pruneApiProbeHistory(
   keep = HISTORY_LIMIT,
   profile: ApiProbeProfile = "llama-server",
 ) {
-  db.delete(llamaApiProbeHistory)
+  db.delete(apiProbeHistory)
     .where(
       and(
-        eq(llamaApiProbeHistory.profile, profile),
-        eq(llamaApiProbeHistory.baseUrl, baseUrl),
-        sql`${llamaApiProbeHistory.id} NOT IN (
-          SELECT id FROM llama_api_probe_history
+        eq(apiProbeHistory.profile, profile),
+        eq(apiProbeHistory.baseUrl, baseUrl),
+        sql`${apiProbeHistory.id} NOT IN (
+          SELECT id FROM api_probe_history
           WHERE profile = ${profile} AND base_url = ${baseUrl}
           ORDER BY started_at DESC
           LIMIT ${keep}

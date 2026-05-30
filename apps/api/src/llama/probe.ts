@@ -1,12 +1,12 @@
 import type {
   Instance,
   InstanceArgValue,
+  ApiProbeRequest,
+  ApiProbeResult,
   LlamaCapabilitiesResult,
   LlamaCapability,
   LlamaCapabilityCategory,
   LlamaCapabilityStatus,
-  LlamaApiProbeRequest,
-  LlamaApiProbeResult,
   LlamaEndpointProbe,
   LlamaModelDiagnostics,
   LlamaProbe,
@@ -632,8 +632,8 @@ function endpointWithAutoload(endpoint: string, autoload: boolean) {
   return `${endpoint}?${query.toString()}`;
 }
 
-export function llamaApiProbeRequestBody(
-  input: LlamaApiProbeRequest,
+function buildApiProbeRequestBody(
+  input: ApiProbeRequest,
   options: { stream?: boolean } = {},
 ): {
   endpoint: string;
@@ -790,9 +790,9 @@ export function llamaApiProbeRequestBody(
   };
 }
 
-export function llamaApiProbeTarget(
+export function instanceApiProbeTarget(
   instance: Instance,
-  input: LlamaApiProbeRequest,
+  input: ApiProbeRequest,
   options: { stream?: boolean } = {},
 ) {
   const baseUrl = llamaBaseUrl(instance);
@@ -800,15 +800,15 @@ export function llamaApiProbeTarget(
     throw new Error("UNIX socket API probes are not implemented yet");
   }
 
-  return llamaApiProbeTargetFromBaseUrl(baseUrl, input, options);
+  return apiProbeTargetFromBaseUrl(baseUrl, input, options);
 }
 
-export function llamaApiProbeTargetFromBaseUrl(
+function apiProbeTargetFromBaseUrl(
   baseUrl: string,
-  input: LlamaApiProbeRequest,
+  input: ApiProbeRequest,
   options: { stream?: boolean } = {},
 ) {
-  const { endpoint, body } = llamaApiProbeRequestBody(input, options);
+  const { endpoint, body } = buildApiProbeRequestBody(input, options);
   const endpointWithQuery = endpointWithAutoload(endpoint, input.autoload);
 
   return {
@@ -818,30 +818,11 @@ export function llamaApiProbeTargetFromBaseUrl(
   };
 }
 
-export async function requestLlamaApiProbe(
+export async function requestInstanceApiProbe(
   instance: Instance,
-  input: LlamaApiProbeRequest,
-): Promise<LlamaApiProbeResult> {
-  const target = llamaApiProbeTarget(instance, input);
-
-  return {
-    kind: input.kind,
-    endpoint: target.endpoint,
-    requestBody: target.requestBody,
-    response: await requestLlamaJson(target.url, {
-      method: "POST",
-      body: JSON.stringify(target.requestBody),
-      headers: { "content-type": "application/json" },
-      timeoutMs: API_PROBE_TIMEOUT_MS,
-    }),
-  };
-}
-
-export async function requestLlamaApiProbeBaseUrl(
-  baseUrl: string,
-  input: LlamaApiProbeRequest,
-): Promise<LlamaApiProbeResult> {
-  const target = llamaApiProbeTargetFromBaseUrl(baseUrl, input);
+  input: ApiProbeRequest,
+): Promise<ApiProbeResult> {
+  const target = instanceApiProbeTarget(instance, input);
 
   return {
     kind: input.kind,

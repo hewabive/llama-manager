@@ -571,7 +571,7 @@ export async function getLlamaCapabilities(id: string) {
   );
 }
 
-export async function runLlamaApiProbe(id: string, input: ApiProbeRequest) {
+export async function runInstanceApiProbe(id: string, input: ApiProbeRequest) {
   return request<{ data: ApiProbeResult }>(`/api/instances/${id}/llama/probe`, {
     method: "POST",
     body: JSON.stringify(input),
@@ -623,13 +623,13 @@ export async function getApiLabModels(
   );
 }
 
-export async function listLlamaApiProbeHistory(id: string, limit = 20) {
+export async function listInstanceApiProbeHistory(id: string, limit = 20) {
   return request<{ data: ApiProbeHistoryEntry[] }>(
     `/api/instances/${id}/llama/probe/history?limit=${limit}`,
   );
 }
 
-export async function clearLlamaApiProbeHistory(id: string) {
+export async function clearInstanceApiProbeHistory(id: string) {
   return request<{ data: { deleted: number } }>(
     `/api/instances/${id}/llama/probe/history`,
     {
@@ -665,11 +665,6 @@ export type ApiProbeStreamCallbacks = {
   onError?: (error: unknown) => void;
   onCancelled?: (payload: unknown) => void;
 };
-
-export type LlamaApiProbeStreamMeta = ApiProbeStreamMeta;
-export type LlamaApiProbeStreamStatus = ApiProbeStreamStatus;
-export type LlamaApiProbeStreamDone = ApiProbeStreamDone;
-export type LlamaApiProbeStreamCallbacks = ApiProbeStreamCallbacks;
 
 function parseSseBlock(block: string) {
   let event = "message";
@@ -762,7 +757,7 @@ async function readApiProbeStream(
   }
 }
 
-export async function streamLlamaApiProbe(
+export async function streamInstanceApiProbe(
   id: string,
   input: ApiProbeRequest,
   callbacks: ApiProbeStreamCallbacks,

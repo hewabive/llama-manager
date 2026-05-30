@@ -11,6 +11,7 @@ import {
   ApiProxyTargetUpdateSchema,
   BuildJobStartSchema,
   BuildSettingsSchema,
+  ApiProbeRequestSchema,
   ExternalProcessKillSchema,
   InstanceBulkActionRequestSchema,
   InstanceCreateSchema,
@@ -18,7 +19,6 @@ import {
   InstanceUpdateSchema,
   ApiLabProbeProfileSchema,
   ApiLabProbeTargetRequestSchema,
-  LlamaApiProbeRequestSchema,
   LlamaSourceSettingsUpdateSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
@@ -29,9 +29,9 @@ import {
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
   type ApiProxySchedulerPlanRequest,
+  type ApiProbeRequest,
   type ApiProbeProfile,
   type ApiLabProbeProfile,
-  type LlamaApiProbeRequest,
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
   LlamaArgumentDefaultsSchema,
@@ -92,11 +92,11 @@ import {
 import {
   llamaBaseUrl,
   llamaEndpointErrorMessage,
-  llamaApiProbeTarget,
+  instanceApiProbeTarget,
   probeLlamaCapabilities,
   probeLlamaServer,
   requestLlamaJson,
-  requestLlamaApiProbe,
+  requestInstanceApiProbe,
   requestLlamaModelAction,
   requestLlamaSlotAction,
 } from "./llama/probe.js";
@@ -1516,7 +1516,7 @@ app.delete("/api/instances/:id/llama/probe/history", (c) => {
 });
 
 app.post("/api/instances/:id/llama/probe", async (c) => {
-  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+  const parsed = ApiProbeRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
@@ -1528,7 +1528,7 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
 
   let historyId: string | null = null;
   try {
-    const target = llamaApiProbeTarget(instance, parsed.data);
+    const target = instanceApiProbeTarget(instance, parsed.data);
     const baseUrl = llamaBaseUrl(instance);
     historyId = createApiProbeHistory({
       baseUrl,
@@ -1537,7 +1537,7 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
       requestBody: target.requestBody,
       streamed: false,
     });
-    const data = await requestLlamaApiProbe(instance, parsed.data);
+    const data = await requestInstanceApiProbe(instance, parsed.data);
     const body = recordValue(data.response.body);
     updateApiProbeHistory(historyId, {
       status: data.response.ok ? "ok" : "error",
@@ -1807,9 +1807,9 @@ function streamApiProbeTarget(
   input: {
     profile?: ApiProbeProfile;
     baseUrl: string;
-    request: LlamaApiProbeRequest;
+    request: ApiProbeRequest;
     target:
-      | ReturnType<typeof llamaApiProbeTarget>
+      | ReturnType<typeof instanceApiProbeTarget>
       | ReturnType<typeof apiLabProbeTargetFromBaseUrl>;
   },
 ) {
@@ -1975,7 +1975,7 @@ app.post("/api/lab/probe/stream", async (c) => {
 });
 
 app.post("/api/instances/:id/llama/probe/stream", async (c) => {
-  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+  const parsed = ApiProbeRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
@@ -1991,10 +1991,10 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  let target: ReturnType<typeof llamaApiProbeTarget>;
+  let target: ReturnType<typeof instanceApiProbeTarget>;
   let baseUrl: string;
   try {
-    target = llamaApiProbeTarget(instance, parsed.data, { stream: true });
+    target = instanceApiProbeTarget(instance, parsed.data, { stream: true });
     baseUrl = llamaBaseUrl(instance);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
