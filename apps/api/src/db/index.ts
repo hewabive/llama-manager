@@ -318,6 +318,19 @@ export function migrate() {
   `);
 
   db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_proxy_models (
+      id TEXT PRIMARY KEY NOT NULL,
+      model_id TEXT NOT NULL UNIQUE,
+      enabled TEXT NOT NULL,
+      owned_by TEXT NOT NULL,
+      target_id TEXT REFERENCES api_proxy_targets(id) ON DELETE SET NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS api_proxy_runtime_metadata (
       target_id TEXT PRIMARY KEY NOT NULL REFERENCES api_proxy_targets(id) ON DELETE CASCADE,
       saved_slot_ids_json TEXT NOT NULL,
@@ -355,5 +368,10 @@ export function migrate() {
   db.run(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_routes_name_idx
     ON api_proxy_routes (name)
+  `);
+
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_models_model_id_idx
+    ON api_proxy_models (model_id)
   `);
 }

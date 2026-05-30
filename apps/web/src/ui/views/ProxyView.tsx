@@ -1,6 +1,8 @@
 import type {
   ApiProxyExecutorRunRecord,
   ApiProxyExecutorRunRequest,
+  ApiProxyModelCreate,
+  ApiProxyModelRecord,
   ApiProxyPlanPreview,
   ApiProxyPlanPreviewRequest,
   ApiProxyRouteCreate,
@@ -42,8 +44,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createApiProxyExecutorRun,
+  createApiProxyModel,
   createApiProxyRoute,
   createApiProxyTarget,
+  deleteApiProxyModel,
   deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
@@ -51,6 +55,7 @@ import {
   listApiProxyExecutorRuns,
   listInstances,
   previewApiProxyPlan,
+  updateApiProxyModel,
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "../../api/client";
@@ -63,6 +68,10 @@ type TargetEditor =
 type RouteEditor =
   | { mode: "create"; route: null }
   | { mode: "edit"; route: ApiProxyRouteRecord };
+
+type ModelEditor =
+  | { mode: "create"; model: null }
+  | { mode: "edit"; model: ApiProxyModelRecord };
 
 type TargetDraft = {
   name: string;
@@ -87,6 +96,16 @@ type RouteDraft = {
   transform: "none" | "openai-compatible";
 };
 
+type ModelDraft = {
+  modelId: string;
+  enabled: boolean;
+  ownedBy: string;
+  targetId: string | null;
+  description: string;
+};
+
+const unboundTargetValue = "__unbound__";
+
 const emptyTargetDraft: TargetDraft = {
   name: "",
   enabled: false,
@@ -108,6 +127,14 @@ const emptyRouteDraft: RouteDraft = {
   pathPrefix: "/v1",
   targetId: null,
   transform: "none",
+};
+
+const emptyModelDraft: ModelDraft = {
+  modelId: "",
+  enabled: false,
+  ownedBy: "llama-manager",
+  targetId: null,
+  description: "",
 };
 
 function numberOrNull(value: number | "") {
@@ -152,6 +179,16 @@ function routeDraftFromRecord(route: ApiProxyRouteRecord): RouteDraft {
   };
 }
 
+function modelDraftFromRecord(model: ApiProxyModelRecord): ModelDraft {
+  return {
+    modelId: model.modelId,
+    enabled: model.enabled,
+    ownedBy: model.ownedBy,
+    targetId: model.targetId,
+    description: model.description ?? "",
+  };
+}
+
 function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
   return {
     name: draft.name.trim(),
@@ -166,6 +203,16 @@ function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
     slotIds: slotIdsFromText(draft.slotIds),
     idleUnloadMs: numberOrNull(draft.idleUnloadMs),
     resumeAfterIdleMs: numberOrNull(draft.resumeAfterIdleMs),
+  };
+}
+
+function modelPayload(draft: ModelDraft): ApiProxyModelCreate {
+  return {
+    modelId: draft.modelId.trim(),
+    enabled: draft.enabled,
+    ownedBy: draft.ownedBy.trim() || "llama-manager",
+    targetId: draft.targetId,
+    description: draft.description.trim() || null,
   };
 }
 
@@ -256,6 +303,9 @@ export function ProxyView() {
   const [targetEditor, setTargetEditor] = useState<TargetEditor | null>(null);
   const [targetDraftState, setTargetDraftState] =
     useState<TargetDraft>(emptyTargetDraft);
+  const [modelEditor, setModelEditor] = useState<ModelEditor | null>(null);
+  const [modelDraftState, setModelDraftState] =
+    useState<ModelDraft>(emptyModelDraft);
   const [routeEditor, setRouteEditor] = useState<RouteEditor | null>(null);
   const [routeDraftState, setRouteDraftState] =
     useState<RouteDraft>(emptyRouteDraft);
@@ -285,6 +335,7 @@ export function ProxyView() {
   });
 
   const config = proxyQuery.data?.data;
+  const models = config?.models ?? [];
   const targets = config?.targets ?? [];
   const routes = config?.routes ?? [];
   const targetById = useMemo(
@@ -310,6 +361,10 @@ export function ProxyView() {
     value: target.id,
     label: target.name,
   }));
+  const modelTargetOptions = [
+    { value: unboundTargetValue, label: "Unbound" },
+    ...targetOptions,
+  ];
   const runtimeByTargetId = useMemo(
     () =>
       new Map(
@@ -385,6 +440,58 @@ export function ProxyView() {
       queryClient.invalidateQueries({ queryKey: ["api-proxy-executor-runs"] }),
     ]);
   };
+
+  const createModelMutation = useMutation({
+    mutationFn: createApiProxyModel,
+    onSuccess: async () => {
+      await invalidateProxy();
+      closeModelEditor();
+      notifications.show({
+        title: "Proxy model saved",
+        message: "External model entry was saved.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Proxy model save failed",
+        message: (error as Error).message,
+      }),
+  });
+  const updateModelMutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ApiProxyModelCreate }) =>
+      updateApiProxyModel(id, input),
+    onSuccess: async () => {
+      await invalidateProxy();
+      closeModelEditor();
+      notifications.show({
+        title: "Proxy model updated",
+        message: "External model entry was saved.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Proxy model update failed",
+        message: (error as Error).message,
+      }),
+  });
+  const deleteModelMutation = useMutation({
+    mutationFn: deleteApiProxyModel,
+    onSuccess: async () => {
+      await invalidateProxy();
+      notifications.show({
+        title: "Proxy model deleted",
+        message: "External model entry was removed.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Proxy model delete failed",
+        message: (error as Error).message,
+      }),
+  });
 
   const createTargetMutation = useMutation({
     mutationFn: createApiProxyTarget,
@@ -504,6 +611,21 @@ export function ProxyView() {
     setTargetDraftState(emptyTargetDraft);
   }
 
+  function openCreateModel() {
+    setModelEditor({ mode: "create", model: null });
+    setModelDraftState(emptyModelDraft);
+  }
+
+  function openEditModel(model: ApiProxyModelRecord) {
+    setModelEditor({ mode: "edit", model });
+    setModelDraftState(modelDraftFromRecord(model));
+  }
+
+  function closeModelEditor() {
+    setModelEditor(null);
+    setModelDraftState(emptyModelDraft);
+  }
+
   function openCreateRoute() {
     setRouteEditor({ mode: "create", route: null });
     setRouteDraftState({
@@ -529,6 +651,15 @@ export function ProxyView() {
       return;
     }
     createTargetMutation.mutate(input);
+  }
+
+  function saveModel() {
+    const input = modelPayload(modelDraftState);
+    if (modelEditor?.mode === "edit") {
+      updateModelMutation.mutate({ id: modelEditor.model.id, input });
+      return;
+    }
+    createModelMutation.mutate(input);
   }
 
   function saveRoute() {
@@ -564,6 +695,8 @@ export function ProxyView() {
 
   const targetBusy =
     createTargetMutation.isPending || updateTargetMutation.isPending;
+  const modelBusy =
+    createModelMutation.isPending || updateModelMutation.isPending;
   const routeBusy =
     createRouteMutation.isPending || updateRouteMutation.isPending;
 
@@ -572,13 +705,21 @@ export function ProxyView() {
       <Paper withBorder p="md" radius="sm">
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <Group gap="xs" wrap="wrap">
+            <Badge variant="light">{models.length} models</Badge>
             <Badge variant="light">{targets.length} targets</Badge>
             <Badge variant="light">{routes.length} routes</Badge>
             <Badge color="gray" variant="outline">
-              proxy endpoint disabled
+              forwarding disabled
             </Badge>
           </Group>
           <Group gap="xs" wrap="wrap">
+            <Button
+              variant="light"
+              leftSection={<Plus size={16} />}
+              onClick={openCreateModel}
+            >
+              Add model
+            </Button>
             <Button
               variant="light"
               leftSection={<Plus size={16} />}
@@ -596,6 +737,103 @@ export function ProxyView() {
             </Button>
           </Group>
         </Group>
+      </Paper>
+
+      <Paper withBorder p="md" radius="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Text fw={600}>External models</Text>
+            <Group gap="xs" wrap="wrap">
+              <Code>/proxy/v1/models</Code>
+              <Code>/v1/models</Code>
+            </Group>
+          </Group>
+          <Table.ScrollContainer minWidth={900}>
+            <Table striped highlightOnHover verticalSpacing="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Model ID</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Target</Table.Th>
+                  <Table.Th>Owned by</Table.Th>
+                  <Table.Th>Description</Table.Th>
+                  <Table.Th>Updated</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {models.map((model) => (
+                  <Table.Tr key={model.id}>
+                    <Table.Td>
+                      <Code>{model.modelId}</Code>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={targetStatusColor(model.enabled)}
+                        variant="light"
+                      >
+                        {model.enabled ? "enabled" : "disabled"}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {model.targetId ? (
+                        (targetById.get(model.targetId)?.name ?? model.targetId)
+                      ) : (
+                        <Text c="dimmed" size="sm">
+                          unbound
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{model.ownedBy}</Table.Td>
+                    <Table.Td>
+                      {model.description ? (
+                        <Text size="sm">{model.description}</Text>
+                      ) : (
+                        <Text c="dimmed" size="sm">
+                          none
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{formatLocalDateTime(model.updatedAt)}</Table.Td>
+                    <Table.Td>
+                      <Group gap={4} justify="flex-end" wrap="nowrap">
+                        <Tooltip label="Edit model">
+                          <ActionIcon
+                            aria-label="Edit proxy model"
+                            variant="subtle"
+                            onClick={() => openEditModel(model)}
+                          >
+                            <Pencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Delete model">
+                          <ActionIcon
+                            aria-label="Delete proxy model"
+                            variant="subtle"
+                            color="red"
+                            loading={deleteModelMutation.isPending}
+                            onClick={() => deleteModelMutation.mutate(model.id)}
+                          >
+                            <Trash2 size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+                {models.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={7}>
+                      <Text c="dimmed" ta="center" py="lg">
+                        No external models configured
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Stack>
       </Paper>
 
       <Paper withBorder p="md" radius="sm">
@@ -1086,6 +1324,89 @@ export function ProxyView() {
       </Paper>
 
       <Modal
+        opened={Boolean(modelEditor)}
+        onClose={closeModelEditor}
+        title={
+          modelEditor?.mode === "edit"
+            ? `Edit ${modelEditor.model.modelId}`
+            : "Add external model"
+        }
+        size="lg"
+      >
+        <Stack gap="sm">
+          <Switch
+            label="Enabled"
+            checked={modelDraftState.enabled}
+            onChange={(event) => {
+              const enabled = event.currentTarget.checked;
+              setModelDraftState((current) => ({
+                ...current,
+                enabled,
+              }));
+            }}
+          />
+          <TextInput
+            label="Model ID"
+            placeholder="Public model id for /v1/models"
+            value={modelDraftState.modelId}
+            onChange={(event) => {
+              const modelId = event.currentTarget.value;
+              setModelDraftState((current) => ({
+                ...current,
+                modelId,
+              }));
+            }}
+          />
+          <TextInput
+            label="Owned by"
+            value={modelDraftState.ownedBy}
+            onChange={(event) => {
+              const ownedBy = event.currentTarget.value;
+              setModelDraftState((current) => ({
+                ...current,
+                ownedBy,
+              }));
+            }}
+          />
+          <Select
+            label="Target"
+            data={modelTargetOptions}
+            value={modelDraftState.targetId ?? unboundTargetValue}
+            searchable
+            onChange={(value) =>
+              setModelDraftState((current) => ({
+                ...current,
+                targetId: !value || value === unboundTargetValue ? null : value,
+              }))
+            }
+          />
+          <TextInput
+            label="Description"
+            value={modelDraftState.description}
+            onChange={(event) => {
+              const description = event.currentTarget.value;
+              setModelDraftState((current) => ({
+                ...current,
+                description,
+              }));
+            }}
+          />
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={closeModelEditor}>
+              Cancel
+            </Button>
+            <Button
+              leftSection={<Save size={16} />}
+              loading={modelBusy}
+              onClick={saveModel}
+            >
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
         opened={Boolean(targetEditor)}
         onClose={closeTargetEditor}
         title={
@@ -1099,22 +1420,24 @@ export function ProxyView() {
           <Switch
             label="Enabled"
             checked={targetDraftState.enabled}
-            onChange={(event) =>
+            onChange={(event) => {
+              const enabled = event.currentTarget.checked;
               setTargetDraftState((current) => ({
                 ...current,
-                enabled: event.currentTarget.checked,
-              }))
-            }
+                enabled,
+              }));
+            }}
           />
           <TextInput
             label="Name"
             value={targetDraftState.name}
-            onChange={(event) =>
+            onChange={(event) => {
+              const name = event.currentTarget.value;
               setTargetDraftState((current) => ({
                 ...current,
-                name: event.currentTarget.value,
-              }))
-            }
+                name,
+              }));
+            }}
           />
           <Select
             label="Instance"
@@ -1132,12 +1455,13 @@ export function ProxyView() {
             label="Model"
             placeholder="Optional v1/models id"
             value={targetDraftState.model}
-            onChange={(event) =>
+            onChange={(event) => {
+              const model = event.currentTarget.value;
               setTargetDraftState((current) => ({
                 ...current,
-                model: event.currentTarget.value,
-              }))
-            }
+                model,
+              }));
+            }}
           />
           <Group grow align="flex-end">
             <SegmentedControl
@@ -1170,45 +1494,49 @@ export function ProxyView() {
             label="Resource group"
             placeholder="cuda:0"
             value={targetDraftState.resourceGroupId}
-            onChange={(event) =>
+            onChange={(event) => {
+              const resourceGroupId = event.currentTarget.value;
               setTargetDraftState((current) => ({
                 ...current,
-                resourceGroupId: event.currentTarget.value,
-              }))
-            }
+                resourceGroupId,
+              }));
+            }}
           />
           <Group gap="lg" wrap="wrap">
             <Switch
               label="Preemptible"
               checked={targetDraftState.preemptible}
-              onChange={(event) =>
+              onChange={(event) => {
+                const preemptible = event.currentTarget.checked;
                 setTargetDraftState((current) => ({
                   ...current,
-                  preemptible: event.currentTarget.checked,
-                }))
-              }
+                  preemptible,
+                }));
+              }}
             />
             <Switch
               label="Save slots before unload"
               checked={targetDraftState.saveSlotsBeforeUnload}
-              onChange={(event) =>
+              onChange={(event) => {
+                const saveSlotsBeforeUnload = event.currentTarget.checked;
                 setTargetDraftState((current) => ({
                   ...current,
-                  saveSlotsBeforeUnload: event.currentTarget.checked,
-                }))
-              }
+                  saveSlotsBeforeUnload,
+                }));
+              }}
             />
           </Group>
           <TextInput
             label="Slot IDs"
             placeholder="0, 1"
             value={targetDraftState.slotIds}
-            onChange={(event) =>
+            onChange={(event) => {
+              const slotIds = event.currentTarget.value;
               setTargetDraftState((current) => ({
                 ...current,
-                slotIds: event.currentTarget.value,
-              }))
-            }
+                slotIds,
+              }));
+            }}
           />
           <Group grow>
             <NumberInput
@@ -1266,32 +1594,35 @@ export function ProxyView() {
           <Switch
             label="Enabled"
             checked={routeDraftState.enabled}
-            onChange={(event) =>
+            onChange={(event) => {
+              const enabled = event.currentTarget.checked;
               setRouteDraftState((current) => ({
                 ...current,
-                enabled: event.currentTarget.checked,
-              }))
-            }
+                enabled,
+              }));
+            }}
           />
           <TextInput
             label="Name"
             value={routeDraftState.name}
-            onChange={(event) =>
+            onChange={(event) => {
+              const name = event.currentTarget.value;
               setRouteDraftState((current) => ({
                 ...current,
-                name: event.currentTarget.value,
-              }))
-            }
+                name,
+              }));
+            }}
           />
           <TextInput
             label="Path prefix"
             value={routeDraftState.pathPrefix}
-            onChange={(event) =>
+            onChange={(event) => {
+              const pathPrefix = event.currentTarget.value;
               setRouteDraftState((current) => ({
                 ...current,
-                pathPrefix: event.currentTarget.value,
-              }))
-            }
+                pathPrefix,
+              }));
+            }}
           />
           <Select
             label="Target"

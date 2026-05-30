@@ -2,6 +2,10 @@ import {
   ApiProxyConfigSchema,
   ApiProxyExecutorRunRecordSchema,
   ApiProxyExecutorRunListSchema,
+  ApiProxyModelConfigSchema,
+  ApiProxyModelCreateSchema,
+  ApiProxyModelRecordSchema,
+  ApiProxyModelUpdateSchema,
   ApiProxyRouteConfigSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteRecordSchema,
@@ -14,6 +18,9 @@ import {
   type ApiProxyConfig,
   type ApiProxyExecutorRunList,
   type ApiProxyExecutorRunRecord,
+  type ApiProxyModelCreate,
+  type ApiProxyModelRecord,
+  type ApiProxyModelUpdate,
   type ApiProxyRouteCreate,
   type ApiProxyRouteRecord,
   type ApiProxyRouteUpdate,
@@ -28,6 +35,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../db/index.js";
 import {
   apiProxyExecutorRuns,
+  apiProxyModels,
   apiProxyRoutes,
   apiProxyRuntimeMetadata,
   apiProxyTargets,
@@ -35,6 +43,7 @@ import {
 
 type TargetRow = typeof apiProxyTargets.$inferSelect;
 type RouteRow = typeof apiProxyRoutes.$inferSelect;
+type ModelRow = typeof apiProxyModels.$inferSelect;
 type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
 type ExecutorRunRow = typeof apiProxyExecutorRuns.$inferSelect;
 
@@ -110,6 +119,19 @@ function toRoute(row: RouteRow): ApiProxyRouteRecord {
   });
 }
 
+function toModel(row: ModelRow): ApiProxyModelRecord {
+  return ApiProxyModelRecordSchema.parse({
+    id: row.id,
+    modelId: row.modelId,
+    enabled: parseBool(row.enabled),
+    ownedBy: row.ownedBy,
+    targetId: row.targetId,
+    description: row.description,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
 function toRuntimeMetadata(
   row: RuntimeMetadataRow,
 ): ApiProxyRuntimeMetadataRecord {
@@ -164,6 +186,16 @@ function routeValues(input: ApiProxyRouteCreate | ApiProxyRouteRecord) {
   };
 }
 
+function modelValues(input: ApiProxyModelCreate | ApiProxyModelRecord) {
+  return {
+    modelId: input.modelId,
+    enabled: boolText(input.enabled),
+    ownedBy: input.ownedBy,
+    targetId: input.targetId,
+    description: input.description,
+  };
+}
+
 function runtimeMetadataValues(input: ApiProxyRuntimeMetadataRecord) {
   return {
     savedSlotIdsJson: JSON.stringify(input.savedSlotIds),
@@ -208,6 +240,15 @@ export function listApiProxyRoutes(): ApiProxyRouteRecord[] {
     .sort((left, right) => left.pathPrefix.localeCompare(right.pathPrefix));
 }
 
+export function listApiProxyModels(): ApiProxyModelRecord[] {
+  return db
+    .select()
+    .from(apiProxyModels)
+    .all()
+    .map(toModel)
+    .sort((left, right) => left.modelId.localeCompare(right.modelId));
+}
+
 export function getApiProxyTarget(id: string): ApiProxyTargetRecord | null {
   const row = db
     .select()
@@ -226,8 +267,29 @@ export function getApiProxyRoute(id: string): ApiProxyRouteRecord | null {
   return row ? toRoute(row) : null;
 }
 
+export function getApiProxyModel(id: string): ApiProxyModelRecord | null {
+  const row = db
+    .select()
+    .from(apiProxyModels)
+    .where(eq(apiProxyModels.id, id))
+    .get();
+  return row ? toModel(row) : null;
+}
+
+export function getApiProxyModelByModelId(
+  modelId: string,
+): ApiProxyModelRecord | null {
+  const row = db
+    .select()
+    .from(apiProxyModels)
+    .where(eq(apiProxyModels.modelId, modelId))
+    .get();
+  return row ? toModel(row) : null;
+}
+
 export function getApiProxyConfig(): ApiProxyConfig {
   return ApiProxyConfigSchema.parse({
+    models: listApiProxyModels(),
     targets: listApiProxyTargets(),
     routes: listApiProxyRoutes(),
   });
@@ -341,6 +403,63 @@ export function createApiProxyTarget(
     throw new Error("failed to create API proxy target");
   }
   return created;
+}
+
+export function createApiProxyModel(
+  input: ApiProxyModelCreate,
+): ApiProxyModelRecord {
+  const parsed = ApiProxyModelCreateSchema.parse(input);
+  const id = randomUUID();
+  const timestamp = nowIso();
+
+  db.insert(apiProxyModels)
+    .values({
+      id,
+      ...modelValues(parsed),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+
+  const created = getApiProxyModel(id);
+  if (!created) {
+    throw new Error("failed to create API proxy model");
+  }
+  return created;
+}
+
+export function updateApiProxyModel(
+  id: string,
+  input: ApiProxyModelUpdate,
+): ApiProxyModelRecord | null {
+  const current = getApiProxyModel(id);
+  if (!current) {
+    return null;
+  }
+  const parsed = ApiProxyModelUpdateSchema.parse(input);
+  const next = ApiProxyModelConfigSchema.parse({
+    ...current,
+    ...parsed,
+    id: current.id,
+  });
+
+  db.update(apiProxyModels)
+    .set({
+      ...modelValues(next),
+      updatedAt: nowIso(),
+    })
+    .where(eq(apiProxyModels.id, id))
+    .run();
+
+  return getApiProxyModel(id);
+}
+
+export function deleteApiProxyModel(id: string): boolean {
+  const result = db
+    .delete(apiProxyModels)
+    .where(eq(apiProxyModels.id, id))
+    .run();
+  return result.changes > 0;
 }
 
 export function updateApiProxyTarget(

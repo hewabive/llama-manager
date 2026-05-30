@@ -4,6 +4,9 @@ import type {
   ApiProxyExecutorRunList,
   ApiProxyExecutorRunRecord,
   ApiProxyExecutorRunRequest,
+  ApiProxyModelCreate,
+  ApiProxyModelRecord,
+  ApiProxyModelUpdate,
   ApiProxyPlanPreview,
   ApiProxyPlanPreviewRequest,
   ApiProxyRouteCreate,
@@ -253,6 +256,29 @@ export async function createApiProxyExecutorRun(
       body: JSON.stringify(input),
     },
   );
+}
+
+export async function createApiProxyModel(input: ApiProxyModelCreate) {
+  return request<{ data: ApiProxyModelRecord }>("/api/proxy/models", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateApiProxyModel(
+  id: string,
+  input: ApiProxyModelUpdate,
+) {
+  return request<{ data: ApiProxyModelRecord }>(`/api/proxy/models/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteApiProxyModel(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/proxy/models/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function createApiProxyTarget(input: ApiProxyTargetCreate) {

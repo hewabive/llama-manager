@@ -187,6 +187,19 @@ export const apiProxyRoutes = sqliteTable("api_proxy_routes", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const apiProxyModels = sqliteTable("api_proxy_models", {
+  id: text("id").primaryKey(),
+  modelId: text("model_id").notNull().unique(),
+  enabled: text("enabled").notNull(),
+  ownedBy: text("owned_by").notNull(),
+  targetId: text("target_id").references(() => apiProxyTargets.id, {
+    onDelete: "set null",
+  }),
+  description: text("description"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const apiProxyRuntimeMetadata = sqliteTable(
   "api_proxy_runtime_metadata",
   {

@@ -1,6 +1,8 @@
 import {
   AdminLoginSchema,
   ApiProxyExecutorRunRequestSchema,
+  ApiProxyModelCreateSchema,
+  ApiProxyModelUpdateSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteUpdateSchema,
   ApiProxyPlanPreviewRequestSchema,
@@ -35,7 +37,7 @@ import {
   type ProcessEvent,
   type RuntimeState,
 } from "@llama-manager/core";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 
@@ -123,20 +125,32 @@ import {
 } from "./proxy/executor.js";
 import {
   createApiProxyExecutorRun,
+  createApiProxyModel,
   createApiProxyRoute,
   createApiProxyTarget,
+  deleteApiProxyModel,
   deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
+  getApiProxyModel,
+  getApiProxyModelByModelId,
   getApiProxyRoute,
   getApiProxyTarget,
   listApiProxyExecutorRuns,
+  listApiProxyModels,
   listApiProxyRuntimeMetadata,
   listApiProxyRoutes,
   listApiProxyTargets,
+  updateApiProxyModel,
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "./proxy/repository.js";
+import {
+  modelIdFromBody,
+  notImplementedResponse,
+  openAiError,
+  openAiModelsList,
+} from "./proxy/openai.js";
 import { buildApiProxyRuntimeSnapshot } from "./proxy/runtime.js";
 import {
   planApiProxyIdleMaintenance,
@@ -212,6 +226,15 @@ function validateApiProxyTargetRefs(input: {
 function validateApiProxyRouteRefs(input: { targetId?: string | undefined }) {
   if (input.targetId && !getApiProxyTarget(input.targetId)) {
     return "proxy route target not found";
+  }
+  return null;
+}
+
+function validateApiProxyModelRefs(input: {
+  targetId?: string | null | undefined;
+}) {
+  if (input.targetId && !getApiProxyTarget(input.targetId)) {
+    return "proxy model target not found";
   }
   return null;
 }
@@ -292,6 +315,61 @@ function queryLimit(value: string | undefined, fallback = 20) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+async function safeJsonBody(c: Context) {
+  try {
+    return await c.req.json();
+  } catch {
+    return null;
+  }
+}
+
+async function proxyEndpointNotImplemented(c: Context, endpoint: string) {
+  const body = await safeJsonBody(c);
+  const modelId = modelIdFromBody(body);
+  if (!modelId) {
+    return c.json(
+      openAiError({
+        message: "Request body must include a non-empty model field.",
+        type: "invalid_request_error",
+        code: "missing_model",
+        param: "model",
+      }),
+      400,
+    );
+  }
+
+  const model = getApiProxyModelByModelId(modelId);
+  if (!model || !model.enabled) {
+    return c.json(
+      openAiError({
+        message: `Model ${modelId} is not published by llama-manager proxy.`,
+        type: "not_found_error",
+        code: "model_not_found",
+        param: "model",
+      }),
+      404,
+    );
+  }
+
+  return c.json(notImplementedResponse(model.modelId, endpoint), 501);
+}
+
+function registerOpenAiProxyRoutes(prefix: string) {
+  app.get(`${prefix}/models`, (c) => {
+    return c.json(openAiModelsList(listApiProxyModels()));
+  });
+
+  app.post(`${prefix}/chat/completions`, (c) =>
+    proxyEndpointNotImplemented(c, `${prefix}/chat/completions`),
+  );
+  app.post(`${prefix}/completions`, (c) =>
+    proxyEndpointNotImplemented(c, `${prefix}/completions`),
+  );
+  app.post(`${prefix}/embeddings`, (c) =>
+    proxyEndpointNotImplemented(c, `${prefix}/embeddings`),
+  );
+}
+
 app.use(
   "*",
   cors({
@@ -345,6 +423,9 @@ app.post("/api/auth/logout", (c) => {
     },
   });
 });
+
+registerOpenAiProxyRoutes("/proxy/v1");
+registerOpenAiProxyRoutes("/v1");
 
 app.get("/api/network/interfaces", (c) => {
   return c.json({ data: { interfaces: listNetworkInterfaceAddresses() } });
@@ -424,6 +505,53 @@ app.delete("/api/path-catalog/:id", (c) => {
 
 app.get("/api/proxy/config", (c) => {
   return c.json({ data: getApiProxyConfig() });
+});
+
+app.post("/api/proxy/models", async (c) => {
+  const parsed = ApiProxyModelCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyModelRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    return c.json({ data: createApiProxyModel(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/proxy/models/:id", async (c) => {
+  const parsed = ApiProxyModelUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyModelRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    const model = updateApiProxyModel(c.req.param("id"), parsed.data);
+    if (!model) {
+      return c.json({ error: "proxy model not found" }, 404);
+    }
+    return c.json({ data: model });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/proxy/models/:id", (c) => {
+  const model = getApiProxyModel(c.req.param("id"));
+  if (!model) {
+    return c.json({ data: { deleted: false } }, 404);
+  }
+  const deleted = deleteApiProxyModel(model.id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.get("/api/proxy/runtime", async (c) => {

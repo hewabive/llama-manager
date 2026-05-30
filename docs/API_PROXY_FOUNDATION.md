@@ -3,8 +3,8 @@
 This document captures the intended shape of the future `llama-manager` API
 proxy. The current implementation adds shared contracts, durable
 disabled-by-default configuration, runtime diagnostics, pure planning logic,
-dry-run executor logging and HTTP forwarding helpers. It does not expose a
-public proxy endpoint yet.
+dry-run executor logging, a public OpenAI-compatible stub and HTTP forwarding
+helpers. It does not forward public traffic to llama-server yet.
 
 ## Problem Shape
 
@@ -36,6 +36,7 @@ endpoint.
 - Core proxy contracts in `packages/core`:
   - `ApiProxyTargetConfig`
   - `ApiProxyRouteConfig`
+  - `ApiProxyModelConfig`
   - `ApiProxyTargetRuntime`
   - `ApiProxySchedulerPlanRequest`
   - `ApiProxySchedulerPlan`
@@ -56,17 +57,35 @@ endpoint.
   - request/response header filtering
   - event-stream detection
 - Durable configuration in SQLite:
+  - `api_proxy_models`
   - `api_proxy_targets`
   - `api_proxy_routes`
   - `api_proxy_runtime_metadata`
   - `api_proxy_executor_runs`
 - Admin UI page:
+  - external proxy models
   - proxy targets
   - proxy routes
   - runtime state preview
   - scheduler plan preview
   - executor dry-run log
-  - no external proxy listener yet
+  - external API listener with forwarding disabled
+
+## External Stub
+
+The external OpenAI-compatible surface is public and intentionally separate
+from admin `/api/*` routes:
+
+- `GET /proxy/v1/models` and `GET /v1/models` list enabled external proxy
+  models from `api_proxy_models`.
+- `POST /proxy/v1/chat/completions`, `/proxy/v1/completions` and
+  `/proxy/v1/embeddings` validate the `model` field and return OpenAI-shaped
+  errors.
+- The same POST endpoints are also available under `/v1/*`.
+
+At this stage, a request for a known enabled model returns `501` with
+`llama_manager_proxy_not_implemented`. Unknown or disabled models return
+`model_not_found`.
 
 ## Admin Diagnostics
 
@@ -110,4 +129,4 @@ The next safe step is an executor prototype behind admin-only controls:
 
 - executor that can run selected scheduler actions with logging;
 - dry-run versus execute controls;
-- only then expose actual OpenAI-compatible proxy routes.
+- then replace the external API stubs with real forwarding.
