@@ -297,6 +297,106 @@ export const LlamaApiProbeHistoryEntrySchema = z.object({
   finishReason: z.string().nullable(),
 });
 
+const ApiProxyIdSchema = z.string().min(1).max(80);
+
+export const ApiProxyTransformModeSchema = z.enum([
+  "none",
+  "openai-compatible",
+]);
+
+export const ApiProxyTargetRoleSchema = z.enum(["interactive", "background"]);
+
+export const ApiProxyModelStateSchema = z.enum([
+  "unknown",
+  "stopped",
+  "starting",
+  "unloaded",
+  "loading",
+  "loaded",
+  "idle",
+  "busy",
+  "error",
+]);
+
+export const ApiProxyTargetConfigSchema = z.object({
+  id: ApiProxyIdSchema,
+  name: z.string().min(1).max(80),
+  enabled: z.boolean().default(true),
+  instanceId: z.string().min(1),
+  model: z.string().trim().min(1).max(500).nullable().default(null),
+  role: ApiProxyTargetRoleSchema.default("interactive"),
+  priority: z.number().int().min(0).max(10_000).default(100),
+  resourceGroupId: z.string().min(1).max(80).nullable().default(null),
+  preemptible: z.boolean().default(true),
+  saveSlotsBeforeUnload: z.boolean().default(false),
+  slotIds: z.array(z.number().int().min(0)).default([]),
+  idleUnloadMs: z.number().int().min(0).nullable().default(null),
+  resumeAfterIdleMs: z.number().int().min(0).nullable().default(null),
+});
+
+export const ApiProxyRouteConfigSchema = z.object({
+  id: ApiProxyIdSchema,
+  name: z.string().min(1).max(80),
+  enabled: z.boolean().default(true),
+  pathPrefix: z.string().min(1).default("/v1"),
+  targetId: ApiProxyIdSchema,
+  transform: ApiProxyTransformModeSchema.default("none"),
+});
+
+export const ApiProxyTargetRuntimeSchema = z.object({
+  targetId: ApiProxyIdSchema,
+  instanceId: z.string().min(1),
+  model: z.string().trim().min(1).max(500).nullable().default(null),
+  state: ApiProxyModelStateSchema.default("unknown"),
+  activeRequests: z.number().int().min(0).default(0),
+  idleSince: z.string().nullable().default(null),
+  lastRequestAt: z.string().nullable().default(null),
+  savedSlotIds: z.array(z.number().int().min(0)).default([]),
+});
+
+export const ApiProxyTargetPlanInputSchema = ApiProxyTargetConfigSchema.extend({
+  runtime: ApiProxyTargetRuntimeSchema.optional(),
+});
+
+export const ApiProxySchedulerModeSchema = z.enum(["request", "idle"]);
+
+export const ApiProxySchedulerActionTypeSchema = z.enum([
+  "start-instance",
+  "wait-instance-ready",
+  "save-slot",
+  "restore-slot",
+  "unload-model",
+  "stop-instance",
+  "load-model",
+  "wait-model-ready",
+  "route-request",
+]);
+
+export const ApiProxySchedulerActionSchema = z.object({
+  type: ApiProxySchedulerActionTypeSchema,
+  targetId: ApiProxyIdSchema,
+  instanceId: z.string().min(1),
+  model: z.string().nullable(),
+  slotId: z.number().int().min(0).nullable().default(null),
+  reason: z.string(),
+});
+
+export const ApiProxySchedulerPlanRequestSchema = z.object({
+  mode: ApiProxySchedulerModeSchema,
+  requestedTargetId: ApiProxyIdSchema.optional(),
+  preferredTargetId: ApiProxyIdSchema.optional(),
+  now: z.string(),
+  targets: z.array(ApiProxyTargetPlanInputSchema),
+});
+
+export const ApiProxySchedulerPlanSchema = z.object({
+  ok: z.boolean(),
+  mode: ApiProxySchedulerModeSchema,
+  requestedTargetId: z.string().nullable(),
+  actions: z.array(ApiProxySchedulerActionSchema),
+  blockingReason: z.string().nullable(),
+});
+
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -986,6 +1086,26 @@ export type LlamaApiProbeHistoryStatus = z.infer<
 export type LlamaApiProbeHistoryEntry = z.infer<
   typeof LlamaApiProbeHistoryEntrySchema
 >;
+export type ApiProxyTransformMode = z.infer<typeof ApiProxyTransformModeSchema>;
+export type ApiProxyTargetRole = z.infer<typeof ApiProxyTargetRoleSchema>;
+export type ApiProxyModelState = z.infer<typeof ApiProxyModelStateSchema>;
+export type ApiProxyTargetConfig = z.infer<typeof ApiProxyTargetConfigSchema>;
+export type ApiProxyRouteConfig = z.infer<typeof ApiProxyRouteConfigSchema>;
+export type ApiProxyTargetRuntime = z.infer<typeof ApiProxyTargetRuntimeSchema>;
+export type ApiProxyTargetPlanInput = z.infer<
+  typeof ApiProxyTargetPlanInputSchema
+>;
+export type ApiProxySchedulerMode = z.infer<typeof ApiProxySchedulerModeSchema>;
+export type ApiProxySchedulerActionType = z.infer<
+  typeof ApiProxySchedulerActionTypeSchema
+>;
+export type ApiProxySchedulerAction = z.infer<
+  typeof ApiProxySchedulerActionSchema
+>;
+export type ApiProxySchedulerPlanRequest = z.infer<
+  typeof ApiProxySchedulerPlanRequestSchema
+>;
+export type ApiProxySchedulerPlan = z.infer<typeof ApiProxySchedulerPlanSchema>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;

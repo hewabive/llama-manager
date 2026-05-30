@@ -56,3 +56,5 @@
 - Model scanner: scan GGUF directories, cache metadata by path, size and mtime.
 - Router presets: generate official `llama-server --models-preset` INI files.
 - Process health: combine child process state with `/health`, `/props`, `/slots` and `/metrics`.
+- API proxy: keep proxy contracts, scheduling decisions and HTTP forwarding in
+  a separate `proxy` domain. See `docs/API_PROXY_FOUNDATION.md`.
