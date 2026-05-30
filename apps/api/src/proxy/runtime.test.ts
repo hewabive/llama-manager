@@ -71,6 +71,7 @@ function health(
     status?: InstanceHealthSummary["status"];
     modelStatus?: string;
     processing?: boolean;
+    canStart?: boolean;
   } = {},
 ): InstanceHealthSummary {
   const slots = endpoint([{ id: 0, is_processing: input.processing ?? false }]);
@@ -79,7 +80,7 @@ function health(
     status: input.status ?? "ready",
     reason: "test",
     actions: {
-      canStart: false,
+      canStart: input.canStart ?? false,
       canStop: true,
       canRestart: true,
     },
@@ -234,4 +235,25 @@ test("buildApiProxyRuntimeSnapshot reports missing instance as target error", ()
   });
 
   assert.equal(snapshot.targets[0]?.state, "error");
+});
+
+test("buildApiProxyRuntimeSnapshot treats startable previous errors as stopped", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ model: null })],
+    instances: [instance()],
+    healthByInstanceId: new Map([
+      [
+        "instance-a",
+        health({
+          status: "error",
+          canStart: true,
+        }),
+      ],
+    ]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "stopped");
 });

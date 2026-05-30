@@ -111,8 +111,11 @@ function processRuntimeState(
   if (activeRequests > 0) {
     return "busy";
   }
-  if (health.status === "error" || health.status === "invalid") {
+  if (health.status === "invalid") {
     return "error";
+  }
+  if (health.status === "error") {
+    return health.actions.canStart ? "stopped" : "error";
   }
   if (health.status === "starting") {
     return "starting";
