@@ -18,6 +18,19 @@ export type ApiProxyProtocolResponse = {
   headers?: Record<string, string>;
 };
 
+export type ApiProxyProtocolDiagnosticCode =
+  | "llama_manager_proxy_model_unbound"
+  | "llama_manager_proxy_target_not_found"
+  | "llama_manager_proxy_plan_blocked"
+  | "llama_manager_proxy_target_not_ready";
+
+export type ApiProxyProtocolDiagnostic = {
+  status: ContentfulStatusCode;
+  code: ApiProxyProtocolDiagnosticCode;
+  message: string;
+  param?: string | null | undefined;
+};
+
 export type ApiProxyProtocolModelRequest = {
   operation: ApiProxyProtocolOperation;
   body: unknown;
@@ -46,6 +59,10 @@ export type ApiProxyProtocolAdapter = {
   modelNotFound: (
     modelId: string,
     operation: ApiProxyProtocolOperation,
+  ) => ApiProxyProtocolResponse;
+  diagnosticError: (
+    request: ApiProxyProtocolModelRequest,
+    diagnostic: ApiProxyProtocolDiagnostic,
   ) => ApiProxyProtocolResponse;
   notImplemented: (
     request: ApiProxyProtocolModelRequest,

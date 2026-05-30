@@ -82,6 +82,15 @@ export const openAiProtocolAdapter: ApiProxyProtocolAdapter = {
       param: "model",
     }),
   }),
+  diagnosticError: (_request, diagnostic) => ({
+    status: diagnostic.status,
+    body: openAiError({
+      message: diagnostic.message,
+      type: "server_error",
+      code: diagnostic.code,
+      param: diagnostic.param,
+    }),
+  }),
   notImplemented: (request) => ({
     status: 501,
     body: notImplementedResponse(

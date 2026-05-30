@@ -63,6 +63,12 @@ endpoint.
   - protocol-specific error formatting
   - shared model lookup and enabled-model validation
   - transport marker for future HTTP JSON, SSE and WebSocket handling
+- Gateway helper in `apps/api/src/proxy/gateway.ts`:
+  - verifies that a published model is bound to a proxy target
+  - builds a scheduler request plan for the bound target
+  - returns protocol-specific diagnostics when the target is missing, blocked
+    or not ready
+  - still stops before real upstream forwarding
 - Durable configuration in SQLite:
   - `api_proxy_models`
   - `api_proxy_targets`
@@ -96,6 +102,13 @@ At this stage, a request for a known enabled model returns `501` with
 `llama_manager_proxy_not_implemented` for OpenAI-shaped endpoints, or an
 Anthropic `api_error` for Anthropic-shaped endpoints. Unknown or disabled
 models return the protocol-specific `not_found` error.
+
+If a known enabled model is not bound to a proxy target, or if the scheduler
+would need to start an instance, load a model, unload a competing target, save a
+slot or wait for readiness, the public endpoint returns a protocol-specific
+`503` diagnostic instead of pretending that forwarding is possible. This means
+public requests are now connected to the same scheduling model as the admin
+preview, even though real forwarding is still disabled.
 
 ## Admin Diagnostics
 

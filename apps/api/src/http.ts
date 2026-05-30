@@ -147,6 +147,7 @@ import {
 } from "./proxy/repository.js";
 import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
+import { buildApiProxyProtocolGatewayResponse } from "./proxy/gateway.js";
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
@@ -339,7 +340,7 @@ function protocolOperation(input: {
   };
 }
 
-async function proxyProtocolEndpointNotImplemented(
+async function proxyProtocolEndpoint(
   c: Context,
   adapter: ApiProxyProtocolAdapter,
   operation: ApiProxyProtocolOperation,
@@ -356,7 +357,16 @@ async function proxyProtocolEndpointNotImplemented(
     return c.json(resolution.response.body, resolution.response.status);
   }
 
-  const response = adapter.notImplemented(resolution.request);
+  const response = await buildApiProxyProtocolGatewayResponse({
+    adapter,
+    request: resolution.request,
+    getTarget: getApiProxyTarget,
+    getPlanPreview: (targetId) =>
+      getApiProxyPlanPreview({
+        mode: "request",
+        requestedTargetId: targetId,
+      }),
+  });
   return c.json(response.body, response.status);
 }
 
@@ -366,7 +376,7 @@ function registerOpenAiProxyRoutes(prefix: string) {
   });
 
   app.post(`${prefix}/chat/completions`, (c) =>
-    proxyProtocolEndpointNotImplemented(
+    proxyProtocolEndpoint(
       c,
       openAiProtocolAdapter,
       protocolOperation({
@@ -377,7 +387,7 @@ function registerOpenAiProxyRoutes(prefix: string) {
     ),
   );
   app.post(`${prefix}/completions`, (c) =>
-    proxyProtocolEndpointNotImplemented(
+    proxyProtocolEndpoint(
       c,
       openAiProtocolAdapter,
       protocolOperation({
@@ -388,7 +398,7 @@ function registerOpenAiProxyRoutes(prefix: string) {
     ),
   );
   app.post(`${prefix}/embeddings`, (c) =>
-    proxyProtocolEndpointNotImplemented(
+    proxyProtocolEndpoint(
       c,
       openAiProtocolAdapter,
       protocolOperation({
@@ -399,7 +409,7 @@ function registerOpenAiProxyRoutes(prefix: string) {
     ),
   );
   app.post(`${prefix}/responses`, (c) =>
-    proxyProtocolEndpointNotImplemented(
+    proxyProtocolEndpoint(
       c,
       openAiProtocolAdapter,
       protocolOperation({
@@ -413,7 +423,7 @@ function registerOpenAiProxyRoutes(prefix: string) {
 
 function registerAnthropicProxyRoutes(prefix: string) {
   app.post(`${prefix}/messages`, (c) =>
-    proxyProtocolEndpointNotImplemented(
+    proxyProtocolEndpoint(
       c,
       anthropicProtocolAdapter,
       protocolOperation({
