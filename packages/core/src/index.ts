@@ -318,57 +318,108 @@ export const ApiProxyModelStateSchema = z.enum([
   "error",
 ]);
 
+const ApiProxyTargetNameSchema = z.string().min(1).max(80);
+const ApiProxyTargetInstanceIdSchema = z.string().min(1);
+const ApiProxyTargetModelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .nullable();
+const ApiProxyTargetPrioritySchema = z.number().int().min(0).max(10_000);
+const ApiProxyTargetResourceGroupSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .nullable();
+const ApiProxyTargetSlotIdsSchema = z.array(z.number().int().min(0));
+const ApiProxyTargetIdleMsSchema = z.number().int().min(0).nullable();
+const ApiProxyRouteNameSchema = z.string().min(1).max(80);
+const ApiProxyRoutePathPrefixSchema = z.string().min(1);
+const ApiProxyModelIdSchema = z.string().trim().min(1).max(500);
+const ApiProxyModelOwnerSchema = z.string().trim().min(1).max(80);
+const ApiProxyModelDescriptionSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .nullable();
+
 export const ApiProxyTargetConfigSchema = z.object({
   id: ApiProxyIdSchema,
-  name: z.string().min(1).max(80),
+  name: ApiProxyTargetNameSchema,
   enabled: z.boolean().default(false),
-  instanceId: z.string().min(1),
-  model: z.string().trim().min(1).max(500).nullable().default(null),
+  instanceId: ApiProxyTargetInstanceIdSchema,
+  model: ApiProxyTargetModelSchema.default(null),
   role: ApiProxyTargetRoleSchema.default("interactive"),
-  priority: z.number().int().min(0).max(10_000).default(100),
-  resourceGroupId: z.string().min(1).max(80).nullable().default(null),
+  priority: ApiProxyTargetPrioritySchema.default(100),
+  resourceGroupId: ApiProxyTargetResourceGroupSchema.default(null),
   preemptible: z.boolean().default(true),
   saveSlotsBeforeUnload: z.boolean().default(false),
-  slotIds: z.array(z.number().int().min(0)).default([]),
-  idleUnloadMs: z.number().int().min(0).nullable().default(null),
-  resumeAfterIdleMs: z.number().int().min(0).nullable().default(null),
+  slotIds: ApiProxyTargetSlotIdsSchema.default([]),
+  idleUnloadMs: ApiProxyTargetIdleMsSchema.default(null),
+  resumeAfterIdleMs: ApiProxyTargetIdleMsSchema.default(null),
 });
 
 export const ApiProxyRouteConfigSchema = z.object({
   id: ApiProxyIdSchema,
-  name: z.string().min(1).max(80),
+  name: ApiProxyRouteNameSchema,
   enabled: z.boolean().default(false),
-  pathPrefix: z.string().min(1).default("/v1"),
+  pathPrefix: ApiProxyRoutePathPrefixSchema.default("/v1"),
   targetId: ApiProxyIdSchema,
   transform: ApiProxyTransformModeSchema.default("none"),
 });
 
 export const ApiProxyModelConfigSchema = z.object({
   id: ApiProxyIdSchema,
-  modelId: z.string().trim().min(1).max(500),
+  modelId: ApiProxyModelIdSchema,
   enabled: z.boolean().default(false),
-  ownedBy: z.string().trim().min(1).max(80).default("llama-manager"),
+  ownedBy: ApiProxyModelOwnerSchema.default("llama-manager"),
   targetId: ApiProxyIdSchema.nullable().default(null),
-  description: z.string().trim().max(500).nullable().default(null),
+  description: ApiProxyModelDescriptionSchema.default(null),
 });
 
 export const ApiProxyTargetCreateSchema = ApiProxyTargetConfigSchema.omit({
   id: true,
 });
 
-export const ApiProxyTargetUpdateSchema = ApiProxyTargetCreateSchema.partial();
+export const ApiProxyTargetUpdateSchema = z.object({
+  name: ApiProxyTargetNameSchema.optional(),
+  enabled: z.boolean().optional(),
+  instanceId: ApiProxyTargetInstanceIdSchema.optional(),
+  model: ApiProxyTargetModelSchema.optional(),
+  role: ApiProxyTargetRoleSchema.optional(),
+  priority: ApiProxyTargetPrioritySchema.optional(),
+  resourceGroupId: ApiProxyTargetResourceGroupSchema.optional(),
+  preemptible: z.boolean().optional(),
+  saveSlotsBeforeUnload: z.boolean().optional(),
+  slotIds: ApiProxyTargetSlotIdsSchema.optional(),
+  idleUnloadMs: ApiProxyTargetIdleMsSchema.optional(),
+  resumeAfterIdleMs: ApiProxyTargetIdleMsSchema.optional(),
+});
 
 export const ApiProxyRouteCreateSchema = ApiProxyRouteConfigSchema.omit({
   id: true,
 });
 
-export const ApiProxyRouteUpdateSchema = ApiProxyRouteCreateSchema.partial();
+export const ApiProxyRouteUpdateSchema = z.object({
+  name: ApiProxyRouteNameSchema.optional(),
+  enabled: z.boolean().optional(),
+  pathPrefix: ApiProxyRoutePathPrefixSchema.optional(),
+  targetId: ApiProxyIdSchema.optional(),
+  transform: ApiProxyTransformModeSchema.optional(),
+});
 
 export const ApiProxyModelCreateSchema = ApiProxyModelConfigSchema.omit({
   id: true,
 });
 
-export const ApiProxyModelUpdateSchema = ApiProxyModelCreateSchema.partial();
+export const ApiProxyModelUpdateSchema = z.object({
+  modelId: ApiProxyModelIdSchema.optional(),
+  enabled: z.boolean().optional(),
+  ownedBy: ApiProxyModelOwnerSchema.optional(),
+  targetId: ApiProxyIdSchema.nullable().optional(),
+  description: ApiProxyModelDescriptionSchema.optional(),
+});
 
 export const ApiProxyTargetRecordSchema = ApiProxyTargetConfigSchema.extend({
   createdAt: z.string(),
