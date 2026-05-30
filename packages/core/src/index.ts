@@ -196,18 +196,47 @@ export const LlamaSlotActionResultSchema = z.object({
   response: LlamaEndpointProbeSchema,
 });
 
-export const LlamaApiProbeKindSchema = z.enum([
+export const ApiProbeProfileSchema = z.enum([
+  "llama-server",
+  "openai",
+  "llama-native",
+  "anthropic",
+]);
+
+export const ApiLabProbeProfileSchema = z.enum([
+  "openai",
+  "llama-native",
+  "anthropic",
+]);
+
+export const OpenAiApiProbeKindSchema = z.enum([
   "chat",
   "completion",
   "responses",
-  "infill",
   "embeddings",
   "rerank",
+]);
+
+export const LlamaNativeApiProbeKindSchema = z.enum([
+  "infill",
   "tokenize",
   "detokenize",
-  "count-tokens",
   "apply-template",
 ]);
+
+export const AnthropicApiProbeKindSchema = z.enum(["count-tokens"]);
+
+export const LlamaApiProbeKindSchema = z.enum([
+  ...OpenAiApiProbeKindSchema.options,
+  ...LlamaNativeApiProbeKindSchema.options,
+  ...AnthropicApiProbeKindSchema.options,
+]);
+
+export const ApiLabProbeKindsByProfile = {
+  openai: OpenAiApiProbeKindSchema.options,
+  "llama-native": LlamaNativeApiProbeKindSchema.options,
+  anthropic: AnthropicApiProbeKindSchema.options,
+} as const;
 
 export const LlamaApiProbeRequestSchema = z
   .object({
@@ -262,12 +291,30 @@ export const LlamaApiProbeRequestSchema = z
     }
   });
 
-export const LlamaApiProbeTargetRequestSchema = z.object({
-  baseUrl: z.string().trim().min(1).max(2_000),
-  probe: LlamaApiProbeRequestSchema,
-});
+export const ApiLabProbeTargetRequestSchema = z
+  .object({
+    profile: ApiLabProbeProfileSchema,
+    baseUrl: z.string().trim().min(1).max(2_000),
+    probe: LlamaApiProbeRequestSchema,
+  })
+  .superRefine((input, ctx) => {
+    if (
+      !ApiLabProbeKindsByProfile[input.profile].includes(
+        input.probe.kind as never,
+      )
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["probe", "kind"],
+        message: `Probe kind ${input.probe.kind} is not available for ${input.profile}`,
+      });
+    }
+  });
+
+export const LlamaApiProbeTargetRequestSchema = ApiLabProbeTargetRequestSchema;
 
 export const LlamaApiProbeResultSchema = z.object({
+  profile: ApiProbeProfileSchema.optional(),
   kind: LlamaApiProbeKindSchema,
   endpoint: z.string(),
   requestBody: z.unknown(),
@@ -283,6 +330,7 @@ export const LlamaApiProbeHistoryStatusSchema = z.enum([
 
 export const LlamaApiProbeHistoryEntrySchema = z.object({
   id: z.string(),
+  profile: ApiProbeProfileSchema.default("llama-server"),
   baseUrl: z.string(),
   kind: LlamaApiProbeKindSchema,
   model: z.string().nullable(),
@@ -1222,8 +1270,18 @@ export type LlamaSlotActionRequest = z.infer<
   typeof LlamaSlotActionRequestSchema
 >;
 export type LlamaSlotActionResult = z.infer<typeof LlamaSlotActionResultSchema>;
+export type ApiProbeProfile = z.infer<typeof ApiProbeProfileSchema>;
+export type ApiLabProbeProfile = z.infer<typeof ApiLabProbeProfileSchema>;
+export type OpenAiApiProbeKind = z.infer<typeof OpenAiApiProbeKindSchema>;
+export type LlamaNativeApiProbeKind = z.infer<
+  typeof LlamaNativeApiProbeKindSchema
+>;
+export type AnthropicApiProbeKind = z.infer<typeof AnthropicApiProbeKindSchema>;
 export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
 export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;
+export type ApiLabProbeTargetRequest = z.infer<
+  typeof ApiLabProbeTargetRequestSchema
+>;
 export type LlamaApiProbeTargetRequest = z.infer<
   typeof LlamaApiProbeTargetRequestSchema
 >;

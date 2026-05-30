@@ -625,6 +625,13 @@ function withModel<T extends Record<string, unknown>>(
   return model ? { ...body, model } : body;
 }
 
+function endpointWithAutoload(endpoint: string, autoload: boolean) {
+  const query = new URLSearchParams({
+    autoload: autoload ? "true" : "false",
+  });
+  return `${endpoint}?${query.toString()}`;
+}
+
 export function llamaApiProbeRequestBody(
   input: LlamaApiProbeRequest,
   options: { stream?: boolean } = {},
@@ -802,10 +809,7 @@ export function llamaApiProbeTargetFromBaseUrl(
   options: { stream?: boolean } = {},
 ) {
   const { endpoint, body } = llamaApiProbeRequestBody(input, options);
-  const query = new URLSearchParams({
-    autoload: input.autoload ? "true" : "false",
-  });
-  const endpointWithQuery = `${endpoint}?${query.toString()}`;
+  const endpointWithQuery = endpointWithAutoload(endpoint, input.autoload);
 
   return {
     endpoint: endpointWithQuery,

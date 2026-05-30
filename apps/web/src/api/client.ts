@@ -31,8 +31,9 @@ import type {
   InstanceUpdate,
   InstanceLogSummary,
   LlamaCapabilitiesResult,
+  ApiLabProbeProfile,
+  ApiLabProbeTargetRequest,
   LlamaApiProbeRequest,
-  LlamaApiProbeTargetRequest,
   LlamaApiProbeHistoryEntry,
   LlamaApiProbeResult,
   LlamaEndpointProbe,
@@ -583,22 +584,33 @@ export async function runLlamaApiProbe(
   );
 }
 
-export async function runApiLabProbe(input: LlamaApiProbeTargetRequest) {
+export async function runApiLabProbe(input: ApiLabProbeTargetRequest) {
   return request<{ data: LlamaApiProbeResult }>("/api/lab/probe", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export async function listApiLabProbeHistory(baseUrl: string, limit = 20) {
-  const params = new URLSearchParams({ baseUrl, limit: String(limit) });
+export async function listApiLabProbeHistory(
+  profile: ApiLabProbeProfile,
+  baseUrl: string,
+  limit = 20,
+) {
+  const params = new URLSearchParams({
+    profile,
+    baseUrl,
+    limit: String(limit),
+  });
   return request<{ data: LlamaApiProbeHistoryEntry[] }>(
     `/api/lab/probe/history?${params.toString()}`,
   );
 }
 
-export async function clearApiLabProbeHistory(baseUrl: string) {
-  const params = new URLSearchParams({ baseUrl });
+export async function clearApiLabProbeHistory(
+  profile: ApiLabProbeProfile,
+  baseUrl: string,
+) {
+  const params = new URLSearchParams({ profile, baseUrl });
   return request<{ data: { deleted: number } }>(
     `/api/lab/probe/history?${params.toString()}`,
     {
@@ -607,8 +619,11 @@ export async function clearApiLabProbeHistory(baseUrl: string) {
   );
 }
 
-export async function getApiLabModels(baseUrl: string) {
-  const params = new URLSearchParams({ baseUrl });
+export async function getApiLabModels(
+  profile: ApiLabProbeProfile,
+  baseUrl: string,
+) {
+  const params = new URLSearchParams({ profile, baseUrl });
   return request<{ data: LlamaEndpointProbe }>(
     `/api/lab/models?${params.toString()}`,
   );
@@ -782,7 +797,7 @@ export async function streamLlamaApiProbe(
 }
 
 export async function streamApiLabProbe(
-  input: LlamaApiProbeTargetRequest,
+  input: ApiLabProbeTargetRequest,
   callbacks: LlamaApiProbeStreamCallbacks,
   signal?: AbortSignal,
 ) {

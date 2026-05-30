@@ -79,6 +79,7 @@ function migrateProbeHistoryToBaseUrl() {
     ALTER TABLE llama_api_probe_history RENAME TO llama_api_probe_history_old;
     CREATE TABLE llama_api_probe_history (
       id TEXT PRIMARY KEY NOT NULL,
+      profile TEXT NOT NULL DEFAULT 'llama-server',
       base_url TEXT NOT NULL,
       kind TEXT NOT NULL,
       model TEXT,
@@ -101,13 +102,14 @@ function migrateProbeHistoryToBaseUrl() {
 
   const insert = sqlite.prepare(`
     INSERT INTO llama_api_probe_history (
-      id, base_url, kind, model, endpoint, started_at, finished_at, status,
-      http_status, latency_ms, request_json, request_body_json, output, error,
-      usage_json, timings_json, streamed, finish_reason
+      id, profile, base_url, kind, model, endpoint, started_at, finished_at,
+      status, http_status, latency_ms, request_json, request_body_json,
+      output, error, usage_json, timings_json, streamed, finish_reason
     ) VALUES (
-      @id, @base_url, @kind, @model, @endpoint, @started_at, @finished_at,
-      @status, @http_status, @latency_ms, @request_json, @request_body_json,
-      @output, @error, @usage_json, @timings_json, @streamed, @finish_reason
+      @id, @profile, @base_url, @kind, @model, @endpoint, @started_at,
+      @finished_at, @status, @http_status, @latency_ms, @request_json,
+      @request_body_json, @output, @error, @usage_json, @timings_json,
+      @streamed, @finish_reason
     )
   `);
 
@@ -115,10 +117,22 @@ function migrateProbeHistoryToBaseUrl() {
     const instanceId = String(row.instance_id ?? "");
     const baseUrl = legacyProbeBaseUrl(instanceArgs.get(instanceId));
     if (!baseUrl) continue;
-    insert.run({ ...row, base_url: baseUrl });
+    insert.run({ ...row, profile: "llama-server", base_url: baseUrl });
   }
 
   sqlite.exec("DROP TABLE llama_api_probe_history_old;");
+}
+
+function migrateProbeHistoryProfile() {
+  if (
+    tableExists("llama_api_probe_history") &&
+    !columnExists("llama_api_probe_history", "profile")
+  ) {
+    sqlite.exec(`
+      ALTER TABLE llama_api_probe_history
+      ADD COLUMN profile TEXT NOT NULL DEFAULT 'llama-server';
+    `);
+  }
 }
 
 export function migrate() {
@@ -359,10 +373,12 @@ export function migrate() {
   `);
 
   migrateProbeHistoryToBaseUrl();
+  migrateProbeHistoryProfile();
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_api_probe_history (
       id TEXT PRIMARY KEY NOT NULL,
+      profile TEXT NOT NULL DEFAULT 'llama-server',
       base_url TEXT NOT NULL,
       kind TEXT NOT NULL,
       model TEXT,
@@ -386,6 +402,11 @@ export function migrate() {
   db.run(sql`
     CREATE INDEX IF NOT EXISTS llama_api_probe_history_base_url_started_idx
     ON llama_api_probe_history (base_url, started_at DESC)
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS llama_api_probe_history_profile_base_url_started_idx
+    ON llama_api_probe_history (profile, base_url, started_at DESC)
   `);
 
   db.run(sql`

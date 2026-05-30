@@ -16,8 +16,9 @@ import {
   InstanceCreateSchema,
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
+  ApiLabProbeProfileSchema,
+  ApiLabProbeTargetRequestSchema,
   LlamaApiProbeRequestSchema,
-  LlamaApiProbeTargetRequestSchema,
   LlamaSourceSettingsUpdateSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
@@ -28,6 +29,8 @@ import {
   type InstanceBulkActionItem,
   type InstanceBulkActionName,
   type ApiProxySchedulerPlanRequest,
+  type ApiProbeProfile,
+  type ApiLabProbeProfile,
   type LlamaApiProbeRequest,
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
@@ -83,15 +86,17 @@ import {
 } from "./instances/repository.js";
 import { listFilesystemDirectory } from "./filesystem/browser.js";
 import {
+  apiLabProbeTargetFromBaseUrl,
+  requestApiLabProbeBaseUrl,
+} from "./api-lab/probe.js";
+import {
   llamaBaseUrl,
   llamaEndpointErrorMessage,
   llamaApiProbeTarget,
-  llamaApiProbeTargetFromBaseUrl,
   probeLlamaCapabilities,
   probeLlamaServer,
   requestLlamaJson,
   requestLlamaApiProbe,
-  requestLlamaApiProbeBaseUrl,
   requestLlamaModelAction,
   requestLlamaSlotAction,
 } from "./llama/probe.js";
@@ -326,15 +331,31 @@ function queryLimit(value: string | undefined, fallback = 20) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function normalizeApiProbeBaseUrl(value: string) {
+function normalizeHttpBaseUrl(value: string) {
   const parsed = new URL(value.trim());
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("baseUrl must use http or https");
   }
   parsed.hash = "";
   parsed.search = "";
-  const path = parsed.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "");
+  const path = parsed.pathname.replace(/\/+$/, "");
   return `${parsed.origin}${path === "/" ? "" : path}`;
+}
+
+function normalizeApiLabBaseUrl(profile: ApiLabProbeProfile, value: string) {
+  const baseUrl = normalizeHttpBaseUrl(value);
+  if (profile === "llama-native") {
+    return baseUrl.replace(/\/v1$/i, "");
+  }
+  return baseUrl;
+}
+
+function parseApiLabProfile(value: string | undefined) {
+  const parsed = ApiLabProbeProfileSchema.safeParse(value ?? "openai");
+  if (!parsed.success) {
+    throw new Error("profile must be openai, llama-native, or anthropic");
+  }
+  return parsed.data;
 }
 
 async function safeJsonBody(c: Context) {
@@ -698,9 +719,14 @@ app.get("/api/lab/probe/history", (c) => {
     return c.json({ error: "baseUrl is required" }, 400);
   }
   try {
-    const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
+    const profile = parseApiLabProfile(c.req.query("profile"));
+    const baseUrl = normalizeApiLabBaseUrl(profile, rawBaseUrl);
     return c.json({
-      data: listLlamaApiProbeHistory(baseUrl, queryLimit(c.req.query("limit"))),
+      data: listLlamaApiProbeHistory(
+        baseUrl,
+        queryLimit(c.req.query("limit")),
+        profile,
+      ),
     });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
@@ -713,9 +739,10 @@ app.delete("/api/lab/probe/history", (c) => {
     return c.json({ error: "baseUrl is required" }, 400);
   }
   try {
-    const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
+    const profile = parseApiLabProfile(c.req.query("profile"));
+    const baseUrl = normalizeApiLabBaseUrl(profile, rawBaseUrl);
     return c.json({
-      data: { deleted: clearLlamaApiProbeHistory(baseUrl) },
+      data: { deleted: clearLlamaApiProbeHistory(baseUrl, profile) },
     });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
@@ -728,9 +755,16 @@ app.get("/api/lab/models", async (c) => {
     return c.json({ error: "baseUrl is required" }, 400);
   }
   try {
-    const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
+    const profile = parseApiLabProfile(c.req.query("profile"));
+    if (profile !== "openai") {
+      return c.json(
+        { error: "model discovery is only implemented for the OpenAI profile" },
+        400,
+      );
+    }
+    const baseUrl = normalizeApiLabBaseUrl(profile, rawBaseUrl);
     return c.json({
-      data: await requestLlamaJson(`${baseUrl}/v1/models`, {
+      data: await requestLlamaJson(`${baseUrl}/models`, {
         timeoutMs: 10_000,
       }),
     });
@@ -740,7 +774,7 @@ app.get("/api/lab/models", async (c) => {
 });
 
 app.post("/api/lab/probe", async (c) => {
-  const parsed = LlamaApiProbeTargetRequestSchema.safeParse(await c.req.json());
+  const parsed = ApiLabProbeTargetRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
@@ -748,16 +782,26 @@ app.post("/api/lab/probe", async (c) => {
   let historyId: string | null = null;
   let baseUrl: string;
   try {
-    baseUrl = normalizeApiProbeBaseUrl(parsed.data.baseUrl);
-    const target = llamaApiProbeTargetFromBaseUrl(baseUrl, parsed.data.probe);
+    const profile = parsed.data.profile;
+    baseUrl = normalizeApiLabBaseUrl(profile, parsed.data.baseUrl);
+    const target = apiLabProbeTargetFromBaseUrl(
+      profile,
+      baseUrl,
+      parsed.data.probe,
+    );
     historyId = createLlamaApiProbeHistory({
+      profile,
       baseUrl,
       request: parsed.data.probe,
       endpoint: target.endpoint,
       requestBody: target.requestBody,
       streamed: false,
     });
-    const data = await requestLlamaApiProbeBaseUrl(baseUrl, parsed.data.probe);
+    const data = await requestApiLabProbeBaseUrl(
+      profile,
+      baseUrl,
+      parsed.data.probe,
+    );
     const body = recordValue(data.response.body);
     updateLlamaApiProbeHistory(historyId, {
       status: data.response.ok ? "ok" : "error",
@@ -768,7 +812,7 @@ app.post("/api/lab/probe", async (c) => {
       usage: body?.usage ?? null,
       timings: body?.timings ?? null,
     });
-    pruneLlamaApiProbeHistory(baseUrl);
+    pruneLlamaApiProbeHistory(baseUrl, undefined, profile);
     return c.json({ data });
   } catch (error) {
     if (historyId) {
@@ -1681,7 +1725,7 @@ async function writeUpstreamStreamEvents(props: {
   if (!reader) {
     await props.stream.writeSSE({
       event: "error",
-      data: JSON.stringify({ message: "llama-server returned no stream body" }),
+      data: JSON.stringify({ message: "upstream returned no stream body" }),
     });
     return null;
   }
@@ -1764,12 +1808,17 @@ async function writeUpstreamStreamEvents(props: {
 function streamApiProbeTarget(
   c: Context,
   input: {
+    profile?: ApiProbeProfile;
     baseUrl: string;
     request: LlamaApiProbeRequest;
-    target: ReturnType<typeof llamaApiProbeTargetFromBaseUrl>;
+    target:
+      | ReturnType<typeof llamaApiProbeTarget>
+      | ReturnType<typeof apiLabProbeTargetFromBaseUrl>;
   },
 ) {
+  const profile = input.profile ?? "llama-server";
   const historyId = createLlamaApiProbeHistory({
+    profile,
     baseUrl: input.baseUrl,
     request: input.request,
     endpoint: input.target.endpoint,
@@ -1834,7 +1883,7 @@ function streamApiProbeTarget(
             String(recordValue(recordValue(body)?.error)?.message ?? "") ||
             response.statusText,
         });
-        pruneLlamaApiProbeHistory(input.baseUrl);
+        pruneLlamaApiProbeHistory(input.baseUrl, undefined, profile);
         return;
       }
 
@@ -1848,9 +1897,9 @@ function streamApiProbeTarget(
           status: "error",
           httpStatus: response.status,
           latencyMs: Math.round(performance.now() - started),
-          error: "llama-server returned no stream body",
+          error: "upstream returned no stream body",
         });
-        pruneLlamaApiProbeHistory(input.baseUrl);
+        pruneLlamaApiProbeHistory(input.baseUrl, undefined, profile);
         return;
       }
       updateLlamaApiProbeHistory(historyId, {
@@ -1862,14 +1911,14 @@ function streamApiProbeTarget(
         timings: summary.timings,
         finishReason: summary.finishReason,
       });
-      pruneLlamaApiProbeHistory(input.baseUrl);
+      pruneLlamaApiProbeHistory(input.baseUrl, undefined, profile);
     } catch (error) {
       if (controller.signal.aborted) {
         updateLlamaApiProbeHistory(historyId, {
           status: "cancelled",
           latencyMs: Math.round(performance.now() - started),
         });
-        pruneLlamaApiProbeHistory(input.baseUrl);
+        pruneLlamaApiProbeHistory(input.baseUrl, undefined, profile);
         await stream.writeSSE({
           event: "cancelled",
           data: JSON.stringify({
@@ -1883,7 +1932,7 @@ function streamApiProbeTarget(
         latencyMs: Math.round(performance.now() - started),
         error: (error as Error).message,
       });
-      pruneLlamaApiProbeHistory(input.baseUrl);
+      pruneLlamaApiProbeHistory(input.baseUrl, undefined, profile);
       await stream.writeSSE({
         event: "error",
         data: JSON.stringify({ message: (error as Error).message }),
@@ -1893,7 +1942,7 @@ function streamApiProbeTarget(
 }
 
 app.post("/api/lab/probe/stream", async (c) => {
-  const parsed = LlamaApiProbeTargetRequestSchema.safeParse(await c.req.json());
+  const parsed = ApiLabProbeTargetRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
@@ -1905,17 +1954,23 @@ app.post("/api/lab/probe/stream", async (c) => {
   }
 
   let baseUrl: string;
-  let target: ReturnType<typeof llamaApiProbeTargetFromBaseUrl>;
+  let target: ReturnType<typeof apiLabProbeTargetFromBaseUrl>;
   try {
-    baseUrl = normalizeApiProbeBaseUrl(parsed.data.baseUrl);
-    target = llamaApiProbeTargetFromBaseUrl(baseUrl, parsed.data.probe, {
-      stream: true,
-    });
+    baseUrl = normalizeApiLabBaseUrl(parsed.data.profile, parsed.data.baseUrl);
+    target = apiLabProbeTargetFromBaseUrl(
+      parsed.data.profile,
+      baseUrl,
+      parsed.data.probe,
+      {
+        stream: true,
+      },
+    );
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
 
   return streamApiProbeTarget(c, {
+    profile: parsed.data.profile,
     baseUrl,
     request: parsed.data.probe,
     target,

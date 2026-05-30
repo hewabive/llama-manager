@@ -1,4 +1,5 @@
 import type {
+  ApiProbeProfile,
   LlamaApiProbeHistoryEntry,
   LlamaApiProbeHistoryStatus,
   LlamaApiProbeKind,
@@ -48,6 +49,7 @@ function truncateText(value: string | null | undefined) {
 function toEntry(row: ProbeHistoryRow): LlamaApiProbeHistoryEntry {
   return {
     id: row.id,
+    profile: (row.profile ?? "llama-server") as ApiProbeProfile,
     baseUrl: row.baseUrl,
     kind: row.kind as LlamaApiProbeKind,
     model: row.model,
@@ -69,6 +71,7 @@ function toEntry(row: ProbeHistoryRow): LlamaApiProbeHistoryEntry {
 }
 
 export function createLlamaApiProbeHistory(input: {
+  profile?: ApiProbeProfile;
   baseUrl: string;
   request: LlamaApiProbeRequest;
   endpoint?: string | null;
@@ -80,6 +83,7 @@ export function createLlamaApiProbeHistory(input: {
   db.insert(llamaApiProbeHistory)
     .values({
       id,
+      profile: input.profile ?? "llama-server",
       baseUrl: input.baseUrl,
       kind: input.request.kind,
       model: input.request.model ?? null,
@@ -159,22 +163,36 @@ export function updateLlamaApiProbeHistory(
 export function listLlamaApiProbeHistory(
   baseUrl: string,
   limit = HISTORY_LIMIT,
+  profile: ApiProbeProfile = "llama-server",
 ) {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   return db
     .select()
     .from(llamaApiProbeHistory)
-    .where(eq(llamaApiProbeHistory.baseUrl, baseUrl))
+    .where(
+      and(
+        eq(llamaApiProbeHistory.profile, profile),
+        eq(llamaApiProbeHistory.baseUrl, baseUrl),
+      ),
+    )
     .orderBy(desc(llamaApiProbeHistory.startedAt))
     .limit(safeLimit)
     .all()
     .map(toEntry);
 }
 
-export function clearLlamaApiProbeHistory(baseUrl: string) {
+export function clearLlamaApiProbeHistory(
+  baseUrl: string,
+  profile: ApiProbeProfile = "llama-server",
+) {
   const result = db
     .delete(llamaApiProbeHistory)
-    .where(eq(llamaApiProbeHistory.baseUrl, baseUrl))
+    .where(
+      and(
+        eq(llamaApiProbeHistory.profile, profile),
+        eq(llamaApiProbeHistory.baseUrl, baseUrl),
+      ),
+    )
     .run();
   return result.changes;
 }
@@ -182,14 +200,16 @@ export function clearLlamaApiProbeHistory(baseUrl: string) {
 export function pruneLlamaApiProbeHistory(
   baseUrl: string,
   keep = HISTORY_LIMIT,
+  profile: ApiProbeProfile = "llama-server",
 ) {
   db.delete(llamaApiProbeHistory)
     .where(
       and(
+        eq(llamaApiProbeHistory.profile, profile),
         eq(llamaApiProbeHistory.baseUrl, baseUrl),
         sql`${llamaApiProbeHistory.id} NOT IN (
           SELECT id FROM llama_api_probe_history
-          WHERE base_url = ${baseUrl}
+          WHERE profile = ${profile} AND base_url = ${baseUrl}
           ORDER BY started_at DESC
           LIMIT ${keep}
         )`,

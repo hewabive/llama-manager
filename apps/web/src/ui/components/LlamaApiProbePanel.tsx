@@ -50,6 +50,11 @@ export type ModelOption = {
   status: string | null;
 };
 
+export type ProbeRequestOption = {
+  value: LlamaApiProbeKind;
+  label: string;
+};
+
 type ProbeRunner = (
   input: LlamaApiProbeRequest,
 ) => Promise<{ data: LlamaApiProbeResult }>;
@@ -72,6 +77,19 @@ const defaultRerankDocuments = [
   "GPU memory pressure can prevent a model from loading.",
   "A preset can contain multiple model sections for the router.",
 ].join("\n\n");
+
+const defaultRequestOptions: ProbeRequestOption[] = [
+  { value: "chat", label: "Chat" },
+  { value: "completion", label: "Completion" },
+  { value: "responses", label: "Responses" },
+  { value: "infill", label: "Infill" },
+  { value: "embeddings", label: "Embeddings" },
+  { value: "rerank", label: "Rerank" },
+  { value: "tokenize", label: "Tokenize" },
+  { value: "detokenize", label: "Detokenize" },
+  { value: "count-tokens", label: "Count tokens" },
+  { value: "apply-template", label: "Apply template" },
+];
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -639,6 +657,7 @@ export function LlamaApiProbePanel(props: {
   instanceId: string;
   modelsProbe?: LlamaEndpointProbe | undefined;
   modelOptions?: ModelOption[] | undefined;
+  requestOptions?: ProbeRequestOption[] | undefined;
   historyKey?: readonly unknown[] | undefined;
   historyEnabled?: boolean | undefined;
   listHistory?: ProbeHistoryLoader | undefined;
@@ -650,6 +669,7 @@ export function LlamaApiProbePanel(props: {
   title?: string | undefined;
   description?: string | undefined;
   disabledReason?: string | null | undefined;
+  autoloadVisible?: boolean | undefined;
   invalidateInstanceQueries?: boolean | undefined;
   onProbeSettled?: (() => void) | undefined;
 }) {
@@ -664,6 +684,7 @@ export function LlamaApiProbePanel(props: {
     () => props.modelOptions ?? modelOptionsFromProbe(props.modelsProbe),
     [props.modelOptions, props.modelsProbe],
   );
+  const requestOptions = props.requestOptions ?? defaultRequestOptions;
   const [kind, setKind] = useState<LlamaApiProbeKind>("chat");
   const [model, setModel] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
@@ -679,6 +700,13 @@ export function LlamaApiProbePanel(props: {
   const [streamResult, setStreamResult] = useState<StreamProbeState>(
     emptyStreamProbeState,
   );
+
+  useEffect(() => {
+    const firstKind = requestOptions[0]?.value ?? "chat";
+    if (!requestOptions.some((option) => option.value === kind)) {
+      setKind(firstKind);
+    }
+  }, [kind, requestOptions]);
 
   useEffect(() => {
     if (modelOptions.length === 0) {
@@ -965,11 +993,13 @@ export function LlamaApiProbePanel(props: {
               </Text>
             )}
           </Stack>
-          <Switch
-            checked={autoload}
-            label="Autoload"
-            onChange={(event) => setAutoload(event.currentTarget.checked)}
-          />
+          {(props.autoloadVisible ?? true) && (
+            <Switch
+              checked={autoload}
+              label="Autoload"
+              onChange={(event) => setAutoload(event.currentTarget.checked)}
+            />
+          )}
         </Group>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
@@ -982,18 +1012,7 @@ export function LlamaApiProbePanel(props: {
                 setKind(value as LlamaApiProbeKind);
               }
             }}
-            data={[
-              { value: "chat", label: "Chat" },
-              { value: "completion", label: "Completion" },
-              { value: "responses", label: "Responses" },
-              { value: "infill", label: "Infill" },
-              { value: "embeddings", label: "Embeddings" },
-              { value: "rerank", label: "Rerank" },
-              { value: "tokenize", label: "Tokenize" },
-              { value: "detokenize", label: "Detokenize" },
-              { value: "count-tokens", label: "Count tokens" },
-              { value: "apply-template", label: "Apply template" },
-            ]}
+            data={requestOptions}
           />
           <TextInput
             label="Model"

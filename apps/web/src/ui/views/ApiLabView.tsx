@@ -1,5 +1,16 @@
-import type { Instance, InstanceHealthSummary } from "@llama-manager/core";
-import { Alert, Select, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import type {
+  ApiLabProbeProfile,
+  Instance,
+  InstanceHealthSummary,
+} from "@llama-manager/core";
+import {
+  Alert,
+  SegmentedControl,
+  Select,
+  SimpleGrid,
+  Stack,
+  TextInput,
+} from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
@@ -15,6 +26,7 @@ import {
   LlamaApiProbePanel,
   modelOptionsFromProbe,
   type ModelOption,
+  type ProbeRequestOption,
 } from "../components/LlamaApiProbePanel";
 import { llamaServerWebUrl } from "../utils/instance-url";
 
@@ -25,22 +37,65 @@ type QuickTarget = {
   instanceId?: string;
 };
 
-function normalizeBaseUrlLabel(value: string) {
+const profileLabels: Record<ApiLabProbeProfile, string> = {
+  openai: "OpenAI-compatible",
+  "llama-native": "llama.cpp native",
+  anthropic: "Anthropic-compatible",
+};
+
+const profileRequestOptions: Record<ApiLabProbeProfile, ProbeRequestOption[]> =
+  {
+    openai: [
+      { value: "chat", label: "Chat completions" },
+      { value: "completion", label: "Completions" },
+      { value: "responses", label: "Responses" },
+      { value: "embeddings", label: "Embeddings" },
+      { value: "rerank", label: "Rerank (/rerank extension)" },
+    ],
+    "llama-native": [
+      { value: "tokenize", label: "Tokenize" },
+      { value: "detokenize", label: "Detokenize" },
+      { value: "apply-template", label: "Apply template" },
+      { value: "infill", label: "Infill" },
+    ],
+    anthropic: [{ value: "count-tokens", label: "Count tokens" }],
+  };
+
+function normalizeHttpUrlLabel(value: string) {
   try {
     const parsed = new URL(value.trim());
     parsed.hash = "";
     parsed.search = "";
-    const path = parsed.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "");
+    const path = parsed.pathname.replace(/\/+$/, "");
     return `${parsed.origin}${path === "/" ? "" : path}`;
   } catch {
     return value.trim();
   }
 }
 
-function managerProxyBaseUrl() {
+function stripV1BaseUrl(value: string) {
+  return normalizeHttpUrlLabel(value).replace(/\/v1$/i, "");
+}
+
+function apiVersionBaseUrl(value: string) {
+  const normalized = normalizeHttpUrlLabel(value);
+  return /\/v1$/i.test(normalized) ? normalized : `${normalized}/v1`;
+}
+
+function normalizeBaseUrlForProfile(
+  profile: ApiLabProbeProfile,
+  value: string,
+) {
+  if (profile === "llama-native") {
+    return stripV1BaseUrl(value);
+  }
+  return normalizeHttpUrlLabel(value);
+}
+
+function managerProxyRootUrl() {
   const configured = import.meta.env.VITE_API_URL as string | undefined;
   if (configured?.trim()) {
-    return normalizeBaseUrlLabel(
+    return stripV1BaseUrl(
       new URL(configured, window.location.origin).toString(),
     );
   }
@@ -54,9 +109,10 @@ export function ApiLabView(props: {
   onSelect: (instanceId: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const [profile, setProfile] = useState<ApiLabProbeProfile>("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [quickTarget, setQuickTarget] = useState<string | null>(null);
-  const proxyBaseUrl = useMemo(() => managerProxyBaseUrl(), []);
+  const proxyRootUrl = useMemo(() => managerProxyRootUrl(), []);
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
     queryFn: getApiProxyConfig,
@@ -86,29 +142,39 @@ export function ApiLabView(props: {
     [proxyQuery.data?.data.models, proxyQuery.data?.data.targets],
   );
 
-  const quickTargets = useMemo<QuickTarget[]>(
-    () => [
-      {
-        value: "manager-proxy",
-        label: `llama-manager proxy (${proxyBaseUrl})`,
-        baseUrl: proxyBaseUrl,
-      },
-      ...props.instances.flatMap((instance): QuickTarget[] => {
+  const quickTargets = useMemo<QuickTarget[]>(() => {
+    const proxyTargets: QuickTarget[] =
+      profile === "openai" || profile === "anthropic"
+        ? [
+            {
+              value: "manager-proxy",
+              label: `llama-manager proxy (${apiVersionBaseUrl(proxyRootUrl)})`,
+              baseUrl: apiVersionBaseUrl(proxyRootUrl),
+            },
+          ]
+        : [];
+    const instanceTargets = props.instances.flatMap(
+      (instance): QuickTarget[] => {
         const url = llamaServerWebUrl(instance);
-        return url
-          ? [
-              {
-                value: `instance:${instance.id}`,
-                label: `${instance.name} (${url})`,
-                baseUrl: url,
-                instanceId: instance.id,
-              },
-            ]
-          : [];
-      }),
-    ],
-    [props.instances, proxyBaseUrl],
-  );
+        if (!url) {
+          return [];
+        }
+        const baseUrl =
+          profile === "llama-native"
+            ? stripV1BaseUrl(url)
+            : apiVersionBaseUrl(url);
+        return [
+          {
+            value: `instance:${instance.id}`,
+            label: `${instance.name} (${baseUrl})`,
+            baseUrl,
+            instanceId: instance.id,
+          },
+        ];
+      },
+    );
+    return [...proxyTargets, ...instanceTargets];
+  }, [profile, props.instances, proxyRootUrl]);
 
   useEffect(() => {
     if (baseUrl || !props.selectedInstance) {
@@ -119,16 +185,25 @@ export function ApiLabView(props: {
       llamaServerWebUrl(props.selectedInstance) ??
       "";
     if (url) {
-      setBaseUrl(url);
+      setBaseUrl(
+        profile === "llama-native"
+          ? stripV1BaseUrl(url)
+          : apiVersionBaseUrl(url),
+      );
       setQuickTarget(`instance:${props.selectedInstance.id}`);
     }
-  }, [baseUrl, props.selectedHealth?.llama.baseUrl, props.selectedInstance]);
+  }, [
+    baseUrl,
+    profile,
+    props.selectedHealth?.llama.baseUrl,
+    props.selectedInstance,
+  ]);
 
-  const normalizedBaseUrl = normalizeBaseUrlLabel(baseUrl);
+  const normalizedBaseUrl = normalizeBaseUrlForProfile(profile, baseUrl);
   const modelsQuery = useQuery({
-    queryKey: ["api-lab-models", normalizedBaseUrl],
-    queryFn: () => getApiLabModels(normalizedBaseUrl),
-    enabled: Boolean(normalizedBaseUrl),
+    queryKey: ["api-lab-models", profile, normalizedBaseUrl],
+    queryFn: () => getApiLabModels(profile, normalizedBaseUrl),
+    enabled: profile === "openai" && Boolean(normalizedBaseUrl),
     staleTime: 15_000,
   });
   const apiModelOptions = useMemo(
@@ -145,18 +220,45 @@ export function ApiLabView(props: {
           : [];
   const modelsProbe = modelsQuery.data?.data;
   const modelListMessage =
-    normalizedBaseUrl && modelsQuery.isFetching
-      ? "Loading models from /v1/models..."
+    profile === "openai" && normalizedBaseUrl && modelsQuery.isFetching
+      ? "Loading models from /models..."
       : modelsQuery.error
         ? `Model list request failed: ${(modelsQuery.error as Error).message}`
         : modelsProbe && !modelsProbe.ok
           ? `Model list request failed: ${modelsProbe.error ?? `HTTP ${modelsProbe.status ?? "no response"}`}`
           : modelsProbe?.ok
-            ? `Loaded ${apiModelOptions.length} model${apiModelOptions.length === 1 ? "" : "s"} from /v1/models.`
+            ? `Loaded ${apiModelOptions.length} model${apiModelOptions.length === 1 ? "" : "s"} from /models.`
             : null;
+  const requestOptions = profileRequestOptions[profile];
+  const baseUrlLabel =
+    profile === "llama-native" ? "Server URL" : "API base URL";
+  const baseUrlPlaceholder =
+    profile === "llama-native"
+      ? "http://127.0.0.1:8080"
+      : "http://127.0.0.1:8080/v1";
 
   return (
     <Stack gap="md">
+      <SegmentedControl
+        value={profile}
+        onChange={(value) => {
+          const nextProfile = value as ApiLabProbeProfile;
+          setProfile(nextProfile);
+          setQuickTarget(null);
+          setBaseUrl((current) =>
+            current
+              ? nextProfile === "llama-native"
+                ? stripV1BaseUrl(current)
+                : apiVersionBaseUrl(current)
+              : current,
+          );
+        }}
+        data={[
+          { value: "openai", label: profileLabels.openai },
+          { value: "llama-native", label: profileLabels["llama-native"] },
+          { value: "anthropic", label: profileLabels.anthropic },
+        ]}
+      />
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
         <Select
           label="Quick target"
@@ -181,9 +283,9 @@ export function ApiLabView(props: {
           }}
         />
         <TextInput
-          label="Server base URL"
+          label={baseUrlLabel}
           value={baseUrl}
-          placeholder="http://127.0.0.1:8080 (without /v1)"
+          placeholder={baseUrlPlaceholder}
           onChange={(event) => {
             setBaseUrl(event.currentTarget.value);
             setQuickTarget(null);
@@ -210,21 +312,23 @@ export function ApiLabView(props: {
         title="API probe"
         description={
           normalizedBaseUrl
-            ? `Requests are sent from llama-manager backend to ${normalizedBaseUrl}.`
+            ? `${profileLabels[profile]} requests are sent from llama-manager backend to ${normalizedBaseUrl}.`
             : "Paste a base URL or choose a quick target."
         }
         disabledReason={normalizedBaseUrl ? null : "Base URL is required."}
         modelOptions={activeModelOptions}
-        historyKey={["api-lab-probe-history", normalizedBaseUrl]}
+        requestOptions={requestOptions}
+        autoloadVisible={profile === "llama-native"}
+        historyKey={["api-lab-probe-history", profile, normalizedBaseUrl]}
         historyEnabled={Boolean(normalizedBaseUrl)}
-        listHistory={() => listApiLabProbeHistory(normalizedBaseUrl)}
-        clearHistory={() => clearApiLabProbeHistory(normalizedBaseUrl)}
+        listHistory={() => listApiLabProbeHistory(profile, normalizedBaseUrl)}
+        clearHistory={() => clearApiLabProbeHistory(profile, normalizedBaseUrl)}
         runProbe={(probe) =>
-          runApiLabProbe({ baseUrl: normalizedBaseUrl, probe })
+          runApiLabProbe({ profile, baseUrl: normalizedBaseUrl, probe })
         }
         streamProbe={(_id, probe, callbacks, signal) =>
           streamApiLabProbe(
-            { baseUrl: normalizedBaseUrl, probe },
+            { profile, baseUrl: normalizedBaseUrl, probe },
             callbacks,
             signal,
           )
