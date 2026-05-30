@@ -11,7 +11,8 @@
     "dev": "pnpm --filter @llama-manager/core build && pnpm --parallel --filter @llama-manager/api --filter @llama-manager/web dev",
     "update:run": "git pull --ff-only && pnpm install && pnpm dev",
     "build": "pnpm -r build",
-    "check": "pnpm --filter @llama-manager/core build && pnpm -r check",
+    "check": "pnpm check:events && pnpm --filter @llama-manager/core build && pnpm -r check",
+    "check:events": "node scripts/check-react-event-captures.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {
