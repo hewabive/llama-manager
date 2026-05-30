@@ -89,6 +89,7 @@ import {
   llamaApiProbeTargetFromBaseUrl,
   probeLlamaCapabilities,
   probeLlamaServer,
+  requestLlamaJson,
   requestLlamaApiProbe,
   requestLlamaApiProbeBaseUrl,
   requestLlamaModelAction,
@@ -332,7 +333,7 @@ function normalizeApiProbeBaseUrl(value: string) {
   }
   parsed.hash = "";
   parsed.search = "";
-  const path = parsed.pathname.replace(/\/+$/, "");
+  const path = parsed.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "");
   return `${parsed.origin}${path === "/" ? "" : path}`;
 }
 
@@ -715,6 +716,23 @@ app.delete("/api/lab/probe/history", (c) => {
     const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
     return c.json({
       data: { deleted: clearLlamaApiProbeHistory(baseUrl) },
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.get("/api/lab/models", async (c) => {
+  const rawBaseUrl = c.req.query("baseUrl");
+  if (!rawBaseUrl) {
+    return c.json({ error: "baseUrl is required" }, 400);
+  }
+  try {
+    const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
+    return c.json({
+      data: await requestLlamaJson(`${baseUrl}/v1/models`, {
+        timeoutMs: 10_000,
+      }),
     });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);

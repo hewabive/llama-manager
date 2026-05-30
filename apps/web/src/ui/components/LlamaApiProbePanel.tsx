@@ -96,12 +96,19 @@ function modelStatus(record: Record<string, unknown>) {
 export function modelOptionsFromProbe(
   probe: LlamaEndpointProbe | undefined,
 ): ModelOption[] {
-  const data = arrayValue(objectRecord(probe?.body)?.data);
+  const body = objectRecord(probe?.body);
+  const data = [...arrayValue(body?.data), ...arrayValue(body?.models)];
+  const seen = new Set<string>();
   return data
     .map((item) => {
       const record = objectRecord(item);
-      const id = stringValue(record?.id);
+      const id =
+        stringValue(record?.id) ??
+        stringValue(record?.name) ??
+        stringValue(record?.model);
       if (!record || !id) return null;
+      if (seen.has(id)) return null;
+      seen.add(id);
       const status = modelStatus(record);
       return {
         value: id,

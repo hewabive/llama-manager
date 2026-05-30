@@ -1,10 +1,11 @@
 import type { Instance, InstanceHealthSummary } from "@llama-manager/core";
-import { Select, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import { Alert, Select, SimpleGrid, Stack, TextInput } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import {
   clearApiLabProbeHistory,
+  getApiLabModels,
   getApiProxyConfig,
   listApiLabProbeHistory,
   runApiLabProbe,
@@ -29,7 +30,7 @@ function normalizeBaseUrlLabel(value: string) {
     const parsed = new URL(value.trim());
     parsed.hash = "";
     parsed.search = "";
-    const path = parsed.pathname.replace(/\/+$/, "");
+    const path = parsed.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "");
     return `${parsed.origin}${path === "/" ? "" : path}`;
   } catch {
     return value.trim();
@@ -124,12 +125,35 @@ export function ApiLabView(props: {
   }, [baseUrl, props.selectedHealth?.llama.baseUrl, props.selectedInstance]);
 
   const normalizedBaseUrl = normalizeBaseUrlLabel(baseUrl);
+  const modelsQuery = useQuery({
+    queryKey: ["api-lab-models", normalizedBaseUrl],
+    queryFn: () => getApiLabModels(normalizedBaseUrl),
+    enabled: Boolean(normalizedBaseUrl),
+    staleTime: 15_000,
+  });
+  const apiModelOptions = useMemo(
+    () => modelOptionsFromProbe(modelsQuery.data?.data),
+    [modelsQuery.data?.data],
+  );
   const activeModelOptions =
-    quickTarget === "manager-proxy"
-      ? proxyModelOptions
-      : quickTarget === `instance:${props.selectedInstance?.id}`
-        ? modelOptionsFromProbe(props.selectedHealth?.llama.models)
-        : [];
+    apiModelOptions.length > 0
+      ? apiModelOptions
+      : quickTarget === "manager-proxy"
+        ? proxyModelOptions
+        : quickTarget === `instance:${props.selectedInstance?.id}`
+          ? modelOptionsFromProbe(props.selectedHealth?.llama.models)
+          : [];
+  const modelsProbe = modelsQuery.data?.data;
+  const modelListMessage =
+    normalizedBaseUrl && modelsQuery.isFetching
+      ? "Loading models from /v1/models..."
+      : modelsQuery.error
+        ? `Model list request failed: ${(modelsQuery.error as Error).message}`
+        : modelsProbe && !modelsProbe.ok
+          ? `Model list request failed: ${modelsProbe.error ?? `HTTP ${modelsProbe.status ?? "no response"}`}`
+          : modelsProbe?.ok
+            ? `Loaded ${apiModelOptions.length} model${apiModelOptions.length === 1 ? "" : "s"} from /v1/models.`
+            : null;
 
   return (
     <Stack gap="md">
@@ -157,15 +181,29 @@ export function ApiLabView(props: {
           }}
         />
         <TextInput
-          label="Base URL"
+          label="Server base URL"
           value={baseUrl}
-          placeholder="http://127.0.0.1:8080"
+          placeholder="http://127.0.0.1:8080 (without /v1)"
           onChange={(event) => {
             setBaseUrl(event.currentTarget.value);
             setQuickTarget(null);
           }}
         />
       </SimpleGrid>
+      {modelListMessage && (
+        <Alert
+          color={
+            modelsProbe?.ok
+              ? "blue"
+              : modelsQuery.isFetching
+                ? "gray"
+                : "yellow"
+          }
+          variant="light"
+        >
+          {modelListMessage}
+        </Alert>
+      )}
 
       <LlamaApiProbePanel
         instanceId="api-lab"

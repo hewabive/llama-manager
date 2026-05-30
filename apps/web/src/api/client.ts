@@ -35,6 +35,7 @@ import type {
   LlamaApiProbeTargetRequest,
   LlamaApiProbeHistoryEntry,
   LlamaApiProbeResult,
+  LlamaEndpointProbe,
   LlamaArgumentCatalog,
   LlamaArgumentDefaults,
   LlamaArgumentDocsSyncReport,
@@ -603,6 +604,13 @@ export async function clearApiLabProbeHistory(baseUrl: string) {
     {
       method: "DELETE",
     },
+  );
+}
+
+export async function getApiLabModels(baseUrl: string) {
+  const params = new URLSearchParams({ baseUrl });
+  return request<{ data: LlamaEndpointProbe }>(
+    `/api/lab/models?${params.toString()}`,
   );
 }
 
