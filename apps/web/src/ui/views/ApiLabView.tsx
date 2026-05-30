@@ -23,11 +23,11 @@ import {
   streamApiLabProbe,
 } from "../../api/client";
 import {
-  LlamaApiProbePanel,
+  ApiProbePanel,
   modelOptionsFromProbe,
   type ModelOption,
   type ProbeRequestOption,
-} from "../components/LlamaApiProbePanel";
+} from "../components/api-probe/ApiProbePanel";
 import { llamaServerWebUrl } from "../utils/instance-url";
 
 type QuickTarget = {
@@ -307,7 +307,7 @@ export function ApiLabView(props: {
         </Alert>
       )}
 
-      <LlamaApiProbePanel
+      <ApiProbePanel
         instanceId="api-lab"
         title="API probe"
         description={

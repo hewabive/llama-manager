@@ -1,9 +1,9 @@
 import type {
+  ApiProbeHistoryEntry,
+  ApiProbeHistoryStatus,
+  ApiProbeKind,
   ApiProbeProfile,
-  LlamaApiProbeHistoryEntry,
-  LlamaApiProbeHistoryStatus,
-  LlamaApiProbeKind,
-  LlamaApiProbeRequest,
+  ApiProbeRequest,
 } from "@llama-manager/core";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -46,20 +46,20 @@ function truncateText(value: string | null | undefined) {
   return `${value.slice(0, OUTPUT_LIMIT)}\n...[truncated]`;
 }
 
-function toEntry(row: ProbeHistoryRow): LlamaApiProbeHistoryEntry {
+function toEntry(row: ProbeHistoryRow): ApiProbeHistoryEntry {
   return {
     id: row.id,
     profile: (row.profile ?? "llama-server") as ApiProbeProfile,
     baseUrl: row.baseUrl,
-    kind: row.kind as LlamaApiProbeKind,
+    kind: row.kind as ApiProbeKind,
     model: row.model,
     endpoint: row.endpoint,
     startedAt: row.startedAt,
     finishedAt: row.finishedAt,
-    status: row.status as LlamaApiProbeHistoryStatus,
+    status: row.status as ApiProbeHistoryStatus,
     httpStatus: numberOrNull(row.httpStatus),
     latencyMs: numberOrNull(row.latencyMs),
-    request: parseJsonOrNull(row.requestJson) as LlamaApiProbeRequest,
+    request: parseJsonOrNull(row.requestJson) as ApiProbeRequest,
     requestBody: parseJsonOrNull(row.requestBodyJson),
     output: row.output,
     error: row.error,
@@ -70,10 +70,10 @@ function toEntry(row: ProbeHistoryRow): LlamaApiProbeHistoryEntry {
   };
 }
 
-export function createLlamaApiProbeHistory(input: {
+export function createApiProbeHistory(input: {
   profile?: ApiProbeProfile;
   baseUrl: string;
-  request: LlamaApiProbeRequest;
+  request: ApiProbeRequest;
   endpoint?: string | null;
   requestBody?: unknown;
   streamed: boolean;
@@ -106,10 +106,10 @@ export function createLlamaApiProbeHistory(input: {
   return id;
 }
 
-export function updateLlamaApiProbeHistory(
+export function updateApiProbeHistory(
   id: string,
   input: {
-    status: LlamaApiProbeHistoryStatus;
+    status: ApiProbeHistoryStatus;
     endpoint?: string | null;
     requestBody?: unknown;
     httpStatus?: number | null;
@@ -160,7 +160,7 @@ export function updateLlamaApiProbeHistory(
     .run();
 }
 
-export function listLlamaApiProbeHistory(
+export function listApiProbeHistory(
   baseUrl: string,
   limit = HISTORY_LIMIT,
   profile: ApiProbeProfile = "llama-server",
@@ -181,7 +181,7 @@ export function listLlamaApiProbeHistory(
     .map(toEntry);
 }
 
-export function clearLlamaApiProbeHistory(
+export function clearApiProbeHistory(
   baseUrl: string,
   profile: ApiProbeProfile = "llama-server",
 ) {
@@ -197,7 +197,7 @@ export function clearLlamaApiProbeHistory(
   return result.changes;
 }
 
-export function pruneLlamaApiProbeHistory(
+export function pruneApiProbeHistory(
   baseUrl: string,
   keep = HISTORY_LIMIT,
   profile: ApiProbeProfile = "llama-server",

@@ -33,9 +33,9 @@ import type {
   LlamaCapabilitiesResult,
   ApiLabProbeProfile,
   ApiLabProbeTargetRequest,
-  LlamaApiProbeRequest,
-  LlamaApiProbeHistoryEntry,
-  LlamaApiProbeResult,
+  ApiProbeRequest,
+  ApiProbeHistoryEntry,
+  ApiProbeResult,
   LlamaEndpointProbe,
   LlamaArgumentCatalog,
   LlamaArgumentDefaults,
@@ -571,21 +571,15 @@ export async function getLlamaCapabilities(id: string) {
   );
 }
 
-export async function runLlamaApiProbe(
-  id: string,
-  input: LlamaApiProbeRequest,
-) {
-  return request<{ data: LlamaApiProbeResult }>(
-    `/api/instances/${id}/llama/probe`,
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+export async function runLlamaApiProbe(id: string, input: ApiProbeRequest) {
+  return request<{ data: ApiProbeResult }>(`/api/instances/${id}/llama/probe`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function runApiLabProbe(input: ApiLabProbeTargetRequest) {
-  return request<{ data: LlamaApiProbeResult }>("/api/lab/probe", {
+  return request<{ data: ApiProbeResult }>("/api/lab/probe", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -601,7 +595,7 @@ export async function listApiLabProbeHistory(
     baseUrl,
     limit: String(limit),
   });
-  return request<{ data: LlamaApiProbeHistoryEntry[] }>(
+  return request<{ data: ApiProbeHistoryEntry[] }>(
     `/api/lab/probe/history?${params.toString()}`,
   );
 }
@@ -630,7 +624,7 @@ export async function getApiLabModels(
 }
 
 export async function listLlamaApiProbeHistory(id: string, limit = 20) {
-  return request<{ data: LlamaApiProbeHistoryEntry[] }>(
+  return request<{ data: ApiProbeHistoryEntry[] }>(
     `/api/instances/${id}/llama/probe/history?limit=${limit}`,
   );
 }
@@ -644,33 +638,38 @@ export async function clearLlamaApiProbeHistory(id: string) {
   );
 }
 
-export type LlamaApiProbeStreamMeta = {
-  kind: LlamaApiProbeRequest["kind"];
+export type ApiProbeStreamMeta = {
+  kind: ApiProbeRequest["kind"];
   endpoint: string;
   requestBody: unknown;
 };
 
-export type LlamaApiProbeStreamStatus = {
+export type ApiProbeStreamStatus = {
   ok: boolean;
   status: number;
   latencyMs: number;
 };
 
-export type LlamaApiProbeStreamDone = {
+export type ApiProbeStreamDone = {
   latencyMs: number;
   finishReason: string | null;
   usage: unknown;
   timings: unknown;
 };
 
-export type LlamaApiProbeStreamCallbacks = {
-  onMeta?: (meta: LlamaApiProbeStreamMeta) => void;
-  onStatus?: (status: LlamaApiProbeStreamStatus) => void;
+export type ApiProbeStreamCallbacks = {
+  onMeta?: (meta: ApiProbeStreamMeta) => void;
+  onStatus?: (status: ApiProbeStreamStatus) => void;
   onToken?: (token: string) => void;
-  onDone?: (done: LlamaApiProbeStreamDone) => void;
+  onDone?: (done: ApiProbeStreamDone) => void;
   onError?: (error: unknown) => void;
   onCancelled?: (payload: unknown) => void;
 };
+
+export type LlamaApiProbeStreamMeta = ApiProbeStreamMeta;
+export type LlamaApiProbeStreamStatus = ApiProbeStreamStatus;
+export type LlamaApiProbeStreamDone = ApiProbeStreamDone;
+export type LlamaApiProbeStreamCallbacks = ApiProbeStreamCallbacks;
 
 function parseSseBlock(block: string) {
   let event = "message";
@@ -694,9 +693,9 @@ function parseSseJson(data: string): unknown {
   }
 }
 
-function dispatchLlamaProbeStreamEvent(
+function dispatchApiProbeStreamEvent(
   block: string,
-  callbacks: LlamaApiProbeStreamCallbacks,
+  callbacks: ApiProbeStreamCallbacks,
 ) {
   const parsed = parseSseBlock(block);
   if (!parsed.data) return;
@@ -704,10 +703,10 @@ function dispatchLlamaProbeStreamEvent(
 
   switch (parsed.event) {
     case "meta":
-      callbacks.onMeta?.(payload as LlamaApiProbeStreamMeta);
+      callbacks.onMeta?.(payload as ApiProbeStreamMeta);
       break;
     case "status":
-      callbacks.onStatus?.(payload as LlamaApiProbeStreamStatus);
+      callbacks.onStatus?.(payload as ApiProbeStreamStatus);
       break;
     case "token": {
       const record =
@@ -719,7 +718,7 @@ function dispatchLlamaProbeStreamEvent(
       break;
     }
     case "done":
-      callbacks.onDone?.(payload as LlamaApiProbeStreamDone);
+      callbacks.onDone?.(payload as ApiProbeStreamDone);
       break;
     case "error":
       callbacks.onError?.(payload);
@@ -732,9 +731,9 @@ function dispatchLlamaProbeStreamEvent(
   }
 }
 
-async function readLlamaProbeStream(
+async function readApiProbeStream(
   response: Response,
-  callbacks: LlamaApiProbeStreamCallbacks,
+  callbacks: ApiProbeStreamCallbacks,
 ) {
   if (!response.body) {
     throw new Error("Streaming response has no body");
@@ -753,20 +752,20 @@ async function readLlamaProbeStream(
     while (separator && separator.index !== undefined) {
       const block = buffer.slice(0, separator.index);
       buffer = buffer.slice(separator.index + separator[0].length);
-      dispatchLlamaProbeStreamEvent(block, callbacks);
+      dispatchApiProbeStreamEvent(block, callbacks);
       separator = buffer.match(/\r?\n\r?\n/);
     }
   }
 
   if (buffer.trim()) {
-    dispatchLlamaProbeStreamEvent(buffer, callbacks);
+    dispatchApiProbeStreamEvent(buffer, callbacks);
   }
 }
 
 export async function streamLlamaApiProbe(
   id: string,
-  input: LlamaApiProbeRequest,
-  callbacks: LlamaApiProbeStreamCallbacks,
+  input: ApiProbeRequest,
+  callbacks: ApiProbeStreamCallbacks,
   signal?: AbortSignal,
 ) {
   const response = await fetch(
@@ -793,12 +792,12 @@ export async function streamLlamaApiProbe(
     );
   }
 
-  await readLlamaProbeStream(response, callbacks);
+  await readApiProbeStream(response, callbacks);
 }
 
 export async function streamApiLabProbe(
   input: ApiLabProbeTargetRequest,
-  callbacks: LlamaApiProbeStreamCallbacks,
+  callbacks: ApiProbeStreamCallbacks,
   signal?: AbortSignal,
 ) {
   const response = await fetch(`${apiBase}/api/lab/probe/stream`, {
@@ -822,7 +821,7 @@ export async function streamApiLabProbe(
     );
   }
 
-  await readLlamaProbeStream(response, callbacks);
+  await readApiProbeStream(response, callbacks);
 }
 
 export async function llamaModelAction(

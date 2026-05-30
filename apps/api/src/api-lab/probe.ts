@@ -1,7 +1,7 @@
 import type {
   ApiLabProbeProfile,
-  LlamaApiProbeRequest,
-  LlamaApiProbeResult,
+  ApiProbeRequest,
+  ApiProbeResult,
 } from "@llama-manager/core";
 
 import { requestLlamaJson } from "../llama/probe.js";
@@ -28,7 +28,7 @@ function endpointWithAutoload(endpoint: string, autoload: boolean) {
 }
 
 function openAiApiProbeRequestBody(
-  input: LlamaApiProbeRequest,
+  input: ApiProbeRequest,
   options: { stream?: boolean } = {},
 ) {
   const systemPrompt = compactOptionalString(input.systemPrompt);
@@ -109,7 +109,7 @@ function openAiApiProbeRequestBody(
 }
 
 function llamaNativeApiProbeRequestBody(
-  input: LlamaApiProbeRequest,
+  input: ApiProbeRequest,
   options: { stream?: boolean } = {},
 ) {
   const systemPrompt = compactOptionalString(input.systemPrompt);
@@ -174,7 +174,7 @@ function llamaNativeApiProbeRequestBody(
   };
 }
 
-function anthropicApiProbeRequestBody(input: LlamaApiProbeRequest) {
+function anthropicApiProbeRequestBody(input: ApiProbeRequest) {
   const systemPrompt = compactOptionalString(input.systemPrompt);
   return {
     endpoint: "/messages/count_tokens",
@@ -191,7 +191,7 @@ function anthropicApiProbeRequestBody(input: LlamaApiProbeRequest) {
 export function apiLabProbeTargetFromBaseUrl(
   profile: ApiLabProbeProfile,
   baseUrl: string,
-  input: LlamaApiProbeRequest,
+  input: ApiProbeRequest,
   options: { stream?: boolean } = {},
 ) {
   const { endpoint, body } =
@@ -215,8 +215,8 @@ export function apiLabProbeTargetFromBaseUrl(
 export async function requestApiLabProbeBaseUrl(
   profile: ApiLabProbeProfile,
   baseUrl: string,
-  input: LlamaApiProbeRequest,
-): Promise<LlamaApiProbeResult> {
+  input: ApiProbeRequest,
+): Promise<ApiProbeResult> {
   const target = apiLabProbeTargetFromBaseUrl(profile, baseUrl, input);
 
   return {

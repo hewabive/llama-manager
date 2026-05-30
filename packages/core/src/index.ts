@@ -231,6 +231,7 @@ export const LlamaApiProbeKindSchema = z.enum([
   ...LlamaNativeApiProbeKindSchema.options,
   ...AnthropicApiProbeKindSchema.options,
 ]);
+export const ApiProbeKindSchema = LlamaApiProbeKindSchema;
 
 export const ApiLabProbeKindsByProfile = {
   openai: OpenAiApiProbeKindSchema.options,
@@ -290,6 +291,7 @@ export const LlamaApiProbeRequestSchema = z
       });
     }
   });
+export const ApiProbeRequestSchema = LlamaApiProbeRequestSchema;
 
 export const ApiLabProbeTargetRequestSchema = z
   .object({
@@ -312,6 +314,7 @@ export const ApiLabProbeTargetRequestSchema = z
   });
 
 export const LlamaApiProbeTargetRequestSchema = ApiLabProbeTargetRequestSchema;
+export const ApiProbeTargetRequestSchema = ApiLabProbeTargetRequestSchema;
 
 export const LlamaApiProbeResultSchema = z.object({
   profile: ApiProbeProfileSchema.optional(),
@@ -320,6 +323,7 @@ export const LlamaApiProbeResultSchema = z.object({
   requestBody: z.unknown(),
   response: LlamaEndpointProbeSchema,
 });
+export const ApiProbeResultSchema = LlamaApiProbeResultSchema;
 
 export const LlamaApiProbeHistoryStatusSchema = z.enum([
   "running",
@@ -327,6 +331,7 @@ export const LlamaApiProbeHistoryStatusSchema = z.enum([
   "error",
   "cancelled",
 ]);
+export const ApiProbeHistoryStatusSchema = LlamaApiProbeHistoryStatusSchema;
 
 export const LlamaApiProbeHistoryEntrySchema = z.object({
   id: z.string(),
@@ -349,6 +354,7 @@ export const LlamaApiProbeHistoryEntrySchema = z.object({
   streamed: z.boolean(),
   finishReason: z.string().nullable(),
 });
+export const ApiProbeHistoryEntrySchema = LlamaApiProbeHistoryEntrySchema;
 
 const ApiProxyIdSchema = z.string().min(1).max(80);
 
@@ -1277,21 +1283,21 @@ export type LlamaNativeApiProbeKind = z.infer<
   typeof LlamaNativeApiProbeKindSchema
 >;
 export type AnthropicApiProbeKind = z.infer<typeof AnthropicApiProbeKindSchema>;
-export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
-export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;
+export type ApiProbeKind = z.infer<typeof ApiProbeKindSchema>;
+export type ApiProbeRequest = z.infer<typeof ApiProbeRequestSchema>;
 export type ApiLabProbeTargetRequest = z.infer<
   typeof ApiLabProbeTargetRequestSchema
 >;
-export type LlamaApiProbeTargetRequest = z.infer<
-  typeof LlamaApiProbeTargetRequestSchema
->;
-export type LlamaApiProbeResult = z.infer<typeof LlamaApiProbeResultSchema>;
-export type LlamaApiProbeHistoryStatus = z.infer<
-  typeof LlamaApiProbeHistoryStatusSchema
->;
-export type LlamaApiProbeHistoryEntry = z.infer<
-  typeof LlamaApiProbeHistoryEntrySchema
->;
+export type ApiProbeTargetRequest = z.infer<typeof ApiProbeTargetRequestSchema>;
+export type ApiProbeResult = z.infer<typeof ApiProbeResultSchema>;
+export type ApiProbeHistoryStatus = z.infer<typeof ApiProbeHistoryStatusSchema>;
+export type ApiProbeHistoryEntry = z.infer<typeof ApiProbeHistoryEntrySchema>;
+export type LlamaApiProbeKind = ApiProbeKind;
+export type LlamaApiProbeRequest = ApiProbeRequest;
+export type LlamaApiProbeTargetRequest = ApiProbeTargetRequest;
+export type LlamaApiProbeResult = ApiProbeResult;
+export type LlamaApiProbeHistoryStatus = ApiProbeHistoryStatus;
+export type LlamaApiProbeHistoryEntry = ApiProbeHistoryEntry;
 export type ApiProxyTransformMode = z.infer<typeof ApiProxyTransformModeSchema>;
 export type ApiProxyTargetRole = z.infer<typeof ApiProxyTargetRoleSchema>;
 export type ApiProxyModelState = z.infer<typeof ApiProxyModelStateSchema>;
