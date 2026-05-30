@@ -1,5 +1,4 @@
 import type {
-  ApiProxyExecutorRunRequest,
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyPlanPreviewRequest,
@@ -14,7 +13,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  createApiProxyExecutorRun,
   createApiProxyModel,
   createApiProxyRoute,
   createApiProxyTarget,
@@ -73,9 +71,6 @@ export function ProxyView() {
   const [routeDraftState, setRouteDraftState] =
     useState<RouteDraft>(emptyRouteDraft);
   const [requestTargetId, setRequestTargetId] = useState<string | null>(null);
-  const [preferredTargetId, setPreferredTargetId] = useState<string | null>(
-    null,
-  );
 
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
@@ -144,41 +139,17 @@ export function ProxyView() {
     onError: (error) =>
       notifications.show({
         color: "red",
-        title: "Scheduler preview failed",
+        title: "Plan check failed",
         message: (error as Error).message,
       }),
   });
   const planPreview = planPreviewMutation.data?.data;
-  const executorRunMutation = useMutation({
-    mutationFn: createApiProxyExecutorRun,
-    onSuccess: async (result) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["api-proxy-executor-runs"],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
-      ]);
-      notifications.show({
-        color: result.data.status === "blocked" ? "orange" : "blue",
-        title: "Executor dry-run recorded",
-        message: `${result.data.plan.actions.length} planned action(s).`,
-      });
-    },
-    onError: (error) =>
-      notifications.show({
-        color: "red",
-        title: "Executor dry-run failed",
-        message: (error as Error).message,
-      }),
-  });
   const executorRuns = executorRunsQuery.data?.data.runs ?? [];
-  const latestExecutorRun =
-    executorRunMutation.data?.data ?? executorRuns[0] ?? null;
+  const latestExecutorRun = executorRuns[0] ?? null;
 
   useEffect(() => {
     if (targets.length === 0) {
       setRequestTargetId(null);
-      setPreferredTargetId(null);
       return;
     }
 
@@ -188,13 +159,7 @@ export function ProxyView() {
     ) {
       setRequestTargetId(targets[0]?.id ?? null);
     }
-    if (
-      !preferredTargetId ||
-      !targets.some((target) => target.id === preferredTargetId)
-    ) {
-      setPreferredTargetId(targets[0]?.id ?? null);
-    }
-  }, [preferredTargetId, requestTargetId, targets]);
+  }, [requestTargetId, targets]);
 
   const invalidateProxy = async () => {
     await Promise.all([
@@ -440,21 +405,7 @@ export function ProxyView() {
     if (mode === "request" && requestTargetId) {
       input.requestedTargetId = requestTargetId;
     }
-    if (mode === "idle" && preferredTargetId) {
-      input.preferredTargetId = preferredTargetId;
-    }
     planPreviewMutation.mutate(input);
-  }
-
-  function runExecutorDryRun(mode: ApiProxyExecutorRunRequest["mode"]) {
-    const input: ApiProxyExecutorRunRequest = { mode, execute: false };
-    if (mode === "request" && requestTargetId) {
-      input.requestedTargetId = requestTargetId;
-    }
-    if (mode === "idle" && preferredTargetId) {
-      input.preferredTargetId = preferredTargetId;
-    }
-    executorRunMutation.mutate(input);
   }
 
   const targetBusy =
@@ -497,19 +448,13 @@ export function ProxyView() {
       <SchedulerSection
         targetOptions={targetOptions}
         requestTargetId={requestTargetId}
-        preferredTargetId={preferredTargetId}
         planPreview={planPreview}
         latestExecutorRun={latestExecutorRun}
         executorRuns={executorRuns}
         targetById={targetById}
         previewPending={planPreviewMutation.isPending}
-        executorPending={executorRunMutation.isPending}
         onRequestTargetChange={setRequestTargetId}
-        onPreferredTargetChange={setPreferredTargetId}
         onPreviewRequest={() => previewSchedulerPlan("request")}
-        onPreviewIdle={() => previewSchedulerPlan("idle")}
-        onDryRunRequest={() => runExecutorDryRun("request")}
-        onDryRunIdle={() => runExecutorDryRun("idle")}
       />
 
       <ProxyRoutesSection

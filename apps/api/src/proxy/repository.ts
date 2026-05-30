@@ -47,6 +47,8 @@ type ModelRow = typeof apiProxyModels.$inferSelect;
 type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
 type ExecutorRunRow = typeof apiProxyExecutorRuns.$inferSelect;
 
+const EXECUTOR_RUN_RETENTION_LIMIT = 200;
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -295,15 +297,31 @@ export function getApiProxyConfig(): ApiProxyConfig {
   });
 }
 
-export function listApiProxyExecutorRuns(limit = 20): ApiProxyExecutorRunList {
-  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 20));
-  const runs = db
+function sortedApiProxyExecutorRuns() {
+  return db
     .select()
     .from(apiProxyExecutorRuns)
     .all()
     .map(toExecutorRun)
-    .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
-    .slice(0, safeLimit);
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+}
+
+export function pruneApiProxyExecutorRuns(
+  keep = EXECUTOR_RUN_RETENTION_LIMIT,
+): number {
+  const safeKeep = Math.max(1, Math.trunc(keep) || EXECUTOR_RUN_RETENTION_LIMIT);
+  const staleRuns = sortedApiProxyExecutorRuns().slice(safeKeep);
+  for (const run of staleRuns) {
+    db.delete(apiProxyExecutorRuns)
+      .where(eq(apiProxyExecutorRuns.id, run.id))
+      .run();
+  }
+  return staleRuns.length;
+}
+
+export function listApiProxyExecutorRuns(limit = 20): ApiProxyExecutorRunList {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 20));
+  const runs = sortedApiProxyExecutorRuns().slice(0, safeLimit);
   return ApiProxyExecutorRunListSchema.parse({ runs });
 }
 
@@ -330,7 +348,9 @@ export function createApiProxyExecutorRun(
   if (!row) {
     throw new Error("failed to create API proxy executor run");
   }
-  return toExecutorRun(row);
+  const created = toExecutorRun(row);
+  pruneApiProxyExecutorRuns();
+  return created;
 }
 
 export function listApiProxyRuntimeMetadata(): ApiProxyRuntimeMetadataRecord[] {

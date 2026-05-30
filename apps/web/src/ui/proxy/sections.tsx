@@ -19,7 +19,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Activity, ListChecks, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Activity, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
 import { formatLocalDateTime } from "../utils/time";
 import {
@@ -363,19 +363,13 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
 type SchedulerSectionProps = {
   targetOptions: SelectOption[];
   requestTargetId: string | null;
-  preferredTargetId: string | null;
   planPreview: ApiProxyPlanPreview | undefined;
   latestExecutorRun: ApiProxyExecutorRunRecord | null;
   executorRuns: ApiProxyExecutorRunRecord[];
   targetById: Map<string, ApiProxyTargetRecord>;
   previewPending: boolean;
-  executorPending: boolean;
   onRequestTargetChange: (targetId: string | null) => void;
-  onPreferredTargetChange: (targetId: string | null) => void;
   onPreviewRequest: () => void;
-  onPreviewIdle: () => void;
-  onDryRunRequest: () => void;
-  onDryRunIdle: () => void;
 };
 
 function SchedulerActionTable(props: {
@@ -441,10 +435,11 @@ export function SchedulerSection(props: SchedulerSectionProps) {
         <Group justify="space-between" align="center" wrap="wrap">
           <Group gap="xs">
             <Activity size={18} />
-            <Text fw={600}>Scheduler preview</Text>
+            <Text fw={600}>Request plan check</Text>
           </Group>
           <Text c="dimmed" size="sm">
-            Preview only: no process or model action is executed here.
+            Shows what a public API request would need to do; no action is
+            executed here.
           </Text>
         </Group>
         <Group align="flex-end" wrap="wrap">
@@ -463,49 +458,8 @@ export function SchedulerSection(props: SchedulerSectionProps) {
             loading={props.previewPending}
             onClick={props.onPreviewRequest}
           >
-            Preview request
+            Check plan
           </Button>
-          <Select
-            label="Preferred idle target"
-            placeholder="Select target"
-            data={props.targetOptions}
-            value={props.preferredTargetId}
-            onChange={props.onPreferredTargetChange}
-            miw={260}
-            searchable
-          />
-          <Button
-            variant="light"
-            leftSection={<Play size={16} />}
-            disabled={props.targetOptions.length === 0}
-            loading={props.previewPending}
-            onClick={props.onPreviewIdle}
-          >
-            Preview idle
-          </Button>
-        </Group>
-        <Group align="center" wrap="wrap">
-          <Button
-            variant="outline"
-            leftSection={<ListChecks size={16} />}
-            disabled={!props.requestTargetId}
-            loading={props.executorPending}
-            onClick={props.onDryRunRequest}
-          >
-            Dry-run request
-          </Button>
-          <Button
-            variant="outline"
-            leftSection={<ListChecks size={16} />}
-            disabled={props.targetOptions.length === 0}
-            loading={props.executorPending}
-            onClick={props.onDryRunIdle}
-          >
-            Dry-run idle
-          </Button>
-          <Badge color="gray" variant="outline">
-            execution disabled
-          </Badge>
         </Group>
 
         {props.planPreview && (
@@ -537,7 +491,7 @@ export function SchedulerSection(props: SchedulerSectionProps) {
           <Stack gap="xs">
             <Group gap="xs" wrap="wrap">
               <Text fw={600} size="sm">
-                Latest executor run
+                Latest execution
               </Text>
               <Badge
                 color={executorStatusColor(props.latestExecutorRun.status)}
@@ -563,6 +517,15 @@ export function SchedulerSection(props: SchedulerSectionProps) {
           </Stack>
         )}
 
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Text fw={600} size="sm">
+            Execution log
+          </Text>
+          <Text c="dimmed" size="sm">
+            Records real proxy actions and failures; route-only requests are
+            omitted.
+          </Text>
+        </Group>
         <Table.ScrollContainer minWidth={760}>
           <Table striped verticalSpacing="sm">
             <Table.Thead>
@@ -600,7 +563,7 @@ export function SchedulerSection(props: SchedulerSectionProps) {
                 <Table.Tr>
                   <Table.Td colSpan={5}>
                     <Text c="dimmed" ta="center" py="sm">
-                      No executor runs recorded
+                      No execution log entries
                     </Text>
                   </Table.Td>
                 </Table.Tr>

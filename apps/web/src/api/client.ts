@@ -2,8 +2,6 @@ import type {
   AdminLogin,
   ApiProxyConfig,
   ApiProxyExecutorRunList,
-  ApiProxyExecutorRunRecord,
-  ApiProxyExecutorRunRequest,
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyModelUpdate,
@@ -243,18 +241,6 @@ export async function listApiProxyExecutorRuns(limit = 20) {
   const params = new URLSearchParams({ limit: String(limit) });
   return request<{ data: ApiProxyExecutorRunList }>(
     `/api/proxy/executor/runs?${params.toString()}`,
-  );
-}
-
-export async function createApiProxyExecutorRun(
-  input: ApiProxyExecutorRunRequest,
-) {
-  return request<{ data: ApiProxyExecutorRunRecord }>(
-    "/api/proxy/executor/runs",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
   );
 }
 
