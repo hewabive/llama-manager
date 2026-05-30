@@ -448,6 +448,36 @@ export const ApiProxyPlanPreviewSchema = z.object({
   plan: ApiProxySchedulerPlanSchema,
 });
 
+export const ApiProxyExecutorStatusSchema = z.enum([
+  "dry-run",
+  "blocked",
+  "failed",
+  "completed",
+]);
+
+export const ApiProxyExecutorRunRequestSchema =
+  ApiProxyPlanPreviewRequestSchema.extend({
+    execute: z.boolean().default(false),
+  });
+
+export const ApiProxyExecutorRunRecordSchema = z.object({
+  id: ApiProxyIdSchema,
+  mode: ApiProxySchedulerModeSchema,
+  requestedTargetId: ApiProxyIdSchema.nullable(),
+  preferredTargetId: ApiProxyIdSchema.nullable(),
+  execute: z.boolean(),
+  status: ApiProxyExecutorStatusSchema,
+  runtime: ApiProxyRuntimeSnapshotSchema,
+  plan: ApiProxySchedulerPlanSchema,
+  error: z.string().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+
+export const ApiProxyExecutorRunListSchema = z.object({
+  runs: z.array(ApiProxyExecutorRunRecordSchema),
+});
+
 export const LogTailSchema = z.object({
   instanceId: z.string(),
   logPath: z.string().nullable(),
@@ -1174,6 +1204,18 @@ export type ApiProxyPlanPreviewRequest = z.infer<
   typeof ApiProxyPlanPreviewRequestSchema
 >;
 export type ApiProxyPlanPreview = z.infer<typeof ApiProxyPlanPreviewSchema>;
+export type ApiProxyExecutorStatus = z.infer<
+  typeof ApiProxyExecutorStatusSchema
+>;
+export type ApiProxyExecutorRunRequest = z.infer<
+  typeof ApiProxyExecutorRunRequestSchema
+>;
+export type ApiProxyExecutorRunRecord = z.infer<
+  typeof ApiProxyExecutorRunRecordSchema
+>;
+export type ApiProxyExecutorRunList = z.infer<
+  typeof ApiProxyExecutorRunListSchema
+>;
 export type LogTail = z.infer<typeof LogTailSchema>;
 export type FileSystemEntry = z.infer<typeof FileSystemEntrySchema>;
 export type FileSystemRoot = z.infer<typeof FileSystemRootSchema>;

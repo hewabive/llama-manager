@@ -327,6 +327,27 @@ export function migrate() {
   `);
 
   db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_proxy_executor_runs (
+      id TEXT PRIMARY KEY NOT NULL,
+      mode TEXT NOT NULL,
+      requested_target_id TEXT,
+      preferred_target_id TEXT,
+      execute TEXT NOT NULL,
+      status TEXT NOT NULL,
+      runtime_json TEXT NOT NULL,
+      plan_json TEXT NOT NULL,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS api_proxy_executor_runs_started_idx
+    ON api_proxy_executor_runs (started_at DESC)
+  `);
+
+  db.run(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_targets_name_idx
     ON api_proxy_targets (name)
   `);

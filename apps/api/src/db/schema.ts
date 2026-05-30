@@ -198,3 +198,17 @@ export const apiProxyRuntimeMetadata = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
 );
+
+export const apiProxyExecutorRuns = sqliteTable("api_proxy_executor_runs", {
+  id: text("id").primaryKey(),
+  mode: text("mode").notNull(),
+  requestedTargetId: text("requested_target_id"),
+  preferredTargetId: text("preferred_target_id"),
+  execute: text("execute").notNull(),
+  status: text("status").notNull(),
+  runtimeJson: text("runtime_json").notNull(),
+  planJson: text("plan_json").notNull(),
+  error: text("error"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+});

@@ -2,8 +2,9 @@
 
 This document captures the intended shape of the future `llama-manager` API
 proxy. The current implementation adds shared contracts, durable
-disabled-by-default configuration, runtime diagnostics, pure planning logic and
-HTTP forwarding helpers. It does not expose a public proxy endpoint yet.
+disabled-by-default configuration, runtime diagnostics, pure planning logic,
+dry-run executor logging and HTTP forwarding helpers. It does not expose a
+public proxy endpoint yet.
 
 ## Problem Shape
 
@@ -38,6 +39,7 @@ endpoint.
   - `ApiProxyTargetRuntime`
   - `ApiProxySchedulerPlanRequest`
   - `ApiProxySchedulerPlan`
+  - `ApiProxyExecutorRunRecord`
 - Runtime collector in `apps/api/src/proxy/runtime.ts`:
   - derives target state from instance health summaries, `/v1/models` and slots
   - tracks idle time in process memory
@@ -45,6 +47,10 @@ endpoint.
 - Pure scheduler in `apps/api/src/proxy/scheduler.ts`:
   - `planApiProxyRequest`
   - `planApiProxyIdleMaintenance`
+- Dry-run executor in `apps/api/src/proxy/executor.ts`:
+  - records runtime snapshots, plans and action lists
+  - rejects real execution until the executor implementation is explicitly
+    enabled
 - HTTP helper functions in `apps/api/src/proxy/http.ts`:
   - upstream URL joining
   - request/response header filtering
@@ -53,11 +59,13 @@ endpoint.
   - `api_proxy_targets`
   - `api_proxy_routes`
   - `api_proxy_runtime_metadata`
+  - `api_proxy_executor_runs`
 - Admin UI page:
   - proxy targets
   - proxy routes
   - runtime state preview
   - scheduler plan preview
+  - executor dry-run log
   - no external proxy listener yet
 
 ## Admin Diagnostics
@@ -68,10 +76,13 @@ The admin API exposes diagnostics for the next implementation step:
   targets.
 - `POST /api/proxy/plan` returns the scheduler plan for either an incoming
   request or an idle-maintenance pass.
+- `GET /api/proxy/executor/runs` returns recent dry-run executor records.
+- `POST /api/proxy/executor/runs` records a dry-run executor pass. Requests with
+  `execute: true` are rejected and logged as failed.
 
-Both endpoints are read-only with respect to llama-server. They do not start or
-stop instances, load or unload models, save slots, restore slots or forward user
-traffic.
+These endpoints are read-only with respect to llama-server. They do not start
+or stop instances, load or unload models, save slots, restore slots or forward
+user traffic.
 
 ## Scheduler Model
 
@@ -97,6 +108,6 @@ executor and persistent proxy state.
 
 The next safe step is an executor prototype behind admin-only controls:
 
-- executor that can run scheduler actions with logging;
+- executor that can run selected scheduler actions with logging;
 - dry-run versus execute controls;
 - only then expose actual OpenAI-compatible proxy routes.

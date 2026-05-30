@@ -1,5 +1,6 @@
 import {
   AdminLoginSchema,
+  ApiProxyExecutorRunRequestSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteUpdateSchema,
   ApiProxyPlanPreviewRequestSchema,
@@ -117,6 +118,11 @@ import {
   updatePathCatalogEntry,
 } from "./path-catalog/repository.js";
 import {
+  API_PROXY_EXECUTION_DISABLED_ERROR,
+  buildApiProxyExecutorRun,
+} from "./proxy/executor.js";
+import {
+  createApiProxyExecutorRun,
   createApiProxyRoute,
   createApiProxyTarget,
   deleteApiProxyRoute,
@@ -124,6 +130,7 @@ import {
   getApiProxyConfig,
   getApiProxyRoute,
   getApiProxyTarget,
+  listApiProxyExecutorRuns,
   listApiProxyRuntimeMetadata,
   listApiProxyRoutes,
   listApiProxyTargets,
@@ -277,6 +284,14 @@ async function getApiProxyPlanPreview(input: {
   });
 }
 
+function queryLimit(value: string | undefined, fallback = 20) {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 app.use(
   "*",
   cors({
@@ -428,6 +443,47 @@ app.post("/api/proxy/plan", async (c) => {
 
   try {
     return c.json({ data: await getApiProxyPlanPreview(parsed.data) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.get("/api/proxy/executor/runs", (c) => {
+  return c.json({
+    data: listApiProxyExecutorRuns(queryLimit(c.req.query("limit"))),
+  });
+});
+
+app.post("/api/proxy/executor/runs", async (c) => {
+  const parsed = ApiProxyExecutorRunRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  try {
+    const startedAt = new Date().toISOString();
+    const preview = await getApiProxyPlanPreview(parsed.data);
+    const finishedAt = new Date().toISOString();
+    const run = createApiProxyExecutorRun(
+      buildApiProxyExecutorRun({
+        request: parsed.data,
+        preview,
+        startedAt,
+        finishedAt,
+      }),
+    );
+
+    if (parsed.data.execute) {
+      return c.json(
+        {
+          data: run,
+          error: API_PROXY_EXECUTION_DISABLED_ERROR,
+        },
+        400,
+      );
+    }
+
+    return c.json({ data: run }, 201);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }

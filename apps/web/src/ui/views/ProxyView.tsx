@@ -1,4 +1,6 @@
 import type {
+  ApiProxyExecutorRunRecord,
+  ApiProxyExecutorRunRequest,
   ApiProxyPlanPreview,
   ApiProxyPlanPreviewRequest,
   ApiProxyRouteCreate,
@@ -27,16 +29,26 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Pencil, Play, Plus, Save, Trash2 } from "lucide-react";
+import {
+  Activity,
+  ListChecks,
+  Pencil,
+  Play,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  createApiProxyExecutorRun,
   createApiProxyRoute,
   createApiProxyTarget,
   deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
   getApiProxyRuntime,
+  listApiProxyExecutorRuns,
   listInstances,
   previewApiProxyPlan,
   updateApiProxyRoute,
@@ -224,6 +236,21 @@ const actionLabels: Record<
   "route-request": "Route request",
 };
 
+function executorStatusColor(status: ApiProxyExecutorRunRecord["status"]) {
+  switch (status) {
+    case "dry-run":
+      return "blue";
+    case "completed":
+      return "green";
+    case "blocked":
+      return "orange";
+    case "failed":
+      return "red";
+    default:
+      return "gray";
+  }
+}
+
 export function ProxyView() {
   const queryClient = useQueryClient();
   const [targetEditor, setTargetEditor] = useState<TargetEditor | null>(null);
@@ -249,6 +276,11 @@ export function ProxyView() {
   const runtimeQuery = useQuery({
     queryKey: ["api-proxy-runtime"],
     queryFn: getApiProxyRuntime,
+    refetchInterval: 5_000,
+  });
+  const executorRunsQuery = useQuery({
+    queryKey: ["api-proxy-executor-runs"],
+    queryFn: () => listApiProxyExecutorRuns(10),
     refetchInterval: 5_000,
   });
 
@@ -299,6 +331,31 @@ export function ProxyView() {
       }),
   });
   const planPreview = planPreviewMutation.data?.data;
+  const executorRunMutation = useMutation({
+    mutationFn: createApiProxyExecutorRun,
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["api-proxy-executor-runs"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
+      ]);
+      notifications.show({
+        color: result.data.status === "blocked" ? "orange" : "blue",
+        title: "Executor dry-run recorded",
+        message: `${result.data.plan.actions.length} planned action(s).`,
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Executor dry-run failed",
+        message: (error as Error).message,
+      }),
+  });
+  const executorRuns = executorRunsQuery.data?.data.runs ?? [];
+  const latestExecutorRun =
+    executorRunMutation.data?.data ?? executorRuns[0] ?? null;
 
   useEffect(() => {
     if (targets.length === 0) {
@@ -325,6 +382,7 @@ export function ProxyView() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["api-proxy-config"] }),
       queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
+      queryClient.invalidateQueries({ queryKey: ["api-proxy-executor-runs"] }),
     ]);
   };
 
@@ -491,6 +549,17 @@ export function ProxyView() {
       input.preferredTargetId = preferredTargetId;
     }
     planPreviewMutation.mutate(input);
+  }
+
+  function runExecutorDryRun(mode: ApiProxyExecutorRunRequest["mode"]) {
+    const input: ApiProxyExecutorRunRequest = { mode, execute: false };
+    if (mode === "request" && requestTargetId) {
+      input.requestedTargetId = requestTargetId;
+    }
+    if (mode === "idle" && preferredTargetId) {
+      input.preferredTargetId = preferredTargetId;
+    }
+    executorRunMutation.mutate(input);
   }
 
   const targetBusy =
@@ -722,6 +791,29 @@ export function ProxyView() {
               Preview idle
             </Button>
           </Group>
+          <Group align="center" wrap="wrap">
+            <Button
+              variant="outline"
+              leftSection={<ListChecks size={16} />}
+              disabled={!requestTargetId}
+              loading={executorRunMutation.isPending}
+              onClick={() => runExecutorDryRun("request")}
+            >
+              Dry-run request
+            </Button>
+            <Button
+              variant="outline"
+              leftSection={<ListChecks size={16} />}
+              disabled={targets.length === 0}
+              loading={executorRunMutation.isPending}
+              onClick={() => runExecutorDryRun("idle")}
+            >
+              Dry-run idle
+            </Button>
+            <Badge color="gray" variant="outline">
+              execution disabled
+            </Badge>
+          </Group>
 
           {planPreview && (
             <Stack gap="xs">
@@ -790,6 +882,123 @@ export function ProxyView() {
               </Table.ScrollContainer>
             </Stack>
           )}
+
+          {latestExecutorRun && (
+            <Stack gap="xs">
+              <Group gap="xs" wrap="wrap">
+                <Text fw={600} size="sm">
+                  Latest executor run
+                </Text>
+                <Badge color={executorStatusColor(latestExecutorRun.status)}>
+                  {latestExecutorRun.status}
+                </Badge>
+                <Badge variant="light">{latestExecutorRun.mode}</Badge>
+                <Text c="dimmed" size="sm">
+                  {formatLocalDateTime(latestExecutorRun.startedAt)}
+                </Text>
+              </Group>
+              {latestExecutorRun.error && (
+                <Text c="red" size="sm">
+                  {latestExecutorRun.error}
+                </Text>
+              )}
+              <Table.ScrollContainer minWidth={760}>
+                <Table striped verticalSpacing="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Action</Table.Th>
+                      <Table.Th>Target</Table.Th>
+                      <Table.Th>Model / slot</Table.Th>
+                      <Table.Th>Reason</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {latestExecutorRun.plan.actions.map((action, index) => (
+                      <Table.Tr
+                        key={`${latestExecutorRun.id}-${action.type}-${action.targetId}-${index}`}
+                      >
+                        <Table.Td>{actionLabels[action.type]}</Table.Td>
+                        <Table.Td>
+                          {targetById.get(action.targetId)?.name ??
+                            action.targetId}
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={2}>
+                            <Text size="sm">
+                              {action.model ?? "process action"}
+                            </Text>
+                            {action.slotId !== null && (
+                              <Text c="dimmed" size="xs">
+                                slot {action.slotId}
+                              </Text>
+                            )}
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{action.reason}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                    {latestExecutorRun.plan.actions.length === 0 && (
+                      <Table.Tr>
+                        <Table.Td colSpan={4}>
+                          <Text c="dimmed" ta="center" py="sm">
+                            No executor action was planned
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Stack>
+          )}
+
+          <Table.ScrollContainer minWidth={760}>
+            <Table striped verticalSpacing="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Started</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Mode</Table.Th>
+                  <Table.Th>Target</Table.Th>
+                  <Table.Th>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {executorRuns.map((run) => (
+                  <Table.Tr key={run.id}>
+                    <Table.Td>{formatLocalDateTime(run.startedAt)}</Table.Td>
+                    <Table.Td>
+                      <Badge color={executorStatusColor(run.status)}>
+                        {run.status}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>{run.mode}</Table.Td>
+                    <Table.Td>
+                      {run.requestedTargetId
+                        ? (targetById.get(run.requestedTargetId)?.name ??
+                          run.requestedTargetId)
+                        : run.preferredTargetId
+                          ? (targetById.get(run.preferredTargetId)?.name ??
+                            run.preferredTargetId)
+                          : "none"}
+                    </Table.Td>
+                    <Table.Td>{run.plan.actions.length}</Table.Td>
+                  </Table.Tr>
+                ))}
+                {executorRuns.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={5}>
+                      <Text c="dimmed" ta="center" py="sm">
+                        No executor runs recorded
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         </Stack>
       </Paper>
 
