@@ -1,4 +1,8 @@
 import type { ApiProxyModelRecord } from "@llama-manager/core";
+import type {
+  ApiProxyProtocolAdapter,
+  ApiProxyProtocolOperation,
+} from "./protocol.js";
 
 export type OpenAiErrorType =
   | "invalid_request_error"
@@ -51,3 +55,38 @@ export function notImplementedResponse(modelId: string, endpoint: string) {
     param: "model",
   });
 }
+
+function endpointLabel(operation: ApiProxyProtocolOperation) {
+  return operation.routePath || operation.endpoint;
+}
+
+export const openAiProtocolAdapter: ApiProxyProtocolAdapter = {
+  id: "openai",
+  displayName: "OpenAI-compatible",
+  modelIdFromBody,
+  missingModel: () => ({
+    status: 400,
+    body: openAiError({
+      message: "Request body must include a non-empty model field.",
+      type: "invalid_request_error",
+      code: "missing_model",
+      param: "model",
+    }),
+  }),
+  modelNotFound: (modelId) => ({
+    status: 404,
+    body: openAiError({
+      message: `Model ${modelId} is not published by llama-manager proxy.`,
+      type: "not_found_error",
+      code: "model_not_found",
+      param: "model",
+    }),
+  }),
+  notImplemented: (request) => ({
+    status: 501,
+    body: notImplementedResponse(
+      request.modelId,
+      endpointLabel(request.operation),
+    ),
+  }),
+};

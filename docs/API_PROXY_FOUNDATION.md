@@ -4,7 +4,9 @@ This document captures the intended shape of the future `llama-manager` API
 proxy. The current implementation adds shared contracts, durable
 disabled-by-default configuration, runtime diagnostics, pure planning logic,
 dry-run executor logging, a public OpenAI-compatible stub and HTTP forwarding
-helpers. It does not forward public traffic to llama-server yet.
+helpers. It also introduces a protocol-adapter boundary for OpenAI-compatible
+and Anthropic-compatible public facades. It does not forward public traffic to
+llama-server yet.
 
 ## Problem Shape
 
@@ -56,6 +58,11 @@ endpoint.
   - upstream URL joining
   - request/response header filtering
   - event-stream detection
+- Protocol adapter helpers in `apps/api/src/proxy/protocol.ts`:
+  - normalized public model request shape
+  - protocol-specific error formatting
+  - shared model lookup and enabled-model validation
+  - transport marker for future HTTP JSON, SSE and WebSocket handling
 - Durable configuration in SQLite:
   - `api_proxy_models`
   - `api_proxy_targets`
@@ -71,21 +78,24 @@ endpoint.
   - executor dry-run log
   - external API listener with forwarding disabled
 
-## External Stub
+## External Protocol Facades
 
-The external OpenAI-compatible surface is public and intentionally separate
-from admin `/api/*` routes:
+The external protocol surfaces are public and intentionally separate from admin
+`/api/*` routes:
 
 - `GET /proxy/v1/models` and `GET /v1/models` list enabled external proxy
   models from `api_proxy_models`.
-- `POST /proxy/v1/chat/completions`, `/proxy/v1/completions` and
-  `/proxy/v1/embeddings` validate the `model` field and return OpenAI-shaped
-  errors.
+- `POST /proxy/v1/chat/completions`, `/proxy/v1/completions`,
+  `/proxy/v1/embeddings` and `/proxy/v1/responses` validate the `model` field
+  and return OpenAI-shaped errors.
 - The same POST endpoints are also available under `/v1/*`.
+- `POST /proxy/anthropic/v1/messages` and `POST /v1/messages` validate the
+  `model` field and return Anthropic-shaped errors.
 
 At this stage, a request for a known enabled model returns `501` with
-`llama_manager_proxy_not_implemented`. Unknown or disabled models return
-`model_not_found`.
+`llama_manager_proxy_not_implemented` for OpenAI-shaped endpoints, or an
+Anthropic `api_error` for Anthropic-shaped endpoints. Unknown or disabled
+models return the protocol-specific `not_found` error.
 
 ## Admin Diagnostics
 

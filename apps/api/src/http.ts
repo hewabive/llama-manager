@@ -145,12 +145,14 @@ import {
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "./proxy/repository.js";
+import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
+import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
 import {
-  modelIdFromBody,
-  notImplementedResponse,
-  openAiError,
-  openAiModelsList,
-} from "./proxy/openai.js";
+  resolveApiProxyProtocolModelRequest,
+  type ApiProxyProtocolAdapter,
+  type ApiProxyProtocolOperation,
+  type ApiProxyProtocolTransport,
+} from "./proxy/protocol.js";
 import { buildApiProxyRuntimeSnapshot } from "./proxy/runtime.js";
 import {
   planApiProxyIdleMaintenance,
@@ -323,35 +325,39 @@ async function safeJsonBody(c: Context) {
   }
 }
 
-async function proxyEndpointNotImplemented(c: Context, endpoint: string) {
+function protocolOperation(input: {
+  protocol: ApiProxyProtocolOperation["protocol"];
+  endpoint: string;
+  routePath: string;
+  transport?: ApiProxyProtocolTransport;
+}): ApiProxyProtocolOperation {
+  return {
+    protocol: input.protocol,
+    endpoint: input.endpoint,
+    routePath: input.routePath,
+    transport: input.transport ?? "http-json",
+  };
+}
+
+async function proxyProtocolEndpointNotImplemented(
+  c: Context,
+  adapter: ApiProxyProtocolAdapter,
+  operation: ApiProxyProtocolOperation,
+) {
   const body = await safeJsonBody(c);
-  const modelId = modelIdFromBody(body);
-  if (!modelId) {
-    return c.json(
-      openAiError({
-        message: "Request body must include a non-empty model field.",
-        type: "invalid_request_error",
-        code: "missing_model",
-        param: "model",
-      }),
-      400,
-    );
+  const resolution = resolveApiProxyProtocolModelRequest({
+    adapter,
+    operation,
+    body,
+    getModelByModelId: getApiProxyModelByModelId,
+  });
+
+  if (!resolution.ok) {
+    return c.json(resolution.response.body, resolution.response.status);
   }
 
-  const model = getApiProxyModelByModelId(modelId);
-  if (!model || !model.enabled) {
-    return c.json(
-      openAiError({
-        message: `Model ${modelId} is not published by llama-manager proxy.`,
-        type: "not_found_error",
-        code: "model_not_found",
-        param: "model",
-      }),
-      404,
-    );
-  }
-
-  return c.json(notImplementedResponse(model.modelId, endpoint), 501);
+  const response = adapter.notImplemented(resolution.request);
+  return c.json(response.body, response.status);
 }
 
 function registerOpenAiProxyRoutes(prefix: string) {
@@ -360,13 +366,62 @@ function registerOpenAiProxyRoutes(prefix: string) {
   });
 
   app.post(`${prefix}/chat/completions`, (c) =>
-    proxyEndpointNotImplemented(c, `${prefix}/chat/completions`),
+    proxyProtocolEndpointNotImplemented(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "chat.completions",
+        routePath: `${prefix}/chat/completions`,
+      }),
+    ),
   );
   app.post(`${prefix}/completions`, (c) =>
-    proxyEndpointNotImplemented(c, `${prefix}/completions`),
+    proxyProtocolEndpointNotImplemented(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "completions",
+        routePath: `${prefix}/completions`,
+      }),
+    ),
   );
   app.post(`${prefix}/embeddings`, (c) =>
-    proxyEndpointNotImplemented(c, `${prefix}/embeddings`),
+    proxyProtocolEndpointNotImplemented(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "embeddings",
+        routePath: `${prefix}/embeddings`,
+      }),
+    ),
+  );
+  app.post(`${prefix}/responses`, (c) =>
+    proxyProtocolEndpointNotImplemented(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "responses",
+        routePath: `${prefix}/responses`,
+      }),
+    ),
+  );
+}
+
+function registerAnthropicProxyRoutes(prefix: string) {
+  app.post(`${prefix}/messages`, (c) =>
+    proxyProtocolEndpointNotImplemented(
+      c,
+      anthropicProtocolAdapter,
+      protocolOperation({
+        protocol: "anthropic",
+        endpoint: "messages",
+        routePath: `${prefix}/messages`,
+      }),
+    ),
   );
 }
 
@@ -426,6 +481,8 @@ app.post("/api/auth/logout", (c) => {
 
 registerOpenAiProxyRoutes("/proxy/v1");
 registerOpenAiProxyRoutes("/v1");
+registerAnthropicProxyRoutes("/proxy/anthropic/v1");
+registerAnthropicProxyRoutes("/v1");
 
 app.get("/api/network/interfaces", (c) => {
   return c.json({ data: { interfaces: listNetworkInterfaceAddresses() } });
