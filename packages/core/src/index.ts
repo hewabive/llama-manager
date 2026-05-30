@@ -262,6 +262,11 @@ export const LlamaApiProbeRequestSchema = z
     }
   });
 
+export const LlamaApiProbeTargetRequestSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(2_000),
+  probe: LlamaApiProbeRequestSchema,
+});
+
 export const LlamaApiProbeResultSchema = z.object({
   kind: LlamaApiProbeKindSchema,
   endpoint: z.string(),
@@ -278,7 +283,7 @@ export const LlamaApiProbeHistoryStatusSchema = z.enum([
 
 export const LlamaApiProbeHistoryEntrySchema = z.object({
   id: z.string(),
-  instanceId: z.string(),
+  baseUrl: z.string(),
   kind: LlamaApiProbeKindSchema,
   model: z.string().nullable(),
   endpoint: z.string().nullable(),
@@ -320,29 +325,16 @@ export const ApiProxyModelStateSchema = z.enum([
 
 const ApiProxyTargetNameSchema = z.string().min(1).max(80);
 const ApiProxyTargetInstanceIdSchema = z.string().min(1);
-const ApiProxyTargetModelSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(500)
-  .nullable();
+const ApiProxyTargetModelSchema = z.string().trim().min(1).max(500).nullable();
 const ApiProxyTargetPrioritySchema = z.number().int().min(0).max(10_000);
-const ApiProxyTargetResourceGroupSchema = z
-  .string()
-  .min(1)
-  .max(80)
-  .nullable();
+const ApiProxyTargetResourceGroupSchema = z.string().min(1).max(80).nullable();
 const ApiProxyTargetSlotIdsSchema = z.array(z.number().int().min(0));
 const ApiProxyTargetIdleMsSchema = z.number().int().min(0).nullable();
 const ApiProxyRouteNameSchema = z.string().min(1).max(80);
 const ApiProxyRoutePathPrefixSchema = z.string().min(1);
 const ApiProxyModelIdSchema = z.string().trim().min(1).max(500);
 const ApiProxyModelOwnerSchema = z.string().trim().min(1).max(80);
-const ApiProxyModelDescriptionSchema = z
-  .string()
-  .trim()
-  .max(500)
-  .nullable();
+const ApiProxyModelDescriptionSchema = z.string().trim().max(500).nullable();
 
 export const ApiProxyTargetConfigSchema = z.object({
   id: ApiProxyIdSchema,
@@ -1232,6 +1224,9 @@ export type LlamaSlotActionRequest = z.infer<
 export type LlamaSlotActionResult = z.infer<typeof LlamaSlotActionResultSchema>;
 export type LlamaApiProbeKind = z.infer<typeof LlamaApiProbeKindSchema>;
 export type LlamaApiProbeRequest = z.infer<typeof LlamaApiProbeRequestSchema>;
+export type LlamaApiProbeTargetRequest = z.infer<
+  typeof LlamaApiProbeTargetRequestSchema
+>;
 export type LlamaApiProbeResult = z.infer<typeof LlamaApiProbeResultSchema>;
 export type LlamaApiProbeHistoryStatus = z.infer<
   typeof LlamaApiProbeHistoryStatusSchema

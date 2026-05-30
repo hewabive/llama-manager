@@ -48,7 +48,7 @@ function truncateText(value: string | null | undefined) {
 function toEntry(row: ProbeHistoryRow): LlamaApiProbeHistoryEntry {
   return {
     id: row.id,
-    instanceId: row.instanceId,
+    baseUrl: row.baseUrl,
     kind: row.kind as LlamaApiProbeKind,
     model: row.model,
     endpoint: row.endpoint,
@@ -69,7 +69,7 @@ function toEntry(row: ProbeHistoryRow): LlamaApiProbeHistoryEntry {
 }
 
 export function createLlamaApiProbeHistory(input: {
-  instanceId: string;
+  baseUrl: string;
   request: LlamaApiProbeRequest;
   endpoint?: string | null;
   requestBody?: unknown;
@@ -80,7 +80,7 @@ export function createLlamaApiProbeHistory(input: {
   db.insert(llamaApiProbeHistory)
     .values({
       id,
-      instanceId: input.instanceId,
+      baseUrl: input.baseUrl,
       kind: input.request.kind,
       model: input.request.model ?? null,
       endpoint: input.endpoint ?? null,
@@ -157,39 +157,39 @@ export function updateLlamaApiProbeHistory(
 }
 
 export function listLlamaApiProbeHistory(
-  instanceId: string,
+  baseUrl: string,
   limit = HISTORY_LIMIT,
 ) {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   return db
     .select()
     .from(llamaApiProbeHistory)
-    .where(eq(llamaApiProbeHistory.instanceId, instanceId))
+    .where(eq(llamaApiProbeHistory.baseUrl, baseUrl))
     .orderBy(desc(llamaApiProbeHistory.startedAt))
     .limit(safeLimit)
     .all()
     .map(toEntry);
 }
 
-export function clearLlamaApiProbeHistory(instanceId: string) {
+export function clearLlamaApiProbeHistory(baseUrl: string) {
   const result = db
     .delete(llamaApiProbeHistory)
-    .where(eq(llamaApiProbeHistory.instanceId, instanceId))
+    .where(eq(llamaApiProbeHistory.baseUrl, baseUrl))
     .run();
   return result.changes;
 }
 
 export function pruneLlamaApiProbeHistory(
-  instanceId: string,
+  baseUrl: string,
   keep = HISTORY_LIMIT,
 ) {
   db.delete(llamaApiProbeHistory)
     .where(
       and(
-        eq(llamaApiProbeHistory.instanceId, instanceId),
+        eq(llamaApiProbeHistory.baseUrl, baseUrl),
         sql`${llamaApiProbeHistory.id} NOT IN (
           SELECT id FROM llama_api_probe_history
-          WHERE instance_id = ${instanceId}
+          WHERE base_url = ${baseUrl}
           ORDER BY started_at DESC
           LIMIT ${keep}
         )`,

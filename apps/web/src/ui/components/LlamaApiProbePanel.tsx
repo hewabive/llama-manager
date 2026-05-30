@@ -20,6 +20,7 @@ import {
   Switch,
   Table,
   Text,
+  TextInput,
   Textarea,
   Tooltip,
 } from "@mantine/core";
@@ -33,7 +34,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import {
   clearLlamaApiProbeHistory,
@@ -92,7 +93,7 @@ function modelStatus(record: Record<string, unknown>) {
   return stringValue(status?.value);
 }
 
-function modelOptionsFromProbe(
+export function modelOptionsFromProbe(
   probe: LlamaEndpointProbe | undefined,
 ): ModelOption[] {
   const data = arrayValue(objectRecord(probe?.body)?.data);
@@ -511,7 +512,7 @@ function ProbeHistory(props: {
             Probe history
           </Text>
           <Text c="dimmed" size="xs">
-            Last requests for this instance.
+            Last requests for this base URL.
           </Text>
         </Stack>
         <Button
@@ -641,10 +642,12 @@ export function LlamaApiProbePanel(props: {
   modelRequired?: boolean | undefined;
   title?: string | undefined;
   description?: string | undefined;
+  disabledReason?: string | null | undefined;
   invalidateInstanceQueries?: boolean | undefined;
   onProbeSettled?: (() => void) | undefined;
 }) {
   const queryClient = useQueryClient();
+  const modelListId = useId();
   const historyKey = props.historyKey ?? [
     "llama-probe-history",
     props.instanceId,
@@ -671,6 +674,9 @@ export function LlamaApiProbePanel(props: {
   );
 
   useEffect(() => {
+    if (modelOptions.length === 0) {
+      return;
+    }
     if (model && modelOptions.some((option) => option.value === model)) {
       return;
     }
@@ -723,6 +729,7 @@ export function LlamaApiProbePanel(props: {
       ? null
       : (props.streamProbe ?? streamLlamaApiProbe);
   const modelRequired = props.modelRequired ?? false;
+  const disabledReason = props.disabledReason?.trim() || null;
 
   const historyQuery = useQuery({
     queryKey: historyKey,
@@ -785,6 +792,7 @@ export function LlamaApiProbePanel(props: {
   const canSubmit =
     !probeMutation.isPending &&
     !isStreaming &&
+    !disabledReason &&
     (!modelRequired || Boolean(model)) &&
     (kind === "detokenize"
       ? parseTokenInput(tokensText).length > 0
@@ -944,6 +952,11 @@ export function LlamaApiProbePanel(props: {
               {props.description ??
                 "Send small non-streaming or streaming requests through llama-manager."}
             </Text>
+            {disabledReason && (
+              <Text c="yellow" size="xs">
+                {disabledReason}
+              </Text>
+            )}
           </Stack>
           <Switch
             checked={autoload}
@@ -975,22 +988,33 @@ export function LlamaApiProbePanel(props: {
               { value: "apply-template", label: "Apply template" },
             ]}
           />
-          <Select
+          <TextInput
             label="Model"
-            data={modelOptions}
-            value={model}
-            searchable
-            clearable
+            value={model ?? ""}
+            list={modelOptions.length > 0 ? modelListId : undefined}
             withAsterisk={modelRequired}
             error={modelRequired && !model ? "Model is required" : undefined}
             placeholder={
               modelOptions.length > 0
-                ? "Select model"
-                : "No models reported by v1/models"
+                ? "Select or type model"
+                : "Type model name if the endpoint requires one"
             }
-            onChange={setModel}
+            onChange={(event) =>
+              setModel(event.currentTarget.value.trim() || null)
+            }
           />
         </SimpleGrid>
+        {modelOptions.length > 0 && (
+          <datalist id={modelListId}>
+            {modelOptions.map((option) => (
+              <option
+                key={option.value}
+                value={option.value}
+                label={option.label}
+              />
+            ))}
+          </datalist>
+        )}
 
         {kindSupportsSystemPrompt(kind) && (
           <Textarea

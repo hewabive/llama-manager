@@ -32,6 +32,7 @@ import type {
   InstanceLogSummary,
   LlamaCapabilitiesResult,
   LlamaApiProbeRequest,
+  LlamaApiProbeTargetRequest,
   LlamaApiProbeHistoryEntry,
   LlamaApiProbeResult,
   LlamaArgumentCatalog,
@@ -581,11 +582,28 @@ export async function runLlamaApiProbe(
   );
 }
 
-export async function runProxyApiProbe(input: LlamaApiProbeRequest) {
-  return request<{ data: LlamaApiProbeResult }>("/api/proxy/probe", {
+export async function runApiLabProbe(input: LlamaApiProbeTargetRequest) {
+  return request<{ data: LlamaApiProbeResult }>("/api/lab/probe", {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function listApiLabProbeHistory(baseUrl: string, limit = 20) {
+  const params = new URLSearchParams({ baseUrl, limit: String(limit) });
+  return request<{ data: LlamaApiProbeHistoryEntry[] }>(
+    `/api/lab/probe/history?${params.toString()}`,
+  );
+}
+
+export async function clearApiLabProbeHistory(baseUrl: string) {
+  const params = new URLSearchParams({ baseUrl });
+  return request<{ data: { deleted: number } }>(
+    `/api/lab/probe/history?${params.toString()}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export async function listLlamaApiProbeHistory(id: string, limit = 20) {
@@ -691,6 +709,37 @@ function dispatchLlamaProbeStreamEvent(
   }
 }
 
+async function readLlamaProbeStream(
+  response: Response,
+  callbacks: LlamaApiProbeStreamCallbacks,
+) {
+  if (!response.body) {
+    throw new Error("Streaming response has no body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+
+    let separator = buffer.match(/\r?\n\r?\n/);
+    while (separator && separator.index !== undefined) {
+      const block = buffer.slice(0, separator.index);
+      buffer = buffer.slice(separator.index + separator[0].length);
+      dispatchLlamaProbeStreamEvent(block, callbacks);
+      separator = buffer.match(/\r?\n\r?\n/);
+    }
+  }
+
+  if (buffer.trim()) {
+    dispatchLlamaProbeStreamEvent(buffer, callbacks);
+  }
+}
+
 export async function streamLlamaApiProbe(
   id: string,
   input: LlamaApiProbeRequest,
@@ -721,31 +770,36 @@ export async function streamLlamaApiProbe(
     );
   }
 
-  if (!response.body) {
-    throw new Error("Streaming response has no body");
-  }
+  await readLlamaProbeStream(response, callbacks);
+}
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+export async function streamApiLabProbe(
+  input: LlamaApiProbeTargetRequest,
+  callbacks: LlamaApiProbeStreamCallbacks,
+  signal?: AbortSignal,
+) {
+  const response = await fetch(`${apiBase}/api/lab/probe/stream`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+    signal: signal ?? null,
+  });
 
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    buffer += decoder.decode(chunk.value, { stream: true });
-
-    let separator = buffer.match(/\r?\n\r?\n/);
-    while (separator && separator.index !== undefined) {
-      const block = buffer.slice(0, separator.index);
-      buffer = buffer.slice(separator.index + separator[0].length);
-      dispatchLlamaProbeStreamEvent(block, callbacks);
-      separator = buffer.match(/\r?\n\r?\n/);
+  if (!response.ok) {
+    const error = await response.text();
+    let parsed: { error?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(error) as { error?: unknown };
+    } catch {
+      parsed = null;
     }
+    throw new Error(
+      formatApiErrorValue(parsed?.error) || error || response.statusText,
+    );
   }
 
-  if (buffer.trim()) {
-    dispatchLlamaProbeStreamEvent(buffer, callbacks);
-  }
+  await readLlamaProbeStream(response, callbacks);
 }
 
 export async function llamaModelAction(

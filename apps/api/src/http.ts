@@ -17,6 +17,7 @@ import {
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
   LlamaApiProbeRequestSchema,
+  LlamaApiProbeTargetRequestSchema,
   LlamaSourceSettingsUpdateSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
@@ -50,7 +51,6 @@ import {
   setSessionCookie,
   verifyAdminPassword,
 } from "./auth.js";
-import { config } from "./config.js";
 import {
   getLlamaArgumentCatalog,
   getLlamaArgumentReferenceCatalog,
@@ -83,13 +83,14 @@ import {
 } from "./instances/repository.js";
 import { listFilesystemDirectory } from "./filesystem/browser.js";
 import {
+  llamaBaseUrl,
   llamaEndpointErrorMessage,
-  llamaApiProbeRequestBody,
   llamaApiProbeTarget,
+  llamaApiProbeTargetFromBaseUrl,
   probeLlamaCapabilities,
   probeLlamaServer,
-  requestLlamaJson,
   requestLlamaApiProbe,
+  requestLlamaApiProbeBaseUrl,
   requestLlamaModelAction,
   requestLlamaSlotAction,
 } from "./llama/probe.js";
@@ -324,25 +325,15 @@ function queryLimit(value: string | undefined, fallback = 20) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function apiSelfBaseUrl() {
-  const host =
-    config.host === "0.0.0.0" || config.host === "::"
-      ? "127.0.0.1"
-      : config.host;
-  return `http://${host}:${config.port}`;
-}
-
-function proxyApiProbeTarget(input: LlamaApiProbeRequest) {
-  const { endpoint, body } = llamaApiProbeRequestBody(input);
-  const query = new URLSearchParams({
-    autoload: input.autoload ? "true" : "false",
-  });
-  const endpointWithQuery = `${endpoint}?${query.toString()}`;
-  return {
-    endpoint: endpointWithQuery,
-    requestBody: body,
-    url: `${apiSelfBaseUrl()}${endpointWithQuery}`,
-  };
+function normalizeApiProbeBaseUrl(value: string) {
+  const parsed = new URL(value.trim());
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("baseUrl must use http or https");
+  }
+  parsed.hash = "";
+  parsed.search = "";
+  const path = parsed.pathname.replace(/\/+$/, "");
+  return `${parsed.origin}${path === "/" ? "" : path}`;
 }
 
 async function safeJsonBody(c: Context) {
@@ -700,31 +691,74 @@ app.get("/api/proxy/config", (c) => {
   return c.json({ data: getApiProxyConfig() });
 });
 
-app.post("/api/proxy/probe", async (c) => {
-  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+app.get("/api/lab/probe/history", (c) => {
+  const rawBaseUrl = c.req.query("baseUrl");
+  if (!rawBaseUrl) {
+    return c.json({ error: "baseUrl is required" }, 400);
+  }
+  try {
+    const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
+    return c.json({
+      data: listLlamaApiProbeHistory(baseUrl, queryLimit(c.req.query("limit"))),
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/lab/probe/history", (c) => {
+  const rawBaseUrl = c.req.query("baseUrl");
+  if (!rawBaseUrl) {
+    return c.json({ error: "baseUrl is required" }, 400);
+  }
+  try {
+    const baseUrl = normalizeApiProbeBaseUrl(rawBaseUrl);
+    return c.json({
+      data: { deleted: clearLlamaApiProbeHistory(baseUrl) },
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.post("/api/lab/probe", async (c) => {
+  const parsed = LlamaApiProbeTargetRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
-  if (!parsed.data.model?.trim()) {
-    return c.json({ error: "proxy model is required" }, 400);
-  }
 
+  let historyId: string | null = null;
+  let baseUrl: string;
   try {
-    const target = proxyApiProbeTarget(parsed.data);
-    return c.json({
-      data: {
-        kind: parsed.data.kind,
-        endpoint: target.endpoint,
-        requestBody: target.requestBody,
-        response: await requestLlamaJson(target.url, {
-          method: "POST",
-          body: JSON.stringify(target.requestBody),
-          headers: { "content-type": "application/json" },
-          timeoutMs: 10 * 60 * 1_000,
-        }),
-      },
+    baseUrl = normalizeApiProbeBaseUrl(parsed.data.baseUrl);
+    const target = llamaApiProbeTargetFromBaseUrl(baseUrl, parsed.data.probe);
+    historyId = createLlamaApiProbeHistory({
+      baseUrl,
+      request: parsed.data.probe,
+      endpoint: target.endpoint,
+      requestBody: target.requestBody,
+      streamed: false,
     });
+    const data = await requestLlamaApiProbeBaseUrl(baseUrl, parsed.data.probe);
+    const body = recordValue(data.response.body);
+    updateLlamaApiProbeHistory(historyId, {
+      status: data.response.ok ? "ok" : "error",
+      httpStatus: data.response.status,
+      latencyMs: data.response.latencyMs,
+      output: probeOutputText(data.kind, data.response),
+      error: data.response.ok ? null : llamaEndpointErrorMessage(data.response),
+      usage: body?.usage ?? null,
+      timings: body?.timings ?? null,
+    });
+    pruneLlamaApiProbeHistory(baseUrl);
+    return c.json({ data });
   } catch (error) {
+    if (historyId) {
+      updateLlamaApiProbeHistory(historyId, {
+        status: "error",
+        error: (error as Error).message,
+      });
+    }
     return c.json({ error: (error as Error).message }, 400);
   }
 });
@@ -1389,10 +1423,17 @@ app.get("/api/instances/:id/llama/probe/history", (c) => {
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
+  const baseUrl = llamaBaseUrl(instance);
+  if (!baseUrl) {
+    return c.json(
+      { error: "UNIX socket API probes are not implemented yet" },
+      400,
+    );
+  }
   const limit = Number(c.req.query("limit") ?? "20");
   return c.json({
     data: listLlamaApiProbeHistory(
-      instance.id,
+      baseUrl,
       Number.isFinite(limit) ? limit : 20,
     ),
   });
@@ -1403,8 +1444,15 @@ app.delete("/api/instances/:id/llama/probe/history", (c) => {
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
+  const baseUrl = llamaBaseUrl(instance);
+  if (!baseUrl) {
+    return c.json(
+      { error: "UNIX socket API probes are not implemented yet" },
+      400,
+    );
+  }
   return c.json({
-    data: { deleted: clearLlamaApiProbeHistory(instance.id) },
+    data: { deleted: clearLlamaApiProbeHistory(baseUrl) },
   });
 });
 
@@ -1422,8 +1470,9 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
   let historyId: string | null = null;
   try {
     const target = llamaApiProbeTarget(instance, parsed.data);
+    const baseUrl = llamaBaseUrl(instance);
     historyId = createLlamaApiProbeHistory({
-      instanceId: instance.id,
+      baseUrl,
       request: parsed.data,
       endpoint: target.endpoint,
       requestBody: target.requestBody,
@@ -1440,7 +1489,7 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
       usage: body?.usage ?? null,
       timings: body?.timings ?? null,
     });
-    pruneLlamaApiProbeHistory(instance.id);
+    pruneLlamaApiProbeHistory(baseUrl);
     return c.json({ data });
   } catch (error) {
     if (historyId) {
@@ -1448,7 +1497,7 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
         status: "error",
         error: (error as Error).message,
       });
-      pruneLlamaApiProbeHistory(instance.id);
+      pruneLlamaApiProbeHistory(llamaBaseUrl(instance));
     }
     return c.json({ error: (error as Error).message }, 400);
   }
@@ -1694,35 +1743,19 @@ async function writeUpstreamStreamEvents(props: {
   };
 }
 
-app.post("/api/instances/:id/llama/probe/stream", async (c) => {
-  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-  if (!isStreamingProbeKind(parsed.data.kind)) {
-    return c.json(
-      { error: "streaming is only supported for generation probes" },
-      400,
-    );
-  }
-
-  const instance = getInstance(c.req.param("id"));
-  if (!instance) {
-    return c.json({ error: "instance not found" }, 404);
-  }
-
-  let target: ReturnType<typeof llamaApiProbeTarget>;
-  try {
-    target = llamaApiProbeTarget(instance, parsed.data, { stream: true });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-
+function streamApiProbeTarget(
+  c: Context,
+  input: {
+    baseUrl: string;
+    request: LlamaApiProbeRequest;
+    target: ReturnType<typeof llamaApiProbeTargetFromBaseUrl>;
+  },
+) {
   const historyId = createLlamaApiProbeHistory({
-    instanceId: instance.id,
-    request: parsed.data,
-    endpoint: target.endpoint,
-    requestBody: target.requestBody,
+    baseUrl: input.baseUrl,
+    request: input.request,
+    endpoint: input.target.endpoint,
+    requestBody: input.target.requestBody,
     streamed: true,
   });
 
@@ -1733,17 +1766,17 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
     await stream.writeSSE({
       event: "meta",
       data: JSON.stringify({
-        kind: parsed.data.kind,
-        endpoint: target.endpoint,
-        requestBody: target.requestBody,
+        kind: input.request.kind,
+        endpoint: input.target.endpoint,
+        requestBody: input.target.requestBody,
       }),
     });
 
     const started = performance.now();
     try {
-      const response = await fetch(target.url, {
+      const response = await fetch(input.target.url, {
         method: "POST",
-        body: JSON.stringify(target.requestBody),
+        body: JSON.stringify(input.target.requestBody),
         headers: { "content-type": "application/json" },
         signal: controller.signal,
       });
@@ -1783,7 +1816,7 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
             String(recordValue(recordValue(body)?.error)?.message ?? "") ||
             response.statusText,
         });
-        pruneLlamaApiProbeHistory(instance.id);
+        pruneLlamaApiProbeHistory(input.baseUrl);
         return;
       }
 
@@ -1799,7 +1832,7 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
           latencyMs: Math.round(performance.now() - started),
           error: "llama-server returned no stream body",
         });
-        pruneLlamaApiProbeHistory(instance.id);
+        pruneLlamaApiProbeHistory(input.baseUrl);
         return;
       }
       updateLlamaApiProbeHistory(historyId, {
@@ -1811,14 +1844,14 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
         timings: summary.timings,
         finishReason: summary.finishReason,
       });
-      pruneLlamaApiProbeHistory(instance.id);
+      pruneLlamaApiProbeHistory(input.baseUrl);
     } catch (error) {
       if (controller.signal.aborted) {
         updateLlamaApiProbeHistory(historyId, {
           status: "cancelled",
           latencyMs: Math.round(performance.now() - started),
         });
-        pruneLlamaApiProbeHistory(instance.id);
+        pruneLlamaApiProbeHistory(input.baseUrl);
         await stream.writeSSE({
           event: "cancelled",
           data: JSON.stringify({
@@ -1832,12 +1865,75 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
         latencyMs: Math.round(performance.now() - started),
         error: (error as Error).message,
       });
-      pruneLlamaApiProbeHistory(instance.id);
+      pruneLlamaApiProbeHistory(input.baseUrl);
       await stream.writeSSE({
         event: "error",
         data: JSON.stringify({ message: (error as Error).message }),
       });
     }
+  });
+}
+
+app.post("/api/lab/probe/stream", async (c) => {
+  const parsed = LlamaApiProbeTargetRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  if (!isStreamingProbeKind(parsed.data.probe.kind)) {
+    return c.json(
+      { error: "streaming is only supported for generation probes" },
+      400,
+    );
+  }
+
+  let baseUrl: string;
+  let target: ReturnType<typeof llamaApiProbeTargetFromBaseUrl>;
+  try {
+    baseUrl = normalizeApiProbeBaseUrl(parsed.data.baseUrl);
+    target = llamaApiProbeTargetFromBaseUrl(baseUrl, parsed.data.probe, {
+      stream: true,
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+
+  return streamApiProbeTarget(c, {
+    baseUrl,
+    request: parsed.data.probe,
+    target,
+  });
+});
+
+app.post("/api/instances/:id/llama/probe/stream", async (c) => {
+  const parsed = LlamaApiProbeRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  if (!isStreamingProbeKind(parsed.data.kind)) {
+    return c.json(
+      { error: "streaming is only supported for generation probes" },
+      400,
+    );
+  }
+
+  const instance = getInstance(c.req.param("id"));
+  if (!instance) {
+    return c.json({ error: "instance not found" }, 404);
+  }
+
+  let target: ReturnType<typeof llamaApiProbeTarget>;
+  let baseUrl: string;
+  try {
+    target = llamaApiProbeTarget(instance, parsed.data, { stream: true });
+    baseUrl = llamaBaseUrl(instance);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+
+  return streamApiProbeTarget(c, {
+    baseUrl,
+    request: parsed.data,
+    target,
   });
 });
 

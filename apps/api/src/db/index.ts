@@ -19,6 +19,108 @@ function columnExists(table: string, column: string) {
   return rows.some((row) => row.name === column);
 }
 
+function tableExists(table: string) {
+  const row = sqlite
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(table) as { name: string } | undefined;
+  return Boolean(row);
+}
+
+function legacyProbeBaseUrl(argsJson: string | null | undefined) {
+  if (!argsJson) return null;
+  try {
+    const args = JSON.parse(argsJson) as Record<string, unknown>;
+    const rawHost =
+      typeof args["--host"] === "string" && args["--host"].trim()
+        ? args["--host"].trim()
+        : "127.0.0.1";
+    if (rawHost.endsWith(".sock")) return null;
+    const host =
+      rawHost === "0.0.0.0" || rawHost === "::" ? "127.0.0.1" : rawHost;
+    const rawPort = Number(args["--port"] ?? 8080);
+    const port =
+      Number.isInteger(rawPort) && rawPort > 0 && rawPort <= 65535
+        ? rawPort
+        : 8080;
+    const rawPrefix =
+      typeof args["--api-prefix"] === "string" ? args["--api-prefix"] : "";
+    const prefix = rawPrefix
+      ? `/${rawPrefix.replace(/^\/+/, "").replace(/\/+$/, "")}`
+      : "";
+    const urlHost =
+      host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    return `http://${urlHost}:${port}${prefix}`;
+  } catch {
+    return null;
+  }
+}
+
+function migrateProbeHistoryToBaseUrl() {
+  if (
+    !tableExists("llama_api_probe_history") ||
+    columnExists("llama_api_probe_history", "base_url")
+  ) {
+    return;
+  }
+
+  const oldRows = sqlite
+    .prepare("SELECT * FROM llama_api_probe_history")
+    .all() as Array<Record<string, unknown>>;
+  const instanceArgs = new Map(
+    (
+      sqlite.prepare("SELECT id, args_json FROM instances").all() as Array<{
+        id: string;
+        args_json: string;
+      }>
+    ).map((row) => [row.id, row.args_json]),
+  );
+
+  sqlite.exec(`
+    ALTER TABLE llama_api_probe_history RENAME TO llama_api_probe_history_old;
+    CREATE TABLE llama_api_probe_history (
+      id TEXT PRIMARY KEY NOT NULL,
+      base_url TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      model TEXT,
+      endpoint TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      status TEXT NOT NULL,
+      http_status TEXT,
+      latency_ms TEXT,
+      request_json TEXT NOT NULL,
+      request_body_json TEXT,
+      output TEXT,
+      error TEXT,
+      usage_json TEXT,
+      timings_json TEXT,
+      streamed TEXT NOT NULL,
+      finish_reason TEXT
+    );
+  `);
+
+  const insert = sqlite.prepare(`
+    INSERT INTO llama_api_probe_history (
+      id, base_url, kind, model, endpoint, started_at, finished_at, status,
+      http_status, latency_ms, request_json, request_body_json, output, error,
+      usage_json, timings_json, streamed, finish_reason
+    ) VALUES (
+      @id, @base_url, @kind, @model, @endpoint, @started_at, @finished_at,
+      @status, @http_status, @latency_ms, @request_json, @request_body_json,
+      @output, @error, @usage_json, @timings_json, @streamed, @finish_reason
+    )
+  `);
+
+  for (const row of oldRows) {
+    const instanceId = String(row.instance_id ?? "");
+    const baseUrl = legacyProbeBaseUrl(instanceArgs.get(instanceId));
+    if (!baseUrl) continue;
+    insert.run({ ...row, base_url: baseUrl });
+  }
+
+  sqlite.exec("DROP TABLE llama_api_probe_history_old;");
+}
+
 export function migrate() {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS instances (
@@ -256,10 +358,12 @@ export function migrate() {
     )
   `);
 
+  migrateProbeHistoryToBaseUrl();
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_api_probe_history (
       id TEXT PRIMARY KEY NOT NULL,
-      instance_id TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+      base_url TEXT NOT NULL,
       kind TEXT NOT NULL,
       model TEXT,
       endpoint TEXT,
@@ -280,8 +384,8 @@ export function migrate() {
   `);
 
   db.run(sql`
-    CREATE INDEX IF NOT EXISTS llama_api_probe_history_instance_started_idx
-    ON llama_api_probe_history (instance_id, started_at DESC)
+    CREATE INDEX IF NOT EXISTS llama_api_probe_history_base_url_started_idx
+    ON llama_api_probe_history (base_url, started_at DESC)
   `);
 
   db.run(sql`

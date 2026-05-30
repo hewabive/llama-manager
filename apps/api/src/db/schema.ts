@@ -133,9 +133,7 @@ export const llamaArgumentDefaults = sqliteTable("llama_argument_defaults", {
 
 export const llamaApiProbeHistory = sqliteTable("llama_api_probe_history", {
   id: text("id").primaryKey(),
-  instanceId: text("instance_id")
-    .notNull()
-    .references(() => instances.id, { onDelete: "cascade" }),
+  baseUrl: text("base_url").notNull(),
   kind: text("kind").notNull(),
   model: text("model"),
   endpoint: text("endpoint"),

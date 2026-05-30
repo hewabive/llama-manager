@@ -60,7 +60,7 @@ export const appRoutes: {
     id: "api-lab",
     label: "Lab",
     title: "API Lab",
-    description: "Manual llama-server request probes and history",
+    description: "Manual probes for any OpenAI-compatible base URL",
   },
   {
     id: "models",

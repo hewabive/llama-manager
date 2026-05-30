@@ -793,6 +793,14 @@ export function llamaApiProbeTarget(
     throw new Error("UNIX socket API probes are not implemented yet");
   }
 
+  return llamaApiProbeTargetFromBaseUrl(baseUrl, input, options);
+}
+
+export function llamaApiProbeTargetFromBaseUrl(
+  baseUrl: string,
+  input: LlamaApiProbeRequest,
+  options: { stream?: boolean } = {},
+) {
   const { endpoint, body } = llamaApiProbeRequestBody(input, options);
   const query = new URLSearchParams({
     autoload: input.autoload ? "true" : "false",
@@ -811,6 +819,25 @@ export async function requestLlamaApiProbe(
   input: LlamaApiProbeRequest,
 ): Promise<LlamaApiProbeResult> {
   const target = llamaApiProbeTarget(instance, input);
+
+  return {
+    kind: input.kind,
+    endpoint: target.endpoint,
+    requestBody: target.requestBody,
+    response: await requestLlamaJson(target.url, {
+      method: "POST",
+      body: JSON.stringify(target.requestBody),
+      headers: { "content-type": "application/json" },
+      timeoutMs: API_PROBE_TIMEOUT_MS,
+    }),
+  };
+}
+
+export async function requestLlamaApiProbeBaseUrl(
+  baseUrl: string,
+  input: LlamaApiProbeRequest,
+): Promise<LlamaApiProbeResult> {
+  const target = llamaApiProbeTargetFromBaseUrl(baseUrl, input);
 
   return {
     kind: input.kind,
