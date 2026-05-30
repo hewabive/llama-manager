@@ -6,6 +6,7 @@ export type AppRoute =
   | "diagnostics"
   | "args"
   | "paths"
+  | "proxy"
   | "models"
   | "presets"
   | "build"
@@ -46,6 +47,13 @@ export const appRoutes: {
     label: "Paths",
     title: "Path Catalog",
     description: "Shared binary and preset paths for instances",
+  },
+  {
+    id: "proxy",
+    label: "Proxy",
+    title: "API Proxy",
+    description:
+      "Prepare disabled proxy targets and routes for llama-server APIs",
   },
   {
     id: "models",

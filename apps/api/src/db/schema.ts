@@ -153,3 +153,36 @@ export const llamaApiProbeHistory = sqliteTable("llama_api_probe_history", {
   streamed: text("streamed").notNull(),
   finishReason: text("finish_reason"),
 });
+
+export const apiProxyTargets = sqliteTable("api_proxy_targets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  enabled: text("enabled").notNull(),
+  instanceId: text("instance_id")
+    .notNull()
+    .references(() => instances.id, { onDelete: "cascade" }),
+  model: text("model"),
+  role: text("role").notNull(),
+  priority: text("priority").notNull(),
+  resourceGroupId: text("resource_group_id"),
+  preemptible: text("preemptible").notNull(),
+  saveSlotsBeforeUnload: text("save_slots_before_unload").notNull(),
+  slotIdsJson: text("slot_ids_json").notNull(),
+  idleUnloadMs: text("idle_unload_ms"),
+  resumeAfterIdleMs: text("resume_after_idle_ms"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const apiProxyRoutes = sqliteTable("api_proxy_routes", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  enabled: text("enabled").notNull(),
+  pathPrefix: text("path_prefix").notNull(),
+  targetId: text("target_id")
+    .notNull()
+    .references(() => apiProxyTargets.id, { onDelete: "cascade" }),
+  transform: text("transform").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});

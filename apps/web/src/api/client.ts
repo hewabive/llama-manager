@@ -1,5 +1,12 @@
 import type {
   AdminLogin,
+  ApiProxyConfig,
+  ApiProxyRouteCreate,
+  ApiProxyRouteRecord,
+  ApiProxyRouteUpdate,
+  ApiProxyTargetCreate,
+  ApiProxyTargetRecord,
+  ApiProxyTargetUpdate,
   AuthState,
   BuildJob,
   BuildJobStart,
@@ -204,6 +211,56 @@ export async function updatePathCatalogEntry(
 
 export async function deletePathCatalogEntry(id: string) {
   return request<{ data: { deleted: boolean } }>(`/api/path-catalog/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getApiProxyConfig() {
+  return request<{ data: ApiProxyConfig }>("/api/proxy/config");
+}
+
+export async function createApiProxyTarget(input: ApiProxyTargetCreate) {
+  return request<{ data: ApiProxyTargetRecord }>("/api/proxy/targets", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateApiProxyTarget(
+  id: string,
+  input: ApiProxyTargetUpdate,
+) {
+  return request<{ data: ApiProxyTargetRecord }>(`/api/proxy/targets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteApiProxyTarget(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/proxy/targets/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createApiProxyRoute(input: ApiProxyRouteCreate) {
+  return request<{ data: ApiProxyRouteRecord }>("/api/proxy/routes", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateApiProxyRoute(
+  id: string,
+  input: ApiProxyRouteUpdate,
+) {
+  return request<{ data: ApiProxyRouteRecord }>(`/api/proxy/routes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteApiProxyRoute(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/proxy/routes/${id}`, {
     method: "DELETE",
   });
 }

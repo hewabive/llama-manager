@@ -37,6 +37,7 @@ import { ModelsView } from "./views/ModelsView";
 import { PathCatalogView } from "./views/PathCatalogView";
 import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
+import { ProxyView } from "./views/ProxyView";
 import { PublicStatusView } from "./views/PublicStatusView";
 
 export function App() {
@@ -325,6 +326,8 @@ export function App() {
           {canUseAdmin && route === "args" && <ArgumentsView />}
 
           {canUseAdmin && route === "paths" && <PathCatalogView />}
+
+          {canUseAdmin && route === "proxy" && <ProxyView />}
 
           {canUseAdmin && route === "models" && (
             <ModelsView

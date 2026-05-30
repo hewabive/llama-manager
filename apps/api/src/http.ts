@@ -1,5 +1,9 @@
 import {
   AdminLoginSchema,
+  ApiProxyRouteCreateSchema,
+  ApiProxyRouteUpdateSchema,
+  ApiProxyTargetCreateSchema,
+  ApiProxyTargetUpdateSchema,
   BuildJobStartSchema,
   BuildSettingsSchema,
   ExternalProcessKillSchema,
@@ -109,6 +113,18 @@ import {
   listPathCatalogEntries,
   updatePathCatalogEntry,
 } from "./path-catalog/repository.js";
+import {
+  createApiProxyRoute,
+  createApiProxyTarget,
+  deleteApiProxyRoute,
+  deleteApiProxyTarget,
+  getApiProxyConfig,
+  getApiProxyRoute,
+  getApiProxyTarget,
+  listApiProxyRoutes,
+  updateApiProxyRoute,
+  updateApiProxyTarget,
+} from "./proxy/repository.js";
 import { getPublicStatus } from "./public-status.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
 import {
@@ -163,6 +179,22 @@ function validateInstancePathRefs(input: {
     const entry = getPathCatalogEntry(input.modelsPresetPathRefId);
     if (!entry) return "preset path catalog entry not found";
     if (entry.kind !== "preset") return "preset path reference is not a preset";
+  }
+  return null;
+}
+
+function validateApiProxyTargetRefs(input: {
+  instanceId?: string | undefined;
+}) {
+  if (input.instanceId && !getInstance(input.instanceId)) {
+    return "proxy target instance not found";
+  }
+  return null;
+}
+
+function validateApiProxyRouteRefs(input: { targetId?: string | undefined }) {
+  if (input.targetId && !getApiProxyTarget(input.targetId)) {
+    return "proxy route target not found";
   }
   return null;
 }
@@ -294,6 +326,108 @@ app.delete("/api/path-catalog/:id", (c) => {
     );
   }
   const deleted = deletePathCatalogEntry(id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
+});
+
+app.get("/api/proxy/config", (c) => {
+  return c.json({ data: getApiProxyConfig() });
+});
+
+app.post("/api/proxy/targets", async (c) => {
+  const parsed = ApiProxyTargetCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyTargetRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    return c.json({ data: createApiProxyTarget(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/proxy/targets/:id", async (c) => {
+  const parsed = ApiProxyTargetUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyTargetRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    const target = updateApiProxyTarget(c.req.param("id"), parsed.data);
+    if (!target) {
+      return c.json({ error: "proxy target not found" }, 404);
+    }
+    return c.json({ data: target });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/proxy/targets/:id", (c) => {
+  const id = c.req.param("id");
+  const usedBy = listApiProxyRoutes().filter((route) => route.targetId === id);
+  if (usedBy.length > 0) {
+    return c.json(
+      { error: `proxy target is used by ${usedBy.length} route(s)` },
+      400,
+    );
+  }
+  const deleted = deleteApiProxyTarget(id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
+});
+
+app.post("/api/proxy/routes", async (c) => {
+  const parsed = ApiProxyRouteCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyRouteRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    return c.json({ data: createApiProxyRoute(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/proxy/routes/:id", async (c) => {
+  const parsed = ApiProxyRouteUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyRouteRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    const route = updateApiProxyRoute(c.req.param("id"), parsed.data);
+    if (!route) {
+      return c.json({ error: "proxy route not found" }, 404);
+    }
+    return c.json({ data: route });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/proxy/routes/:id", (c) => {
+  const route = getApiProxyRoute(c.req.param("id"));
+  if (!route) {
+    return c.json({ data: { deleted: false } }, 404);
+  }
+  const deleted = deleteApiProxyRoute(route.id);
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 

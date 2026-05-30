@@ -1,9 +1,9 @@
 # API Proxy Foundation
 
 This document captures the intended shape of the future `llama-manager` API
-proxy. The current implementation only adds shared contracts, pure planning
-logic and HTTP forwarding helpers. It does not expose a public proxy endpoint
-yet.
+proxy. The current implementation adds shared contracts, durable
+disabled-by-default configuration, pure planning logic and HTTP forwarding
+helpers. It does not expose a public proxy endpoint yet.
 
 ## Problem Shape
 
@@ -45,6 +45,13 @@ endpoint.
   - upstream URL joining
   - request/response header filtering
   - event-stream detection
+- Durable configuration in SQLite:
+  - `api_proxy_targets`
+  - `api_proxy_routes`
+- Admin UI page:
+  - proxy targets
+  - proxy routes
+  - no external proxy listener yet
 
 ## Scheduler Model
 
@@ -68,10 +75,8 @@ and persistent proxy state.
 
 ## Next Implementation Step
 
-The next safe step is a disabled-by-default proxy configuration store:
+The next safe step is an executor prototype behind admin-only diagnostics:
 
-- durable proxy targets and routes in SQLite;
-- admin CRUD endpoints and UI;
 - runtime state collector from health summaries;
 - executor that can run scheduler actions with logging;
 - only then expose actual OpenAI-compatible proxy routes.

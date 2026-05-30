@@ -283,4 +283,47 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS llama_api_probe_history_instance_started_idx
     ON llama_api_probe_history (instance_id, started_at DESC)
   `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_proxy_targets (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      enabled TEXT NOT NULL,
+      instance_id TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+      model TEXT,
+      role TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      resource_group_id TEXT,
+      preemptible TEXT NOT NULL,
+      save_slots_before_unload TEXT NOT NULL,
+      slot_ids_json TEXT NOT NULL,
+      idle_unload_ms TEXT,
+      resume_after_idle_ms TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_proxy_routes (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      enabled TEXT NOT NULL,
+      path_prefix TEXT NOT NULL,
+      target_id TEXT NOT NULL REFERENCES api_proxy_targets(id) ON DELETE CASCADE,
+      transform TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_targets_name_idx
+    ON api_proxy_targets (name)
+  `);
+
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_routes_name_idx
+    ON api_proxy_routes (name)
+  `);
 }
