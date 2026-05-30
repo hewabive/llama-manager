@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   modelIdFromBody,
   notImplementedResponse,
+  openAiProtocolAdapter,
   openAiModelsList,
 } from "./openai.js";
 
@@ -60,4 +61,25 @@ test("notImplementedResponse returns OpenAI-compatible error shape", () => {
       code: "llama_manager_proxy_not_implemented",
     },
   });
+});
+
+test("openAiProtocolAdapter forwards only upstream-compatible endpoints", () => {
+  assert.equal(
+    openAiProtocolAdapter.upstreamPath({
+      protocol: "openai",
+      endpoint: "chat.completions",
+      routePath: "/v1/chat/completions",
+      transport: "http-json",
+    }),
+    "/v1/chat/completions",
+  );
+  assert.equal(
+    openAiProtocolAdapter.upstreamPath({
+      protocol: "openai",
+      endpoint: "responses",
+      routePath: "/v1/responses",
+      transport: "http-json",
+    }),
+    null,
+  );
 });

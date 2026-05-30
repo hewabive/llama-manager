@@ -74,6 +74,11 @@ endpoint.
   - forwards ready OpenAI-compatible requests to the bound instance
   - preserves upstream response status, headers and body stream
   - uses the instance host, port and API prefix
+- Public MVP executor in `apps/api/src/proxy/public-executor.ts`:
+  - can start a stopped instance for OpenAI-compatible requests
+  - can load the target model when the scheduler asks for `load-model`
+  - waits for instance/model readiness before forwarding
+  - rejects preemption, slot save/restore and unload actions for now
 - Durable configuration in SQLite:
   - `api_proxy_models`
   - `api_proxy_targets`
@@ -103,8 +108,8 @@ The external protocol surfaces are public and intentionally separate from admin
 - `POST /proxy/anthropic/v1/messages` and `POST /v1/messages` validate the
   `model` field and return Anthropic-shaped errors.
 
-At this stage, OpenAI-compatible generation endpoints are forwarded only when
-the bound target is already ready:
+At this stage, OpenAI-compatible generation endpoints can start/load/wait for
+the bound target, then forward:
 
 - `/v1/chat/completions`
 - `/v1/completions`
@@ -113,15 +118,15 @@ the bound target is already ready:
 
 Unknown or disabled models return the protocol-specific `not_found` error.
 OpenAI Responses (`/v1/responses`) and Anthropic Messages (`/v1/messages`) are
-still accepted as public facades, but they return `501` for ready targets until
-request/response transforms are implemented.
+still accepted as public facades, but they return `501` before executor actions
+because request/response transforms are not implemented yet.
 
 If a known enabled model is not bound to a proxy target, or if the scheduler
-would need to start an instance, load a model, unload a competing target, save a
-slot or wait for readiness, the public endpoint returns a protocol-specific
-`503` diagnostic instead of pretending that forwarding is possible. This means
-public requests are now connected to the same scheduling model as the admin
-preview.
+would need to unload a competing target, save a slot, restore a slot or stop an
+instance, the public endpoint returns a protocol-specific `503` diagnostic. This
+means public requests are now connected to the same scheduling model as the
+admin preview, but the MVP intentionally supports only simple autostart,
+autoload and forward.
 
 ## Admin Diagnostics
 
@@ -161,8 +166,8 @@ executor and persistent proxy state.
 
 ## Next Implementation Step
 
-The next safe step is an executor prototype behind admin-only controls:
+The next safe step is to make execution observable and then expand it:
 
-- executor that can run selected scheduler actions with logging;
-- guarded execute controls for start/load/unload/wait actions;
-- then let public requests wait for executor readiness before forwarding.
+- record public executor attempts and action results;
+- expose recent proxy requests in the UI;
+- add guarded unload/preemption after the simple autostart path is stable.

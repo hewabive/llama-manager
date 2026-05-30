@@ -149,6 +149,7 @@ import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
 import { forwardApiProxyRequest } from "./proxy/forwarder.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./proxy/gateway.js";
+import { executeApiProxyPublicMvpPlan } from "./proxy/public-executor.js";
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
@@ -367,6 +368,7 @@ async function proxyProtocolEndpoint(
         mode: "request",
         requestedTargetId: targetId,
       }),
+    allowReadinessActions: true,
   });
   if (!decision.ok) {
     return c.json(decision.response.body, decision.response.status);
@@ -375,6 +377,31 @@ async function proxyProtocolEndpoint(
   const upstreamPath = adapter.upstreamPath(operation);
   if (!upstreamPath) {
     const response = adapter.notImplemented(resolution.request);
+    return c.json(response.body, response.status);
+  }
+
+  const execution = await executeApiProxyPublicMvpPlan({
+    target: decision.target,
+    initialPreview: decision.preview,
+    getInstance,
+    startInstance: (instance) => supervisor.start(instance),
+    loadModel: async (instance, model) => {
+      const result = await requestLlamaModelAction(instance, "load", model);
+      if (!result.response.ok) {
+        throw new Error(llamaEndpointErrorMessage(result.response));
+      }
+    },
+    getPlanPreview: (targetId) =>
+      getApiProxyPlanPreview({
+        mode: "request",
+        requestedTargetId: targetId,
+      }),
+  });
+  if (!execution.ok) {
+    const response = adapter.diagnosticError(
+      resolution.request,
+      execution.diagnostic,
+    );
     return c.json(response.body, response.status);
   }
 

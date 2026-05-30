@@ -23,6 +23,7 @@ export type ApiProxyProtocolDiagnosticCode =
   | "llama_manager_proxy_target_not_found"
   | "llama_manager_proxy_plan_blocked"
   | "llama_manager_proxy_target_not_ready"
+  | "llama_manager_proxy_action_unsupported"
   | "llama_manager_proxy_instance_not_found"
   | "llama_manager_proxy_upstream_unavailable"
   | "llama_manager_proxy_upstream_error";

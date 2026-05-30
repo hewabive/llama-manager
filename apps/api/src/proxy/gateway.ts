@@ -13,6 +13,7 @@ export type ApiProxyProtocolGatewayDecision =
   | {
       ok: true;
       target: ApiProxyTargetRecord;
+      preview: ApiProxyPlanPreview;
     }
   | {
       ok: false;
@@ -31,6 +32,7 @@ export async function prepareApiProxyProtocolGatewayRequest(input: {
   request: ApiProxyProtocolModelRequest;
   getTarget: (targetId: string) => ApiProxyTargetRecord | null;
   getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
+  allowReadinessActions?: boolean | undefined;
 }): Promise<ApiProxyProtocolGatewayDecision> {
   const targetId = input.request.model.targetId;
   if (!targetId) {
@@ -76,7 +78,7 @@ export async function prepareApiProxyProtocolGatewayRequest(input: {
   const readinessActions = preview.plan.actions.filter(
     (action) => action.type !== "route-request",
   );
-  if (readinessActions.length > 0) {
+  if (readinessActions.length > 0 && !input.allowReadinessActions) {
     return {
       ok: false,
       response: input.adapter.diagnosticError(input.request, {
@@ -95,6 +97,7 @@ export async function prepareApiProxyProtocolGatewayRequest(input: {
   return {
     ok: true,
     target,
+    preview,
   };
 }
 

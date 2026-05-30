@@ -108,8 +108,8 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
         </Group>
         <Text c="dimmed" size="sm">
           Published model IDs are shared by OpenAI-compatible and
-          Anthropic-compatible public facades. Ready OpenAI-compatible targets
-          can be forwarded.
+          Anthropic-compatible public facades. OpenAI-compatible requests can
+          start, load and forward through bound targets.
         </Text>
         <Table.ScrollContainer minWidth={900}>
           <Table striped highlightOnHover verticalSpacing="sm">

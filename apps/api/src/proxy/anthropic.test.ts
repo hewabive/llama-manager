@@ -67,3 +67,7 @@ test("anthropicProtocolAdapter returns not implemented response", () => {
     },
   });
 });
+
+test("anthropicProtocolAdapter does not forward without a transform", () => {
+  assert.equal(anthropicProtocolAdapter.upstreamPath(operation), null);
+});
