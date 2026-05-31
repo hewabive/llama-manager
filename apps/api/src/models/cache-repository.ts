@@ -1,5 +1,6 @@
 import type { GgufModel, ModelScanSettings } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { config } from "../config.js";
@@ -26,7 +27,11 @@ function toModel(row: ModelCacheRow): GgufModel {
 }
 
 export function getCachedModel(path: string): GgufModel | null {
-  const row = db.select().from(modelCache).where(eq(modelCache.path, path)).get();
+  const row = db
+    .select()
+    .from(modelCache)
+    .where(eq(modelCache.path, path))
+    .get();
   return row ? toModel(row) : null;
 }
 
@@ -61,8 +66,31 @@ export function saveCachedModel(model: GgufModel) {
     .run();
 }
 
+export function pruneMissingCachedModels(): number {
+  const rows = db.select().from(modelCache).all();
+  let deleted = 0;
+
+  for (const row of rows) {
+    if (existsSync(row.path)) {
+      continue;
+    }
+
+    const result = db
+      .delete(modelCache)
+      .where(eq(modelCache.path, row.path))
+      .run();
+    deleted += result.changes;
+  }
+
+  return deleted;
+}
+
 export function getModelScanSettings(): ModelScanSettings {
-  const row = db.select().from(modelScanSettings).where(eq(modelScanSettings.id, SETTINGS_ID)).get();
+  const row = db
+    .select()
+    .from(modelScanSettings)
+    .where(eq(modelScanSettings.id, SETTINGS_ID))
+    .get();
   if (!row) {
     return {
       directory: defaultModelsDirectory,
@@ -75,7 +103,9 @@ export function getModelScanSettings(): ModelScanSettings {
   };
 }
 
-export function saveModelScanSettings(input: ModelScanSettings): ModelScanSettings {
+export function saveModelScanSettings(
+  input: ModelScanSettings,
+): ModelScanSettings {
   db.insert(modelScanSettings)
     .values({
       id: SETTINGS_ID,

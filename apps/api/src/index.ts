@@ -5,6 +5,7 @@ import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
 import { migrate } from "./db/index.js";
 import { app } from "./http.js";
+import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
 import { supervisor } from "./process/supervisor.js";
 
@@ -14,6 +15,7 @@ const logger = pino({
 
 migrate();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
+const prunedModelCache = pruneMissingCachedModels();
 const reconciliation = reconcileProcessRuns();
 
 const server = serve(
@@ -29,6 +31,7 @@ const server = serve(
         port: info.port,
         reconciliation,
         prunedArgumentCatalogs,
+        prunedModelCache,
       },
       "llama-manager api listening",
     );
