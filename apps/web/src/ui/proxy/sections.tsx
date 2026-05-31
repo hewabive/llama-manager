@@ -428,6 +428,35 @@ function SchedulerActionTable(props: {
   );
 }
 
+function ReadinessActionSummary(props: {
+  actions: ApiProxyExecutorRunRecord["plan"]["actions"];
+}) {
+  const preparationActions = props.actions.filter(
+    (action) => action.type !== "route-request",
+  );
+
+  if (preparationActions.length === 0) {
+    return (
+      <Text c="dimmed" size="sm">
+        No preparation
+      </Text>
+    );
+  }
+
+  return (
+    <Group gap={4} wrap="wrap">
+      {preparationActions.map((action, index) => (
+        <Badge
+          key={`${action.type}-${action.targetId}-${action.model ?? ""}-${index}`}
+          variant="light"
+        >
+          {actionLabels[action.type]}
+        </Badge>
+      ))}
+    </Group>
+  );
+}
+
 export function SchedulerSection(props: SchedulerSectionProps) {
   return (
     <Paper withBorder p="md" radius="sm">
@@ -519,14 +548,14 @@ export function SchedulerSection(props: SchedulerSectionProps) {
 
         <Group justify="space-between" align="center" wrap="wrap">
           <Text fw={600} size="sm">
-            Execution log
+            Proxy readiness runs
           </Text>
           <Text c="dimmed" size="sm">
-            Records real proxy actions and failures; route-only requests are
-            omitted.
+            Records requests where the manager had to prepare a target or failed
+            before routing; direct route-only requests are omitted.
           </Text>
         </Group>
-        <Table.ScrollContainer minWidth={760}>
+        <Table.ScrollContainer minWidth={880}>
           <Table striped verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
@@ -534,7 +563,7 @@ export function SchedulerSection(props: SchedulerSectionProps) {
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Mode</Table.Th>
                 <Table.Th>Target</Table.Th>
-                <Table.Th>Actions</Table.Th>
+                <Table.Th>Preparation steps</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -556,7 +585,9 @@ export function SchedulerSection(props: SchedulerSectionProps) {
                           run.preferredTargetId)
                         : "none"}
                   </Table.Td>
-                  <Table.Td>{run.plan.actions.length}</Table.Td>
+                  <Table.Td>
+                    <ReadinessActionSummary actions={run.plan.actions} />
+                  </Table.Td>
                 </Table.Tr>
               ))}
               {props.executorRuns.length === 0 && (
