@@ -359,6 +359,7 @@ export function ApiProbePanel(props: {
             data={modelOptions.map((option) => option.value)}
             label="Model"
             value={model ?? ""}
+            filter={({ options, limit }) => options.slice(0, limit)}
             limit={50}
             maxDropdownHeight={360}
             openOnFocus
