@@ -424,7 +424,39 @@ function SchedulerActionTable(props: {
   );
 }
 
+function planStatus(preview: ApiProxyPlanPreview) {
+  if (!preview.plan.ok) {
+    return {
+      color: "red",
+      label: "blocked",
+      description:
+        preview.plan.blockingReason ?? "Scheduler cannot build a route plan.",
+    };
+  }
+
+  const readinessActions = preview.plan.actions.filter(
+    (action) => action.type !== "route-request",
+  );
+  if (readinessActions.length === 0) {
+    return {
+      color: "green",
+      label: "ready now",
+      description: "The request can be routed without preparation.",
+    };
+  }
+
+  return {
+    color: "yellow",
+    label: "needs preparation",
+    description: `The request is routable, but the manager must run ${readinessActions.length} preparation step(s) first.`,
+  };
+}
+
 export function SchedulerSection(props: SchedulerSectionProps) {
+  const previewStatus = props.planPreview
+    ? planStatus(props.planPreview)
+    : null;
+
   return (
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
@@ -458,20 +490,18 @@ export function SchedulerSection(props: SchedulerSectionProps) {
           </Button>
         </Group>
 
-        {props.planPreview && (
+        {props.planPreview && previewStatus && (
           <Stack gap="xs">
             <Group gap="xs" wrap="wrap">
-              <Badge color={props.planPreview.plan.ok ? "green" : "red"}>
-                {props.planPreview.plan.ok ? "ok" : "blocked"}
-              </Badge>
+              <Badge color={previewStatus.color}>{previewStatus.label}</Badge>
               <Badge variant="light">{props.planPreview.plan.mode}</Badge>
               <Text c="dimmed" size="sm">
                 checked {formatLocalDateTime(props.planPreview.checkedAt)}
               </Text>
             </Group>
-            {props.planPreview.plan.blockingReason && (
-              <Text c="red" size="sm">
-                {props.planPreview.plan.blockingReason}
+            {previewStatus.description && (
+              <Text c={props.planPreview.plan.ok ? "dimmed" : "red"} size="sm">
+                {previewStatus.description}
               </Text>
             )}
             <SchedulerActionTable
