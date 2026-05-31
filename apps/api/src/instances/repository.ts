@@ -4,7 +4,7 @@ import type {
   InstanceUpdate,
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { newId } from "../utils/id.js";
 
 import { db } from "../db/index.js";
 import { instances } from "../db/schema.js";
@@ -81,7 +81,7 @@ export function getInstance(id: string): Instance | null {
 
 export function createInstance(input: InstanceCreate): Instance {
   const timestamp = nowIso();
-  const id = randomUUID();
+  const id = newId();
 
   db.insert(instances)
     .values({

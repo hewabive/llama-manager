@@ -5,7 +5,7 @@ import type {
   PathCatalogUpdate,
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { newId } from "../utils/id.js";
 
 import { db } from "../db/index.js";
 import { pathCatalog } from "../db/schema.js";
@@ -52,7 +52,7 @@ export function createPathCatalogEntry(
   input: PathCatalogCreate,
 ): PathCatalogEntry {
   const timestamp = nowIso();
-  const id = randomUUID();
+  const id = newId();
 
   db.insert(pathCatalog)
     .values({

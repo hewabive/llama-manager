@@ -8,7 +8,7 @@ import {
   type Instance,
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { newId } from "../utils/id.js";
 
 import { config } from "../config.js";
 import { db } from "../db/index.js";
@@ -178,7 +178,7 @@ export function getApiEndpointFromCatalog(
 
 export function createApiEndpoint(input: ApiEndpointCreate): ApiEndpointRecord {
   const parsed = ApiEndpointCreateSchema.parse(input);
-  const id = randomUUID();
+  const id = newId();
   const timestamp = nowIso();
 
   db.insert(apiEndpoints)

@@ -9,8 +9,8 @@ import {
   type PathCatalogEntry,
 } from "@llama-manager/core";
 import { desc, eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { basename, resolve } from "node:path";
+import { newId } from "../utils/id.js";
 
 import { config } from "../config.js";
 import { isCudaToolkitAvailable } from "./cuda.js";
@@ -207,7 +207,7 @@ export function createBuildJob(input: {
   startedAt: string;
   logPath: string;
 }): BuildJob {
-  const id = randomUUID();
+  const id = newId();
   db.insert(llamaBuildJobs)
     .values({
       id,

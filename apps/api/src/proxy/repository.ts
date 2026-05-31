@@ -38,7 +38,7 @@ import {
   type ApiProxyTargetUpdate,
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { newId } from "../utils/id.js";
 import {
   mkdirSync,
   readdirSync,
@@ -471,7 +471,7 @@ export function saveApiProxyRequestLog(input: {
   transformedBody: unknown;
   textReplacementCount: number;
 }): ApiProxyRequestLogRecord {
-  const id = randomUUID();
+  const id = newId();
   const timestamp = nowIso();
   const filePath = requestLogFilePath(id, timestamp);
   const record = ApiProxyRequestLogRecordSchema.parse({
@@ -497,7 +497,7 @@ export function createApiProxyTarget(
   input: ApiProxyTargetCreate,
 ): ApiProxyTargetRecord {
   const parsed = ApiProxyTargetCreateSchema.parse(input);
-  const id = randomUUID();
+  const id = newId();
   const timestamp = nowIso();
 
   db.insert(apiProxyTargets)
@@ -520,7 +520,7 @@ export function createApiProxyModel(
   input: ApiProxyModelCreate,
 ): ApiProxyModelRecord {
   const parsed = ApiProxyModelCreateSchema.parse(input);
-  const id = randomUUID();
+  const id = newId();
   const timestamp = nowIso();
 
   db.insert(apiProxyModels)
@@ -577,7 +577,7 @@ export function createApiProxyPipeline(
   input: ApiProxyPipelineCreate,
 ): ApiProxyPipelineRecord {
   const parsed = ApiProxyPipelineCreateSchema.parse(input);
-  const id = randomUUID();
+  const id = newId();
   const timestamp = nowIso();
 
   db.insert(apiProxyPipelines)
@@ -668,7 +668,7 @@ export function createApiProxyRoute(
   input: ApiProxyRouteCreate,
 ): ApiProxyRouteRecord {
   const parsed = ApiProxyRouteCreateSchema.parse(input);
-  const id = randomUUID();
+  const id = newId();
   const timestamp = nowIso();
 
   db.insert(apiProxyRoutes)

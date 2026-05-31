@@ -1,5 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { newId } from "../utils/id.js";
 
 import { db } from "../db/index.js";
 import { processRuns } from "../db/schema.js";
@@ -14,7 +14,7 @@ export function createProcessRun(input: {
   logPath: string;
   rawLogPath: string | null;
 }) {
-  const id = randomUUID();
+  const id = newId();
   db.insert(processRuns)
     .values({
       id,
