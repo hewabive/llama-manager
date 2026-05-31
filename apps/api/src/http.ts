@@ -143,7 +143,6 @@ import {
   listApiProxyModels,
   listApiProxyPipelines,
   listApiProxyRequestLogs,
-  listApiProxyRuntimeMetadata,
   listApiProxyRoutes,
   listApiProxyTargets,
   saveApiProxyRequestLog,
@@ -308,7 +307,6 @@ function validateApiProxyPipelineRefs(input: {
 
 async function getApiProxyRuntimeSnapshot() {
   const targets = listApiProxyTargets();
-  const metadata = listApiProxyRuntimeMetadata();
   const instances = listInstances();
   const endpoints = listApiEndpointCatalog(instances);
   const peers = instances;
@@ -340,9 +338,6 @@ async function getApiProxyRuntimeSnapshot() {
       endpoints,
       instances,
       healthByInstanceId: new Map(healthEntries),
-      metadataByTargetId: new Map(
-        metadata.map((item) => [item.targetId, item]),
-      ),
     }),
   };
 }
