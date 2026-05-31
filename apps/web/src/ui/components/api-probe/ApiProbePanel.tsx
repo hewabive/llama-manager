@@ -4,6 +4,7 @@ import type {
   LlamaEndpointProbe,
 } from "@llama-manager/core";
 import {
+  Autocomplete,
   Button,
   Group,
   NumberInput,
@@ -13,13 +14,12 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
   Textarea,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio, Send, Square } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   runInstanceApiProbe,
@@ -83,17 +83,23 @@ export function ApiProbePanel(props: {
   streamEnabled?: boolean | undefined;
   modelRequired?: boolean | undefined;
   title?: string | undefined;
-  description?: string | undefined;
   disabledReason?: string | null | undefined;
   autoloadVisible?: boolean | undefined;
   invalidateInstanceQueries?: boolean | undefined;
   onProbeSettled?: (() => void) | undefined;
 }) {
   const queryClient = useQueryClient();
-  const modelListId = useId();
   const modelOptions = useMemo(
     () => props.modelOptions ?? modelOptionsFromProbe(props.modelsProbe),
     [props.modelOptions, props.modelsProbe],
+  );
+  const modelOptionsKey = useMemo(
+    () => modelOptions.map((option) => option.value).join("\0"),
+    [modelOptions],
+  );
+  const modelOptionsByValue = useMemo(
+    () => new Map(modelOptions.map((option) => [option.value, option])),
+    [modelOptions],
   );
   const requestOptions = props.requestOptions ?? defaultRequestOptions;
   const [kind, setKind] = useState<ApiProbeKind>("chat");
@@ -123,11 +129,12 @@ export function ApiProbePanel(props: {
     if (modelOptions.length === 0) {
       return;
     }
-    if (model && modelOptions.some((option) => option.value === model)) {
-      return;
-    }
-    setModel(modelOptions[0]?.value ?? null);
-  }, [model, modelOptions]);
+    setModel((current) =>
+      current && modelOptions.some((option) => option.value === current)
+        ? current
+        : (modelOptions[0]?.value ?? null),
+    );
+  }, [modelOptionsKey]);
 
   useEffect(() => {
     return () => {
@@ -320,10 +327,6 @@ export function ApiProbePanel(props: {
             <Text fw={600} size="sm">
               {props.title ?? "API probe"}
             </Text>
-            <Text c="dimmed" size="xs">
-              {props.description ??
-                "Send small non-streaming or streaming requests through llama-manager."}
-            </Text>
             {disabledReason && (
               <Text c="yellow" size="xs">
                 {disabledReason}
@@ -351,10 +354,14 @@ export function ApiProbePanel(props: {
             }}
             data={requestOptions}
           />
-          <TextInput
+          <Autocomplete
+            clearable
+            data={modelOptions.map((option) => option.value)}
             label="Model"
             value={model ?? ""}
-            list={modelOptions.length > 0 ? modelListId : undefined}
+            limit={50}
+            maxDropdownHeight={360}
+            openOnFocus
             withAsterisk={modelRequired}
             error={modelRequired && !model ? "Model is required" : undefined}
             placeholder={
@@ -362,22 +369,22 @@ export function ApiProbePanel(props: {
                 ? "Select or type model"
                 : "Type model name if the endpoint requires one"
             }
-            onChange={(event) =>
-              setModel(event.currentTarget.value.trim() || null)
-            }
+            renderOption={({ option }) => {
+              const modelOption = modelOptionsByValue.get(option.value);
+              return (
+                <Stack gap={2}>
+                  <Text size="sm">{option.value}</Text>
+                  {modelOption?.status && (
+                    <Text c="dimmed" size="xs">
+                      {modelOption.status}
+                    </Text>
+                  )}
+                </Stack>
+              );
+            }}
+            onChange={(value) => setModel(value.trim() || null)}
           />
         </SimpleGrid>
-        {modelOptions.length > 0 && (
-          <datalist id={modelListId}>
-            {modelOptions.map((option) => (
-              <option
-                key={option.value}
-                value={option.value}
-                label={option.label}
-              />
-            ))}
-          </datalist>
-        )}
 
         {kindSupportsSystemPrompt(kind) && (
           <Textarea

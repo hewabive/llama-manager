@@ -4,14 +4,17 @@ import type {
   InstanceHealthSummary,
 } from "@llama-manager/core";
 import {
-  Alert,
-  SegmentedControl,
+  Autocomplete,
+  Group,
+  Loader,
   Select,
-  SimpleGrid,
   Stack,
-  TextInput,
+  Text,
+  ThemeIcon,
+  Tooltip,
 } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -68,6 +71,15 @@ function normalizeHttpUrlLabel(value: string) {
     return `${parsed.origin}${path === "/" ? "" : path}`;
   } catch {
     return value.trim();
+  }
+}
+
+function isHttpBaseUrl(value: string) {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 
@@ -173,6 +185,20 @@ export function ApiLabView(props: {
     );
     return [...proxyTargets, ...instanceTargets];
   }, [profile, props.instances, proxyRootUrl]);
+  const targetOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return quickTargets.filter((target) => {
+      if (seen.has(target.baseUrl)) {
+        return false;
+      }
+      seen.add(target.baseUrl);
+      return true;
+    });
+  }, [quickTargets]);
+  const targetByBaseUrl = useMemo(
+    () => new Map(targetOptions.map((target) => [target.baseUrl, target])),
+    [targetOptions],
+  );
 
   useEffect(() => {
     if (baseUrl || !props.selectedInstance) {
@@ -197,11 +223,15 @@ export function ApiLabView(props: {
     props.selectedInstance,
   ]);
 
-  const normalizedBaseUrl = normalizeBaseUrlForProfile(profile, baseUrl);
+  const hasBaseUrl = Boolean(baseUrl.trim());
+  const baseUrlValid = hasBaseUrl && isHttpBaseUrl(baseUrl);
+  const normalizedBaseUrl = baseUrlValid
+    ? normalizeBaseUrlForProfile(profile, baseUrl)
+    : baseUrl.trim();
   const modelsQuery = useQuery({
     queryKey: ["api-lab-models", profile, normalizedBaseUrl],
     queryFn: () => getApiLabModels(profile, normalizedBaseUrl),
-    enabled: profile === "openai" && Boolean(normalizedBaseUrl),
+    enabled: profile === "openai" && baseUrlValid,
     staleTime: 15_000,
   });
   const apiModelOptions = useMemo(
@@ -217,103 +247,140 @@ export function ApiLabView(props: {
           ? modelOptionsFromProbe(props.selectedHealth?.llama.models)
           : [];
   const modelsProbe = modelsQuery.data?.data;
-  const modelListMessage =
-    profile === "openai" && normalizedBaseUrl && modelsQuery.isFetching
-      ? "Loading models from /models..."
-      : modelsQuery.error
-        ? `Model list request failed: ${(modelsQuery.error as Error).message}`
-        : modelsProbe && !modelsProbe.ok
-          ? `Model list request failed: ${modelsProbe.error ?? `HTTP ${modelsProbe.status ?? "no response"}`}`
-          : modelsProbe?.ok
-            ? `Loaded ${apiModelOptions.length} model${apiModelOptions.length === 1 ? "" : "s"} from /models.`
-            : null;
+  const targetStatus = (() => {
+    if (!hasBaseUrl) {
+      return { state: "error" as const, label: "Base URL is required." };
+    }
+    if (!baseUrlValid) {
+      return {
+        state: "error" as const,
+        label: "Base URL must be an http or https URL.",
+      };
+    }
+    if (profile !== "openai") {
+      return { state: "ok" as const, label: "Base URL looks valid." };
+    }
+    if (modelsQuery.isFetching) {
+      return { state: "loading" as const, label: "Checking /models..." };
+    }
+    if (modelsQuery.error) {
+      return {
+        state: "error" as const,
+        label: `Model list request failed: ${(modelsQuery.error as Error).message}`,
+      };
+    }
+    if (modelsProbe && !modelsProbe.ok) {
+      return {
+        state: "error" as const,
+        label: `Model list request failed: ${modelsProbe.error ?? `HTTP ${modelsProbe.status ?? "no response"}`}`,
+      };
+    }
+    if (modelsProbe?.ok) {
+      return {
+        state: "ok" as const,
+        label: `${apiModelOptions.length} model${apiModelOptions.length === 1 ? "" : "s"} available from /models.`,
+      };
+    }
+    return { state: "error" as const, label: "Model list was not checked." };
+  })();
   const requestOptions = profileRequestOptions[profile];
-  const baseUrlLabel =
-    profile === "llama-native" ? "Server URL" : "API base URL";
   const baseUrlPlaceholder =
     profile === "llama-native"
       ? "http://127.0.0.1:8080"
       : "http://127.0.0.1:8080/v1";
+  const targetStatusIcon =
+    targetStatus.state === "loading" ? (
+      <Loader size={16} />
+    ) : (
+      <ThemeIcon
+        color={targetStatus.state === "ok" ? "green" : "red"}
+        radius="xl"
+        size={22}
+        variant="light"
+      >
+        {targetStatus.state === "ok" ? <Check size={14} /> : <X size={14} />}
+      </ThemeIcon>
+    );
 
   return (
     <Stack gap="md">
-      <SegmentedControl
-        value={profile}
-        onChange={(value) => {
-          const nextProfile = value as ApiLabProbeProfile;
-          setProfile(nextProfile);
-          setQuickTarget(null);
-          setBaseUrl((current) =>
-            current
-              ? nextProfile === "llama-native"
-                ? stripV1BaseUrl(current)
-                : apiVersionBaseUrl(current)
-              : current,
-          );
-        }}
-        data={[
-          { value: "openai", label: profileLabels.openai },
-          { value: "llama-native", label: profileLabels["llama-native"] },
-          { value: "anthropic", label: profileLabels.anthropic },
-        ]}
-      />
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+      <Group align="flex-end" gap="sm" wrap="wrap">
         <Select
-          label="Quick target"
-          data={quickTargets.map((target) => ({
-            value: target.value,
-            label: target.label,
-          }))}
-          value={quickTarget}
-          searchable
-          clearable
-          placeholder="Choose instance, proxy, or type URL manually"
+          allowDeselect={false}
+          data={[
+            { value: "openai", label: profileLabels.openai },
+            { value: "llama-native", label: profileLabels["llama-native"] },
+            { value: "anthropic", label: profileLabels.anthropic },
+          ]}
+          label="API"
+          value={profile}
+          style={{ width: "min(100%, 260px)" }}
           onChange={(value) => {
-            setQuickTarget(value);
-            const target = quickTargets.find((item) => item.value === value);
-            if (!target) {
-              return;
-            }
-            setBaseUrl(target.baseUrl);
-            if (target.instanceId) {
+            if (!value) return;
+            const nextProfile = value as ApiLabProbeProfile;
+            setProfile(nextProfile);
+            setQuickTarget(null);
+            setBaseUrl((current) =>
+              current
+                ? nextProfile === "llama-native"
+                  ? stripV1BaseUrl(current)
+                  : apiVersionBaseUrl(current)
+                : current,
+            );
+          }}
+        />
+        <Autocomplete
+          clearable
+          data={targetOptions.map((target) => target.baseUrl)}
+          label="Target / Base URL"
+          limit={20}
+          maxDropdownHeight={360}
+          openOnFocus
+          placeholder={baseUrlPlaceholder}
+          renderOption={({ option }) => {
+            const target = targetByBaseUrl.get(option.value);
+            return (
+              <Stack gap={2}>
+                <Text size="sm">{target?.label ?? option.value}</Text>
+                {target && (
+                  <Text c="dimmed" size="xs">
+                    {target.baseUrl}
+                  </Text>
+                )}
+              </Stack>
+            );
+          }}
+          rightSection={
+            <Tooltip label={targetStatus.label}>{targetStatusIcon}</Tooltip>
+          }
+          style={{ width: "min(100%, 560px)" }}
+          value={baseUrl}
+          onChange={(value) => {
+            setBaseUrl(value);
+            const target = targetByBaseUrl.get(value.trim());
+            setQuickTarget(target?.value ?? null);
+          }}
+          onOptionSubmit={(value) => {
+            const target = targetByBaseUrl.get(value);
+            setBaseUrl(value);
+            setQuickTarget(target?.value ?? null);
+            if (target?.instanceId) {
               props.onSelect(target.instanceId);
             }
           }}
         />
-        <TextInput
-          label={baseUrlLabel}
-          value={baseUrl}
-          placeholder={baseUrlPlaceholder}
-          onChange={(event) => {
-            setBaseUrl(event.currentTarget.value);
-            setQuickTarget(null);
-          }}
-        />
-      </SimpleGrid>
-      {modelListMessage && (
-        <Alert
-          color={
-            modelsProbe?.ok
-              ? "blue"
-              : modelsQuery.isFetching
-                ? "gray"
-                : "yellow"
-          }
-          variant="light"
-        >
-          {modelListMessage}
-        </Alert>
-      )}
+      </Group>
 
       <ApiProbePanel
         instanceId="api-lab"
         title="API probe"
-        description={
-          normalizedBaseUrl
-            ? `${profileLabels[profile]} requests are sent from llama-manager backend to ${normalizedBaseUrl}.`
-            : "Paste a base URL or choose a quick target."
+        disabledReason={
+          baseUrlValid
+            ? null
+            : hasBaseUrl
+              ? targetStatus.label
+              : "Base URL is required."
         }
-        disabledReason={normalizedBaseUrl ? null : "Base URL is required."}
         modelOptions={activeModelOptions}
         requestOptions={requestOptions}
         autoloadVisible={profile === "llama-native"}
