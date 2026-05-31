@@ -187,16 +187,3 @@ export const apiProxyPipelines = sqliteTable("api_proxy_pipelines", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const apiProxyRequestLogs = sqliteTable("api_proxy_request_logs", {
-  id: text("id").primaryKey(),
-  protocol: text("protocol").notNull(),
-  endpoint: text("endpoint").notNull(),
-  routePath: text("route_path").notNull(),
-  modelId: text("model_id").notNull(),
-  targetId: text("target_id"),
-  requestBodyJson: text("request_body_json").notNull(),
-  transformedBodyJson: text("transformed_body_json").notNull(),
-  textReplacementCount: text("text_replacement_count").notNull(),
-  createdAt: text("created_at").notNull(),
-});
-

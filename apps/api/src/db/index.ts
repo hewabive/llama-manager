@@ -230,26 +230,6 @@ export function migrate() {
   `);
 
   db.run(sql`
-    CREATE TABLE IF NOT EXISTS api_proxy_request_logs (
-      id TEXT PRIMARY KEY NOT NULL,
-      protocol TEXT NOT NULL,
-      endpoint TEXT NOT NULL,
-      route_path TEXT NOT NULL,
-      model_id TEXT NOT NULL,
-      target_id TEXT,
-      request_body_json TEXT NOT NULL,
-      transformed_body_json TEXT NOT NULL,
-      text_replacement_count TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
-    CREATE INDEX IF NOT EXISTS api_proxy_request_logs_created_at_idx
-    ON api_proxy_request_logs (created_at)
-  `);
-
-  db.run(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_targets_name_idx
     ON api_proxy_targets (name)
   `);

@@ -51,7 +51,6 @@ import { db } from "../db/index.js";
 import {
   apiProxyModels,
   apiProxyPipelines,
-  apiProxyRequestLogs,
   apiProxyRoutes,
   apiProxyTargets,
 } from "../db/schema.js";
@@ -60,7 +59,6 @@ type TargetRow = typeof apiProxyTargets.$inferSelect;
 type RouteRow = typeof apiProxyRoutes.$inferSelect;
 type ModelRow = typeof apiProxyModels.$inferSelect;
 type PipelineRow = typeof apiProxyPipelines.$inferSelect;
-type RequestLogRow = typeof apiProxyRequestLogs.$inferSelect;
 
 function nowIso() {
   return new Date().toISOString();
@@ -207,22 +205,6 @@ function toModel(row: ModelRow): ApiProxyModelRecord {
     description: row.description,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-  });
-}
-
-function toRequestLog(row: RequestLogRow): ApiProxyRequestLogRecord {
-  return ApiProxyRequestLogRecordSchema.parse({
-    id: row.id,
-    filePath: null,
-    protocol: row.protocol,
-    endpoint: row.endpoint,
-    routePath: row.routePath,
-    modelId: row.modelId,
-    targetId: row.targetId,
-    requestBody: parseJson(row.requestBodyJson),
-    transformedBody: parseJson(row.transformedBodyJson),
-    textReplacementCount: Number(row.textReplacementCount),
-    createdAt: row.createdAt,
   });
 }
 
