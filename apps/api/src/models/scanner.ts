@@ -46,7 +46,7 @@ type ModelFile = FoundFile & {
   missingShardNames: string[];
 };
 
-export const defaultModelsDirectory = resolve(config.rootDir, "..");
+export const defaultModelsDirectory = config.modelsDir;
 
 async function walk(
   dir: string,

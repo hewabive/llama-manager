@@ -55,7 +55,7 @@ import {
   presetKeyFromArgument,
   replacePresetArgRow,
 } from "../components/PresetArgumentRows";
-import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
+import { defaultBinaryPath } from "../constants";
 import { createUiId } from "../utils/id";
 import {
   compareModelTitles,
@@ -514,13 +514,13 @@ export function PresetsView() {
       })),
     [presetCatalogEntries],
   );
-  const modelDirectory =
-    modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
+  const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
   const presetModelsQuery = useQuery({
     queryKey: ["models", modelDirectory, modelMaxDepth],
     queryFn: () =>
       scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
+    enabled: modelDirectory !== "",
     retry: false,
     staleTime: 60_000,
   });

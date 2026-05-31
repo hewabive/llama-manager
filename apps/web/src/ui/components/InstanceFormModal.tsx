@@ -49,7 +49,7 @@ import {
   updateInstance,
   writeModelPreset,
 } from "../../api/client";
-import { defaultBinaryPath, defaultModelsDirectory } from "../constants";
+import { defaultBinaryPath } from "../constants";
 import {
   compareModelTitles,
   formatBytes,
@@ -228,14 +228,13 @@ export function InstanceFormModal(props: {
     queryFn: getModelScanSettings,
     enabled: props.opened,
   });
-  const modelDirectory =
-    modelSettingsQuery.data?.data.directory ?? defaultModelsDirectory;
+  const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
   const formModelsQuery = useQuery({
     queryKey: ["models", modelDirectory, modelMaxDepth],
     queryFn: () =>
       scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
-    enabled: props.opened,
+    enabled: props.opened && modelDirectory !== "",
     retry: false,
     staleTime: 60_000,
   });

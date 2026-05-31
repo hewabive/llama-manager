@@ -23,6 +23,9 @@ export const config = {
   buildsDir: process.env.LLAMA_MANAGER_BUILDS_DIR
     ? resolve(process.env.LLAMA_MANAGER_BUILDS_DIR)
     : resolve(runtimeDir, "builds"),
+  modelsDir: process.env.LLAMA_MANAGER_MODELS_DIR
+    ? resolve(process.env.LLAMA_MANAGER_MODELS_DIR)
+    : resolve(runtimeDir, "models"),
   logs: {
     filterRoutineProbeRequests:
       process.env.LLAMA_MANAGER_FILTER_PROBE_LOGS !== "false",
@@ -49,3 +52,4 @@ export const config = {
 
 mkdirSync(config.dataDir, { recursive: true });
 mkdirSync(config.logsDir, { recursive: true });
+mkdirSync(config.modelsDir, { recursive: true });

@@ -24,7 +24,6 @@ import {
   updateModelScanSettings,
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
-import { defaultModelsDirectory } from "../constants";
 import {
   compareModelTitles,
   formatBytes,
@@ -45,7 +44,7 @@ export function ModelsView(props: {
   onUseInSelected: (model: GgufModel) => void;
 }) {
   const queryClient = useQueryClient();
-  const [directory, setDirectory] = useState(defaultModelsDirectory);
+  const [directory, setDirectory] = useState("");
   const [maxDepth, setMaxDepth] = useState(8);
   const [search, setSearch] = useState("");
   const [hideVocab, setHideVocab] = useState(true);
