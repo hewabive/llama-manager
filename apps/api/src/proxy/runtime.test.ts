@@ -69,12 +69,16 @@ function target(
 function health(
   input: {
     status?: InstanceHealthSummary["status"];
+    healthOk?: boolean;
+    healthStatus?: number | null;
     modelStatus?: string;
     processing?: boolean;
     canStart?: boolean;
   } = {},
 ): InstanceHealthSummary {
   const slots = endpoint([{ id: 0, is_processing: input.processing ?? false }]);
+  const healthEndpoint = endpoint({ status: "ok" }, input.healthOk ?? true);
+  healthEndpoint.status = input.healthStatus ?? healthEndpoint.status;
   return {
     instanceId: "instance-a",
     status: input.status ?? "ready",
@@ -102,7 +106,7 @@ function health(
     },
     llama: {
       baseUrl: "http://127.0.0.1:8080",
-      health: endpoint({ status: "ok" }),
+      health: healthEndpoint,
       props: endpoint({}),
       slots,
       models: endpoint({
@@ -256,4 +260,26 @@ test("buildApiProxyRuntimeSnapshot treats startable previous errors as stopped",
   });
 
   assert.equal(snapshot.targets[0]?.state, "stopped");
+});
+
+test("buildApiProxyRuntimeSnapshot treats reachable stale process targets as idle", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ model: null })],
+    instances: [instance()],
+    healthByInstanceId: new Map([
+      [
+        "instance-a",
+        health({
+          status: "stale",
+          healthOk: true,
+        }),
+      ],
+    ]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "idle");
+  assert.equal(snapshot.targets[0]?.idleSince, "2026-05-30T10:00:00.000Z");
 });

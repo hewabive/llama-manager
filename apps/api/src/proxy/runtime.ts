@@ -123,7 +123,16 @@ function processRuntimeState(
   if (health.status === "loading") {
     return "loading";
   }
-  if (health.status === "stopped" || health.status === "stale") {
+  if (health.status === "stale") {
+    if (health.llama.health.ok) {
+      return "idle";
+    }
+    if (health.llama.health.status === 503) {
+      return "loading";
+    }
+    return "stopped";
+  }
+  if (health.status === "stopped") {
     return "stopped";
   }
   if (health.status === "ready" || health.status === "degraded") {
