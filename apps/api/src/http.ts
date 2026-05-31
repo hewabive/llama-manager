@@ -4,6 +4,8 @@ import {
   ApiEndpointUpdateSchema,
   ApiProxyModelCreateSchema,
   ApiProxyModelUpdateSchema,
+  ApiProxyPipelineCreateSchema,
+  ApiProxyPipelineUpdateSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteUpdateSchema,
   ApiProxyPlanPreviewRequestSchema,
@@ -125,21 +127,28 @@ import {
 } from "./path-catalog/repository.js";
 import {
   createApiProxyModel,
+  createApiProxyPipeline,
   createApiProxyRoute,
   createApiProxyTarget,
   deleteApiProxyModel,
+  deleteApiProxyPipeline,
   deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
   getApiProxyModel,
   getApiProxyModelByModelId,
+  getApiProxyPipeline,
   getApiProxyRoute,
   getApiProxyTarget,
   listApiProxyModels,
+  listApiProxyPipelines,
+  listApiProxyRequestLogs,
   listApiProxyRuntimeMetadata,
   listApiProxyRoutes,
   listApiProxyTargets,
+  saveApiProxyRequestLog,
   updateApiProxyModel,
+  updateApiProxyPipeline,
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "./proxy/repository.js";
@@ -156,6 +165,7 @@ import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
 import { forwardApiProxyRequest } from "./proxy/forwarder.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./proxy/gateway.js";
+import { resolveApiProxyRouteChain } from "./proxy/pipeline.js";
 import { executeApiProxyPublicMvpPlan } from "./proxy/public-executor.js";
 import {
   resolveApiProxyProtocolModelRequest,
@@ -262,13 +272,38 @@ function validateApiProxyRouteRefs(input: { targetId?: string | undefined }) {
   return null;
 }
 
+function validateApiProxyRouteToRef(input: {
+  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+}) {
+  if (!input.routeTo) {
+    return null;
+  }
+  if (input.routeTo.type === "target" && !getApiProxyTarget(input.routeTo.id)) {
+    return "route target not found";
+  }
+  if (
+    input.routeTo.type === "pipeline" &&
+    !getApiProxyPipeline(input.routeTo.id)
+  ) {
+    return "route pipeline not found";
+  }
+  return null;
+}
+
 function validateApiProxyModelRefs(input: {
   targetId?: string | null | undefined;
+  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
 }) {
   if (input.targetId && !getApiProxyTarget(input.targetId)) {
     return "proxy model target not found";
   }
-  return null;
+  return validateApiProxyRouteToRef(input);
+}
+
+function validateApiProxyPipelineRefs(input: {
+  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+}) {
+  return validateApiProxyRouteToRef(input);
 }
 
 async function getApiProxyRuntimeSnapshot() {
@@ -441,9 +476,22 @@ async function proxyProtocolEndpoint(
     return c.json(resolution.response.body, resolution.response.status);
   }
 
+  const route = await resolveApiProxyRouteChain({
+    request: resolution.request,
+    getPipeline: getApiProxyPipeline,
+    recordRequest: saveApiProxyRequestLog,
+  });
+  if (!route.ok) {
+    const response = adapter.diagnosticError(
+      resolution.request,
+      route.diagnostic,
+    );
+    return c.json(response.body, response.status);
+  }
+
   const decision = await prepareApiProxyProtocolGatewayRequest({
     adapter,
-    request: resolution.request,
+    request: route.request,
     getTarget: getApiProxyTarget,
     getPlanPreview: (targetId) =>
       getApiProxyPlanPreview({
@@ -451,6 +499,7 @@ async function proxyProtocolEndpoint(
         requestedTargetId: targetId,
       }),
     allowReadinessActions: true,
+    targetIdOverride: route.targetId,
   });
   if (!decision.ok) {
     return c.json(decision.response.body, decision.response.status);
@@ -458,7 +507,7 @@ async function proxyProtocolEndpoint(
 
   const upstreamPath = adapter.upstreamPath(operation);
   if (!upstreamPath) {
-    const response = adapter.notImplemented(resolution.request);
+    const response = adapter.notImplemented(route.request);
     return c.json(response.body, response.status);
   }
 
@@ -466,7 +515,13 @@ async function proxyProtocolEndpoint(
     target: decision.target,
     initialPreview: decision.preview,
     getInstance,
-    startInstance: startManagedInstance,
+    startInstance: async (instance) => {
+      try {
+        return await startOrRecoverManagedInstance(instance);
+      } catch (error) {
+        throw new Error(actionErrorProxyMessage(error));
+      }
+    },
     loadModel: async (instance, model) => {
       const result = await requestLlamaModelAction(instance, "load", model);
       if (!result.response.ok) {
@@ -481,7 +536,7 @@ async function proxyProtocolEndpoint(
   });
   if (!execution.ok) {
     const response = adapter.diagnosticError(
-      resolution.request,
+      route.request,
       execution.diagnostic,
     );
     return c.json(response.body, response.status);
@@ -494,7 +549,7 @@ async function proxyProtocolEndpoint(
     listApiEndpointCatalog(instances),
   );
   if (!targetResolution.enabled) {
-    const response = adapter.diagnosticError(resolution.request, {
+    const response = adapter.diagnosticError(route.request, {
       status: 503,
       code: "llama_manager_proxy_upstream_unavailable",
       param: "model",
@@ -506,7 +561,7 @@ async function proxyProtocolEndpoint(
   }
   const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
   if (!auth.ok) {
-    const response = adapter.diagnosticError(resolution.request, {
+    const response = adapter.diagnosticError(route.request, {
       status: 503,
       code: "llama_manager_proxy_upstream_unavailable",
       param: "model",
@@ -522,13 +577,13 @@ async function proxyProtocolEndpoint(
       upstreamPath,
       search: new URL(c.req.url).search,
       headers: c.req.raw.headers,
-      body,
+      body: route.request.body,
       upstreamHeaders: auth.headers,
       modelOverride: decision.target.model,
       signal: c.req.raw.signal,
     });
   } catch (error) {
-    const response = adapter.diagnosticError(resolution.request, {
+    const response = adapter.diagnosticError(route.request, {
       status: 502,
       code: "llama_manager_proxy_upstream_error",
       param: "model",
@@ -749,6 +804,13 @@ app.get("/api/proxy/config", (c) => {
   });
 });
 
+app.get("/api/proxy/requests", (c) => {
+  const limit = Number(c.req.query("limit") ?? 100);
+  return c.json({
+    data: listApiProxyRequestLogs(Number.isFinite(limit) ? limit : 100),
+  });
+});
+
 app.get("/api/endpoints", (c) => {
   return c.json({ data: listApiEndpointCatalog(listInstances()) });
 });
@@ -909,6 +971,65 @@ app.delete("/api/proxy/models/:id", (c) => {
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
+app.post("/api/proxy/pipelines", async (c) => {
+  const parsed = ApiProxyPipelineCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyPipelineRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    return c.json({ data: createApiProxyPipeline(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/proxy/pipelines/:id", async (c) => {
+  const parsed = ApiProxyPipelineUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiProxyPipelineRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    const pipeline = updateApiProxyPipeline(c.req.param("id"), parsed.data);
+    if (!pipeline) {
+      return c.json({ error: "proxy pipeline not found" }, 404);
+    }
+    return c.json({ data: pipeline });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/proxy/pipelines/:id", (c) => {
+  const id = c.req.param("id");
+  const usedByModels = listApiProxyModels().filter(
+    (model) => model.routeTo?.type === "pipeline" && model.routeTo.id === id,
+  );
+  const usedByPipelines = listApiProxyPipelines().filter(
+    (pipeline) =>
+      pipeline.routeTo?.type === "pipeline" && pipeline.routeTo.id === id,
+  );
+  if (usedByModels.length + usedByPipelines.length > 0) {
+    return c.json(
+      {
+        error: `proxy pipeline is used by ${usedByModels.length + usedByPipelines.length} route(s)`,
+      },
+      400,
+    );
+  }
+  const deleted = deleteApiProxyPipeline(id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
+});
+
 app.get("/api/proxy/runtime", async (c) => {
   try {
     const runtime = await getApiProxyRuntimeSnapshot();
@@ -972,9 +1093,19 @@ app.patch("/api/proxy/targets/:id", async (c) => {
 app.delete("/api/proxy/targets/:id", (c) => {
   const id = c.req.param("id");
   const usedBy = listApiProxyRoutes().filter((route) => route.targetId === id);
-  if (usedBy.length > 0) {
+  const usedByModels = listApiProxyModels().filter(
+    (model) =>
+      model.targetId === id ||
+      (model.routeTo?.type === "target" && model.routeTo.id === id),
+  );
+  const usedByPipelines = listApiProxyPipelines().filter(
+    (pipeline) =>
+      pipeline.routeTo?.type === "target" && pipeline.routeTo.id === id,
+  );
+  const usedCount = usedBy.length + usedByModels.length + usedByPipelines.length;
+  if (usedCount > 0) {
     return c.json(
-      { error: `proxy target is used by ${usedBy.length} route(s)` },
+      { error: `proxy target is used by ${usedCount} route(s)` },
       400,
     );
   }
@@ -1994,6 +2125,20 @@ function actionErrorPayload(error: unknown): {
   };
 }
 
+function issueMessage(issue: ProcessPreflightIssue) {
+  return issue.field ? `${issue.field}: ${issue.message}` : issue.message;
+}
+
+function actionErrorProxyMessage(error: unknown) {
+  const payload = actionErrorPayload(error);
+  const errors = payload.issues.filter((issue) => issue.level === "error");
+  const issues = errors.length > 0 ? errors : payload.issues;
+  if (issues.length === 0) {
+    return payload.error;
+  }
+  return `${payload.error}: ${issues.map(issueMessage).join("; ")}`;
+}
+
 async function startManagedInstance(instance: Instance): Promise<RuntimeState> {
   const staleConflict = staleProcessConflict(instance.id);
   if (staleConflict) {
@@ -2006,6 +2151,15 @@ async function startManagedInstance(instance: Instance): Promise<RuntimeState> {
     throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
   }
   return supervisor.start(instance);
+}
+
+async function startOrRecoverManagedInstance(
+  instance: Instance,
+): Promise<RuntimeState> {
+  if (liveStaleProcessRun(instance.id)) {
+    return restartManagedInstance(instance);
+  }
+  return startManagedInstance(instance);
 }
 
 async function stopManagedInstance(instanceId: string): Promise<RuntimeState> {

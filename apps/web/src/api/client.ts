@@ -9,6 +9,10 @@ import type {
   ApiProxyModelUpdate,
   ApiProxyPlanPreview,
   ApiProxyPlanPreviewRequest,
+  ApiProxyPipelineCreate,
+  ApiProxyPipelineRecord,
+  ApiProxyPipelineUpdate,
+  ApiProxyRequestLogRecord,
   ApiProxyRouteCreate,
   ApiProxyRouteRecord,
   ApiProxyRouteUpdate,
@@ -230,6 +234,13 @@ export async function getApiProxyConfig() {
   return request<{ data: ApiProxyConfig }>("/api/proxy/config");
 }
 
+export async function listApiProxyRequestLogs(limit = 100) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<{ data: ApiProxyRequestLogRecord[] }>(
+    `/api/proxy/requests?${params.toString()}`,
+  );
+}
+
 export async function createApiEndpoint(input: ApiEndpointCreate) {
   return request<{ data: ApiEndpointRecord }>("/api/endpoints", {
     method: "POST",
@@ -282,6 +293,35 @@ export async function deleteApiProxyModel(id: string) {
   return request<{ data: { deleted: boolean } }>(`/api/proxy/models/${id}`, {
     method: "DELETE",
   });
+}
+
+export async function createApiProxyPipeline(input: ApiProxyPipelineCreate) {
+  return request<{ data: ApiProxyPipelineRecord }>("/api/proxy/pipelines", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateApiProxyPipeline(
+  id: string,
+  input: ApiProxyPipelineUpdate,
+) {
+  return request<{ data: ApiProxyPipelineRecord }>(
+    `/api/proxy/pipelines/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteApiProxyPipeline(id: string) {
+  return request<{ data: { deleted: boolean } }>(
+    `/api/proxy/pipelines/${id}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export async function createApiProxyTarget(input: ApiProxyTargetCreate) {

@@ -36,6 +36,7 @@ function model(update: Partial<ApiProxyModelRecord> = {}): ApiProxyModelRecord {
     enabled: true,
     ownedBy: "llama-manager",
     targetId: target.id,
+    routeTo: null,
     description: null,
     createdAt: "2026-05-30T10:00:00.000Z",
     updatedAt: "2026-05-30T10:00:00.000Z",

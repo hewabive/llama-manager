@@ -12,6 +12,15 @@ sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
 
+function addColumnIfMissing(table: string, column: string, ddl: string) {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  if (!rows.some((row) => row.name === column)) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
+
 export function migrate() {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS instances (
@@ -225,10 +234,42 @@ export function migrate() {
       enabled TEXT NOT NULL,
       owned_by TEXT NOT NULL,
       target_id TEXT REFERENCES api_proxy_targets(id) ON DELETE SET NULL,
+      route_to_json TEXT,
       description TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
+  `);
+
+  addColumnIfMissing("api_proxy_models", "route_to_json", "route_to_json TEXT");
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_proxy_pipelines (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      enabled TEXT NOT NULL,
+      node_type TEXT NOT NULL DEFAULT 'replace-text',
+      steps_json TEXT NOT NULL,
+      route_to_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  addColumnIfMissing(
+    "api_proxy_pipelines",
+    "node_type",
+    "node_type TEXT NOT NULL DEFAULT 'replace-text'",
+  );
+
+  db.run(sql`
+    UPDATE api_proxy_pipelines
+    SET node_type = CASE
+      WHEN steps_json LIKE '%"capture-request"%' AND steps_json NOT LIKE '%"replace-text"%'
+        THEN 'save-request'
+      ELSE 'replace-text'
+    END
+    WHERE node_type = 'sequence'
   `);
 
   db.run(sql`
@@ -238,6 +279,26 @@ export function migrate() {
       last_request_at TEXT,
       updated_at TEXT NOT NULL
     )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_proxy_request_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      protocol TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      route_path TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      target_id TEXT,
+      request_body_json TEXT NOT NULL,
+      transformed_body_json TEXT NOT NULL,
+      text_replacement_count TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS api_proxy_request_logs_created_at_idx
+    ON api_proxy_request_logs (created_at)
   `);
 
   db.run(sql`
@@ -258,5 +319,10 @@ export function migrate() {
   db.run(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_models_model_id_idx
     ON api_proxy_models (model_id)
+  `);
+
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_pipelines_name_idx
+    ON api_proxy_pipelines (name)
   `);
 }

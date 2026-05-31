@@ -33,8 +33,9 @@ export async function prepareApiProxyProtocolGatewayRequest(input: {
   getTarget: (targetId: string) => ApiProxyTargetRecord | null;
   getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
   allowReadinessActions?: boolean | undefined;
+  targetIdOverride?: string | null | undefined;
 }): Promise<ApiProxyProtocolGatewayDecision> {
-  const targetId = input.request.model.targetId;
+  const targetId = input.targetIdOverride ?? input.request.model.targetId;
   if (!targetId) {
     return {
       ok: false,

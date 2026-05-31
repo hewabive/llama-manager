@@ -50,6 +50,7 @@ test("anthropicProtocolAdapter returns not implemented response", () => {
       enabled: true,
       ownedBy: "llama-manager",
       targetId: null,
+      routeTo: null,
       description: null,
       createdAt: "2026-05-30T10:00:00.000Z",
       updatedAt: "2026-05-30T10:00:00.000Z",

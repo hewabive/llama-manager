@@ -196,14 +196,20 @@ export function ApiLabView(props: {
 
     return catalog
       .filter((endpoint) => endpoint.enabled)
-      .map((endpoint) => ({
-        value: endpoint.id,
-        label: `${endpoint.name} (${endpoint.baseUrl})`,
-        baseUrl: endpoint.baseUrl,
-        endpointId: endpoint.id,
-        ...(endpoint.instanceId ? { instanceId: endpoint.instanceId } : {}),
-        kind: endpoint.kind,
-      }));
+      .map((endpoint) => {
+        const baseUrl =
+          endpoint.kind === "manager-proxy"
+            ? apiVersionBaseUrl(managerProxyRootUrl())
+            : endpoint.baseUrl;
+        return {
+          value: endpoint.id,
+          label: `${endpoint.name} (${baseUrl})`,
+          baseUrl,
+          endpointId: endpoint.id,
+          ...(endpoint.instanceId ? { instanceId: endpoint.instanceId } : {}),
+          kind: endpoint.kind,
+        };
+      });
   }, [props.instances, proxyQuery.data?.data.endpoints]);
   const targetOptions = useMemo(() => {
     const seen = new Set<string>();

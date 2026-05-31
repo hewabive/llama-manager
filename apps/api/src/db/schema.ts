@@ -184,9 +184,34 @@ export const apiProxyModels = sqliteTable("api_proxy_models", {
   targetId: text("target_id").references(() => apiProxyTargets.id, {
     onDelete: "set null",
   }),
+  routeToJson: text("route_to_json"),
   description: text("description"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+export const apiProxyPipelines = sqliteTable("api_proxy_pipelines", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  enabled: text("enabled").notNull(),
+  nodeType: text("node_type").notNull().default("replace-text"),
+  stepsJson: text("steps_json").notNull(),
+  routeToJson: text("route_to_json"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const apiProxyRequestLogs = sqliteTable("api_proxy_request_logs", {
+  id: text("id").primaryKey(),
+  protocol: text("protocol").notNull(),
+  endpoint: text("endpoint").notNull(),
+  routePath: text("route_path").notNull(),
+  modelId: text("model_id").notNull(),
+  targetId: text("target_id"),
+  requestBodyJson: text("request_body_json").notNull(),
+  transformedBodyJson: text("transformed_body_json").notNull(),
+  textReplacementCount: text("text_replacement_count").notNull(),
+  createdAt: text("created_at").notNull(),
 });
 
 export const apiProxyRuntimeMetadata = sqliteTable(

@@ -34,6 +34,16 @@ function endpointAuthLabel(endpoint: ApiEndpointRecord) {
   return endpoint.authType;
 }
 
+function endpointBaseUrl(endpoint: ApiEndpointRecord) {
+  if (endpoint.kind !== "manager-proxy") {
+    return endpoint.baseUrl;
+  }
+  if (typeof window === "undefined") {
+    return endpoint.baseUrl;
+  }
+  return new URL("/v1", window.location.origin).toString();
+}
+
 export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
   return (
     <Paper withBorder p="md" radius="sm">
@@ -76,7 +86,7 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
                   </Table.Td>
                   <Table.Td>{endpointKindLabel(endpoint)}</Table.Td>
                   <Table.Td>
-                    <Code>{endpoint.baseUrl}</Code>
+                    <Code>{endpointBaseUrl(endpoint)}</Code>
                   </Table.Td>
                   <Table.Td>
                     <Badge

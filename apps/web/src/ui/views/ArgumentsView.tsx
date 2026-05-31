@@ -26,6 +26,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { useMediaQuery } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Copy, Save, Star, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -371,6 +372,7 @@ function findOptionByRouteArg(
 
 export function ArgumentsView() {
   const queryClient = useQueryClient();
+  const isMobileList = useMediaQuery("(max-width: 48em)");
   const [routeParams, setRouteParams] = useState(() =>
     readArgumentHelpRouteParams(),
   );
@@ -384,6 +386,7 @@ export function ArgumentsView() {
   const [defaultValueDrafts, setDefaultValueDrafts] = useState<
     Record<string, string>
   >({});
+  const [docsSyncEnabled, setDocsSyncEnabled] = useState(false);
 
   const argsCatalogQuery = useQuery({
     queryKey: ["llama-args-reference"],
@@ -398,6 +401,7 @@ export function ArgumentsView() {
   const docsSyncQuery = useQuery({
     queryKey: ["llama-arg-docs-sync"],
     queryFn: () => getLlamaArgumentDocsSyncReport(),
+    enabled: docsSyncEnabled,
     retry: false,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -467,6 +471,15 @@ export function ArgumentsView() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (!argsCatalog || docsSyncEnabled) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setDocsSyncEnabled(true), 1_000);
+    return () => window.clearTimeout(timeout);
+  }, [argsCatalog, docsSyncEnabled]);
 
   useEffect(() => {
     const routeArg = routeParams.arg;
@@ -824,91 +837,97 @@ export function ArgumentsView() {
       <div className="args-reference-layout">
         <Paper withBorder p="sm" radius="sm" className="args-reference-list">
           <Stack gap="sm">
-            <Stack className="args-mobile-list" gap="xs">
-              {filteredOptions.map((option) => (
-                <Paper
-                  key={option.primaryName}
-                  withBorder
-                  p="xs"
-                  radius="sm"
-                  className={
-                    selectedOption?.primaryName === option.primaryName
-                      ? "mobile-card instance-card--selected"
-                      : "mobile-card"
-                  }
-                  onClick={() => selectArgument(option)}
-                >
-                  <Group className="argument-list-entry" gap="xs" wrap="nowrap">
-                    <Code className="argument-list-code">
-                      {option.primaryName}
-                    </Code>
-                    <ArgumentDefaultMarker
-                      defaults={argumentDefaults}
-                      option={option}
-                    />
-                  </Group>
-                </Paper>
-              ))}
-              {filteredOptions.length === 0 && (
-                <Paper withBorder p="md" radius="sm">
-                  <Text c="dimmed" ta="center">
-                    {argsCatalogQuery.isFetching
-                      ? "Loading arguments..."
-                      : "No matching arguments found"}
-                  </Text>
-                </Paper>
-              )}
-            </Stack>
-
-            <Table.ScrollContainer className="args-table" minWidth={220}>
-              <Table striped highlightOnHover verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Argument</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {filteredOptions.map((option) => (
-                    <Table.Tr
-                      key={option.primaryName}
-                      className={
-                        selectedOption?.primaryName === option.primaryName
-                          ? "argument-row selected-row"
-                          : "argument-row"
-                      }
-                      onClick={() => selectArgument(option)}
+            {isMobileList ? (
+              <Stack className="args-mobile-list" gap="xs">
+                {filteredOptions.map((option) => (
+                  <Paper
+                    key={option.primaryName}
+                    withBorder
+                    p="xs"
+                    radius="sm"
+                    className={
+                      selectedOption?.primaryName === option.primaryName
+                        ? "mobile-card instance-card--selected"
+                        : "mobile-card"
+                    }
+                    onClick={() => selectArgument(option)}
+                  >
+                    <Group
+                      className="argument-list-entry"
+                      gap="xs"
+                      wrap="nowrap"
                     >
-                      <Table.Td>
-                        <Group
-                          className="argument-list-entry"
-                          gap="xs"
-                          wrap="nowrap"
-                        >
-                          <Code className="argument-list-code">
-                            {option.primaryName}
-                          </Code>
-                          <ArgumentDefaultMarker
-                            defaults={argumentDefaults}
-                            option={option}
-                          />
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                  {filteredOptions.length === 0 && (
+                      <Code className="argument-list-code">
+                        {option.primaryName}
+                      </Code>
+                      <ArgumentDefaultMarker
+                        defaults={argumentDefaults}
+                        option={option}
+                      />
+                    </Group>
+                  </Paper>
+                ))}
+                {filteredOptions.length === 0 && (
+                  <Paper withBorder p="md" radius="sm">
+                    <Text c="dimmed" ta="center">
+                      {argsCatalogQuery.isFetching
+                        ? "Loading arguments..."
+                        : "No matching arguments found"}
+                    </Text>
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <Table.ScrollContainer className="args-table" minWidth={220}>
+                <Table striped highlightOnHover verticalSpacing="xs">
+                  <Table.Thead>
                     <Table.Tr>
-                      <Table.Td>
-                        <Text c="dimmed" ta="center" py="lg">
-                          {argsCatalogQuery.isFetching
-                            ? "Loading arguments..."
-                            : "No matching arguments found"}
-                        </Text>
-                      </Table.Td>
+                      <Table.Th>Argument</Table.Th>
                     </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {filteredOptions.map((option) => (
+                      <Table.Tr
+                        key={option.primaryName}
+                        className={
+                          selectedOption?.primaryName === option.primaryName
+                            ? "argument-row selected-row"
+                            : "argument-row"
+                        }
+                        onClick={() => selectArgument(option)}
+                      >
+                        <Table.Td>
+                          <Group
+                            className="argument-list-entry"
+                            gap="xs"
+                            wrap="nowrap"
+                          >
+                            <Code className="argument-list-code">
+                              {option.primaryName}
+                            </Code>
+                            <ArgumentDefaultMarker
+                              defaults={argumentDefaults}
+                              option={option}
+                            />
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                    {filteredOptions.length === 0 && (
+                      <Table.Tr>
+                        <Table.Td>
+                          <Text c="dimmed" ta="center" py="lg">
+                            {argsCatalogQuery.isFetching
+                              ? "Loading arguments..."
+                              : "No matching arguments found"}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
           </Stack>
         </Paper>
 

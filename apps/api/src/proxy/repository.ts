@@ -4,6 +4,13 @@ import {
   ApiProxyModelCreateSchema,
   ApiProxyModelRecordSchema,
   ApiProxyModelUpdateSchema,
+  ApiProxyPipelineCreateSchema,
+  ApiProxyPipelineConfigSchema,
+  ApiProxyPipelineNodeTypeSchema,
+  ApiProxyPipelineRecordSchema,
+  ApiProxyPipelineUpdateSchema,
+  ApiProxyRouteToSchema,
+  ApiProxyRequestLogRecordSchema,
   ApiProxyRouteConfigSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteRecordSchema,
@@ -17,6 +24,11 @@ import {
   type ApiProxyModelCreate,
   type ApiProxyModelRecord,
   type ApiProxyModelUpdate,
+  type ApiProxyPipelineCreate,
+  type ApiProxyPipelineRecord,
+  type ApiProxyPipelineUpdate,
+  type ApiProxyRouteTo,
+  type ApiProxyRequestLogRecord,
   type ApiProxyRouteCreate,
   type ApiProxyRouteRecord,
   type ApiProxyRouteUpdate,
@@ -27,10 +39,21 @@ import {
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
+import { config } from "../config.js";
 import { db } from "../db/index.js";
 import {
   apiProxyModels,
+  apiProxyPipelines,
+  apiProxyRequestLogs,
   apiProxyRoutes,
   apiProxyRuntimeMetadata,
   apiProxyTargets,
@@ -39,6 +62,8 @@ import {
 type TargetRow = typeof apiProxyTargets.$inferSelect;
 type RouteRow = typeof apiProxyRoutes.$inferSelect;
 type ModelRow = typeof apiProxyModels.$inferSelect;
+type PipelineRow = typeof apiProxyPipelines.$inferSelect;
+type RequestLogRow = typeof apiProxyRequestLogs.$inferSelect;
 type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
 
 function nowIso() {
@@ -74,6 +99,72 @@ function parseSlotIds(value: string) {
   } catch {
     return [];
   }
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function parseRouteTo(value: string | null): ApiProxyRouteTo | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = ApiProxyRouteToSchema.safeParse(parseJson(value));
+  return parsed.success ? parsed.data : null;
+}
+
+const requestLogsDir = resolve(config.dataDir, "proxy-requests");
+
+function requestLogFilePath(id: string, createdAt: string) {
+  const day = createdAt.slice(0, 10);
+  const timestamp = createdAt.replace(/[:.]/g, "-");
+  return resolve(requestLogsDir, day, `${timestamp}-${id}.json`);
+}
+
+function readRequestLogFile(path: string) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    return ApiProxyRequestLogRecordSchema.parse({
+      ...(parsed && typeof parsed === "object" ? parsed : {}),
+      filePath: path,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function listApiProxyRequestLogFiles() {
+  try {
+    const records: ApiProxyRequestLogRecord[] = [];
+    for (const day of readdirSync(requestLogsDir)) {
+      const dayDir = join(requestLogsDir, day);
+      if (!statSync(dayDir).isDirectory()) {
+        continue;
+      }
+      for (const file of readdirSync(dayDir)) {
+        if (!file.endsWith(".json")) {
+          continue;
+        }
+        const record = readRequestLogFile(join(dayDir, file));
+        if (record) {
+          records.push(record);
+        }
+      }
+    }
+    return records.sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function routeToText(value: ApiProxyRouteTo | null | undefined) {
+  return value ? JSON.stringify(value) : null;
 }
 
 function toTarget(row: TargetRow): ApiProxyTargetRecord {
@@ -116,7 +207,37 @@ function toModel(row: ModelRow): ApiProxyModelRecord {
     enabled: parseBool(row.enabled),
     ownedBy: row.ownedBy,
     targetId: row.targetId,
+    routeTo: parseRouteTo(row.routeToJson),
     description: row.description,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
+function toRequestLog(row: RequestLogRow): ApiProxyRequestLogRecord {
+  return ApiProxyRequestLogRecordSchema.parse({
+    id: row.id,
+    filePath: null,
+    protocol: row.protocol,
+    endpoint: row.endpoint,
+    routePath: row.routePath,
+    modelId: row.modelId,
+    targetId: row.targetId,
+    requestBody: parseJson(row.requestBodyJson),
+    transformedBody: parseJson(row.transformedBodyJson),
+    textReplacementCount: Number(row.textReplacementCount),
+    createdAt: row.createdAt,
+  });
+}
+
+function toPipeline(row: PipelineRow): ApiProxyPipelineRecord {
+  return ApiProxyPipelineRecordSchema.parse({
+    id: row.id,
+    name: row.name,
+    enabled: parseBool(row.enabled),
+    nodeType: ApiProxyPipelineNodeTypeSchema.parse(row.nodeType),
+    steps: parseJson(row.stepsJson) ?? [],
+    routeTo: parseRouteTo(row.routeToJson),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -166,6 +287,7 @@ function modelValues(input: ApiProxyModelCreate | ApiProxyModelRecord) {
     enabled: boolText(input.enabled),
     ownedBy: input.ownedBy,
     targetId: input.targetId,
+    routeToJson: routeToText(input.routeTo),
     description: input.description,
   };
 }
@@ -175,6 +297,16 @@ function runtimeMetadataValues(input: ApiProxyRuntimeMetadataRecord) {
     savedSlotIdsJson: JSON.stringify(input.savedSlotIds),
     lastRequestAt: input.lastRequestAt,
     updatedAt: input.updatedAt,
+  };
+}
+
+function pipelineValues(input: ApiProxyPipelineCreate | ApiProxyPipelineRecord) {
+  return {
+    name: input.name,
+    enabled: boolText(input.enabled),
+    nodeType: input.nodeType,
+    stepsJson: JSON.stringify(input.steps),
+    routeToJson: routeToText(input.routeTo),
   };
 }
 
@@ -208,6 +340,22 @@ export function listApiProxyModels(): ApiProxyModelRecord[] {
     .sort((left, right) => left.modelId.localeCompare(right.modelId));
 }
 
+export function listApiProxyPipelines(): ApiProxyPipelineRecord[] {
+  return db
+    .select()
+    .from(apiProxyPipelines)
+    .all()
+    .map(toPipeline)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function listApiProxyRequestLogs(
+  limit = 100,
+): ApiProxyRequestLogRecord[] {
+  const safeLimit = Math.max(0, Math.min(limit, 500));
+  return listApiProxyRequestLogFiles().slice(0, safeLimit);
+}
+
 export function getApiProxyTarget(id: string): ApiProxyTargetRecord | null {
   const row = db
     .select()
@@ -235,6 +383,15 @@ export function getApiProxyModel(id: string): ApiProxyModelRecord | null {
   return row ? toModel(row) : null;
 }
 
+export function getApiProxyPipeline(id: string): ApiProxyPipelineRecord | null {
+  const row = db
+    .select()
+    .from(apiProxyPipelines)
+    .where(eq(apiProxyPipelines.id, id))
+    .get();
+  return row ? toPipeline(row) : null;
+}
+
 export function getApiProxyModelByModelId(
   modelId: string,
 ): ApiProxyModelRecord | null {
@@ -249,6 +406,7 @@ export function getApiProxyModelByModelId(
 export function getApiProxyConfig(): ApiProxyConfig {
   return ApiProxyConfigSchema.parse({
     models: listApiProxyModels(),
+    pipelines: listApiProxyPipelines(),
     targets: listApiProxyTargets(),
     routes: listApiProxyRoutes(),
   });
@@ -301,6 +459,38 @@ export function saveApiProxyRuntimeMetadata(input: {
     throw new Error("failed to save API proxy runtime metadata");
   }
   return saved;
+}
+
+export function saveApiProxyRequestLog(input: {
+  protocol: ApiProxyRequestLogRecord["protocol"];
+  endpoint: string;
+  routePath: string;
+  modelId: string;
+  targetId: string | null;
+  requestBody: unknown;
+  transformedBody: unknown;
+  textReplacementCount: number;
+}): ApiProxyRequestLogRecord {
+  const id = randomUUID();
+  const timestamp = nowIso();
+  const filePath = requestLogFilePath(id, timestamp);
+  const record = ApiProxyRequestLogRecordSchema.parse({
+    id,
+    filePath,
+    protocol: input.protocol,
+    endpoint: input.endpoint,
+    routePath: input.routePath,
+    modelId: input.modelId,
+    targetId: input.targetId,
+    requestBody: input.requestBody,
+    transformedBody: input.transformedBody,
+    textReplacementCount: input.textReplacementCount,
+    createdAt: timestamp,
+  });
+
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  return record;
 }
 
 export function createApiProxyTarget(
@@ -379,6 +569,63 @@ export function deleteApiProxyModel(id: string): boolean {
   const result = db
     .delete(apiProxyModels)
     .where(eq(apiProxyModels.id, id))
+    .run();
+  return result.changes > 0;
+}
+
+export function createApiProxyPipeline(
+  input: ApiProxyPipelineCreate,
+): ApiProxyPipelineRecord {
+  const parsed = ApiProxyPipelineCreateSchema.parse(input);
+  const id = randomUUID();
+  const timestamp = nowIso();
+
+  db.insert(apiProxyPipelines)
+    .values({
+      id,
+      ...pipelineValues(parsed),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+
+  const created = getApiProxyPipeline(id);
+  if (!created) {
+    throw new Error("failed to create API proxy pipeline");
+  }
+  return created;
+}
+
+export function updateApiProxyPipeline(
+  id: string,
+  input: ApiProxyPipelineUpdate,
+): ApiProxyPipelineRecord | null {
+  const current = getApiProxyPipeline(id);
+  if (!current) {
+    return null;
+  }
+  const parsed = ApiProxyPipelineUpdateSchema.parse(input);
+  const next = ApiProxyPipelineConfigSchema.parse({
+    ...current,
+    ...parsed,
+    id: current.id,
+  });
+
+  db.update(apiProxyPipelines)
+    .set({
+      ...pipelineValues(next),
+      updatedAt: nowIso(),
+    })
+    .where(eq(apiProxyPipelines.id, id))
+    .run();
+
+  return getApiProxyPipeline(id);
+}
+
+export function deleteApiProxyPipeline(id: string): boolean {
+  const result = db
+    .delete(apiProxyPipelines)
+    .where(eq(apiProxyPipelines.id, id))
     .run();
   return result.changes > 0;
 }

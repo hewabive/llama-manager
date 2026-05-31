@@ -411,6 +411,7 @@ export const ApiProxyTargetKindSchema = z.enum([
 ]);
 
 export const ApiProxyTargetRoleSchema = z.enum(["interactive", "background"]);
+export const ApiProxyRouteToKindSchema = z.enum(["target", "pipeline"]);
 
 export const ApiProxyModelStateSchema = z.enum([
   "unknown",
@@ -435,6 +436,51 @@ const ApiProxyRoutePathPrefixSchema = z.string().min(1);
 const ApiProxyModelIdSchema = z.string().trim().min(1).max(500);
 const ApiProxyModelOwnerSchema = z.string().trim().min(1).max(80);
 const ApiProxyModelDescriptionSchema = z.string().trim().max(500).nullable();
+const ApiProxyReplacementTextSchema = z.string().max(2_000);
+
+export const ApiProxyRouteToSchema = z.object({
+  type: ApiProxyRouteToKindSchema,
+  id: ApiProxyIdSchema,
+});
+
+export const ApiProxyTextReplacementRuleSchema = z.object({
+  enabled: z.boolean().default(true),
+  find: z.string().min(1).max(2_000),
+  replace: ApiProxyReplacementTextSchema.default(""),
+});
+
+const ApiProxyPipelineStepNameSchema = z.string().trim().min(1).max(80);
+
+export const ApiProxyCaptureRequestStepConfigSchema = z.object({
+  includeTransformedBody: z.boolean().default(true),
+});
+
+export const ApiProxyReplaceTextStepConfigSchema = z.object({
+  rules: z.array(ApiProxyTextReplacementRuleSchema).max(50).default([]),
+});
+
+const ApiProxyPipelineStepBaseSchema = z.object({
+  id: ApiProxyIdSchema,
+  name: ApiProxyPipelineStepNameSchema,
+  enabled: z.boolean().default(true),
+});
+
+export const ApiProxyPipelineStepSchema = z.discriminatedUnion("type", [
+  ApiProxyPipelineStepBaseSchema.extend({
+    type: z.literal("capture-request"),
+    config: ApiProxyCaptureRequestStepConfigSchema,
+  }),
+  ApiProxyPipelineStepBaseSchema.extend({
+    type: z.literal("replace-text"),
+    config: ApiProxyReplaceTextStepConfigSchema,
+  }),
+]);
+
+const ApiProxyPipelineNameSchema = z.string().min(1).max(80);
+
+export const ApiProxyPipelineNodeTypeSchema = z
+  .enum(["save-request", "replace-text"])
+  .default("replace-text");
 
 export const ApiProxyTargetConfigSchema = z.object({
   id: ApiProxyIdSchema,
@@ -467,7 +513,17 @@ export const ApiProxyModelConfigSchema = z.object({
   enabled: z.boolean().default(false),
   ownedBy: ApiProxyModelOwnerSchema.default("llama-manager"),
   targetId: ApiProxyIdSchema.nullable().default(null),
+  routeTo: ApiProxyRouteToSchema.nullable().default(null),
   description: ApiProxyModelDescriptionSchema.default(null),
+});
+
+export const ApiProxyPipelineConfigSchema = z.object({
+  id: ApiProxyIdSchema,
+  name: ApiProxyPipelineNameSchema,
+  enabled: z.boolean().default(true),
+  nodeType: ApiProxyPipelineNodeTypeSchema,
+  steps: z.array(ApiProxyPipelineStepSchema).max(100).default([]),
+  routeTo: ApiProxyRouteToSchema.nullable().default(null),
 });
 
 export const ApiProxyTargetCreateSchema = ApiProxyTargetConfigSchema.omit({
@@ -505,12 +561,25 @@ export const ApiProxyModelCreateSchema = ApiProxyModelConfigSchema.omit({
   id: true,
 });
 
+export const ApiProxyPipelineCreateSchema = ApiProxyPipelineConfigSchema.omit({
+  id: true,
+});
+
 export const ApiProxyModelUpdateSchema = z.object({
   modelId: ApiProxyModelIdSchema.optional(),
   enabled: z.boolean().optional(),
   ownedBy: ApiProxyModelOwnerSchema.optional(),
   targetId: ApiProxyIdSchema.nullable().optional(),
+  routeTo: ApiProxyRouteToSchema.nullable().optional(),
   description: ApiProxyModelDescriptionSchema.optional(),
+});
+
+export const ApiProxyPipelineUpdateSchema = z.object({
+  name: ApiProxyPipelineNameSchema.optional(),
+  enabled: z.boolean().optional(),
+  nodeType: ApiProxyPipelineNodeTypeSchema.optional(),
+  steps: z.array(ApiProxyPipelineStepSchema).max(100).optional(),
+  routeTo: ApiProxyRouteToSchema.nullable().optional(),
 });
 
 export const ApiProxyTargetRecordSchema = ApiProxyTargetConfigSchema.extend({
@@ -528,11 +597,31 @@ export const ApiProxyModelRecordSchema = ApiProxyModelConfigSchema.extend({
   updatedAt: z.string(),
 });
 
+export const ApiProxyPipelineRecordSchema = ApiProxyPipelineConfigSchema.extend({
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 export const ApiProxyConfigSchema = z.object({
   models: z.array(ApiProxyModelRecordSchema),
+  pipelines: z.array(ApiProxyPipelineRecordSchema).default([]),
   targets: z.array(ApiProxyTargetRecordSchema),
   routes: z.array(ApiProxyRouteRecordSchema),
   endpoints: z.array(ApiEndpointRecordSchema).default([]),
+});
+
+export const ApiProxyRequestLogRecordSchema = z.object({
+  id: z.string(),
+  filePath: z.string().min(1).nullable().default(null),
+  protocol: z.enum(["openai", "anthropic"]),
+  endpoint: z.string().min(1),
+  routePath: z.string().min(1),
+  modelId: ApiProxyModelIdSchema,
+  targetId: ApiProxyIdSchema.nullable(),
+  requestBody: z.unknown(),
+  transformedBody: z.unknown(),
+  textReplacementCount: z.number().int().min(0),
+  createdAt: z.string(),
 });
 
 export const ApiProxyRuntimeMetadataRecordSchema = z.object({
@@ -1319,20 +1408,44 @@ export type ApiProbeResult = z.infer<typeof ApiProbeResultSchema>;
 export type ApiProxyTransformMode = z.infer<typeof ApiProxyTransformModeSchema>;
 export type ApiProxyTargetKind = z.infer<typeof ApiProxyTargetKindSchema>;
 export type ApiProxyTargetRole = z.infer<typeof ApiProxyTargetRoleSchema>;
+export type ApiProxyRouteToKind = z.infer<typeof ApiProxyRouteToKindSchema>;
 export type ApiProxyModelState = z.infer<typeof ApiProxyModelStateSchema>;
+export type ApiProxyRouteTo = z.infer<typeof ApiProxyRouteToSchema>;
+export type ApiProxyTextReplacementRule = z.infer<
+  typeof ApiProxyTextReplacementRuleSchema
+>;
+export type ApiProxyPipelineStep = z.infer<typeof ApiProxyPipelineStepSchema>;
+export type ApiProxyPipelineNodeType = z.infer<
+  typeof ApiProxyPipelineNodeTypeSchema
+>;
 export type ApiProxyTargetConfig = z.infer<typeof ApiProxyTargetConfigSchema>;
 export type ApiProxyRouteConfig = z.infer<typeof ApiProxyRouteConfigSchema>;
 export type ApiProxyTargetCreate = z.infer<typeof ApiProxyTargetCreateSchema>;
 export type ApiProxyTargetUpdate = z.infer<typeof ApiProxyTargetUpdateSchema>;
 export type ApiProxyRouteCreate = z.infer<typeof ApiProxyRouteCreateSchema>;
 export type ApiProxyRouteUpdate = z.infer<typeof ApiProxyRouteUpdateSchema>;
+export type ApiProxyPipelineConfig = z.infer<
+  typeof ApiProxyPipelineConfigSchema
+>;
+export type ApiProxyPipelineCreate = z.infer<
+  typeof ApiProxyPipelineCreateSchema
+>;
+export type ApiProxyPipelineUpdate = z.infer<
+  typeof ApiProxyPipelineUpdateSchema
+>;
 export type ApiProxyModelConfig = z.infer<typeof ApiProxyModelConfigSchema>;
 export type ApiProxyModelCreate = z.infer<typeof ApiProxyModelCreateSchema>;
 export type ApiProxyModelUpdate = z.infer<typeof ApiProxyModelUpdateSchema>;
 export type ApiProxyTargetRecord = z.infer<typeof ApiProxyTargetRecordSchema>;
 export type ApiProxyRouteRecord = z.infer<typeof ApiProxyRouteRecordSchema>;
+export type ApiProxyPipelineRecord = z.infer<
+  typeof ApiProxyPipelineRecordSchema
+>;
 export type ApiProxyModelRecord = z.infer<typeof ApiProxyModelRecordSchema>;
 export type ApiProxyConfig = z.infer<typeof ApiProxyConfigSchema>;
+export type ApiProxyRequestLogRecord = z.infer<
+  typeof ApiProxyRequestLogRecordSchema
+>;
 export type ApiProxyRuntimeMetadataRecord = z.infer<
   typeof ApiProxyRuntimeMetadataRecordSchema
 >;

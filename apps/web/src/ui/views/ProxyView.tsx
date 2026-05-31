@@ -1,6 +1,8 @@
 import type {
   ApiProxyModelCreate,
   ApiProxyModelRecord,
+  ApiProxyPipelineCreate,
+  ApiProxyPipelineRecord,
   ApiProxyPlanPreviewRequest,
   ApiProxyRouteCreate,
   ApiProxyRouteRecord,
@@ -14,9 +16,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createApiProxyModel,
+  createApiProxyPipeline,
   createApiProxyRoute,
   createApiProxyTarget,
   deleteApiProxyModel,
+  deleteApiProxyPipeline,
   deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
@@ -24,15 +28,19 @@ import {
   listInstances,
   previewApiProxyPlan,
   updateApiProxyModel,
+  updateApiProxyPipeline,
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "../../api/client";
 import {
   emptyModelDraft,
+  emptyPipelineDraft,
   emptyRouteDraft,
   emptyTargetDraft,
   modelDraftFromRecord,
   modelPayload,
+  pipelineDraftFromRecord,
+  pipelinePayload,
   routeDraftFromRecord,
   routePayload,
   targetDraftFromRecord,
@@ -40,6 +48,8 @@ import {
   unboundTargetValue,
   type ModelDraft,
   type ModelEditor,
+  type PipelineDraft,
+  type PipelineEditor,
   type RouteDraft,
   type RouteEditor,
   type TargetDraft,
@@ -47,11 +57,13 @@ import {
 } from "../proxy/forms";
 import {
   ModelEditorModal,
+  PipelineEditorModal,
   RouteEditorModal,
   TargetEditorModal,
 } from "../proxy/editors";
 import {
   ExternalModelsSection,
+  PipelinesSection,
   ProxyHeader,
   ProxyRoutesSection,
   ProxyTargetsSection,
@@ -66,6 +78,10 @@ export function ProxyView() {
   const [modelEditor, setModelEditor] = useState<ModelEditor | null>(null);
   const [modelDraftState, setModelDraftState] =
     useState<ModelDraft>(emptyModelDraft);
+  const [pipelineEditor, setPipelineEditor] =
+    useState<PipelineEditor | null>(null);
+  const [pipelineDraftState, setPipelineDraftState] =
+    useState<PipelineDraft>(emptyPipelineDraft);
   const [routeEditor, setRouteEditor] = useState<RouteEditor | null>(null);
   const [routeDraftState, setRouteDraftState] =
     useState<RouteDraft>(emptyRouteDraft);
@@ -88,6 +104,7 @@ export function ProxyView() {
 
   const config = proxyQuery.data?.data;
   const models = config?.models ?? [];
+  const pipelines = config?.pipelines ?? [];
   const targets = config?.targets ?? [];
   const routes = config?.routes ?? [];
   const endpoints = config?.endpoints ?? [];
@@ -98,6 +115,10 @@ export function ProxyView() {
   const targetById = useMemo(
     () => new Map(targets.map((target) => [target.id, target])),
     [targets],
+  );
+  const pipelineById = useMemo(
+    () => new Map(pipelines.map((pipeline) => [pipeline.id, pipeline])),
+    [pipelines],
   );
   const routeCountByTargetId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -128,9 +149,16 @@ export function ProxyView() {
     value: target.id,
     label: target.name,
   }));
-  const modelTargetOptions = [
+  const routeToOptions = [
     { value: unboundTargetValue, label: "Unbound" },
-    ...targetOptions,
+    ...pipelines.map((pipeline) => ({
+      value: `pipeline:${pipeline.id}`,
+      label: `Node: ${pipeline.name}`,
+    })),
+    ...targets.map((target) => ({
+      value: `target:${target.id}`,
+      label: `Target: ${target.name}`,
+    })),
   ];
   const runtimeByTargetId = useMemo(
     () =>
@@ -223,6 +251,63 @@ export function ProxyView() {
       notifications.show({
         color: "red",
         title: "Proxy model delete failed",
+        message: (error as Error).message,
+      }),
+  });
+
+  const createPipelineMutation = useMutation({
+    mutationFn: createApiProxyPipeline,
+    onSuccess: async () => {
+      await invalidateProxy();
+      closePipelineEditor();
+      notifications.show({
+        title: "Node saved",
+        message: "Processing node was saved.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Node save failed",
+        message: (error as Error).message,
+      }),
+  });
+  const updatePipelineMutation = useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: ApiProxyPipelineCreate;
+    }) => updateApiProxyPipeline(id, input),
+    onSuccess: async () => {
+      await invalidateProxy();
+      closePipelineEditor();
+      notifications.show({
+        title: "Node updated",
+        message: "Processing node configuration was saved.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Node update failed",
+        message: (error as Error).message,
+      }),
+  });
+  const deletePipelineMutation = useMutation({
+    mutationFn: deleteApiProxyPipeline,
+    onSuccess: async () => {
+      await invalidateProxy();
+      notifications.show({
+        title: "Node deleted",
+        message: "Processing node was removed.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Node delete failed",
         message: (error as Error).message,
       }),
   });
@@ -364,6 +449,24 @@ export function ProxyView() {
     setModelDraftState(emptyModelDraft);
   }
 
+  function openCreatePipeline() {
+    setPipelineEditor({ mode: "create", pipeline: null });
+    setPipelineDraftState({
+      ...emptyPipelineDraft,
+      routeToValue: targets[0] ? `target:${targets[0].id}` : null,
+    });
+  }
+
+  function openEditPipeline(pipeline: ApiProxyPipelineRecord) {
+    setPipelineEditor({ mode: "edit", pipeline });
+    setPipelineDraftState(pipelineDraftFromRecord(pipeline));
+  }
+
+  function closePipelineEditor() {
+    setPipelineEditor(null);
+    setPipelineDraftState(emptyPipelineDraft);
+  }
+
   function openCreateRoute() {
     setRouteEditor({ mode: "create", route: null });
     setRouteDraftState({
@@ -400,6 +503,18 @@ export function ProxyView() {
     createModelMutation.mutate(input);
   }
 
+  function savePipeline() {
+    const input = pipelinePayload(pipelineDraftState);
+    if (pipelineEditor?.mode === "edit") {
+      updatePipelineMutation.mutate({
+        id: pipelineEditor.pipeline.id,
+        input,
+      });
+      return;
+    }
+    createPipelineMutation.mutate(input);
+  }
+
   function saveRoute() {
     const input = routePayload(routeDraftState);
     if (routeEditor?.mode === "edit") {
@@ -421,6 +536,8 @@ export function ProxyView() {
     createTargetMutation.isPending || updateTargetMutation.isPending;
   const modelBusy =
     createModelMutation.isPending || updateModelMutation.isPending;
+  const pipelineBusy =
+    createPipelineMutation.isPending || updatePipelineMutation.isPending;
   const routeBusy =
     createRouteMutation.isPending || updateRouteMutation.isPending;
 
@@ -428,19 +545,31 @@ export function ProxyView() {
     <Stack gap="md">
       <ProxyHeader
         modelsCount={models.length}
+        pipelinesCount={pipelines.length}
         targetsCount={targets.length}
         routesCount={routes.length}
         onAddModel={openCreateModel}
+        onAddPipeline={openCreatePipeline}
         onAddTarget={openCreateTarget}
         onAddRoute={openCreateRoute}
       />
 
       <ExternalModelsSection
         models={models}
+        pipelineById={pipelineById}
         targetById={targetById}
         deletePending={deleteModelMutation.isPending}
         onEdit={openEditModel}
         onDelete={(id) => deleteModelMutation.mutate(id)}
+      />
+
+      <PipelinesSection
+        pipelines={pipelines}
+        pipelineById={pipelineById}
+        targetById={targetById}
+        deletePending={deletePipelineMutation.isPending}
+        onEdit={openEditPipeline}
+        onDelete={(id) => deletePipelineMutation.mutate(id)}
       />
 
       <ProxyTargetsSection
@@ -476,11 +605,21 @@ export function ProxyView() {
       <ModelEditorModal
         editor={modelEditor}
         draft={modelDraftState}
-        targetOptions={modelTargetOptions}
+        routeToOptions={routeToOptions}
         busy={modelBusy}
         onClose={closeModelEditor}
         onSave={saveModel}
         onDraftChange={setModelDraftState}
+      />
+
+      <PipelineEditorModal
+        editor={pipelineEditor}
+        draft={pipelineDraftState}
+        routeToOptions={routeToOptions}
+        busy={pipelineBusy}
+        onClose={closePipelineEditor}
+        onSave={savePipeline}
+        onDraftChange={setPipelineDraftState}
       />
 
       <TargetEditorModal

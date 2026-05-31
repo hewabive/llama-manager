@@ -99,7 +99,7 @@ function health(
     status?: InstanceHealthSummary["status"];
     healthOk?: boolean;
     healthStatus?: number | null;
-    modelStatus?: string;
+    modelStatus?: string | null;
     processing?: boolean;
     canStart?: boolean;
   } = {},
@@ -141,7 +141,9 @@ function health(
         data: [
           {
             id: "chat",
-            status: { value: input.modelStatus ?? "loaded" },
+            ...(input.modelStatus === null
+              ? {}
+              : { status: { value: input.modelStatus ?? "loaded" } }),
           },
         ],
       }),
@@ -222,6 +224,28 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
   assert.equal(busy.targets[0]?.activeRequests, 1);
   assert.equal(busy.targets[0]?.idleSince, null);
   assert.equal(busy.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
+});
+
+test("buildApiProxyRuntimeSnapshot treats listed models without status as idle", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([
+      [
+        "instance-a",
+        health({
+          status: "stale",
+          modelStatus: null,
+        }),
+      ],
+    ]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "idle");
 });
 
 test("buildApiProxyRuntimeSnapshot carries saved slot ids for scheduler planning", () => {

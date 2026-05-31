@@ -10,6 +10,7 @@ import {
   Stack,
   Switch,
   Text,
+  Textarea,
   TextInput,
 } from "@mantine/core";
 import { Save } from "lucide-react";
@@ -20,6 +21,8 @@ import { useApiModelOptions } from "../hooks/use-api-model-options";
 import type {
   ModelDraft,
   ModelEditor,
+  PipelineDraft,
+  PipelineEditor,
   RouteDraft,
   RouteEditor,
   TargetDraft,
@@ -31,7 +34,7 @@ import type { SelectOption } from "./sections";
 type ModelEditorModalProps = {
   editor: ModelEditor | null;
   draft: ModelDraft;
-  targetOptions: SelectOption[];
+  routeToOptions: SelectOption[];
   busy: boolean;
   onClose: () => void;
   onSave: () => void;
@@ -51,14 +54,6 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
       size="lg"
     >
       <Stack gap="sm">
-        <Switch
-          label="Enabled"
-          checked={props.draft.enabled}
-          onChange={(event) => {
-            const enabled = event.currentTarget.checked;
-            props.onDraftChange({ ...props.draft, enabled });
-          }}
-        />
         <TextInput
           label="Model ID"
           placeholder="Public model id for /v1/models"
@@ -77,14 +72,15 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
           }}
         />
         <Select
-          label="Target"
-          data={props.targetOptions}
-          value={props.draft.targetId ?? unboundTargetValue}
+          label="Route to"
+          data={props.routeToOptions}
+          value={props.draft.routeToValue ?? unboundTargetValue}
           searchable
           onChange={(value) =>
             props.onDraftChange({
               ...props.draft,
-              targetId: !value || value === unboundTargetValue ? null : value,
+              routeToValue:
+                !value || value === unboundTargetValue ? null : value,
             })
           }
         />
@@ -103,6 +99,104 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
           <Button
             leftSection={<Save size={16} />}
             loading={props.busy}
+            disabled={!props.draft.modelId.trim() || !props.draft.routeToValue}
+            onClick={props.onSave}
+          >
+            Save
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+type PipelineEditorModalProps = {
+  editor: PipelineEditor | null;
+  draft: PipelineDraft;
+  routeToOptions: SelectOption[];
+  busy: boolean;
+  onClose: () => void;
+  onSave: () => void;
+  onDraftChange: (draft: PipelineDraft) => void;
+};
+
+export function PipelineEditorModal(props: PipelineEditorModalProps) {
+  return (
+    <Modal
+      opened={Boolean(props.editor)}
+      onClose={props.onClose}
+      title={
+        props.editor?.mode === "edit"
+          ? `Edit ${props.editor.pipeline.name}`
+          : "Add processing node"
+      }
+      size="lg"
+    >
+      <Stack gap="sm">
+        <Switch
+          label="Enabled"
+          checked={props.draft.enabled}
+          onChange={(event) => {
+            const enabled = event.currentTarget.checked;
+            props.onDraftChange({ ...props.draft, enabled });
+          }}
+        />
+        <TextInput
+          label="Name"
+          value={props.draft.name}
+          onChange={(event) => {
+            const name = event.currentTarget.value;
+            props.onDraftChange({ ...props.draft, name });
+          }}
+        />
+        <Select
+          label="Node type"
+          data={[
+            { value: "save-request", label: "Save request" },
+            { value: "replace-text", label: "Replacement" },
+          ]}
+          value={props.draft.nodeType}
+          onChange={(value) => {
+            props.onDraftChange({
+              ...props.draft,
+              nodeType: (value ?? "replace-text") as PipelineDraft["nodeType"],
+            });
+          }}
+        />
+        {props.draft.nodeType === "replace-text" && (
+          <Textarea
+            autosize
+            minRows={3}
+            label="Text replacements"
+            placeholder={"old text => new text\nremove me =>"}
+            value={props.draft.textReplacements}
+            onChange={(event) => {
+              const textReplacements = event.currentTarget.value;
+              props.onDraftChange({ ...props.draft, textReplacements });
+            }}
+          />
+        )}
+        <Select
+          label="Route to"
+          data={props.routeToOptions}
+          value={props.draft.routeToValue ?? unboundTargetValue}
+          searchable
+          onChange={(value) =>
+            props.onDraftChange({
+              ...props.draft,
+              routeToValue:
+                !value || value === unboundTargetValue ? null : value,
+            })
+          }
+        />
+        <Group justify="flex-end">
+          <Button variant="subtle" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button
+            leftSection={<Save size={16} />}
+            loading={props.busy}
+            disabled={!props.draft.name.trim() || !props.draft.routeToValue}
             onClick={props.onSave}
           >
             Save

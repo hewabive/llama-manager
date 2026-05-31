@@ -70,7 +70,10 @@ function modelStatusFromProbe(
   if (status?.failed === true) {
     return "failed";
   }
-  return typeof status?.value === "string" ? status.value.toLowerCase() : null;
+  if (typeof status?.value === "string") {
+    return status.value.toLowerCase();
+  }
+  return probe?.ok ? "loaded" : null;
 }
 
 function modelScopedSlots(
