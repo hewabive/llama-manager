@@ -8,9 +8,11 @@ import type {
 import {
   ActionIcon,
   Badge,
+  Box,
   Button,
   Code,
   Group,
+  Loader,
   Paper,
   Select,
   Stack,
@@ -216,7 +218,22 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
         <Group justify="space-between" align="center" wrap="wrap">
-          <Text fw={600}>Proxy targets</Text>
+          <Group gap={6} align="center">
+            <Text fw={600}>Proxy targets</Text>
+            <Tooltip label="Refreshing runtime state">
+              <Box
+                h={16}
+                w={16}
+                style={{
+                  alignItems: "center",
+                  display: "inline-flex",
+                  justifyContent: "center",
+                }}
+              >
+                {props.runtimeRefreshing && <Loader size={12} />}
+              </Box>
+            </Tooltip>
+          </Group>
           <Text c="dimmed" size="sm">
             Targets describe which instance/model can receive proxied traffic.
           </Text>
@@ -296,11 +313,6 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                           >
                             {runtime?.state ?? "unknown"}
                           </Badge>
-                          {props.runtimeRefreshing && (
-                            <Badge color="gray" variant="outline">
-                              refreshing
-                            </Badge>
-                          )}
                         </Group>
                         {runtimeDetails(runtime).map((detail) => (
                           <Text key={detail} c="dimmed" size="xs">
