@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 
 import { config } from "../config.js";
 import { db } from "../db/index.js";
-import { llamaBuildSettings, llamaSourceSettings } from "../db/schema.js";
+import { llamaSourceSettings } from "../db/schema.js";
 
 const SETTINGS_ID = "default";
 
@@ -36,15 +36,6 @@ function toLlamaSourceSettings(
   });
 }
 
-function buildSettingsRepoPathFallback() {
-  const row = db
-    .select({ repoPath: llamaBuildSettings.repoPath })
-    .from(llamaBuildSettings)
-    .where(eq(llamaBuildSettings.id, SETTINGS_ID))
-    .get();
-  return row?.repoPath ?? null;
-}
-
 export function getLlamaSourceSettings(): LlamaSourceSettings {
   const row = db
     .select()
@@ -55,8 +46,13 @@ export function getLlamaSourceSettings(): LlamaSourceSettings {
     return toLlamaSourceSettings(row);
   }
 
+  const defaultPath = defaultLlamaSourceRepoPath();
+  if (existsSync(defaultPath)) {
+    return saveLlamaSourceSettings({ repoPath: defaultPath });
+  }
+
   return LlamaSourceSettingsSchema.parse({
-    repoPath: buildSettingsRepoPathFallback() ?? defaultLlamaSourceRepoPath(),
+    repoPath: defaultPath,
     updatedAt: null,
   });
 }
@@ -107,6 +103,24 @@ export function getLlamaSourceCurrentCommit(): string | null {
     return runGit(settings.repoPath, ["rev-parse", "HEAD"]) || null;
   } catch {
     return null;
+  }
+}
+
+export function getLlamaSourceVersionLabel(
+  repoPath = getLlamaSourceSettings().repoPath,
+): string | null {
+  if (!existsSync(repoPath)) {
+    return null;
+  }
+
+  try {
+    return runGit(repoPath, ["describe", "--tags", "--abbrev=0"]) || null;
+  } catch {
+    try {
+      return runGit(repoPath, ["rev-parse", "--short", "HEAD"]) || null;
+    } catch {
+      return null;
+    }
   }
 }
 

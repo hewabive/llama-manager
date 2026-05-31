@@ -241,7 +241,7 @@ export function BuildView() {
     ...(runUiRebuild ? ["Rebuild embedded UI assets"] : []),
     ...(runCleanBuildDir ? ["Clean build directory"] : []),
     ...(runConfigure ? ["Configure CMake"] : []),
-    ...(runBuild ? [`Build ${target || "target"}`] : []),
+    ...(runBuild ? [`Build ${target.trim() || "all targets"}`] : []),
   ];
   const canStartJob = settingsReady && selectedSteps.length > 0 && !runningJob;
 
@@ -481,6 +481,8 @@ export function BuildView() {
           />
           <TextInput
             label="Target"
+            placeholder="all targets"
+            description="Leave empty to build everything (cmake --build without --target)."
             value={target}
             disabled={!settingsReady}
             onChange={(event) =>
@@ -554,7 +556,7 @@ export function BuildView() {
             />
             <BuildSwitch
               label="Build target"
-              tooltip="Runs cmake --build for the selected target."
+              tooltip="Runs cmake --build for the selected target, or all targets when Target is empty."
               checked={runBuild}
               onChange={setRunBuild}
             />

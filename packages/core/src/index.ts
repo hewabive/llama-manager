@@ -910,7 +910,7 @@ export const BuildSettingsSchema = z.object({
   llguidance: CmakeBooleanModeSchema.default("default"),
   extraCmakeArgs: z.array(z.string()),
   env: z.record(z.string(), z.string()).default({}),
-  target: z.string().min(1),
+  target: z.string(),
   parallelJobs: z.number().int().positive().max(256).nullable(),
 });
 

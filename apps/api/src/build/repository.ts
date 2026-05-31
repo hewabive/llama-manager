@@ -6,17 +6,26 @@ import {
   type BuildJobStepName,
   type BuildJobStatus,
   type BuildSettings,
+  type PathCatalogEntry,
 } from "@llama-manager/core";
 import { desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
+import { config } from "../config.js";
+import { isCudaToolkitAvailable } from "./cuda.js";
 import { db } from "../db/index.js";
 import { llamaBuildJobs, llamaBuildSettings } from "../db/schema.js";
 import {
   getLlamaSourceSettings,
+  getLlamaSourceVersionLabel,
   saveLlamaSourceSettings,
 } from "../llama/source-repository.js";
+import {
+  createPathCatalogEntry,
+  listPathCatalogEntries,
+  updatePathCatalogEntry,
+} from "../path-catalog/repository.js";
 
 const SETTINGS_ID = "default";
 
@@ -32,10 +41,10 @@ function defaultSettings(
 ): BuildSettings {
   return {
     repoPath,
-    buildDir: resolve(repoPath, "build-cuda"),
+    buildDir: resolve(config.buildsDir, "build"),
     buildType: "Release",
     buildProfile: "server",
-    cuda: true,
+    cuda: isCudaToolkitAvailable(),
     native: true,
     cudaArchitectures: null,
     cudaFaAllQuants: false,
@@ -152,6 +161,42 @@ export function saveBuildSettings(input: BuildSettings): BuildSettings {
   }
 
   return getBuildSettings();
+}
+
+function uniqueBinaryName(desired: string, excludeId: string | null): string {
+  const taken = new Set(
+    listPathCatalogEntries("binary")
+      .filter((entry) => entry.id !== excludeId)
+      .map((entry) => entry.name),
+  );
+  if (!taken.has(desired)) {
+    return desired;
+  }
+  for (let suffix = 2; ; suffix += 1) {
+    const tag = ` #${suffix}`;
+    const candidate = `${desired.slice(0, 80 - tag.length)}${tag}`;
+    if (!taken.has(candidate)) {
+      return candidate;
+    }
+  }
+}
+
+export function registerBuiltBinaryInCatalog(
+  binaryPath: string,
+  repoPath: string,
+): PathCatalogEntry {
+  const version = getLlamaSourceVersionLabel(repoPath);
+  const base = basename(binaryPath);
+  const desired = (version ? `${base} (${version})` : base).slice(0, 80);
+  const existing = listPathCatalogEntries("binary").find(
+    (entry) => entry.path === binaryPath,
+  );
+  if (existing) {
+    const name = uniqueBinaryName(desired, existing.id);
+    return updatePathCatalogEntry(existing.id, { name }) ?? existing;
+  }
+  const name = uniqueBinaryName(desired, null);
+  return createPathCatalogEntry({ kind: "binary", name, path: binaryPath });
 }
 
 export function createBuildJob(input: {

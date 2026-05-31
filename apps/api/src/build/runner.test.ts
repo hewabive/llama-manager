@@ -100,6 +100,42 @@ test("buildSteps applies server build profile CMake definitions", () => {
   assert.ok(configure.command.includes("-DLLAMA_BUILD_SERVER=ON"));
 });
 
+test("buildSteps omits --target when target is empty", () => {
+  const [build] = buildSteps(
+    { ...settings({}), target: "" },
+    {
+      pull: false,
+      installUiDeps: false,
+      cleanBuildDir: false,
+      configure: false,
+      build: true,
+    },
+    {},
+  );
+
+  assert.equal(build?.name, "build");
+  assert.ok(!build.command.includes("--target"));
+});
+
+test("buildSteps passes --target when target is set", () => {
+  const [build] = buildSteps(
+    { ...settings({}), target: "llama-cli" },
+    {
+      pull: false,
+      installUiDeps: false,
+      cleanBuildDir: false,
+      configure: false,
+      build: true,
+    },
+    {},
+  );
+
+  assert.equal(build?.name, "build");
+  const targetIndex = build.command.indexOf("--target");
+  assert.ok(targetIndex >= 0);
+  assert.equal(build.command[targetIndex + 1], "llama-cli");
+});
+
 test("buildSteps applies selected CUDA and optional CMake definitions", () => {
   const [configure] = buildSteps(
     {

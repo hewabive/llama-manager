@@ -1,0 +1,46 @@
+import { strict as assert } from "node:assert";
+import test from "node:test";
+
+import { listPathCatalogEntries } from "../path-catalog/repository.js";
+import { registerBuiltBinaryInCatalog } from "./repository.js";
+
+test("registerBuiltBinaryInCatalog creates a binary catalog entry", () => {
+  const entry = registerBuiltBinaryInCatalog(
+    "/opt/created/bin/llama-server",
+    "/path/that/does/not/exist",
+  );
+
+  assert.equal(entry.kind, "binary");
+  assert.equal(entry.path, "/opt/created/bin/llama-server");
+  assert.equal(entry.name, "llama-server");
+});
+
+test("registerBuiltBinaryInCatalog deduplicates by path", () => {
+  const path = "/opt/idempotent/bin/llama-server";
+  const first = registerBuiltBinaryInCatalog(path, "/path/that/does/not/exist");
+  const second = registerBuiltBinaryInCatalog(
+    path,
+    "/path/that/does/not/exist",
+  );
+
+  assert.equal(first.id, second.id);
+  const matches = listPathCatalogEntries("binary").filter(
+    (entry) => entry.path === path,
+  );
+  assert.equal(matches.length, 1);
+});
+
+test("registerBuiltBinaryInCatalog disambiguates colliding names", () => {
+  const a = registerBuiltBinaryInCatalog(
+    "/opt/collide-a/bin/llama-cli",
+    "/path/that/does/not/exist",
+  );
+  const b = registerBuiltBinaryInCatalog(
+    "/opt/collide-b/bin/llama-cli",
+    "/path/that/does/not/exist",
+  );
+
+  assert.equal(a.name, "llama-cli");
+  assert.notEqual(a.name, b.name);
+  assert.notEqual(a.id, b.id);
+});

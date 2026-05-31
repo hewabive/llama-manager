@@ -55,6 +55,8 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 ## Conventions
 
+- **Keep this file token-dense.** Write CLAUDE.md tersely — every line must earn its tokens. Don't pad with restated context, examples already obvious from code, or motivational prose. Prefer editing/tightening an existing line over appending a new one; remove what's stale.
+- **No code comments — categorical.** Do not write comments in source code (no `//`, `/* */`, JSDoc, or block banners). Code must be self-documenting: express intent through clear names, small functions, and types. If something genuinely needs explanation (non-obvious rationale, design constraints, gotchas), put it in a dedicated document under `docs/` and reference that doc from the relevant code path's surrounding documentation — never inline. This overrides any default tendency to add explanatory comments.
 - **React event captures**: `pnpm check:events` (part of `pnpm check`) fails the build if `event.currentTarget`/`event.target` from an outer handler is referenced inside a nested callback (setState updater, timer, promise). Read the value into a local first.
 - TypeScript is strict with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` — index access yields `T | undefined`, and optional properties must be omitted rather than set to `undefined`.
 - Realtime: prefer SSE (Hono `streamSSE`); WebSocket only for bidirectional terminal-like control.
@@ -63,6 +65,7 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 - `data/llama-manager.db` (WAL): instance definitions, process-run metadata, proxy config, argument catalogs. `llama_source_settings` holds the canonical local llama.cpp repo path used by build and docs-sync.
 - `runtime/logs/`: managed-process stdout/stderr.
-- Paths overridable via `LLAMA_MANAGER_HOME`, `LLAMA_MANAGER_DATA_DIR`, `LLAMA_MANAGER_RUNTIME_DIR`, `LLAMA_MANAGER_LOGS_DIR`; host/port via `LLAMA_MANAGER_HOST`/`LLAMA_MANAGER_PORT`.
+- `runtime/builds/`: llama.cpp CMake build trees (default `runtime/builds/build`). Build output lives here — **outside the llama.cpp checkout** — so source builds never touch the source tree; the build runner reads/writes binaries relative to this `buildDir`. The default `cuda` flag in `defaultSettings()` is auto-detected via `isCudaToolkitAvailable()` (`build/cuda.ts`, which locates `nvcc`) — off when no CUDA toolkit is present. On a successful build the produced binary is auto-registered into the path catalog (kind `binary`) named `<binary> (<latest reachable tag>)`, deduped by path (`registerBuiltBinaryInCatalog`).
+- Paths overridable via `LLAMA_MANAGER_HOME`, `LLAMA_MANAGER_DATA_DIR`, `LLAMA_MANAGER_RUNTIME_DIR`, `LLAMA_MANAGER_LOGS_DIR`, `LLAMA_MANAGER_BUILDS_DIR`; host/port via `LLAMA_MANAGER_HOST`/`LLAMA_MANAGER_PORT`.
 - Admin auth is **off by default** (admin routes open for local dev). Enable with `LLAMA_MANAGER_ADMIN_PASSWORD` or `..._ADMIN_PASSWORD_HASH` (`scrypt$...`); related: `..._AUTH_SECRET`, `..._SECURE_COOKIE`, `..._SESSION_TTL_SECONDS`. The default `/#/status` route is a public, redacted diagnostics page.
 - Shutdown: `LLAMA_MANAGER_STOP_MANAGED_ON_EXIT=false` leaves children running (reconciled as stale next start); `LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS` (default 10000).

@@ -13,24 +13,17 @@ import {
   rmSync,
   type WriteStream,
 } from "node:fs";
-import {
-  basename,
-  delimiter,
-  dirname,
-  isAbsolute,
-  join,
-  parse,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, delimiter, dirname, parse, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import type { Readable } from "node:stream";
 
 import { config } from "../config.js";
+import { findNvcc } from "./cuda.js";
 import {
   createBuildJob,
   getBuildJob,
   getBuildSettings,
+  registerBuiltBinaryInCatalog,
   saveBuildSettings,
   updateBuildJob,
 } from "./repository.js";
@@ -58,74 +51,6 @@ function step(name: BuildJobStepName, command: string[]): BuildJobStep {
 
 function uiDirectory(settings: BuildSettings) {
   return resolve(settings.repoPath, "tools", "ui");
-}
-
-function executableName(name: string) {
-  if (process.platform === "win32" && !/\.(?:bat|cmd|exe)$/i.test(name)) {
-    return `${name}.exe`;
-  }
-  return name;
-}
-
-function findExecutableInPath(name: string, pathValue: string | undefined) {
-  if (!pathValue) {
-    return null;
-  }
-
-  for (const directory of pathValue.split(delimiter)) {
-    if (!directory) {
-      continue;
-    }
-    const candidate = resolve(directory, executableName(name));
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function resolveExecutable(value: string, env: NodeJS.ProcessEnv) {
-  if (isAbsolute(value)) {
-    return existsSync(value) ? value : null;
-  }
-  if (value.includes("/") || value.includes("\\")) {
-    const candidate = resolve(value);
-    return existsSync(candidate) ? candidate : null;
-  }
-  return findExecutableInPath(value, env.PATH);
-}
-
-function envPath(env: NodeJS.ProcessEnv, key: string) {
-  const value = env[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function findNvcc(env: NodeJS.ProcessEnv) {
-  const explicit = envPath(env, "CUDACXX");
-  if (explicit) {
-    return resolveExecutable(explicit, env) ?? explicit;
-  }
-
-  const fromPath = findExecutableInPath("nvcc", env.PATH);
-  if (fromPath) {
-    return fromPath;
-  }
-
-  const cudaRoots = [
-    envPath(env, "CUDA_HOME"),
-    envPath(env, "CUDA_PATH"),
-    "/usr/local/cuda",
-    "/opt/cuda",
-  ].filter((item): item is string => Boolean(item));
-
-  for (const root of cudaRoots) {
-    const candidate = join(root, "bin", executableName("nvcc"));
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
 }
 
 function prependPathEntry(pathValue: string | undefined, entry: string) {
@@ -285,9 +210,11 @@ export function buildSteps(
       settings.buildDir,
       "--config",
       settings.buildType,
-      "--target",
-      settings.target,
     ];
+    const target = settings.target.trim();
+    if (target) {
+      command.push("--target", target);
+    }
     if (settings.parallelJobs) {
       command.push("-j", String(settings.parallelJobs));
     }
@@ -387,7 +314,7 @@ function binaryCandidateName(target: string) {
 }
 
 function detectBinaryPath(settings: BuildSettings) {
-  const target = binaryCandidateName(settings.target);
+  const target = binaryCandidateName(settings.target.trim() || "llama-server");
   const candidates = [
     resolve(settings.buildDir, "bin", target),
     resolve(settings.buildDir, "bin", settings.buildType, target),
@@ -545,7 +472,21 @@ export class LlamaBuildRunner {
         logStream.write(`\n# ${plannedStep.name} completed\n\n`);
       }
 
-      this.finish(jobId, "succeeded", 0, detectBinaryPath(job.settings), null);
+      const binaryPath = detectBinaryPath(job.settings);
+      this.finish(jobId, "succeeded", 0, binaryPath, null);
+      if (binaryPath) {
+        try {
+          const entry = registerBuiltBinaryInCatalog(
+            binaryPath,
+            job.settings.repoPath,
+          );
+          logStream.write(`\n# registered in path catalog: ${entry.name}\n`);
+        } catch (error) {
+          logStream.write(
+            `\n# failed to register binary in path catalog: ${(error as Error).message}\n`,
+          );
+        }
+      }
     } catch (error) {
       logStream.write(`\n# error: ${(error as Error).message}\n`);
       this.finish(jobId, "failed", null, null, (error as Error).message);

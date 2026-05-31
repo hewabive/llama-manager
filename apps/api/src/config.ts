@@ -20,6 +20,9 @@ export const config = {
   logsDir: process.env.LLAMA_MANAGER_LOGS_DIR
     ? resolve(process.env.LLAMA_MANAGER_LOGS_DIR)
     : resolve(runtimeDir, "logs"),
+  buildsDir: process.env.LLAMA_MANAGER_BUILDS_DIR
+    ? resolve(process.env.LLAMA_MANAGER_BUILDS_DIR)
+    : resolve(runtimeDir, "builds"),
   logs: {
     filterRoutineProbeRequests:
       process.env.LLAMA_MANAGER_FILTER_PROBE_LOGS !== "false",
