@@ -403,9 +403,6 @@ export function ApiLabView(props: {
           void queryClient.invalidateQueries({
             queryKey: ["api-proxy-runtime"],
           });
-          void queryClient.invalidateQueries({
-            queryKey: ["api-proxy-executor-runs"],
-          });
           if (props.selectedInstance) {
             void queryClient.invalidateQueries({
               queryKey: ["instance-health-summary", props.selectedInstance.id],

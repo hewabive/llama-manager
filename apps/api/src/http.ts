@@ -1,6 +1,5 @@
 import {
   AdminLoginSchema,
-  ApiProxyExecutorRunRequestSchema,
   ApiProxyModelCreateSchema,
   ApiProxyModelUpdateSchema,
   ApiProxyRouteCreateSchema,
@@ -123,12 +122,6 @@ import {
   updatePathCatalogEntry,
 } from "./path-catalog/repository.js";
 import {
-  API_PROXY_EXECUTION_DISABLED_ERROR,
-  buildApiProxyExecutorRun,
-  buildApiProxyPublicExecutorRun,
-} from "./proxy/executor.js";
-import {
-  createApiProxyExecutorRun,
   createApiProxyModel,
   createApiProxyRoute,
   createApiProxyTarget,
@@ -140,7 +133,6 @@ import {
   getApiProxyModelByModelId,
   getApiProxyRoute,
   getApiProxyTarget,
-  listApiProxyExecutorRuns,
   listApiProxyModels,
   listApiProxyRuntimeMetadata,
   listApiProxyRoutes,
@@ -315,14 +307,6 @@ async function getApiProxyPlanPreview(input: {
   });
 }
 
-function queryLimit(value: string | undefined, fallback = 20) {
-  if (!value) {
-    return fallback;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function normalizeHttpBaseUrl(value: string) {
   const parsed = new URL(value.trim());
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -410,15 +394,6 @@ async function proxyProtocolEndpoint(
     return c.json(response.body, response.status);
   }
 
-  const executorRequest = {
-    mode: "request" as const,
-    requestedTargetId: decision.target.id,
-    execute: true,
-  };
-  const shouldRecordExecution = decision.preview.plan.actions.some(
-    (action) => action.type !== "route-request",
-  );
-  const executionStartedAt = new Date().toISOString();
   const execution = await executeApiProxyPublicMvpPlan({
     target: decision.target,
     initialPreview: decision.preview,
@@ -436,35 +411,12 @@ async function proxyProtocolEndpoint(
         requestedTargetId: targetId,
       }),
   });
-  const executionFinishedAt = new Date().toISOString();
   if (!execution.ok) {
-    createApiProxyExecutorRun(
-      buildApiProxyPublicExecutorRun({
-        request: executorRequest,
-        preview: decision.preview,
-        status: "failed",
-        error: execution.diagnostic.message,
-        startedAt: executionStartedAt,
-        finishedAt: executionFinishedAt,
-      }),
-    );
     const response = adapter.diagnosticError(
       resolution.request,
       execution.diagnostic,
     );
     return c.json(response.body, response.status);
-  }
-  if (shouldRecordExecution) {
-    createApiProxyExecutorRun(
-      buildApiProxyPublicExecutorRun({
-        request: executorRequest,
-        preview: decision.preview,
-        status: "completed",
-        error: null,
-        startedAt: executionStartedAt,
-        finishedAt: executionFinishedAt,
-      }),
-    );
   }
 
   const instance = getInstance(decision.target.instanceId);
@@ -813,47 +765,6 @@ app.post("/api/proxy/plan", async (c) => {
 
   try {
     return c.json({ data: await getApiProxyPlanPreview(parsed.data) });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-});
-
-app.get("/api/proxy/executor/runs", (c) => {
-  return c.json({
-    data: listApiProxyExecutorRuns(queryLimit(c.req.query("limit"))),
-  });
-});
-
-app.post("/api/proxy/executor/runs", async (c) => {
-  const parsed = ApiProxyExecutorRunRequestSchema.safeParse(await c.req.json());
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-
-  try {
-    const startedAt = new Date().toISOString();
-    const preview = await getApiProxyPlanPreview(parsed.data);
-    const finishedAt = new Date().toISOString();
-    const run = createApiProxyExecutorRun(
-      buildApiProxyExecutorRun({
-        request: parsed.data,
-        preview,
-        startedAt,
-        finishedAt,
-      }),
-    );
-
-    if (parsed.data.execute) {
-      return c.json(
-        {
-          data: run,
-          error: API_PROXY_EXECUTION_DISABLED_ERROR,
-        },
-        400,
-      );
-    }
-
-    return c.json({ data: run }, 201);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }

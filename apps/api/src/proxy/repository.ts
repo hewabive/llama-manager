@@ -1,7 +1,5 @@
 import {
   ApiProxyConfigSchema,
-  ApiProxyExecutorRunRecordSchema,
-  ApiProxyExecutorRunListSchema,
   ApiProxyModelConfigSchema,
   ApiProxyModelCreateSchema,
   ApiProxyModelRecordSchema,
@@ -16,8 +14,6 @@ import {
   ApiProxyTargetRecordSchema,
   ApiProxyTargetUpdateSchema,
   type ApiProxyConfig,
-  type ApiProxyExecutorRunList,
-  type ApiProxyExecutorRunRecord,
   type ApiProxyModelCreate,
   type ApiProxyModelRecord,
   type ApiProxyModelUpdate,
@@ -34,7 +30,6 @@ import { randomUUID } from "node:crypto";
 
 import { db } from "../db/index.js";
 import {
-  apiProxyExecutorRuns,
   apiProxyModels,
   apiProxyRoutes,
   apiProxyRuntimeMetadata,
@@ -45,9 +40,6 @@ type TargetRow = typeof apiProxyTargets.$inferSelect;
 type RouteRow = typeof apiProxyRoutes.$inferSelect;
 type ModelRow = typeof apiProxyModels.$inferSelect;
 type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
-type ExecutorRunRow = typeof apiProxyExecutorRuns.$inferSelect;
-
-const EXECUTOR_RUN_RETENTION_LIMIT = 200;
 
 function nowIso() {
   return new Date().toISOString();
@@ -82,10 +74,6 @@ function parseSlotIds(value: string) {
   } catch {
     return [];
   }
-}
-
-function parseJson(value: string) {
-  return JSON.parse(value) as unknown;
 }
 
 function toTarget(row: TargetRow): ApiProxyTargetRecord {
@@ -145,22 +133,6 @@ function toRuntimeMetadata(
   });
 }
 
-function toExecutorRun(row: ExecutorRunRow): ApiProxyExecutorRunRecord {
-  return ApiProxyExecutorRunRecordSchema.parse({
-    id: row.id,
-    mode: row.mode,
-    requestedTargetId: row.requestedTargetId,
-    preferredTargetId: row.preferredTargetId,
-    execute: parseBool(row.execute),
-    status: row.status,
-    runtime: parseJson(row.runtimeJson),
-    plan: parseJson(row.planJson),
-    error: row.error,
-    startedAt: row.startedAt,
-    finishedAt: row.finishedAt,
-  });
-}
-
 function targetValues(input: ApiProxyTargetCreate | ApiProxyTargetRecord) {
   return {
     name: input.name,
@@ -203,21 +175,6 @@ function runtimeMetadataValues(input: ApiProxyRuntimeMetadataRecord) {
     savedSlotIdsJson: JSON.stringify(input.savedSlotIds),
     lastRequestAt: input.lastRequestAt,
     updatedAt: input.updatedAt,
-  };
-}
-
-function executorRunValues(input: Omit<ApiProxyExecutorRunRecord, "id">) {
-  return {
-    mode: input.mode,
-    requestedTargetId: input.requestedTargetId,
-    preferredTargetId: input.preferredTargetId,
-    execute: boolText(input.execute),
-    status: input.status,
-    runtimeJson: JSON.stringify(input.runtime),
-    planJson: JSON.stringify(input.plan),
-    error: input.error,
-    startedAt: input.startedAt,
-    finishedAt: input.finishedAt,
   };
 }
 
@@ -295,62 +252,6 @@ export function getApiProxyConfig(): ApiProxyConfig {
     targets: listApiProxyTargets(),
     routes: listApiProxyRoutes(),
   });
-}
-
-function sortedApiProxyExecutorRuns() {
-  return db
-    .select()
-    .from(apiProxyExecutorRuns)
-    .all()
-    .map(toExecutorRun)
-    .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-}
-
-export function pruneApiProxyExecutorRuns(
-  keep = EXECUTOR_RUN_RETENTION_LIMIT,
-): number {
-  const safeKeep = Math.max(1, Math.trunc(keep) || EXECUTOR_RUN_RETENTION_LIMIT);
-  const staleRuns = sortedApiProxyExecutorRuns().slice(safeKeep);
-  for (const run of staleRuns) {
-    db.delete(apiProxyExecutorRuns)
-      .where(eq(apiProxyExecutorRuns.id, run.id))
-      .run();
-  }
-  return staleRuns.length;
-}
-
-export function listApiProxyExecutorRuns(limit = 20): ApiProxyExecutorRunList {
-  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 20));
-  const runs = sortedApiProxyExecutorRuns().slice(0, safeLimit);
-  return ApiProxyExecutorRunListSchema.parse({ runs });
-}
-
-export function createApiProxyExecutorRun(
-  input: Omit<ApiProxyExecutorRunRecord, "id">,
-): ApiProxyExecutorRunRecord {
-  const id = randomUUID();
-  const parsed = ApiProxyExecutorRunRecordSchema.omit({ id: true }).parse(
-    input,
-  );
-
-  db.insert(apiProxyExecutorRuns)
-    .values({
-      id,
-      ...executorRunValues(parsed),
-    })
-    .run();
-
-  const row = db
-    .select()
-    .from(apiProxyExecutorRuns)
-    .where(eq(apiProxyExecutorRuns.id, id))
-    .get();
-  if (!row) {
-    throw new Error("failed to create API proxy executor run");
-  }
-  const created = toExecutorRun(row);
-  pruneApiProxyExecutorRuns();
-  return created;
 }
 
 export function listApiProxyRuntimeMetadata(): ApiProxyRuntimeMetadataRecord[] {

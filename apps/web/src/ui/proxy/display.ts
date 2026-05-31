@@ -1,5 +1,4 @@
 import type {
-  ApiProxyExecutorRunRecord,
   ApiProxyPlanPreview,
   ApiProxyTargetRuntime,
 } from "@llama-manager/core";
@@ -64,20 +63,3 @@ export const actionLabels: Record<
   "wait-model-ready": "Wait for model",
   "route-request": "Route request",
 };
-
-export function executorStatusColor(
-  status: ApiProxyExecutorRunRecord["status"],
-) {
-  switch (status) {
-    case "dry-run":
-      return "blue";
-    case "completed":
-      return "green";
-    case "blocked":
-      return "orange";
-    case "failed":
-      return "red";
-    default:
-      return "gray";
-  }
-}

@@ -19,10 +19,12 @@ function columnExists(table: string, column: string) {
   return rows.some((row) => row.name === column);
 }
 
-function dropDeprecatedProbeHistoryTables() {
+function dropDeprecatedTables() {
   sqlite.exec(`
     DROP TABLE IF EXISTS api_probe_history;
     DROP TABLE IF EXISTS llama_api_probe_history;
+    DROP INDEX IF EXISTS api_proxy_executor_runs_started_idx;
+    DROP TABLE IF EXISTS api_proxy_executor_runs;
   `);
 }
 
@@ -263,7 +265,7 @@ export function migrate() {
     )
   `);
 
-  dropDeprecatedProbeHistoryTables();
+  dropDeprecatedTables();
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS api_proxy_targets (
@@ -318,27 +320,6 @@ export function migrate() {
       last_request_at TEXT,
       updated_at TEXT NOT NULL
     )
-  `);
-
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS api_proxy_executor_runs (
-      id TEXT PRIMARY KEY NOT NULL,
-      mode TEXT NOT NULL,
-      requested_target_id TEXT,
-      preferred_target_id TEXT,
-      execute TEXT NOT NULL,
-      status TEXT NOT NULL,
-      runtime_json TEXT NOT NULL,
-      plan_json TEXT NOT NULL,
-      error TEXT,
-      started_at TEXT NOT NULL,
-      finished_at TEXT
-    )
-  `);
-
-  db.run(sql`
-    CREATE INDEX IF NOT EXISTS api_proxy_executor_runs_started_idx
-    ON api_proxy_executor_runs (started_at DESC)
   `);
 
   db.run(sql`

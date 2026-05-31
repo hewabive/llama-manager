@@ -1,5 +1,4 @@
 import type {
-  ApiProxyExecutorRunRecord,
   ApiProxyModelRecord,
   ApiProxyPlanPreview,
   ApiProxyRouteRecord,
@@ -24,7 +23,6 @@ import { Activity, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { formatLocalDateTime } from "../utils/time";
 import {
   actionLabels,
-  executorStatusColor,
   runtimeDetails,
   runtimeStateColor,
   targetStatusColor,
@@ -364,8 +362,6 @@ type SchedulerSectionProps = {
   targetOptions: SelectOption[];
   requestTargetId: string | null;
   planPreview: ApiProxyPlanPreview | undefined;
-  latestExecutorRun: ApiProxyExecutorRunRecord | null;
-  executorRuns: ApiProxyExecutorRunRecord[];
   targetById: Map<string, ApiProxyTargetRecord>;
   previewPending: boolean;
   onRequestTargetChange: (targetId: string | null) => void;
@@ -428,35 +424,6 @@ function SchedulerActionTable(props: {
   );
 }
 
-function ReadinessActionSummary(props: {
-  actions: ApiProxyExecutorRunRecord["plan"]["actions"];
-}) {
-  const preparationActions = props.actions.filter(
-    (action) => action.type !== "route-request",
-  );
-
-  if (preparationActions.length === 0) {
-    return (
-      <Text c="dimmed" size="sm">
-        No preparation
-      </Text>
-    );
-  }
-
-  return (
-    <Group gap={4} wrap="wrap">
-      {preparationActions.map((action, index) => (
-        <Badge
-          key={`${action.type}-${action.targetId}-${action.model ?? ""}-${index}`}
-          variant="light"
-        >
-          {actionLabels[action.type]}
-        </Badge>
-      ))}
-    </Group>
-  );
-}
-
 export function SchedulerSection(props: SchedulerSectionProps) {
   return (
     <Paper withBorder p="md" radius="sm">
@@ -515,93 +482,6 @@ export function SchedulerSection(props: SchedulerSectionProps) {
             />
           </Stack>
         )}
-
-        {props.latestExecutorRun && (
-          <Stack gap="xs">
-            <Group gap="xs" wrap="wrap">
-              <Text fw={600} size="sm">
-                Latest execution
-              </Text>
-              <Badge
-                color={executorStatusColor(props.latestExecutorRun.status)}
-              >
-                {props.latestExecutorRun.status}
-              </Badge>
-              <Badge variant="light">{props.latestExecutorRun.mode}</Badge>
-              <Text c="dimmed" size="sm">
-                {formatLocalDateTime(props.latestExecutorRun.startedAt)}
-              </Text>
-            </Group>
-            {props.latestExecutorRun.error && (
-              <Text c="red" size="sm">
-                {props.latestExecutorRun.error}
-              </Text>
-            )}
-            <SchedulerActionTable
-              actions={props.latestExecutorRun.plan.actions}
-              targetById={props.targetById}
-              emptyText="No executor action was planned"
-              keyPrefix={props.latestExecutorRun.id}
-            />
-          </Stack>
-        )}
-
-        <Group justify="space-between" align="center" wrap="wrap">
-          <Text fw={600} size="sm">
-            Proxy readiness runs
-          </Text>
-          <Text c="dimmed" size="sm">
-            Records requests where the manager had to prepare a target or failed
-            before routing; direct route-only requests are omitted.
-          </Text>
-        </Group>
-        <Table.ScrollContainer minWidth={880}>
-          <Table striped verticalSpacing="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Started</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Mode</Table.Th>
-                <Table.Th>Target</Table.Th>
-                <Table.Th>Preparation steps</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {props.executorRuns.map((run) => (
-                <Table.Tr key={run.id}>
-                  <Table.Td>{formatLocalDateTime(run.startedAt)}</Table.Td>
-                  <Table.Td>
-                    <Badge color={executorStatusColor(run.status)}>
-                      {run.status}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{run.mode}</Table.Td>
-                  <Table.Td>
-                    {run.requestedTargetId
-                      ? (props.targetById.get(run.requestedTargetId)?.name ??
-                        run.requestedTargetId)
-                      : run.preferredTargetId
-                        ? (props.targetById.get(run.preferredTargetId)?.name ??
-                          run.preferredTargetId)
-                        : "none"}
-                  </Table.Td>
-                  <Table.Td>
-                    <ReadinessActionSummary actions={run.plan.actions} />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {props.executorRuns.length === 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={5}>
-                    <Text c="dimmed" ta="center" py="sm">
-                      No execution log entries
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
       </Stack>
     </Paper>
   );

@@ -21,7 +21,6 @@ import {
   deleteApiProxyTarget,
   getApiProxyConfig,
   getApiProxyRuntime,
-  listApiProxyExecutorRuns,
   listInstances,
   previewApiProxyPlan,
   updateApiProxyModel,
@@ -86,11 +85,6 @@ export function ProxyView() {
     queryFn: getApiProxyRuntime,
     refetchInterval: 5_000,
   });
-  const executorRunsQuery = useQuery({
-    queryKey: ["api-proxy-executor-runs"],
-    queryFn: () => listApiProxyExecutorRuns(10),
-    refetchInterval: 5_000,
-  });
 
   const config = proxyQuery.data?.data;
   const models = config?.models ?? [];
@@ -144,8 +138,6 @@ export function ProxyView() {
       }),
   });
   const planPreview = planPreviewMutation.data?.data;
-  const executorRuns = executorRunsQuery.data?.data.runs ?? [];
-  const latestExecutorRun = executorRuns[0] ?? null;
 
   useEffect(() => {
     if (targets.length === 0) {
@@ -165,7 +157,6 @@ export function ProxyView() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["api-proxy-config"] }),
       queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
-      queryClient.invalidateQueries({ queryKey: ["api-proxy-executor-runs"] }),
     ]);
   };
 
@@ -449,8 +440,6 @@ export function ProxyView() {
         targetOptions={targetOptions}
         requestTargetId={requestTargetId}
         planPreview={planPreview}
-        latestExecutorRun={latestExecutorRun}
-        executorRuns={executorRuns}
         targetById={targetById}
         previewPending={planPreviewMutation.isPending}
         onRequestTargetChange={setRequestTargetId}
