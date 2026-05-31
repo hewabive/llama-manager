@@ -131,28 +131,6 @@ export const llamaArgumentDefaults = sqliteTable("llama_argument_defaults", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const apiProbeHistory = sqliteTable("api_probe_history", {
-  id: text("id").primaryKey(),
-  profile: text("profile").notNull(),
-  baseUrl: text("base_url").notNull(),
-  kind: text("kind").notNull(),
-  model: text("model"),
-  endpoint: text("endpoint"),
-  startedAt: text("started_at").notNull(),
-  finishedAt: text("finished_at"),
-  status: text("status").notNull(),
-  httpStatus: text("http_status"),
-  latencyMs: text("latency_ms"),
-  requestJson: text("request_json").notNull(),
-  requestBodyJson: text("request_body_json"),
-  output: text("output"),
-  error: text("error"),
-  usageJson: text("usage_json"),
-  timingsJson: text("timings_json"),
-  streamed: text("streamed").notNull(),
-  finishReason: text("finish_reason"),
-});
-
 export const apiProxyTargets = sqliteTable("api_proxy_targets", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

@@ -19,154 +19,11 @@ function columnExists(table: string, column: string) {
   return rows.some((row) => row.name === column);
 }
 
-function tableExists(table: string) {
-  const row = sqlite
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get(table) as { name: string } | undefined;
-  return Boolean(row);
-}
-
-const API_PROBE_HISTORY_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS api_probe_history (
-    id TEXT PRIMARY KEY NOT NULL,
-    profile TEXT NOT NULL DEFAULT 'llama-server',
-    base_url TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    model TEXT,
-    endpoint TEXT,
-    started_at TEXT NOT NULL,
-    finished_at TEXT,
-    status TEXT NOT NULL,
-    http_status TEXT,
-    latency_ms TEXT,
-    request_json TEXT NOT NULL,
-    request_body_json TEXT,
-    output TEXT,
-    error TEXT,
-    usage_json TEXT,
-    timings_json TEXT,
-    streamed TEXT NOT NULL,
-    finish_reason TEXT
-  )
-`;
-
-function legacyProbeBaseUrl(argsJson: string | null | undefined) {
-  if (!argsJson) return null;
-  try {
-    const args = JSON.parse(argsJson) as Record<string, unknown>;
-    const rawHost =
-      typeof args["--host"] === "string" && args["--host"].trim()
-        ? args["--host"].trim()
-        : "127.0.0.1";
-    if (rawHost.endsWith(".sock")) return null;
-    const host =
-      rawHost === "0.0.0.0" || rawHost === "::" ? "127.0.0.1" : rawHost;
-    const rawPort = Number(args["--port"] ?? 8080);
-    const port =
-      Number.isInteger(rawPort) && rawPort > 0 && rawPort <= 65535
-        ? rawPort
-        : 8080;
-    const rawPrefix =
-      typeof args["--api-prefix"] === "string" ? args["--api-prefix"] : "";
-    const prefix = rawPrefix
-      ? `/${rawPrefix.replace(/^\/+/, "").replace(/\/+$/, "")}`
-      : "";
-    const urlHost =
-      host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-    return `http://${urlHost}:${port}${prefix}`;
-  } catch {
-    return null;
-  }
-}
-
-function nullableText(value: unknown) {
-  return value === null || value === undefined ? null : String(value);
-}
-
-function migrateProbeHistoryToApiProbeHistory() {
-  if (tableExists("api_probe_history")) {
-    return;
-  }
-
-  if (!tableExists("llama_api_probe_history")) {
-    return;
-  }
-
-  if (columnExists("llama_api_probe_history", "base_url")) {
-    sqlite.exec(`
-      ALTER TABLE llama_api_probe_history
-      RENAME TO api_probe_history;
-    `);
-    return;
-  }
-
-  const oldRows = sqlite
-    .prepare("SELECT * FROM llama_api_probe_history")
-    .all() as Array<Record<string, unknown>>;
-  const instanceArgs = new Map(
-    (
-      sqlite.prepare("SELECT id, args_json FROM instances").all() as Array<{
-        id: string;
-        args_json: string;
-      }>
-    ).map((row) => [row.id, row.args_json]),
-  );
-
-  sqlite.exec(API_PROBE_HISTORY_TABLE_SQL);
-
-  const insert = sqlite.prepare(`
-    INSERT INTO api_probe_history (
-      id, profile, base_url, kind, model, endpoint, started_at, finished_at,
-      status, http_status, latency_ms, request_json, request_body_json,
-      output, error, usage_json, timings_json, streamed, finish_reason
-    ) VALUES (
-      @id, @profile, @base_url, @kind, @model, @endpoint, @started_at,
-      @finished_at, @status, @http_status, @latency_ms, @request_json,
-      @request_body_json, @output, @error, @usage_json, @timings_json,
-      @streamed, @finish_reason
-    )
+function dropDeprecatedProbeHistoryTables() {
+  sqlite.exec(`
+    DROP TABLE IF EXISTS api_probe_history;
+    DROP TABLE IF EXISTS llama_api_probe_history;
   `);
-
-  for (const row of oldRows) {
-    const instanceId = String(row.instance_id ?? "");
-    const baseUrl = legacyProbeBaseUrl(instanceArgs.get(instanceId));
-    if (!baseUrl) continue;
-    insert.run({
-      id: String(row.id),
-      profile: "llama-server",
-      base_url: baseUrl,
-      kind: String(row.kind ?? "chat"),
-      model: nullableText(row.model),
-      endpoint: nullableText(row.endpoint),
-      started_at: String(row.started_at ?? new Date().toISOString()),
-      finished_at: nullableText(row.finished_at),
-      status: String(row.status ?? "error"),
-      http_status: nullableText(row.http_status),
-      latency_ms: nullableText(row.latency_ms),
-      request_json: String(row.request_json ?? "{}"),
-      request_body_json: nullableText(row.request_body_json),
-      output: nullableText(row.output),
-      error: nullableText(row.error),
-      usage_json: nullableText(row.usage_json),
-      timings_json: nullableText(row.timings_json),
-      streamed: String(row.streamed ?? "false"),
-      finish_reason: nullableText(row.finish_reason),
-    });
-  }
-
-  sqlite.exec("DROP TABLE llama_api_probe_history;");
-}
-
-function migrateProbeHistoryProfile() {
-  if (
-    tableExists("api_probe_history") &&
-    !columnExists("api_probe_history", "profile")
-  ) {
-    sqlite.exec(`
-      ALTER TABLE api_probe_history
-      ADD COLUMN profile TEXT NOT NULL DEFAULT 'llama-server';
-    `);
-  }
 }
 
 export function migrate() {
@@ -406,20 +263,7 @@ export function migrate() {
     )
   `);
 
-  migrateProbeHistoryToApiProbeHistory();
-  migrateProbeHistoryProfile();
-
-  sqlite.exec(API_PROBE_HISTORY_TABLE_SQL);
-
-  db.run(sql`
-    CREATE INDEX IF NOT EXISTS api_probe_history_base_url_started_idx
-    ON api_probe_history (base_url, started_at DESC)
-  `);
-
-  db.run(sql`
-    CREATE INDEX IF NOT EXISTS api_probe_history_profile_base_url_started_idx
-    ON api_probe_history (profile, base_url, started_at DESC)
-  `);
+  dropDeprecatedProbeHistoryTables();
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS api_proxy_targets (

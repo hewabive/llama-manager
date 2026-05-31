@@ -30,7 +30,6 @@ import {
   type InstanceBulkActionName,
   type ApiProxySchedulerPlanRequest,
   type ApiProbeRequest,
-  type ApiProbeProfile,
   type ApiLabProbeProfile,
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
@@ -100,13 +99,6 @@ import {
   requestLlamaModelAction,
   requestLlamaSlotAction,
 } from "./llama/probe.js";
-import {
-  clearApiProbeHistory,
-  createApiProbeHistory,
-  listApiProbeHistory,
-  pruneApiProbeHistory,
-  updateApiProbeHistory,
-} from "./api-lab/history-repository.js";
 import {
   getLlamaSourceSettings,
   getLlamaSourceStatus,
@@ -713,42 +705,6 @@ app.get("/api/proxy/config", (c) => {
   return c.json({ data: getApiProxyConfig() });
 });
 
-app.get("/api/lab/probe/history", (c) => {
-  const rawBaseUrl = c.req.query("baseUrl");
-  if (!rawBaseUrl) {
-    return c.json({ error: "baseUrl is required" }, 400);
-  }
-  try {
-    const profile = parseApiLabProfile(c.req.query("profile"));
-    const baseUrl = normalizeApiLabBaseUrl(profile, rawBaseUrl);
-    return c.json({
-      data: listApiProbeHistory(
-        baseUrl,
-        queryLimit(c.req.query("limit")),
-        profile,
-      ),
-    });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-});
-
-app.delete("/api/lab/probe/history", (c) => {
-  const rawBaseUrl = c.req.query("baseUrl");
-  if (!rawBaseUrl) {
-    return c.json({ error: "baseUrl is required" }, 400);
-  }
-  try {
-    const profile = parseApiLabProfile(c.req.query("profile"));
-    const baseUrl = normalizeApiLabBaseUrl(profile, rawBaseUrl);
-    return c.json({
-      data: { deleted: clearApiProbeHistory(baseUrl, profile) },
-    });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-});
-
 app.get("/api/lab/models", async (c) => {
   const rawBaseUrl = c.req.query("baseUrl");
   if (!rawBaseUrl) {
@@ -779,48 +735,16 @@ app.post("/api/lab/probe", async (c) => {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
 
-  let historyId: string | null = null;
-  let baseUrl: string;
   try {
     const profile = parsed.data.profile;
-    baseUrl = normalizeApiLabBaseUrl(profile, parsed.data.baseUrl);
-    const target = apiLabProbeTargetFromBaseUrl(
-      profile,
-      baseUrl,
-      parsed.data.probe,
-    );
-    historyId = createApiProbeHistory({
-      profile,
-      baseUrl,
-      request: parsed.data.probe,
-      endpoint: target.endpoint,
-      requestBody: target.requestBody,
-      streamed: false,
-    });
+    const baseUrl = normalizeApiLabBaseUrl(profile, parsed.data.baseUrl);
     const data = await requestApiLabProbeBaseUrl(
       profile,
       baseUrl,
       parsed.data.probe,
     );
-    const body = recordValue(data.response.body);
-    updateApiProbeHistory(historyId, {
-      status: data.response.ok ? "ok" : "error",
-      httpStatus: data.response.status,
-      latencyMs: data.response.latencyMs,
-      output: probeOutputText(data.kind, data.response),
-      error: data.response.ok ? null : llamaEndpointErrorMessage(data.response),
-      usage: body?.usage ?? null,
-      timings: body?.timings ?? null,
-    });
-    pruneApiProbeHistory(baseUrl, undefined, profile);
     return c.json({ data });
   } catch (error) {
-    if (historyId) {
-      updateApiProbeHistory(historyId, {
-        status: "error",
-        error: (error as Error).message,
-      });
-    }
     return c.json({ error: (error as Error).message }, 400);
   }
 });
@@ -1480,41 +1404,6 @@ app.get("/api/instances/:id/llama/capabilities", async (c) => {
   }
 });
 
-app.get("/api/instances/:id/llama/probe/history", (c) => {
-  const instance = getInstance(c.req.param("id"));
-  if (!instance) {
-    return c.json({ error: "instance not found" }, 404);
-  }
-  const baseUrl = llamaBaseUrl(instance);
-  if (!baseUrl) {
-    return c.json(
-      { error: "UNIX socket API probes are not implemented yet" },
-      400,
-    );
-  }
-  const limit = Number(c.req.query("limit") ?? "20");
-  return c.json({
-    data: listApiProbeHistory(baseUrl, Number.isFinite(limit) ? limit : 20),
-  });
-});
-
-app.delete("/api/instances/:id/llama/probe/history", (c) => {
-  const instance = getInstance(c.req.param("id"));
-  if (!instance) {
-    return c.json({ error: "instance not found" }, 404);
-  }
-  const baseUrl = llamaBaseUrl(instance);
-  if (!baseUrl) {
-    return c.json(
-      { error: "UNIX socket API probes are not implemented yet" },
-      400,
-    );
-  }
-  return c.json({
-    data: { deleted: clearApiProbeHistory(baseUrl) },
-  });
-});
-
 app.post("/api/instances/:id/llama/probe", async (c) => {
   const parsed = ApiProbeRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
@@ -1526,38 +1415,10 @@ app.post("/api/instances/:id/llama/probe", async (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  let historyId: string | null = null;
   try {
-    const target = instanceApiProbeTarget(instance, parsed.data);
-    const baseUrl = llamaBaseUrl(instance);
-    historyId = createApiProbeHistory({
-      baseUrl,
-      request: parsed.data,
-      endpoint: target.endpoint,
-      requestBody: target.requestBody,
-      streamed: false,
-    });
     const data = await requestInstanceApiProbe(instance, parsed.data);
-    const body = recordValue(data.response.body);
-    updateApiProbeHistory(historyId, {
-      status: data.response.ok ? "ok" : "error",
-      httpStatus: data.response.status,
-      latencyMs: data.response.latencyMs,
-      output: probeOutputText(data.kind, data.response),
-      error: data.response.ok ? null : llamaEndpointErrorMessage(data.response),
-      usage: body?.usage ?? null,
-      timings: body?.timings ?? null,
-    });
-    pruneApiProbeHistory(baseUrl);
     return c.json({ data });
   } catch (error) {
-    if (historyId) {
-      updateApiProbeHistory(historyId, {
-        status: "error",
-        error: (error as Error).message,
-      });
-      pruneApiProbeHistory(llamaBaseUrl(instance));
-    }
     return c.json({ error: (error as Error).message }, 400);
   }
 });
@@ -1575,95 +1436,6 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
-}
-
-function arrayValue(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function stringValue(value: unknown) {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-function probeOutputText(kind: string, response: LlamaEndpointProbe) {
-  const body = recordValue(response.body);
-  if (!response.ok) {
-    return llamaEndpointErrorMessage(response);
-  }
-
-  if (kind === "tokenize") {
-    const tokens = arrayValue(body?.tokens);
-    return `${tokens.length} token${tokens.length === 1 ? "" : "s"}`;
-  }
-
-  if (kind === "detokenize") {
-    return stringValue(body?.content);
-  }
-
-  if (kind === "count-tokens") {
-    const count = body?.input_tokens;
-    return typeof count === "number" ? `${count} input tokens` : null;
-  }
-
-  if (kind === "apply-template") {
-    return stringValue(body?.prompt);
-  }
-
-  if (kind === "embeddings") {
-    const data = arrayValue(body?.data);
-    const first = recordValue(data[0]);
-    const embedding = first?.embedding;
-    const dimensions = Array.isArray(embedding) ? embedding.length : null;
-    return `${data.length} embedding${data.length === 1 ? "" : "s"}${
-      dimensions ? ` · ${dimensions} dimensions` : ""
-    }`;
-  }
-
-  if (kind === "rerank") {
-    const results = arrayValue(body?.results);
-    const preview = results
-      .slice(0, 5)
-      .map((item) => {
-        const record = recordValue(item);
-        const index = record?.index;
-        const score = record?.relevance_score ?? record?.score;
-        return typeof index === "number" && typeof score === "number"
-          ? `#${index}: ${score.toFixed(4)}`
-          : null;
-      })
-      .filter(Boolean)
-      .join(" · ");
-    return `${results.length} result${results.length === 1 ? "" : "s"}${
-      preview ? ` · ${preview}` : ""
-    }`;
-  }
-
-  if (kind === "infill") {
-    return stringValue(body?.content);
-  }
-
-  if (kind === "responses") {
-    const outputText = stringValue(body?.output_text);
-    if (outputText) return outputText;
-    return (
-      arrayValue(body?.output)
-        .flatMap((item) => arrayValue(recordValue(item)?.content))
-        .map((content) => stringValue(recordValue(content)?.text))
-        .filter(Boolean)
-        .join("\n\n") || null
-    );
-  }
-
-  const firstChoice = firstRecord(body?.choices);
-  if (kind === "chat") {
-    return (
-      stringValue(recordValue(firstChoice?.message)?.content) ??
-      stringValue(recordValue(firstChoice?.message)?.reasoning_content) ??
-      stringValue(firstChoice?.text)
-    );
-  }
-
-  return stringValue(firstChoice?.text);
 }
 
 function firstRecord(value: unknown): Record<string, unknown> | null {
@@ -1731,7 +1503,6 @@ async function writeUpstreamStreamEvents(props: {
   let buffer = "";
   let finalBody: unknown = null;
   let finishReason: string | null = null;
-  let output = "";
 
   const consumeBlock = async (block: string) => {
     const data = streamEventData(block);
@@ -1744,14 +1515,12 @@ async function writeUpstreamStreamEvents(props: {
       finishReason = streamFinishReason(parsed) ?? finishReason;
       const delta = streamDeltaText(parsed);
       if (delta) {
-        output += delta;
         await props.stream.writeSSE({
           event: "token",
           data: JSON.stringify({ text: delta }),
         });
       }
     } catch {
-      output += data;
       await props.stream.writeSSE({
         event: "token",
         data: JSON.stringify({ text: data }),
@@ -1793,36 +1562,17 @@ async function writeUpstreamStreamEvents(props: {
       timings: finalRecord?.timings ?? null,
     }),
   });
-  return {
-    output,
-    latencyMs,
-    finishReason,
-    usage: finalRecord?.usage ?? null,
-    timings: finalRecord?.timings ?? null,
-  };
 }
 
 function streamApiProbeTarget(
   c: Context,
   input: {
-    profile?: ApiProbeProfile;
-    baseUrl: string;
     request: ApiProbeRequest;
     target:
       | ReturnType<typeof instanceApiProbeTarget>
       | ReturnType<typeof apiLabProbeTargetFromBaseUrl>;
   },
 ) {
-  const profile = input.profile ?? "llama-server";
-  const historyId = createApiProbeHistory({
-    profile,
-    baseUrl: input.baseUrl,
-    request: input.request,
-    endpoint: input.target.endpoint,
-    requestBody: input.target.requestBody,
-    streamed: true,
-  });
-
   return streamSSE(c, async (stream) => {
     const controller = new AbortController();
     stream.onAbort(() => controller.abort());
@@ -1871,51 +1621,16 @@ function streamApiProbeTarget(
               response.statusText,
           }),
         });
-        updateApiProbeHistory(historyId, {
-          status: "error",
-          httpStatus: response.status,
-          latencyMs: Math.round(performance.now() - started),
-          output: typeof body === "string" ? body : null,
-          error:
-            String(recordValue(recordValue(body)?.error)?.message ?? "") ||
-            response.statusText,
-        });
-        pruneApiProbeHistory(input.baseUrl, undefined, profile);
         return;
       }
 
-      const summary = await writeUpstreamStreamEvents({
+      await writeUpstreamStreamEvents({
         stream,
         response,
         started,
       });
-      if (!summary) {
-        updateApiProbeHistory(historyId, {
-          status: "error",
-          httpStatus: response.status,
-          latencyMs: Math.round(performance.now() - started),
-          error: "upstream returned no stream body",
-        });
-        pruneApiProbeHistory(input.baseUrl, undefined, profile);
-        return;
-      }
-      updateApiProbeHistory(historyId, {
-        status: "ok",
-        httpStatus: response.status,
-        latencyMs: summary.latencyMs,
-        output: summary.output,
-        usage: summary.usage,
-        timings: summary.timings,
-        finishReason: summary.finishReason,
-      });
-      pruneApiProbeHistory(input.baseUrl, undefined, profile);
     } catch (error) {
       if (controller.signal.aborted) {
-        updateApiProbeHistory(historyId, {
-          status: "cancelled",
-          latencyMs: Math.round(performance.now() - started),
-        });
-        pruneApiProbeHistory(input.baseUrl, undefined, profile);
         await stream.writeSSE({
           event: "cancelled",
           data: JSON.stringify({
@@ -1924,12 +1639,6 @@ function streamApiProbeTarget(
         });
         return;
       }
-      updateApiProbeHistory(historyId, {
-        status: "error",
-        latencyMs: Math.round(performance.now() - started),
-        error: (error as Error).message,
-      });
-      pruneApiProbeHistory(input.baseUrl, undefined, profile);
       await stream.writeSSE({
         event: "error",
         data: JSON.stringify({ message: (error as Error).message }),
@@ -1967,8 +1676,6 @@ app.post("/api/lab/probe/stream", async (c) => {
   }
 
   return streamApiProbeTarget(c, {
-    profile: parsed.data.profile,
-    baseUrl,
     request: parsed.data.probe,
     target,
   });
@@ -1992,16 +1699,13 @@ app.post("/api/instances/:id/llama/probe/stream", async (c) => {
   }
 
   let target: ReturnType<typeof instanceApiProbeTarget>;
-  let baseUrl: string;
   try {
     target = instanceApiProbeTarget(instance, parsed.data, { stream: true });
-    baseUrl = llamaBaseUrl(instance);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
 
   return streamApiProbeTarget(c, {
-    baseUrl,
     request: parsed.data,
     target,
   });

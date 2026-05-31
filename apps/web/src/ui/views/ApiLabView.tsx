@@ -15,10 +15,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  clearApiLabProbeHistory,
   getApiLabModels,
   getApiProxyConfig,
-  listApiLabProbeHistory,
   runApiLabProbe,
   streamApiLabProbe,
 } from "../../api/client";
@@ -319,10 +317,6 @@ export function ApiLabView(props: {
         modelOptions={activeModelOptions}
         requestOptions={requestOptions}
         autoloadVisible={profile === "llama-native"}
-        historyKey={["api-lab-probe-history", profile, normalizedBaseUrl]}
-        historyEnabled={Boolean(normalizedBaseUrl)}
-        listHistory={() => listApiLabProbeHistory(profile, normalizedBaseUrl)}
-        clearHistory={() => clearApiLabProbeHistory(profile, normalizedBaseUrl)}
         runProbe={(probe) =>
           runApiLabProbe({ profile, baseUrl: normalizedBaseUrl, probe })
         }

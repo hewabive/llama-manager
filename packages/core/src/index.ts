@@ -196,13 +196,6 @@ export const LlamaSlotActionResultSchema = z.object({
   response: LlamaEndpointProbeSchema,
 });
 
-export const ApiProbeProfileSchema = z.enum([
-  "llama-server",
-  "openai",
-  "llama-native",
-  "anthropic",
-]);
-
 export const ApiLabProbeProfileSchema = z.enum([
   "openai",
   "llama-native",
@@ -314,40 +307,11 @@ export const ApiLabProbeTargetRequestSchema = z
 export const ApiProbeTargetRequestSchema = ApiLabProbeTargetRequestSchema;
 
 export const ApiProbeResultSchema = z.object({
-  profile: ApiProbeProfileSchema.optional(),
+  profile: ApiLabProbeProfileSchema.optional(),
   kind: ApiProbeKindSchema,
   endpoint: z.string(),
   requestBody: z.unknown(),
   response: LlamaEndpointProbeSchema,
-});
-
-export const ApiProbeHistoryStatusSchema = z.enum([
-  "running",
-  "ok",
-  "error",
-  "cancelled",
-]);
-
-export const ApiProbeHistoryEntrySchema = z.object({
-  id: z.string(),
-  profile: ApiProbeProfileSchema.default("llama-server"),
-  baseUrl: z.string(),
-  kind: ApiProbeKindSchema,
-  model: z.string().nullable(),
-  endpoint: z.string().nullable(),
-  startedAt: z.string(),
-  finishedAt: z.string().nullable(),
-  status: ApiProbeHistoryStatusSchema,
-  httpStatus: z.number().int().nullable(),
-  latencyMs: z.number().int().nullable(),
-  request: ApiProbeRequestSchema,
-  requestBody: z.unknown().nullable(),
-  output: z.string().nullable(),
-  error: z.string().nullable(),
-  usage: z.unknown().nullable(),
-  timings: z.unknown().nullable(),
-  streamed: z.boolean(),
-  finishReason: z.string().nullable(),
 });
 
 const ApiProxyIdSchema = z.string().min(1).max(80);
@@ -1270,7 +1234,6 @@ export type LlamaSlotActionRequest = z.infer<
   typeof LlamaSlotActionRequestSchema
 >;
 export type LlamaSlotActionResult = z.infer<typeof LlamaSlotActionResultSchema>;
-export type ApiProbeProfile = z.infer<typeof ApiProbeProfileSchema>;
 export type ApiLabProbeProfile = z.infer<typeof ApiLabProbeProfileSchema>;
 export type OpenAiApiProbeKind = z.infer<typeof OpenAiApiProbeKindSchema>;
 export type LlamaNativeApiProbeKind = z.infer<
@@ -1284,8 +1247,6 @@ export type ApiLabProbeTargetRequest = z.infer<
 >;
 export type ApiProbeTargetRequest = z.infer<typeof ApiProbeTargetRequestSchema>;
 export type ApiProbeResult = z.infer<typeof ApiProbeResultSchema>;
-export type ApiProbeHistoryStatus = z.infer<typeof ApiProbeHistoryStatusSchema>;
-export type ApiProbeHistoryEntry = z.infer<typeof ApiProbeHistoryEntrySchema>;
 export type ApiProxyTransformMode = z.infer<typeof ApiProxyTransformModeSchema>;
 export type ApiProxyTargetRole = z.infer<typeof ApiProxyTargetRoleSchema>;
 export type ApiProxyModelState = z.infer<typeof ApiProxyModelStateSchema>;

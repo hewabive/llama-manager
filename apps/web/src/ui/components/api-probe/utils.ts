@@ -58,13 +58,6 @@ export function modelOptionsFromProbe(
     );
 }
 
-export function probeColor(probe: LlamaEndpointProbe | undefined) {
-  if (!probe) return "gray";
-  if (probe.ok) return "green";
-  if (probe.status === 503) return "yellow";
-  return "red";
-}
-
 function endpointErrorText(probe: LlamaEndpointProbe | undefined) {
   const error = objectRecord(probe?.body)?.error;
   const message = objectRecord(error)?.message;
@@ -202,26 +195,6 @@ export function responseOutput(result: ApiProbeResult) {
   }
 
   return stringValue(firstChoice?.text) ?? "Completion returned no text";
-}
-
-export function usageRows(usageValue: unknown, timingsValue: unknown) {
-  const usage = objectRecord(usageValue);
-  const timings = objectRecord(timingsValue);
-  const rows: Array<[string, unknown]> = [
-    ["Prompt tokens", usage?.prompt_tokens],
-    ["Completion tokens", usage?.completion_tokens],
-    ["Total tokens", usage?.total_tokens],
-    ["Prompt tok/s", timings?.prompt_per_second],
-    ["Generation tok/s", timings?.predicted_per_second],
-  ];
-  return rows
-    .map(([label, value]) => [label, formatNumber(value)] as const)
-    .filter((item): item is readonly [string, string] => Boolean(item[1]));
-}
-
-export function usageLines(result: ApiProbeResult) {
-  const body = objectRecord(result.response.body);
-  return usageRows(body?.usage, body?.timings);
 }
 
 export function kindNeedsGenerationControls(kind: ApiProbeKind) {

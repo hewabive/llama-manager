@@ -1,5 +1,4 @@
 import type {
-  ApiProbeHistoryEntry,
   ApiProbeKind,
   ApiProbeRequest,
   ApiProbeResult,
@@ -20,12 +19,6 @@ export type ProbeRequestOption = {
 export type ProbeRunner = (
   input: ApiProbeRequest,
 ) => Promise<{ data: ApiProbeResult }>;
-
-export type ProbeHistoryLoader = () => Promise<{
-  data: ApiProbeHistoryEntry[];
-}>;
-
-export type ProbeHistoryClearer = () => Promise<{ data: { deleted: number } }>;
 
 export type ProbeStreamRunner = typeof streamInstanceApiProbe;
 

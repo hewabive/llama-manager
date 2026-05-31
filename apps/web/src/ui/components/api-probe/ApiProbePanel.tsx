@@ -1,5 +1,4 @@
 import type {
-  ApiProbeHistoryEntry,
   ApiProbeKind,
   ApiProbeRequest,
   LlamaEndpointProbe,
@@ -18,23 +17,18 @@ import {
   Textarea,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio, Send, Square } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import {
-  clearInstanceApiProbeHistory,
-  listInstanceApiProbeHistory,
   runInstanceApiProbe,
   streamInstanceApiProbe,
 } from "../../../api/client";
-import { ApiProbeHistory } from "./History";
 import { ApiProbeResultView, StreamProbeResult } from "./Results";
 import {
   emptyStreamProbeState,
   type ModelOption,
-  type ProbeHistoryClearer,
-  type ProbeHistoryLoader,
   type ProbeRequestOption,
   type ProbeRunner,
   type ProbeStreamRunner,
@@ -84,10 +78,6 @@ export function ApiProbePanel(props: {
   modelsProbe?: LlamaEndpointProbe | undefined;
   modelOptions?: ModelOption[] | undefined;
   requestOptions?: ProbeRequestOption[] | undefined;
-  historyKey?: readonly unknown[] | undefined;
-  historyEnabled?: boolean | undefined;
-  listHistory?: ProbeHistoryLoader | undefined;
-  clearHistory?: ProbeHistoryClearer | undefined;
   runProbe?: ProbeRunner | undefined;
   streamProbe?: ProbeStreamRunner | undefined;
   streamEnabled?: boolean | undefined;
@@ -101,11 +91,6 @@ export function ApiProbePanel(props: {
 }) {
   const queryClient = useQueryClient();
   const modelListId = useId();
-  const historyKey = props.historyKey ?? [
-    "llama-probe-history",
-    props.instanceId,
-  ];
-  const historyEnabled = props.historyEnabled ?? true;
   const modelOptions = useMemo(
     () => props.modelOptions ?? modelOptionsFromProbe(props.modelsProbe),
     [props.modelOptions, props.modelsProbe],
@@ -174,9 +159,6 @@ export function ApiProbePanel(props: {
         queryKey: ["instance-health-summary", props.instanceId],
       });
     }
-    if (historyEnabled) {
-      void queryClient.invalidateQueries({ queryKey: historyKey });
-    }
     props.onProbeSettled?.();
   };
 
@@ -191,48 +173,6 @@ export function ApiProbePanel(props: {
       : (props.streamProbe ?? streamInstanceApiProbe);
   const modelRequired = props.modelRequired ?? false;
   const disabledReason = props.disabledReason?.trim() || null;
-
-  const historyQuery = useQuery({
-    queryKey: historyKey,
-    queryFn: () =>
-      props.listHistory
-        ? props.listHistory()
-        : listInstanceApiProbeHistory(props.instanceId),
-    enabled: historyEnabled,
-  });
-
-  const clearHistoryMutation = useMutation({
-    mutationFn: () =>
-      props.clearHistory
-        ? props.clearHistory()
-        : clearInstanceApiProbeHistory(props.instanceId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: historyKey });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Clear history failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  const applyProbeInput = (input: ApiProbeRequest) => {
-    setKind(input.kind);
-    setModel(input.model ?? null);
-    setPrompt(input.prompt);
-    setInputPrefix(input.inputPrefix ?? inputPrefix);
-    setInputSuffix(input.inputSuffix ?? inputSuffix);
-    setSystemPrompt(input.systemPrompt ?? "");
-    setTokensText((input.tokens ?? []).join(" "));
-    setDocumentsText(
-      (input.documents ?? parseDocumentsInput(documentsText)).join("\n\n"),
-    );
-    setMaxTokens(input.maxTokens);
-    setTemperature(input.temperature);
-    setAutoload(input.autoload);
-  };
 
   const probeMutation = useMutation({
     mutationFn: runProbe,
@@ -264,7 +204,6 @@ export function ApiProbePanel(props: {
   const canStream =
     Boolean(streamProbe) && kindNeedsGenerationControls(kind) && canSubmit;
   const result = probeMutation.data?.data ?? null;
-  const historyEntries = historyEnabled ? (historyQuery.data?.data ?? []) : [];
 
   const startStream = async (input = buildProbeInput()) => {
     if (!streamProbe) {
@@ -371,34 +310,6 @@ export function ApiProbePanel(props: {
 
   const cancelStream = () => {
     streamAbortRef.current?.abort();
-  };
-
-  const repeatHistoryEntry = (entry: ApiProbeHistoryEntry) => {
-    applyProbeInput(entry.request);
-    setStreamResult(emptyStreamProbeState);
-    if (entry.streamed && kindNeedsGenerationControls(entry.request.kind)) {
-      void startStream(entry.request);
-      return;
-    }
-    probeMutation.mutate(entry.request);
-  };
-
-  const copyHistoryRequestBody = async (entry: ApiProbeHistoryEntry) => {
-    const value = entry.requestBody ?? entry.request;
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(value, null, 2));
-      notifications.show({
-        color: "green",
-        title: "Request body copied",
-        message: entry.endpoint ?? entry.kind,
-      });
-    } catch (error) {
-      notifications.show({
-        color: "red",
-        title: "Copy failed",
-        message: (error as Error).message,
-      });
-    }
   };
 
   return (
@@ -602,15 +513,6 @@ export function ApiProbePanel(props: {
           <StreamProbeResult result={streamResult} />
         )}
         {result && <ApiProbeResultView result={result} />}
-        {historyEnabled && (
-          <ApiProbeHistory
-            clearing={clearHistoryMutation.isPending}
-            entries={historyEntries}
-            onClear={() => clearHistoryMutation.mutate()}
-            onCopy={(entry) => void copyHistoryRequestBody(entry)}
-            onRepeat={repeatHistoryEntry}
-          />
-        )}
       </Stack>
     </Paper>
   );

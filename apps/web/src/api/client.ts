@@ -34,7 +34,6 @@ import type {
   ApiLabProbeProfile,
   ApiLabProbeTargetRequest,
   ApiProbeRequest,
-  ApiProbeHistoryEntry,
   ApiProbeResult,
   LlamaEndpointProbe,
   LlamaArgumentCatalog,
@@ -585,34 +584,6 @@ export async function runApiLabProbe(input: ApiLabProbeTargetRequest) {
   });
 }
 
-export async function listApiLabProbeHistory(
-  profile: ApiLabProbeProfile,
-  baseUrl: string,
-  limit = 20,
-) {
-  const params = new URLSearchParams({
-    profile,
-    baseUrl,
-    limit: String(limit),
-  });
-  return request<{ data: ApiProbeHistoryEntry[] }>(
-    `/api/lab/probe/history?${params.toString()}`,
-  );
-}
-
-export async function clearApiLabProbeHistory(
-  profile: ApiLabProbeProfile,
-  baseUrl: string,
-) {
-  const params = new URLSearchParams({ profile, baseUrl });
-  return request<{ data: { deleted: number } }>(
-    `/api/lab/probe/history?${params.toString()}`,
-    {
-      method: "DELETE",
-    },
-  );
-}
-
 export async function getApiLabModels(
   profile: ApiLabProbeProfile,
   baseUrl: string,
@@ -620,21 +591,6 @@ export async function getApiLabModels(
   const params = new URLSearchParams({ profile, baseUrl });
   return request<{ data: LlamaEndpointProbe }>(
     `/api/lab/models?${params.toString()}`,
-  );
-}
-
-export async function listInstanceApiProbeHistory(id: string, limit = 20) {
-  return request<{ data: ApiProbeHistoryEntry[] }>(
-    `/api/instances/${id}/llama/probe/history?limit=${limit}`,
-  );
-}
-
-export async function clearInstanceApiProbeHistory(id: string) {
-  return request<{ data: { deleted: number } }>(
-    `/api/instances/${id}/llama/probe/history`,
-    {
-      method: "DELETE",
-    },
   );
 }
 

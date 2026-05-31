@@ -19,6 +19,12 @@ code {
   overflow-wrap: anywhere;
 }
 
+.probe-output-text {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .ini-preview-code {
   display: block;
   white-space: pre;
