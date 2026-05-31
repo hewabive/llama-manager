@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getApiLabModels,
@@ -122,6 +122,7 @@ export function ApiLabView(props: {
   const [profile, setProfile] = useState<ApiLabProbeProfile>("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [quickTarget, setQuickTarget] = useState<string | null>(null);
+  const baseUrlTouchedRef = useRef(false);
   const proxyRootUrl = useMemo(() => managerProxyRootUrl(), []);
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
@@ -201,7 +202,7 @@ export function ApiLabView(props: {
   );
 
   useEffect(() => {
-    if (baseUrl || !props.selectedInstance) {
+    if (baseUrlTouchedRef.current || baseUrl || !props.selectedInstance) {
       return;
     }
     const url =
@@ -355,12 +356,15 @@ export function ApiLabView(props: {
           }
           style={{ width: "min(100%, 560px)" }}
           value={baseUrl}
+          filter={({ options, limit }) => options.slice(0, limit)}
           onChange={(value) => {
+            baseUrlTouchedRef.current = true;
             setBaseUrl(value);
             const target = targetByBaseUrl.get(value.trim());
             setQuickTarget(target?.value ?? null);
           }}
           onOptionSubmit={(value) => {
+            baseUrlTouchedRef.current = true;
             const target = targetByBaseUrl.get(value);
             setBaseUrl(value);
             setQuickTarget(target?.value ?? null);
