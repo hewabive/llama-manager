@@ -1,4 +1,5 @@
 import type {
+  ApiEndpointRecord,
   ApiProxyModelRecord,
   ApiProxyPlanPreview,
   ApiProxyRouteRecord,
@@ -204,6 +205,7 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
 
 type ProxyTargetsSectionProps = {
   targets: ApiProxyTargetRecord[];
+  endpointById: Map<string, ApiEndpointRecord>;
   instanceOptions: SelectOption[];
   runtimeByTargetId: Map<string, ApiProxyTargetRuntime>;
   routeCountByTargetId: Map<string, number>;
@@ -243,7 +245,7 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
-                <Table.Th>Instance</Table.Th>
+                <Table.Th>Endpoint</Table.Th>
                 <Table.Th>Model</Table.Th>
                 <Table.Th>Resource</Table.Th>
                 <Table.Th>Policy</Table.Th>
@@ -255,6 +257,7 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
             <Table.Tbody>
               {props.targets.map((target) => {
                 const runtime = props.runtimeByTargetId.get(target.id);
+                const endpoint = props.endpointById.get(target.endpointId);
                 return (
                   <Table.Tr key={target.id}>
                     <Table.Td>
@@ -270,9 +273,26 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      {props.instanceOptions.find(
-                        (option) => option.value === target.instanceId,
-                      )?.label ?? target.instanceId}
+                      <Stack gap={2}>
+                        <Text size="sm">
+                          {endpoint?.name ?? target.endpointId}
+                        </Text>
+                        <Code>
+                          {endpoint?.baseUrl ?? runtime?.baseUrl ?? "missing"}
+                        </Code>
+                        <Text c="dimmed" size="xs">
+                          {runtime?.kind === "managed-instance"
+                            ? `managed: ${
+                                props.instanceOptions.find(
+                                  (option) =>
+                                    option.value === runtime.instanceId,
+                                )?.label ?? runtime.instanceId
+                              }`
+                            : runtime
+                              ? "external API"
+                              : "not resolved yet"}
+                        </Text>
+                      </Stack>
                     </Table.Td>
                     <Table.Td>
                       {target.model ? (

@@ -183,6 +183,14 @@ export async function executeApiProxyPublicMvpPlan(
       return { ok: false, diagnostic: unsupportedDiagnostic(action) };
     }
 
+    if (action.type === "route-request") {
+      return { ok: true, preview };
+    }
+
+    if (!action.instanceId) {
+      return { ok: false, diagnostic: missingInstanceDiagnostic(action) };
+    }
+
     const instance = input.getInstance(action.instanceId);
     if (!instance) {
       return { ok: false, diagnostic: missingInstanceDiagnostic(action) };
@@ -190,8 +198,6 @@ export async function executeApiProxyPublicMvpPlan(
 
     try {
       switch (action.type) {
-        case "route-request":
-          return { ok: true, preview };
         case "start-instance":
           await input.startInstance(instance);
           preview = await input.getPlanPreview(input.target.id);

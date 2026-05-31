@@ -90,6 +90,11 @@ export function ProxyView() {
   const models = config?.models ?? [];
   const targets = config?.targets ?? [];
   const routes = config?.routes ?? [];
+  const endpoints = config?.endpoints ?? [];
+  const endpointById = useMemo(
+    () => new Map(endpoints.map((endpoint) => [endpoint.id, endpoint])),
+    [endpoints],
+  );
   const targetById = useMemo(
     () => new Map(targets.map((target) => [target.id, target])),
     [targets],
@@ -108,6 +113,16 @@ export function ProxyView() {
         label: instance.name,
       })),
     [instancesQuery.data?.data],
+  );
+  const endpointOptions = useMemo(
+    () =>
+      endpoints
+        .filter((endpoint) => endpoint.kind !== "manager-proxy")
+        .map((endpoint) => ({
+          value: endpoint.id,
+          label: `${endpoint.name} (${endpoint.baseUrl})`,
+        })),
+    [endpoints],
   );
   const targetOptions = targets.map((target) => ({
     value: target.id,
@@ -318,7 +333,10 @@ export function ProxyView() {
 
   function openCreateTarget() {
     setTargetEditor({ mode: "create", target: null });
-    setTargetDraftState(emptyTargetDraft);
+    setTargetDraftState({
+      ...emptyTargetDraft,
+      endpointId: endpointOptions[0]?.value ?? null,
+    });
   }
 
   function openEditTarget(target: ApiProxyTargetRecord) {
@@ -427,6 +445,7 @@ export function ProxyView() {
 
       <ProxyTargetsSection
         targets={targets}
+        endpointById={endpointById}
         instanceOptions={instanceOptions}
         runtimeByTargetId={runtimeByTargetId}
         routeCountByTargetId={routeCountByTargetId}
@@ -467,7 +486,8 @@ export function ProxyView() {
       <TargetEditorModal
         editor={targetEditor}
         draft={targetDraftState}
-        instanceOptions={instanceOptions}
+        endpoints={endpoints}
+        endpointOptions={endpointOptions}
         busy={targetBusy}
         onClose={closeTargetEditor}
         onSave={saveTarget}

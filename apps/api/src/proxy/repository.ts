@@ -81,7 +81,7 @@ function toTarget(row: TargetRow): ApiProxyTargetRecord {
     id: row.id,
     name: row.name,
     enabled: parseBool(row.enabled),
-    instanceId: row.instanceId,
+    endpointId: row.endpointId,
     model: row.model,
     role: row.role,
     priority: Number(row.priority),
@@ -137,7 +137,7 @@ function targetValues(input: ApiProxyTargetCreate | ApiProxyTargetRecord) {
   return {
     name: input.name,
     enabled: boolText(input.enabled),
-    instanceId: input.instanceId,
+    endpointId: input.endpointId,
     model: input.model,
     role: input.role,
     priority: String(input.priority),

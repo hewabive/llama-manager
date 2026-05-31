@@ -3,29 +3,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 
-import type { Instance } from "@llama-manager/core";
-
 import { apiProxyForwardUrl, forwardApiProxyRequest } from "./forwarder.js";
-
-function testInstance(port: number, args: Instance["args"] = {}): Instance {
-  return {
-    id: "instance-a",
-    name: "Test instance",
-    binaryPath: "/tmp/llama-server",
-    binaryPathRefId: null,
-    modelsPresetPathRefId: null,
-    args: {
-      "--host": "127.0.0.1",
-      "--port": port,
-      ...args,
-    },
-    env: {},
-    status: "running",
-    pid: 123,
-    createdAt: "2026-05-30T10:00:00.000Z",
-    updatedAt: "2026-05-30T10:00:00.000Z",
-  };
-}
 
 function readRequestBody(request: IncomingMessage) {
   return new Promise<string>((resolve, reject) => {
@@ -39,7 +17,7 @@ function readRequestBody(request: IncomingMessage) {
 test("apiProxyForwardUrl maps instance API prefix and upstream path", () => {
   assert.equal(
     apiProxyForwardUrl(
-      testInstance(8081, { "--api-prefix": "/api" }),
+      "http://127.0.0.1:8081/api/v1",
       "/v1/chat/completions",
       "?stream=false",
     ),
@@ -57,6 +35,7 @@ test("forwardApiProxyRequest forwards JSON request and response", async () => {
         method: request.method,
         url: request.url,
         contentType: request.headers["content-type"],
+        authorization: request.headers.authorization,
         host: request.headers.host,
         body: JSON.parse(body) as unknown,
       }),
@@ -67,7 +46,7 @@ test("forwardApiProxyRequest forwards JSON request and response", async () => {
   try {
     const address = server.address() as AddressInfo;
     const response = await forwardApiProxyRequest({
-      instance: testInstance(address.port),
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
       method: "POST",
       upstreamPath: "/v1/chat/completions",
       search: "?autoload=true",
@@ -77,6 +56,8 @@ test("forwardApiProxyRequest forwards JSON request and response", async () => {
         host: "example.test",
       }),
       body: { model: "qwen", messages: [] },
+      upstreamHeaders: { authorization: "Bearer upstream-secret" },
+      modelOverride: "upstream-qwen",
     });
 
     assert.equal(response.status, 200);
@@ -85,8 +66,9 @@ test("forwardApiProxyRequest forwards JSON request and response", async () => {
       method: "POST",
       url: "/v1/chat/completions?autoload=true",
       contentType: "application/json",
+      authorization: "Bearer upstream-secret",
       host: `127.0.0.1:${address.port}`,
-      body: { model: "qwen", messages: [] },
+      body: { model: "upstream-qwen", messages: [] },
     });
   } finally {
     await new Promise<void>((resolve, reject) =>

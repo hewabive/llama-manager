@@ -1,4 +1,5 @@
 import type {
+  ApiEndpointRecord,
   ApiProxyRuntimeMetadataRecord,
   ApiProxyTargetRecord,
   Instance,
@@ -43,7 +44,7 @@ function instance(id = "instance-a"): Instance {
 function target(
   input: {
     id?: string;
-    instanceId?: string;
+    endpointId?: string;
     model?: string | null;
   } = {},
 ): ApiProxyTargetRecord {
@@ -51,7 +52,7 @@ function target(
     id: input.id ?? "target-a",
     name: "Target A",
     enabled: true,
-    instanceId: input.instanceId ?? "instance-a",
+    endpointId: input.endpointId ?? "instance:instance-a",
     model: input.model === undefined ? "chat" : input.model,
     role: "interactive",
     priority: 100,
@@ -63,6 +64,33 @@ function target(
     resumeAfterIdleMs: null,
     createdAt: "2026-05-30T10:00:00.000Z",
     updatedAt: "2026-05-30T10:00:00.000Z",
+  };
+}
+
+function apiEndpoint(
+  input: {
+    id?: string;
+    baseUrl?: string;
+    kind?: ApiEndpointRecord["kind"];
+    instanceId?: string | null;
+  } = {},
+): ApiEndpointRecord {
+  return {
+    id: input.id ?? "instance:instance-a",
+    name: "Instance A",
+    enabled: true,
+    kind: input.kind ?? "managed-instance",
+    baseUrl: input.baseUrl ?? "http://127.0.0.1:8080/v1",
+    profile: "openai",
+    authType: "none",
+    authHeaderName: null,
+    authEnvVar: null,
+    authConfigured: false,
+    instanceId:
+      input.instanceId === undefined ? "instance-a" : input.instanceId,
+    editable: false,
+    createdAt: null,
+    updatedAt: null,
   };
 }
 
@@ -163,6 +191,7 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
   const first = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:00.000Z",
     targets: [proxyTarget],
+    endpoints: [apiEndpoint()],
     instances: [proxyInstance],
     healthByInstanceId: new Map([["instance-a", health()]]),
   });
@@ -174,6 +203,7 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
   const second = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:05.000Z",
     targets: [proxyTarget],
+    endpoints: [apiEndpoint()],
     instances: [proxyInstance],
     healthByInstanceId: new Map([["instance-a", health()]]),
   });
@@ -183,6 +213,7 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
   const busy = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:10.000Z",
     targets: [proxyTarget],
+    endpoints: [apiEndpoint()],
     instances: [proxyInstance],
     healthByInstanceId: new Map([["instance-a", health({ processing: true })]]),
   });
@@ -200,6 +231,7 @@ test("buildApiProxyRuntimeSnapshot carries saved slot ids for scheduler planning
   const snapshot = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:00.000Z",
     targets: [target()],
+    endpoints: [apiEndpoint()],
     instances: [instance()],
     healthByInstanceId: new Map([["instance-a", health()]]),
   });
@@ -219,6 +251,7 @@ test("buildApiProxyRuntimeSnapshot uses persisted runtime metadata", () => {
   const snapshot = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:00.000Z",
     targets: [target()],
+    endpoints: [apiEndpoint()],
     instances: [instance()],
     healthByInstanceId: new Map([["instance-a", health()]]),
     metadataByTargetId: new Map([["target-a", metadata]]),
@@ -228,17 +261,26 @@ test("buildApiProxyRuntimeSnapshot uses persisted runtime metadata", () => {
   assert.equal(snapshot.targets[0]?.lastRequestAt, metadata.lastRequestAt);
 });
 
-test("buildApiProxyRuntimeSnapshot reports missing instance as target error", () => {
+test("buildApiProxyRuntimeSnapshot treats external endpoint as external API", () => {
   resetApiProxyRuntimeTrackers();
 
   const snapshot = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:00.000Z",
-    targets: [target({ instanceId: "missing" })],
+    targets: [target({ endpointId: "external-a" })],
+    endpoints: [
+      apiEndpoint({
+        id: "external-a",
+        kind: "external-api",
+        instanceId: null,
+        baseUrl: "http://127.0.0.1:9999/v1",
+      }),
+    ],
     instances: [],
     healthByInstanceId: new Map(),
   });
 
-  assert.equal(snapshot.targets[0]?.state, "error");
+  assert.equal(snapshot.targets[0]?.state, "idle");
+  assert.equal(snapshot.targets[0]?.kind, "external-api");
 });
 
 test("buildApiProxyRuntimeSnapshot treats startable previous errors as stopped", () => {
@@ -247,6 +289,7 @@ test("buildApiProxyRuntimeSnapshot treats startable previous errors as stopped",
   const snapshot = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:00.000Z",
     targets: [target({ model: null })],
+    endpoints: [apiEndpoint()],
     instances: [instance()],
     healthByInstanceId: new Map([
       [
@@ -268,6 +311,7 @@ test("buildApiProxyRuntimeSnapshot treats reachable stale process targets as idl
   const snapshot = buildApiProxyRuntimeSnapshot({
     checkedAt: "2026-05-30T10:00:00.000Z",
     targets: [target({ model: null })],
+    endpoints: [apiEndpoint()],
     instances: [instance()],
     healthByInstanceId: new Map([
       [

@@ -1,4 +1,6 @@
+import type { ApiEndpointRecord } from "@llama-manager/core";
 import {
+  Autocomplete,
   Button,
   Group,
   Modal,
@@ -7,10 +9,14 @@ import {
   SegmentedControl,
   Stack,
   Switch,
+  Text,
   TextInput,
 } from "@mantine/core";
 import { Save } from "lucide-react";
+import { useMemo } from "react";
 
+import { StatusTooltipIcon } from "../components/StatusTooltipIcon";
+import { useApiModelOptions } from "../hooks/use-api-model-options";
 import type {
   ModelDraft,
   ModelEditor,
@@ -110,7 +116,8 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
 type TargetEditorModalProps = {
   editor: TargetEditor | null;
   draft: TargetDraft;
-  instanceOptions: SelectOption[];
+  endpoints: ApiEndpointRecord[];
+  endpointOptions: SelectOption[];
   busy: boolean;
   onClose: () => void;
   onSave: () => void;
@@ -118,6 +125,26 @@ type TargetEditorModalProps = {
 };
 
 export function TargetEditorModal(props: TargetEditorModalProps) {
+  const selectedEndpoint = useMemo(
+    () =>
+      props.endpoints.find((endpoint) => endpoint.id === props.draft.endpointId),
+    [props.draft.endpointId, props.endpoints],
+  );
+  const modelDiscovery = useApiModelOptions({
+    profile: "openai",
+    baseUrl: selectedEndpoint?.baseUrl,
+    endpointId: selectedEndpoint?.id ?? null,
+    enabled: Boolean(props.editor && selectedEndpoint),
+    idleLabel: selectedEndpoint
+      ? "Model list was not checked."
+      : "Select an endpoint to load model options.",
+  });
+  const modelOptions = modelDiscovery.modelOptions;
+  const modelOptionsByValue = useMemo(
+    () => new Map(modelOptions.map((option) => [option.value, option])),
+    [modelOptions],
+  );
+
   return (
     <Modal
       opened={Boolean(props.editor)}
@@ -147,22 +174,44 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
           }}
         />
         <Select
-          label="Instance"
-          data={props.instanceOptions}
-          value={props.draft.instanceId}
+          data={props.endpointOptions}
+          label="Endpoint"
           searchable
-          onChange={(value) =>
-            props.onDraftChange({ ...props.draft, instanceId: value })
+          rightSection={<StatusTooltipIcon status={modelDiscovery.status} />}
+          rightSectionPointerEvents="all"
+          value={props.draft.endpointId}
+          onChange={(endpointId) =>
+            props.onDraftChange({ ...props.draft, endpointId })
           }
         />
-        <TextInput
-          label="Model"
-          placeholder="Optional v1/models id"
-          value={props.draft.model}
-          onChange={(event) => {
-            const model = event.currentTarget.value;
-            props.onDraftChange({ ...props.draft, model });
+        <Autocomplete
+          clearable
+          data={modelOptions.map((option) => option.value)}
+          filter={({ options, limit }) => options.slice(0, limit)}
+          label="Upstream model"
+          limit={50}
+          maxDropdownHeight={360}
+          openOnFocus
+          placeholder={
+            modelOptions.length > 0
+              ? "Select or type upstream model"
+              : "Optional upstream model id"
+          }
+          renderOption={({ option }) => {
+            const modelOption = modelOptionsByValue.get(option.value);
+            return (
+              <Stack gap={2}>
+                <Text size="sm">{option.value}</Text>
+                {modelOption?.status && (
+                  <Text c="dimmed" size="xs">
+                    {modelOption.status}
+                  </Text>
+                )}
+              </Stack>
+            );
           }}
+          value={props.draft.model}
+          onChange={(model) => props.onDraftChange({ ...props.draft, model })}
         />
         <Group grow align="flex-end">
           <SegmentedControl
@@ -258,7 +307,7 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
           <Button
             leftSection={<Save size={16} />}
             loading={props.busy}
-            disabled={!props.draft.name.trim() || !props.draft.instanceId}
+            disabled={!props.draft.name.trim() || !props.draft.endpointId}
             onClick={props.onSave}
           >
             Save

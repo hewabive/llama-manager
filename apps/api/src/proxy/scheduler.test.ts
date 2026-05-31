@@ -30,6 +30,7 @@ function target(input: {
     id: input.id,
     name: input.name,
     enabled: true,
+    endpointId: `instance:${input.instanceId}`,
     instanceId: input.instanceId,
     model: input.model,
     role: input.role ?? "interactive",
@@ -42,6 +43,9 @@ function target(input: {
     resumeAfterIdleMs: null,
     runtime: {
       targetId: input.id,
+      kind: "managed-instance",
+      endpointId: `instance:${input.instanceId}`,
+      baseUrl: `http://127.0.0.1/${input.id}/v1`,
       instanceId: input.instanceId,
       model: input.model,
       state: input.state,
@@ -98,6 +102,42 @@ test("planApiProxyRequest preempts lower-priority target and saves slots", () =>
   assert.equal(plan.actions[0]?.targetId, "background");
   assert.equal(plan.actions[0]?.slotId, 0);
   assert.equal(plan.actions.at(-1)?.targetId, "urgent");
+});
+
+test("planApiProxyRequest routes external API targets without instance actions", () => {
+  const externalTarget = target({
+    id: "external",
+    name: "External API",
+    instanceId: "ignored",
+    model: "upstream-model",
+    priority: 100,
+    state: "idle",
+  });
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "external",
+      now: "2026-05-30T10:00:00.000Z",
+      targets: [
+        {
+          ...externalTarget,
+          instanceId: null,
+          runtime: {
+            ...externalTarget.runtime,
+            kind: "external-api",
+            instanceId: null,
+          },
+        },
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["route-request"],
+  );
+  assert.equal(plan.actions[0]?.instanceId, null);
 });
 
 test("planApiProxyRequest blocks on non-preemptible busy peer", () => {

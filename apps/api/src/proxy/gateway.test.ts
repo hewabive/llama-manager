@@ -15,7 +15,7 @@ const target: ApiProxyTargetRecord = {
   id: "target-a",
   name: "Interactive",
   enabled: true,
-  instanceId: "instance-a",
+  endpointId: "instance:instance-a",
   model: "qwen",
   role: "interactive",
   priority: 100,
@@ -79,7 +79,7 @@ function planPreview(
         {
           type: "route-request",
           targetId: target.id,
-          instanceId: target.instanceId,
+          instanceId: "instance-a",
           model: target.model,
           slotId: null,
           reason: "target is selected",
@@ -156,7 +156,7 @@ test("buildApiProxyProtocolGatewayResponse reports readiness actions before forw
           {
             type: "load-model",
             targetId: target.id,
-            instanceId: target.instanceId,
+            instanceId: "instance-a",
             model: target.model,
             slotId: null,
             reason: "request arrived",
@@ -164,7 +164,7 @@ test("buildApiProxyProtocolGatewayResponse reports readiness actions before forw
           {
             type: "route-request",
             targetId: target.id,
-            instanceId: target.instanceId,
+            instanceId: "instance-a",
             model: target.model,
             slotId: null,
             reason: "target is selected",

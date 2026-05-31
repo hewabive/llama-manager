@@ -216,6 +216,7 @@ export async function requestApiLabProbeBaseUrl(
   profile: ApiLabProbeProfile,
   baseUrl: string,
   input: ApiProbeRequest,
+  headers: Record<string, string> = {},
 ): Promise<ApiProbeResult> {
   const target = apiLabProbeTargetFromBaseUrl(profile, baseUrl, input);
 
@@ -227,7 +228,7 @@ export async function requestApiLabProbeBaseUrl(
     response: await requestLlamaJson(target.url, {
       method: "POST",
       body: JSON.stringify(target.requestBody),
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       timeoutMs: API_LAB_PROBE_TIMEOUT_MS,
     }),
   };

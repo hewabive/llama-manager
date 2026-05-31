@@ -22,11 +22,17 @@ function isBusy(target: ApiProxyTargetPlanInput) {
   );
 }
 
+function isManaged(target: ApiProxyTargetPlanInput) {
+  return Boolean(target.instanceId);
+}
+
 function sameResourceGroup(
   left: ApiProxyTargetPlanInput,
   right: ApiProxyTargetPlanInput,
 ) {
   return (
+    isManaged(left) &&
+    isManaged(right) &&
     Boolean(left.resourceGroupId) &&
     left.resourceGroupId === right.resourceGroupId
   );
@@ -77,6 +83,10 @@ function unloadActions(
   target: ApiProxyTargetPlanInput,
   reason: string,
 ): ApiProxySchedulerAction[] {
+  if (!isManaged(target)) {
+    return [];
+  }
+
   const actions: ApiProxySchedulerAction[] = [];
   if (target.saveSlotsBeforeUnload) {
     for (const slotId of target.slotIds) {
@@ -96,6 +106,10 @@ function loadActions(
   target: ApiProxyTargetPlanInput,
   reason: string,
 ): ApiProxySchedulerAction[] {
+  if (!isManaged(target)) {
+    return [];
+  }
+
   const state = runtimeState(target);
   const actions: ApiProxySchedulerAction[] = [];
 

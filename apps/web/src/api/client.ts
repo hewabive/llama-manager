@@ -1,5 +1,8 @@
 import type {
   AdminLogin,
+  ApiEndpointCreate,
+  ApiEndpointRecord,
+  ApiEndpointUpdate,
   ApiProxyConfig,
   ApiProxyModelCreate,
   ApiProxyModelRecord,
@@ -225,6 +228,26 @@ export async function deletePathCatalogEntry(id: string) {
 
 export async function getApiProxyConfig() {
   return request<{ data: ApiProxyConfig }>("/api/proxy/config");
+}
+
+export async function createApiEndpoint(input: ApiEndpointCreate) {
+  return request<{ data: ApiEndpointRecord }>("/api/endpoints", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateApiEndpoint(id: string, input: ApiEndpointUpdate) {
+  return request<{ data: ApiEndpointRecord }>(`/api/endpoints/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteApiEndpoint(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/endpoints/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getApiProxyRuntime() {
@@ -579,8 +602,13 @@ export async function runApiLabProbe(input: ApiLabProbeTargetRequest) {
 export async function getApiLabModels(
   profile: ApiLabProbeProfile,
   baseUrl: string,
+  endpointId?: string | null,
 ) {
-  const params = new URLSearchParams({ profile, baseUrl });
+  const params = new URLSearchParams({
+    profile,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(endpointId ? { endpointId } : {}),
+  });
   return request<{ data: LlamaEndpointProbe }>(
     `/api/lab/models?${params.toString()}`,
   );

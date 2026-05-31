@@ -131,13 +131,25 @@ export const llamaArgumentDefaults = sqliteTable("llama_argument_defaults", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const apiEndpoints = sqliteTable("api_endpoints", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  enabled: text("enabled").notNull(),
+  baseUrl: text("base_url").notNull(),
+  profile: text("profile").notNull(),
+  authType: text("auth_type").notNull(),
+  authHeaderName: text("auth_header_name"),
+  authEnvVar: text("auth_env_var"),
+  apiKey: text("api_key"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const apiProxyTargets = sqliteTable("api_proxy_targets", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   enabled: text("enabled").notNull(),
-  instanceId: text("instance_id")
-    .notNull()
-    .references(() => instances.id, { onDelete: "cascade" }),
+  endpointId: text("endpoint_id").notNull(),
   model: text("model"),
   role: text("role").notNull(),
   priority: text("priority").notNull(),

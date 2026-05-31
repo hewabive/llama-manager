@@ -1,47 +1,62 @@
-import type { Instance } from "@llama-manager/core";
-
-import { llamaBaseUrl } from "../llama/probe.js";
 import {
   proxyRequestHeaders,
   proxyResponseHeaders,
   proxyTargetUrl,
 } from "./http.js";
+import { stripV1BaseUrl } from "./targets.js";
 
 export type ApiProxyForwardRequest = {
-  instance: Instance;
+  baseUrl: string;
   method: string;
   upstreamPath: string;
   search: string;
   headers: Headers;
   body: unknown;
+  upstreamHeaders?: Record<string, string> | undefined;
+  modelOverride?: string | null | undefined;
   signal?: AbortSignal | undefined;
 };
 
 export function apiProxyForwardUrl(
-  instance: Instance,
+  baseUrl: string,
   upstreamPath: string,
   search = "",
 ) {
-  const baseUrl = llamaBaseUrl(instance);
-  if (!baseUrl) {
-    return null;
+  const normalizedBaseUrl = upstreamPath.startsWith("/v1/")
+    ? stripV1BaseUrl(baseUrl)
+    : baseUrl;
+  return proxyTargetUrl(normalizedBaseUrl, upstreamPath, search);
+}
+
+function forwardBody(body: unknown, modelOverride: string | null | undefined) {
+  if (
+    !modelOverride ||
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body)
+  ) {
+    return body;
   }
-  return proxyTargetUrl(baseUrl, upstreamPath, search);
+
+  return {
+    ...(body as Record<string, unknown>),
+    model: modelOverride,
+  };
 }
 
 export async function forwardApiProxyRequest(
   input: ApiProxyForwardRequest,
 ): Promise<Response> {
   const url = apiProxyForwardUrl(
-    input.instance,
+    input.baseUrl,
     input.upstreamPath,
     input.search,
   );
-  if (!url) {
-    throw new Error("UNIX socket proxy forwarding is not implemented yet");
-  }
 
   const headers = proxyRequestHeaders(input.headers);
+  for (const [name, value] of Object.entries(input.upstreamHeaders ?? {})) {
+    headers.set(name, value);
+  }
   if (!headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
@@ -49,7 +64,7 @@ export async function forwardApiProxyRequest(
   const init: RequestInit = {
     method: input.method,
     headers,
-    body: JSON.stringify(input.body),
+    body: JSON.stringify(forwardBody(input.body, input.modelOverride)),
   };
   if (input.signal) {
     init.signal = input.signal;

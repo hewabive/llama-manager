@@ -12,22 +12,6 @@ sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
 
-function columnExists(table: string, column: string) {
-  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
-    name: string;
-  }>;
-  return rows.some((row) => row.name === column);
-}
-
-function dropDeprecatedTables() {
-  sqlite.exec(`
-    DROP TABLE IF EXISTS api_probe_history;
-    DROP TABLE IF EXISTS llama_api_probe_history;
-    DROP INDEX IF EXISTS api_proxy_executor_runs_started_idx;
-    DROP TABLE IF EXISTS api_proxy_executor_runs;
-  `);
-}
-
 export function migrate() {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS instances (
@@ -43,20 +27,6 @@ export function migrate() {
       updated_at TEXT NOT NULL
     )
   `);
-
-  if (!columnExists("instances", "binary_path_ref_id")) {
-    db.run(sql`
-      ALTER TABLE instances
-      ADD COLUMN binary_path_ref_id TEXT
-    `);
-  }
-
-  if (!columnExists("instances", "models_preset_path_ref_id")) {
-    db.run(sql`
-      ALTER TABLE instances
-      ADD COLUMN models_preset_path_ref_id TEXT
-    `);
-  }
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS path_catalog (
@@ -87,13 +57,6 @@ export function migrate() {
       raw_log_path TEXT
     )
   `);
-
-  if (!columnExists("process_runs", "raw_log_path")) {
-    db.run(sql`
-      ALTER TABLE process_runs
-      ADD COLUMN raw_log_path TEXT
-    `);
-  }
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS model_cache (
@@ -158,65 +121,6 @@ export function migrate() {
     )
   `);
 
-  if (!columnExists("llama_build_settings", "env_json")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}'
-    `);
-  }
-
-  if (!columnExists("llama_build_settings", "build_profile")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN build_profile TEXT NOT NULL DEFAULT 'server'
-    `);
-  }
-
-  if (!columnExists("llama_build_settings", "cuda_architectures")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN cuda_architectures TEXT
-    `);
-  }
-
-  if (!columnExists("llama_build_settings", "cuda_fa_all_quants")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN cuda_fa_all_quants TEXT NOT NULL DEFAULT 'false'
-    `);
-  }
-
-  if (!columnExists("llama_build_settings", "cuda_graphs")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN cuda_graphs TEXT NOT NULL DEFAULT 'default'
-    `);
-  }
-
-  if (!columnExists("llama_build_settings", "cuda_no_vmm")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN cuda_no_vmm TEXT NOT NULL DEFAULT 'false'
-    `);
-  }
-
-  if (!columnExists("llama_build_settings", "llguidance")) {
-    db.run(sql`
-      ALTER TABLE llama_build_settings
-      ADD COLUMN llguidance TEXT NOT NULL DEFAULT 'default'
-    `);
-  }
-
-  db.run(sql`
-    INSERT INTO llama_source_settings (id, repo_path, updated_at)
-    SELECT 'default', repo_path, updated_at
-    FROM llama_build_settings
-    WHERE id = 'default'
-      AND NOT EXISTS (
-        SELECT 1 FROM llama_source_settings WHERE id = 'default'
-      )
-  `);
-
   db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_build_jobs (
       id TEXT PRIMARY KEY NOT NULL,
@@ -265,14 +169,28 @@ export function migrate() {
     )
   `);
 
-  dropDeprecatedTables();
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS api_endpoints (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      enabled TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      profile TEXT NOT NULL,
+      auth_type TEXT NOT NULL,
+      auth_header_name TEXT,
+      auth_env_var TEXT,
+      api_key TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS api_proxy_targets (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
       enabled TEXT NOT NULL,
-      instance_id TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+      endpoint_id TEXT NOT NULL,
       model TEXT,
       role TEXT NOT NULL,
       priority TEXT NOT NULL,
@@ -325,6 +243,11 @@ export function migrate() {
   db.run(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_targets_name_idx
     ON api_proxy_targets (name)
+  `);
+
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS api_endpoints_name_idx
+    ON api_endpoints (name)
   `);
 
   db.run(sql`

@@ -1,5 +1,6 @@
 import {
   ApiProxyRuntimeSnapshotSchema,
+  type ApiEndpointRecord,
   type ApiProxyModelState,
   type ApiProxyRuntimeSnapshot,
   type ApiProxyRuntimeMetadataRecord,
@@ -9,6 +10,8 @@ import {
   type InstanceHealthSummary,
   type LlamaEndpointProbe,
 } from "@llama-manager/core";
+
+import { resolveApiProxyTarget } from "./targets.js";
 
 type RuntimeTracker = {
   idleSince: string | null;
@@ -143,9 +146,13 @@ function processRuntimeState(
 
 function deriveState(input: {
   target: ApiProxyTargetRecord;
+  instanceId: string | null;
   instance: Instance | undefined;
   health: InstanceHealthSummary | undefined;
 }): { state: ApiProxyModelState; activeRequests: number } {
+  if (!input.instanceId) {
+    return { state: "idle", activeRequests: 0 };
+  }
   if (!input.instance) {
     return { state: "error", activeRequests: 0 };
   }
@@ -222,16 +229,24 @@ function updateTracker(input: {
 
 export function deriveApiProxyTargetRuntime(input: {
   target: ApiProxyTargetRecord;
+  kind: "managed-instance" | "external-api";
+  endpointId: string;
+  baseUrl: string;
+  endpointEnabled: boolean;
+  instanceId: string | null;
   instance?: Instance | undefined;
   health?: InstanceHealthSummary | undefined;
   metadata?: ApiProxyRuntimeMetadataRecord | undefined;
   checkedAt: string;
 }): ApiProxyTargetRuntime {
-  const derived = deriveState({
-    target: input.target,
-    instance: input.instance,
-    health: input.health,
-  });
+  const derived = input.endpointEnabled
+    ? deriveState({
+        target: input.target,
+        instanceId: input.instanceId,
+        instance: input.instance,
+        health: input.health,
+      })
+    : { state: "error" as const, activeRequests: 0 };
   const tracker = updateTracker({
     targetId: input.target.id,
     state: derived.state,
@@ -242,7 +257,10 @@ export function deriveApiProxyTargetRuntime(input: {
 
   return {
     targetId: input.target.id,
-    instanceId: input.target.instanceId,
+    kind: input.kind,
+    endpointId: input.endpointId,
+    baseUrl: input.baseUrl,
+    instanceId: input.instanceId,
     model: input.target.model,
     state: derived.state,
     activeRequests: derived.activeRequests,
@@ -255,12 +273,19 @@ export function deriveApiProxyTargetRuntime(input: {
 export function buildApiProxyRuntimeSnapshot(input: {
   checkedAt: string;
   targets: ApiProxyTargetRecord[];
+  endpoints: ApiEndpointRecord[];
   instances: Instance[];
   healthByInstanceId: Map<string, InstanceHealthSummary>;
   metadataByTargetId?: Map<string, ApiProxyRuntimeMetadataRecord> | undefined;
 }): ApiProxyRuntimeSnapshot {
   const instanceById = new Map(
     input.instances.map((instance) => [instance.id, instance]),
+  );
+  const resolutionByTargetId = new Map(
+    input.targets.map((target) => [
+      target.id,
+      resolveApiProxyTarget(target, input.instances, input.endpoints),
+    ]),
   );
   const activeTargetIds = new Set(input.targets.map((target) => target.id));
   for (const targetId of runtimeTrackers.keys()) {
@@ -271,15 +296,25 @@ export function buildApiProxyRuntimeSnapshot(input: {
 
   return ApiProxyRuntimeSnapshotSchema.parse({
     checkedAt: input.checkedAt,
-    targets: input.targets.map((target) =>
-      deriveApiProxyTargetRuntime({
+    targets: input.targets.map((target) => {
+      const resolution = resolutionByTargetId.get(target.id);
+      return deriveApiProxyTargetRuntime({
         target,
-        instance: instanceById.get(target.instanceId),
-        health: input.healthByInstanceId.get(target.instanceId),
+        kind: resolution?.kind ?? "external-api",
+        endpointId: resolution?.endpointId ?? target.endpointId,
+        baseUrl: resolution?.baseUrl ?? "http://127.0.0.1",
+        endpointEnabled: resolution?.enabled ?? false,
+        instanceId: resolution?.instanceId ?? null,
+        instance: resolution?.instanceId
+          ? instanceById.get(resolution.instanceId)
+          : undefined,
+        health: resolution?.instanceId
+          ? input.healthByInstanceId.get(resolution.instanceId)
+          : undefined,
         metadata: input.metadataByTargetId?.get(target.id),
         checkedAt: input.checkedAt,
-      }),
-    ),
+      });
+    }),
   });
 }
 

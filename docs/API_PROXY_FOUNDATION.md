@@ -5,9 +5,13 @@ proxy. The current implementation adds shared contracts, durable
 disabled-by-default configuration, runtime diagnostics, pure planning logic,
 simple public OpenAI-compatible execution and HTTP forwarding helpers. It also
 introduces a protocol-adapter boundary for OpenAI-compatible and
-Anthropic-compatible public facades. Public OpenAI-compatible requests can
-start or load the bound target before forwarding when the scheduler plan only
-requires MVP-supported readiness actions.
+Anthropic-compatible public facades. Proxy targets now point at entries in a
+shared API endpoint catalog. Managed instances and the llama-manager proxy are
+generated read-only catalog entries; external APIs are editable catalog entries
+with optional auth settings. Public OpenAI-compatible requests can start or load
+a managed target before forwarding when the scheduler plan only requires
+MVP-supported readiness actions. External API targets are forwarded without
+instance-management actions.
 
 ## Problem Shape
 
@@ -37,6 +41,7 @@ endpoint.
 ## New Foundation
 
 - Core proxy contracts in `packages/core`:
+  - `ApiEndpointConfig`
   - `ApiProxyTargetConfig`
   - `ApiProxyRouteConfig`
   - `ApiProxyModelConfig`
@@ -44,7 +49,11 @@ endpoint.
   - `ApiProxySchedulerPlanRequest`
   - `ApiProxySchedulerPlan`
 - Runtime collector in `apps/api/src/proxy/runtime.ts`:
-  - derives target state from instance health summaries, `/v1/models` and slots
+  - resolves target endpoint IDs through the shared API endpoint catalog
+  - derives managed target state from instance health summaries, `/v1/models`
+    and slots
+  - treats external API endpoints as ready for forwarding without process
+    management
   - tracks idle time in process memory
   - merges persistent saved slot ids and last request time from SQLite
 - Pure scheduler in `apps/api/src/proxy/scheduler.ts`:
@@ -67,22 +76,26 @@ endpoint.
   - allows forwarding only when no scheduler action is needed except
     `route-request`
 - Forwarder in `apps/api/src/proxy/forwarder.ts`:
-  - forwards ready OpenAI-compatible requests to the bound instance
+  - forwards ready OpenAI-compatible requests to the resolved target Base URL
+  - applies endpoint auth headers for external APIs
+  - rewrites the request `model` to the target upstream model when configured
   - preserves upstream response status, headers and body stream
-  - uses the instance host, port and API prefix
+  - accepts either a root URL or a `/v1` API Base URL
 - Public MVP executor in `apps/api/src/proxy/public-executor.ts`:
   - can start a stopped instance for OpenAI-compatible requests
   - can load the target model when the scheduler asks for `load-model`
   - waits for instance/model readiness before forwarding
   - rejects preemption, slot save/restore and unload actions for now
 - Durable configuration in SQLite:
+  - `api_endpoints`
   - `api_proxy_models`
   - `api_proxy_targets`
   - `api_proxy_routes`
   - `api_proxy_runtime_metadata`
-- Admin UI page:
+- Admin UI pages:
+  - separate API endpoint catalog page
   - external proxy models
-  - proxy targets
+  - endpoint-based proxy targets
   - proxy routes
   - runtime state preview
   - scheduler plan preview
@@ -103,7 +116,8 @@ The external protocol surfaces are public and intentionally separate from admin
   `model` field and return Anthropic-shaped errors.
 
 At this stage, OpenAI-compatible generation endpoints can start/load/wait for
-the bound target, then forward:
+managed targets, then forward. External API targets skip management and forward
+directly:
 
 - `/v1/chat/completions`
 - `/v1/completions`

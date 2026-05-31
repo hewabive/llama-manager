@@ -5,6 +5,7 @@ import type {
   InstanceHealthSummary,
 } from "@llama-manager/core";
 import {
+  Badge,
   Button,
   Code,
   Group,
@@ -17,7 +18,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Square, Triangle } from "lucide-react";
+import { Plus, RotateCcw, Square, Triangle } from "lucide-react";
 import { useState } from "react";
 
 import { bulkInstanceAction } from "../../api/client";
@@ -116,6 +117,28 @@ function bulkResultMessage(result: InstanceBulkActionResult) {
   return failed
     ? `${details} First error: ${failed.name}: ${failed.error}`
     : details;
+}
+
+function InstancesHeader(props: {
+  instancesCount: number;
+  onCreate: () => void;
+}) {
+  return (
+    <Paper withBorder p="md" radius="sm">
+      <Group justify="space-between" align="center" wrap="wrap">
+        <Group gap="xs" wrap="wrap">
+          <Badge variant="light">{props.instancesCount} instances</Badge>
+        </Group>
+        <Button
+          variant="light"
+          leftSection={<Plus size={16} />}
+          onClick={props.onCreate}
+        >
+          New instance
+        </Button>
+      </Group>
+    </Paper>
+  );
 }
 
 function BulkActionsToolbar(props: {
@@ -279,6 +302,7 @@ export function InstancesView(props: {
   selectedInstance: Instance | null;
   healthByInstanceId: Map<string, InstanceHealthSummary>;
   onSelect: (instance: Instance) => void;
+  onCreate: () => void;
   onEdit: (instance: Instance) => void;
   onOpenDiagnostics: (instance: Instance) => void;
   onLaunchStarted: (
@@ -289,6 +313,11 @@ export function InstancesView(props: {
 }) {
   return (
     <>
+      <InstancesHeader
+        instancesCount={props.instances.length}
+        onCreate={props.onCreate}
+      />
+
       <BulkActionsToolbar
         instances={props.instances}
         healthByInstanceId={props.healthByInstanceId}

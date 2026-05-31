@@ -14,7 +14,7 @@ const target: ApiProxyTargetRecord = {
   id: "target-a",
   name: "Target A",
   enabled: true,
-  instanceId: "instance-a",
+  endpointId: "instance:instance-a",
   model: "chat",
   role: "interactive",
   priority: 100,

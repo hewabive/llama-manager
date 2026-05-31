@@ -1,5 +1,7 @@
 import {
   AdminLoginSchema,
+  ApiEndpointCreateSchema,
+  ApiEndpointUpdateSchema,
   ApiProxyModelCreateSchema,
   ApiProxyModelUpdateSchema,
   ApiProxyRouteCreateSchema,
@@ -141,6 +143,15 @@ import {
   updateApiProxyRoute,
   updateApiProxyTarget,
 } from "./proxy/repository.js";
+import {
+  apiEndpointAuthHeaders,
+  createApiEndpoint,
+  deleteApiEndpoint,
+  getApiEndpointFromCatalog,
+  getExternalApiEndpoint,
+  listApiEndpointCatalog,
+  updateApiEndpoint,
+} from "./proxy/endpoints.js";
 import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
 import { forwardApiProxyRequest } from "./proxy/forwarder.js";
@@ -157,6 +168,13 @@ import {
   planApiProxyIdleMaintenance,
   planApiProxyRequest,
 } from "./proxy/scheduler.js";
+import {
+  apiVersionBaseUrl,
+  isManagerProxyBaseUrl,
+  normalizeHttpBaseUrl,
+  resolveApiProxyTarget,
+  stripV1BaseUrl,
+} from "./proxy/targets.js";
 import { getPublicStatus } from "./public-status.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
 import {
@@ -214,11 +232,25 @@ function validateInstancePathRefs(input: {
   return null;
 }
 
+function validateApiEndpointRefs(input: { baseUrl?: string | undefined }) {
+  if (input.baseUrl && isManagerProxyBaseUrl(input.baseUrl)) {
+    return "external API endpoint cannot point to llama-manager proxy itself";
+  }
+  return null;
+}
+
 function validateApiProxyTargetRefs(input: {
-  instanceId?: string | undefined;
+  endpointId?: string | undefined;
 }) {
-  if (input.instanceId && !getInstance(input.instanceId)) {
-    return "proxy target instance not found";
+  if (!input.endpointId) {
+    return null;
+  }
+  const endpoint = getApiEndpointFromCatalog(input.endpointId, listInstances());
+  if (!endpoint) {
+    return "proxy target endpoint not found";
+  }
+  if (endpoint.kind === "manager-proxy") {
+    return "proxy target cannot point to llama-manager proxy itself";
   }
   return null;
 }
@@ -243,8 +275,16 @@ async function getApiProxyRuntimeSnapshot() {
   const targets = listApiProxyTargets();
   const metadata = listApiProxyRuntimeMetadata();
   const instances = listInstances();
+  const endpoints = listApiEndpointCatalog(instances);
   const peers = instances;
-  const targetInstanceIds = new Set(targets.map((target) => target.instanceId));
+  const targetInstanceIds = new Set(
+    targets
+      .map(
+        (target) =>
+          resolveApiProxyTarget(target, instances, endpoints).instanceId,
+      )
+      .filter((instanceId): instanceId is string => Boolean(instanceId)),
+  );
   const healthEntries = await Promise.all(
     instances
       .filter((instance) => targetInstanceIds.has(instance.id))
@@ -262,6 +302,7 @@ async function getApiProxyRuntimeSnapshot() {
     snapshot: buildApiProxyRuntimeSnapshot({
       checkedAt: new Date().toISOString(),
       targets,
+      endpoints,
       instances,
       healthByInstanceId: new Map(healthEntries),
       metadataByTargetId: new Map(
@@ -282,7 +323,13 @@ async function getApiProxyPlanPreview(input: {
   );
   const targets = runtime.targets.map((target) => {
     const targetRuntime = runtimeByTargetId.get(target.id);
-    return targetRuntime ? { ...target, runtime: targetRuntime } : target;
+    return targetRuntime
+      ? {
+          ...target,
+          instanceId: targetRuntime.instanceId,
+          runtime: targetRuntime,
+        }
+      : { ...target, instanceId: null };
   });
   const request: ApiProxySchedulerPlanRequest = {
     mode: input.mode,
@@ -307,23 +354,12 @@ async function getApiProxyPlanPreview(input: {
   });
 }
 
-function normalizeHttpBaseUrl(value: string) {
-  const parsed = new URL(value.trim());
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("baseUrl must use http or https");
-  }
-  parsed.hash = "";
-  parsed.search = "";
-  const path = parsed.pathname.replace(/\/+$/, "");
-  return `${parsed.origin}${path === "/" ? "" : path}`;
-}
-
 function normalizeApiLabBaseUrl(profile: ApiLabProbeProfile, value: string) {
   const baseUrl = normalizeHttpBaseUrl(value);
   if (profile === "llama-native") {
-    return baseUrl.replace(/\/v1$/i, "");
+    return stripV1BaseUrl(baseUrl);
   }
-  return baseUrl;
+  return apiVersionBaseUrl(baseUrl);
 }
 
 function parseApiLabProfile(value: string | undefined) {
@@ -332,6 +368,38 @@ function parseApiLabProfile(value: string | undefined) {
     throw new Error("profile must be openai, llama-native, or anthropic");
   }
   return parsed.data;
+}
+
+function resolveApiLabEndpoint(input: {
+  profile: ApiLabProbeProfile;
+  baseUrl?: string | undefined;
+  endpointId?: string | undefined;
+}) {
+  if (input.endpointId) {
+    const endpoint = getApiEndpointFromCatalog(
+      input.endpointId,
+      listInstances(),
+    );
+    if (!endpoint) {
+      throw new Error("API endpoint not found");
+    }
+    const auth = apiEndpointAuthHeaders(endpoint.id);
+    if (!auth.ok) {
+      throw new Error(auth.error);
+    }
+    return {
+      baseUrl: normalizeApiLabBaseUrl(input.profile, endpoint.baseUrl),
+      headers: auth.headers,
+    };
+  }
+
+  if (!input.baseUrl) {
+    throw new Error("baseUrl is required");
+  }
+  return {
+    baseUrl: normalizeApiLabBaseUrl(input.profile, input.baseUrl),
+    headers: {},
+  };
 }
 
 async function safeJsonBody(c: Context) {
@@ -419,25 +487,44 @@ async function proxyProtocolEndpoint(
     return c.json(response.body, response.status);
   }
 
-  const instance = getInstance(decision.target.instanceId);
-  if (!instance) {
+  const instances = listInstances();
+  const targetResolution = resolveApiProxyTarget(
+    decision.target,
+    instances,
+    listApiEndpointCatalog(instances),
+  );
+  if (!targetResolution.enabled) {
     const response = adapter.diagnosticError(resolution.request, {
       status: 503,
-      code: "llama_manager_proxy_instance_not_found",
+      code: "llama_manager_proxy_upstream_unavailable",
       param: "model",
-      message: `Proxy target ${decision.target.name} points to missing instance ${decision.target.instanceId}.`,
+      message:
+        targetResolution.error ??
+        `Proxy target ${decision.target.name} endpoint is unavailable.`,
+    });
+    return c.json(response.body, response.status);
+  }
+  const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
+  if (!auth.ok) {
+    const response = adapter.diagnosticError(resolution.request, {
+      status: 503,
+      code: "llama_manager_proxy_upstream_unavailable",
+      param: "model",
+      message: auth.error,
     });
     return c.json(response.body, response.status);
   }
 
   try {
     return await forwardApiProxyRequest({
-      instance,
+      baseUrl: targetResolution.baseUrl,
       method: c.req.method,
       upstreamPath,
       search: new URL(c.req.url).search,
       headers: c.req.raw.headers,
       body,
+      upstreamHeaders: auth.headers,
+      modelOverride: decision.target.model,
       signal: c.req.raw.signal,
     });
   } catch (error) {
@@ -654,14 +741,78 @@ app.delete("/api/path-catalog/:id", (c) => {
 });
 
 app.get("/api/proxy/config", (c) => {
-  return c.json({ data: getApiProxyConfig() });
+  return c.json({
+    data: {
+      ...getApiProxyConfig(),
+      endpoints: listApiEndpointCatalog(listInstances()),
+    },
+  });
+});
+
+app.get("/api/endpoints", (c) => {
+  return c.json({ data: listApiEndpointCatalog(listInstances()) });
+});
+
+app.post("/api/endpoints", async (c) => {
+  const parsed = ApiEndpointCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiEndpointRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    return c.json({ data: createApiEndpoint(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/endpoints/:id", async (c) => {
+  const parsed = ApiEndpointUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const refError = validateApiEndpointRefs(parsed.data);
+  if (refError) {
+    return c.json({ error: refError }, 400);
+  }
+
+  try {
+    const endpoint = updateApiEndpoint(c.req.param("id"), parsed.data);
+    if (!endpoint) {
+      return c.json({ error: "API endpoint not found" }, 404);
+    }
+    return c.json({ data: endpoint });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/endpoints/:id", (c) => {
+  const id = c.req.param("id");
+  const endpoint = getExternalApiEndpoint(id);
+  if (!endpoint) {
+    return c.json({ data: { deleted: false } }, 404);
+  }
+  const usedBy = listApiProxyTargets().filter(
+    (target) => target.endpointId === id,
+  );
+  if (usedBy.length > 0) {
+    return c.json(
+      { error: `API endpoint is used by ${usedBy.length} proxy target(s)` },
+      400,
+    );
+  }
+  const deleted = deleteApiEndpoint(id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.get("/api/lab/models", async (c) => {
   const rawBaseUrl = c.req.query("baseUrl");
-  if (!rawBaseUrl) {
-    return c.json({ error: "baseUrl is required" }, 400);
-  }
+  const endpointId = c.req.query("endpointId");
   try {
     const profile = parseApiLabProfile(c.req.query("profile"));
     if (profile !== "openai") {
@@ -670,9 +821,14 @@ app.get("/api/lab/models", async (c) => {
         400,
       );
     }
-    const baseUrl = normalizeApiLabBaseUrl(profile, rawBaseUrl);
+    const target = resolveApiLabEndpoint({
+      profile,
+      baseUrl: rawBaseUrl,
+      endpointId,
+    });
     return c.json({
-      data: await requestLlamaJson(`${baseUrl}/models`, {
+      data: await requestLlamaJson(`${target.baseUrl}/models`, {
+        headers: target.headers,
         timeoutMs: 10_000,
       }),
     });
@@ -689,11 +845,16 @@ app.post("/api/lab/probe", async (c) => {
 
   try {
     const profile = parsed.data.profile;
-    const baseUrl = normalizeApiLabBaseUrl(profile, parsed.data.baseUrl);
+    const target = resolveApiLabEndpoint({
+      profile,
+      baseUrl: parsed.data.baseUrl,
+      endpointId: parsed.data.endpointId,
+    });
     const data = await requestApiLabProbeBaseUrl(
       profile,
-      baseUrl,
+      target.baseUrl,
       parsed.data.probe,
+      target.headers,
     );
     return c.json({ data });
   } catch (error) {
@@ -1479,6 +1640,7 @@ function streamApiProbeTarget(
   c: Context,
   input: {
     request: ApiProbeRequest;
+    headers?: Record<string, string> | undefined;
     target:
       | ReturnType<typeof instanceApiProbeTarget>
       | ReturnType<typeof apiLabProbeTargetFromBaseUrl>;
@@ -1502,7 +1664,7 @@ function streamApiProbeTarget(
       const response = await fetch(input.target.url, {
         method: "POST",
         body: JSON.stringify(input.target.requestBody),
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...input.headers },
         signal: controller.signal,
       });
 
@@ -1570,13 +1732,17 @@ app.post("/api/lab/probe/stream", async (c) => {
     );
   }
 
-  let baseUrl: string;
+  let resolved: ReturnType<typeof resolveApiLabEndpoint>;
   let target: ReturnType<typeof apiLabProbeTargetFromBaseUrl>;
   try {
-    baseUrl = normalizeApiLabBaseUrl(parsed.data.profile, parsed.data.baseUrl);
+    resolved = resolveApiLabEndpoint({
+      profile: parsed.data.profile,
+      baseUrl: parsed.data.baseUrl,
+      endpointId: parsed.data.endpointId,
+    });
     target = apiLabProbeTargetFromBaseUrl(
       parsed.data.profile,
-      baseUrl,
+      resolved.baseUrl,
       parsed.data.probe,
       {
         stream: true,
@@ -1588,6 +1754,7 @@ app.post("/api/lab/probe/stream", async (c) => {
 
   return streamApiProbeTarget(c, {
     request: parsed.data.probe,
+    headers: resolved.headers,
     target,
   });
 });

@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, Moon, Plus, RefreshCw, Sun } from "lucide-react";
+import { LogOut, Moon, RefreshCw, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -29,6 +29,7 @@ import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { argsWithModel } from "./utils/models";
 import { ApiLabView } from "./views/ApiLabView";
+import { ApiEndpointsView } from "./views/ApiEndpointsView";
 import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
 import { DiagnosticsView } from "./views/DiagnosticsView";
@@ -246,12 +247,6 @@ export function App() {
                     <RefreshCw size={18} />
                   </ActionIcon>
                 </Tooltip>
-                <Button
-                  leftSection={<Plus size={16} />}
-                  onClick={() => setCreateOpened(true)}
-                >
-                  New instance
-                </Button>
                 {authState?.enabled && (
                   <Tooltip label="Sign out">
                     <ActionIcon
@@ -300,6 +295,7 @@ export function App() {
               selectedInstance={selectedInstance}
               healthByInstanceId={healthByInstanceId}
               onSelect={(instance) => setSelectedId(instance.id)}
+              onCreate={() => setCreateOpened(true)}
               onEdit={setEditingInstance}
               onOpenDiagnostics={(instance) => {
                 setSelectedId(instance.id);
@@ -327,6 +323,8 @@ export function App() {
           {canUseAdmin && route === "args" && <ArgumentsView />}
 
           {canUseAdmin && route === "paths" && <PathCatalogView />}
+
+          {canUseAdmin && route === "endpoints" && <ApiEndpointsView />}
 
           {canUseAdmin && route === "proxy" && <ProxyView />}
 

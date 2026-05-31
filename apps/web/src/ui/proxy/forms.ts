@@ -22,7 +22,7 @@ export type ModelEditor =
 export type TargetDraft = {
   name: string;
   enabled: boolean;
-  instanceId: string | null;
+  endpointId: string | null;
   model: string;
   role: "interactive" | "background";
   priority: number | "";
@@ -55,7 +55,7 @@ export const unboundTargetValue = "__unbound__";
 export const emptyTargetDraft: TargetDraft = {
   name: "",
   enabled: false,
-  instanceId: null,
+  endpointId: null,
   model: "",
   role: "interactive",
   priority: 100,
@@ -104,7 +104,7 @@ export function targetDraftFromRecord(
   return {
     name: target.name,
     enabled: target.enabled,
-    instanceId: target.instanceId,
+    endpointId: target.endpointId,
     model: target.model ?? "",
     role: target.role,
     priority: target.priority,
@@ -141,7 +141,7 @@ export function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
   return {
     name: draft.name.trim(),
     enabled: draft.enabled,
-    instanceId: draft.instanceId ?? "",
+    endpointId: draft.endpointId ?? "",
     model: draft.model.trim() || null,
     role: draft.role,
     priority: draft.priority === "" ? 100 : draft.priority,

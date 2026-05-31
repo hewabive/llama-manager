@@ -6,6 +6,7 @@ export type AppRoute =
   | "diagnostics"
   | "args"
   | "paths"
+  | "endpoints"
   | "proxy"
   | "api-lab"
   | "models"
@@ -48,6 +49,12 @@ export const appRoutes: {
     label: "Paths",
     title: "Path Catalog",
     description: "Shared binary and preset paths for instances",
+  },
+  {
+    id: "endpoints",
+    label: "Endpoints",
+    title: "API Endpoints",
+    description: "Registered external APIs and generated local endpoints",
   },
   {
     id: "proxy",

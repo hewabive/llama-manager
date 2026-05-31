@@ -225,6 +225,82 @@ export const ApiProbeKindSchema = z.enum([
   ...AnthropicApiProbeKindSchema.options,
 ]);
 
+const ApiEndpointIdSchema = z.string().trim().min(1).max(160);
+const ApiEndpointNameSchema = z.string().trim().min(1).max(80);
+const ApiEndpointBaseUrlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_000)
+  .refine(
+    (value) => {
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Base URL must be an http or https URL" },
+  );
+const ApiEndpointHeaderNameSchema = z.string().trim().min(1).max(80).nullable();
+const ApiEndpointEnvVarSchema = z.string().trim().min(1).max(120).nullable();
+const ApiEndpointSecretSchema = z.string().max(4_000).optional();
+
+export const ApiEndpointKindSchema = z.enum([
+  "manager-proxy",
+  "managed-instance",
+  "external-api",
+]);
+
+export const ApiEndpointAuthTypeSchema = z.enum([
+  "none",
+  "bearer",
+  "api-key-header",
+  "env-bearer",
+  "env-api-key-header",
+]);
+
+export const ApiEndpointConfigSchema = z.object({
+  id: ApiEndpointIdSchema,
+  name: ApiEndpointNameSchema,
+  enabled: z.boolean().default(true),
+  kind: ApiEndpointKindSchema.default("external-api"),
+  baseUrl: ApiEndpointBaseUrlSchema,
+  profile: ApiLabProbeProfileSchema.default("openai"),
+  authType: ApiEndpointAuthTypeSchema.default("none"),
+  authHeaderName: ApiEndpointHeaderNameSchema.default(null),
+  authEnvVar: ApiEndpointEnvVarSchema.default(null),
+  instanceId: z.string().min(1).nullable().default(null),
+  editable: z.boolean().default(true),
+});
+
+export const ApiEndpointCreateSchema = ApiEndpointConfigSchema.omit({
+  id: true,
+  kind: true,
+  instanceId: true,
+  editable: true,
+}).extend({
+  apiKey: ApiEndpointSecretSchema,
+});
+
+export const ApiEndpointUpdateSchema = z.object({
+  name: ApiEndpointNameSchema.optional(),
+  enabled: z.boolean().optional(),
+  baseUrl: ApiEndpointBaseUrlSchema.optional(),
+  profile: ApiLabProbeProfileSchema.optional(),
+  authType: ApiEndpointAuthTypeSchema.optional(),
+  authHeaderName: ApiEndpointHeaderNameSchema.optional(),
+  authEnvVar: ApiEndpointEnvVarSchema.optional(),
+  apiKey: ApiEndpointSecretSchema,
+});
+
+export const ApiEndpointRecordSchema = ApiEndpointConfigSchema.extend({
+  authConfigured: z.boolean().default(false),
+  createdAt: z.string().nullable().default(null),
+  updatedAt: z.string().nullable().default(null),
+});
+
 export const ApiLabProbeKindsByProfile = {
   openai: OpenAiApiProbeKindSchema.options,
   "llama-native": LlamaNativeApiProbeKindSchema.options,
@@ -287,10 +363,18 @@ export const ApiProbeRequestSchema = z
 export const ApiLabProbeTargetRequestSchema = z
   .object({
     profile: ApiLabProbeProfileSchema,
-    baseUrl: z.string().trim().min(1).max(2_000),
+    baseUrl: z.string().trim().min(1).max(2_000).optional(),
+    endpointId: ApiEndpointIdSchema.optional(),
     probe: ApiProbeRequestSchema,
   })
   .superRefine((input, ctx) => {
+    if (!input.baseUrl && !input.endpointId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["baseUrl"],
+        message: "Base URL or endpoint is required",
+      });
+    }
     if (
       !ApiLabProbeKindsByProfile[input.profile].includes(
         input.probe.kind as never,
@@ -321,6 +405,11 @@ export const ApiProxyTransformModeSchema = z.enum([
   "openai-compatible",
 ]);
 
+export const ApiProxyTargetKindSchema = z.enum([
+  "managed-instance",
+  "external-api",
+]);
+
 export const ApiProxyTargetRoleSchema = z.enum(["interactive", "background"]);
 
 export const ApiProxyModelStateSchema = z.enum([
@@ -336,7 +425,6 @@ export const ApiProxyModelStateSchema = z.enum([
 ]);
 
 const ApiProxyTargetNameSchema = z.string().min(1).max(80);
-const ApiProxyTargetInstanceIdSchema = z.string().min(1);
 const ApiProxyTargetModelSchema = z.string().trim().min(1).max(500).nullable();
 const ApiProxyTargetPrioritySchema = z.number().int().min(0).max(10_000);
 const ApiProxyTargetResourceGroupSchema = z.string().min(1).max(80).nullable();
@@ -352,7 +440,7 @@ export const ApiProxyTargetConfigSchema = z.object({
   id: ApiProxyIdSchema,
   name: ApiProxyTargetNameSchema,
   enabled: z.boolean().default(false),
-  instanceId: ApiProxyTargetInstanceIdSchema,
+  endpointId: ApiEndpointIdSchema,
   model: ApiProxyTargetModelSchema.default(null),
   role: ApiProxyTargetRoleSchema.default("interactive"),
   priority: ApiProxyTargetPrioritySchema.default(100),
@@ -389,7 +477,7 @@ export const ApiProxyTargetCreateSchema = ApiProxyTargetConfigSchema.omit({
 export const ApiProxyTargetUpdateSchema = z.object({
   name: ApiProxyTargetNameSchema.optional(),
   enabled: z.boolean().optional(),
-  instanceId: ApiProxyTargetInstanceIdSchema.optional(),
+  endpointId: ApiEndpointIdSchema.optional(),
   model: ApiProxyTargetModelSchema.optional(),
   role: ApiProxyTargetRoleSchema.optional(),
   priority: ApiProxyTargetPrioritySchema.optional(),
@@ -444,6 +532,7 @@ export const ApiProxyConfigSchema = z.object({
   models: z.array(ApiProxyModelRecordSchema),
   targets: z.array(ApiProxyTargetRecordSchema),
   routes: z.array(ApiProxyRouteRecordSchema),
+  endpoints: z.array(ApiEndpointRecordSchema).default([]),
 });
 
 export const ApiProxyRuntimeMetadataRecordSchema = z.object({
@@ -455,7 +544,10 @@ export const ApiProxyRuntimeMetadataRecordSchema = z.object({
 
 export const ApiProxyTargetRuntimeSchema = z.object({
   targetId: ApiProxyIdSchema,
-  instanceId: z.string().min(1),
+  kind: ApiProxyTargetKindSchema,
+  baseUrl: ApiEndpointBaseUrlSchema,
+  endpointId: ApiEndpointIdSchema,
+  instanceId: z.string().min(1).nullable().default(null),
   model: z.string().trim().min(1).max(500).nullable().default(null),
   state: ApiProxyModelStateSchema.default("unknown"),
   activeRequests: z.number().int().min(0).default(0),
@@ -465,6 +557,7 @@ export const ApiProxyTargetRuntimeSchema = z.object({
 });
 
 export const ApiProxyTargetPlanInputSchema = ApiProxyTargetConfigSchema.extend({
+  instanceId: z.string().min(1).nullable().default(null),
   runtime: ApiProxyTargetRuntimeSchema.optional(),
 });
 
@@ -485,7 +578,7 @@ export const ApiProxySchedulerActionTypeSchema = z.enum([
 export const ApiProxySchedulerActionSchema = z.object({
   type: ApiProxySchedulerActionTypeSchema,
   targetId: ApiProxyIdSchema,
-  instanceId: z.string().min(1),
+  instanceId: z.string().min(1).nullable().default(null),
   model: z.string().nullable(),
   slotId: z.number().int().min(0).nullable().default(null),
   reason: z.string(),
@@ -1205,6 +1298,12 @@ export type LlamaSlotActionRequest = z.infer<
 >;
 export type LlamaSlotActionResult = z.infer<typeof LlamaSlotActionResultSchema>;
 export type ApiLabProbeProfile = z.infer<typeof ApiLabProbeProfileSchema>;
+export type ApiEndpointKind = z.infer<typeof ApiEndpointKindSchema>;
+export type ApiEndpointAuthType = z.infer<typeof ApiEndpointAuthTypeSchema>;
+export type ApiEndpointConfig = z.infer<typeof ApiEndpointConfigSchema>;
+export type ApiEndpointCreate = z.infer<typeof ApiEndpointCreateSchema>;
+export type ApiEndpointUpdate = z.infer<typeof ApiEndpointUpdateSchema>;
+export type ApiEndpointRecord = z.infer<typeof ApiEndpointRecordSchema>;
 export type OpenAiApiProbeKind = z.infer<typeof OpenAiApiProbeKindSchema>;
 export type LlamaNativeApiProbeKind = z.infer<
   typeof LlamaNativeApiProbeKindSchema
@@ -1218,6 +1317,7 @@ export type ApiLabProbeTargetRequest = z.infer<
 export type ApiProbeTargetRequest = z.infer<typeof ApiProbeTargetRequestSchema>;
 export type ApiProbeResult = z.infer<typeof ApiProbeResultSchema>;
 export type ApiProxyTransformMode = z.infer<typeof ApiProxyTransformModeSchema>;
+export type ApiProxyTargetKind = z.infer<typeof ApiProxyTargetKindSchema>;
 export type ApiProxyTargetRole = z.infer<typeof ApiProxyTargetRoleSchema>;
 export type ApiProxyModelState = z.infer<typeof ApiProxyModelStateSchema>;
 export type ApiProxyTargetConfig = z.infer<typeof ApiProxyTargetConfigSchema>;
