@@ -1,0 +1,19 @@
+import { mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+
+const testHome = join(tmpdir(), `llama-manager-api-test-${randomUUID()}`);
+
+process.env.LLAMA_MANAGER_DATA_DIR = join(testHome, "data");
+process.env.LLAMA_MANAGER_RUNTIME_DIR = join(testHome, "runtime");
+process.env.LLAMA_MANAGER_STOP_MANAGED_ON_EXIT = "false";
+
+mkdirSync(testHome, { recursive: true });
+
+const { migrate } = await import("../db/index.js");
+migrate();
+
+process.on("exit", () => {
+  rmSync(testHome, { recursive: true, force: true });
+});

@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import pino from "pino";
 
+import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
 import { migrate } from "./db/index.js";
 import { app } from "./http.js";
@@ -12,6 +13,7 @@ const logger = pino({
 });
 
 migrate();
+const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const reconciliation = reconcileProcessRuns();
 
 const server = serve(
@@ -22,7 +24,12 @@ const server = serve(
   },
   (info) => {
     logger.info(
-      { address: info.address, port: info.port, reconciliation },
+      {
+        address: info.address,
+        port: info.port,
+        reconciliation,
+        prunedArgumentCatalogs,
+      },
       "llama-manager api listening",
     );
   },

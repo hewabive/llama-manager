@@ -6,9 +6,13 @@ import {
   type LlamaArgumentOption,
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
+import { existsSync } from "node:fs";
 
 import { db } from "../db/index.js";
-import { llamaArgumentCatalogs, llamaArgumentHelpOverrides } from "../db/schema.js";
+import {
+  llamaArgumentCatalogs,
+  llamaArgumentHelpOverrides,
+} from "../db/schema.js";
 
 type CatalogRow = typeof llamaArgumentCatalogs.$inferSelect;
 type OverrideRow = typeof llamaArgumentHelpOverrides.$inferSelect;
@@ -34,7 +38,9 @@ function toCatalog(row: CatalogRow): CachedArgumentCatalog {
     binaryMtimeMs: row.binaryMtimeMs,
     binaryModifiedAt: row.binaryModifiedAt,
     helpHash: row.helpHash,
-    options: LlamaArgumentOptionSchema.array().parse(JSON.parse(row.optionsJson) as unknown),
+    options: LlamaArgumentOptionSchema.array().parse(
+      JSON.parse(row.optionsJson) as unknown,
+    ),
     generatedAt: row.generatedAt,
   };
 }
@@ -48,12 +54,20 @@ function toOverride(row: OverrideRow): LlamaArgumentHelpOverride {
   });
 }
 
-export function getCachedArgumentCatalog(binaryPath: string): CachedArgumentCatalog | null {
-  const row = db.select().from(llamaArgumentCatalogs).where(eq(llamaArgumentCatalogs.binaryPath, binaryPath)).get();
+export function getCachedArgumentCatalog(
+  binaryPath: string,
+): CachedArgumentCatalog | null {
+  const row = db
+    .select()
+    .from(llamaArgumentCatalogs)
+    .where(eq(llamaArgumentCatalogs.binaryPath, binaryPath))
+    .get();
   return row ? toCatalog(row) : null;
 }
 
-export function saveArgumentCatalog(input: CachedArgumentCatalog): CachedArgumentCatalog {
+export function saveArgumentCatalog(
+  input: CachedArgumentCatalog,
+): CachedArgumentCatalog {
   const current = getCachedArgumentCatalog(input.binaryPath);
   const values = {
     binarySize: String(input.binarySize),
@@ -65,9 +79,14 @@ export function saveArgumentCatalog(input: CachedArgumentCatalog): CachedArgumen
   };
 
   if (current) {
-    db.update(llamaArgumentCatalogs).set(values).where(eq(llamaArgumentCatalogs.binaryPath, input.binaryPath)).run();
+    db.update(llamaArgumentCatalogs)
+      .set(values)
+      .where(eq(llamaArgumentCatalogs.binaryPath, input.binaryPath))
+      .run();
   } else {
-    db.insert(llamaArgumentCatalogs).values({ binaryPath: input.binaryPath, ...values }).run();
+    db.insert(llamaArgumentCatalogs)
+      .values({ binaryPath: input.binaryPath, ...values })
+      .run();
   }
 
   const saved = getCachedArgumentCatalog(input.binaryPath);
@@ -77,11 +96,32 @@ export function saveArgumentCatalog(input: CachedArgumentCatalog): CachedArgumen
   return saved;
 }
 
+export function pruneMissingArgumentCatalogs(): number {
+  const rows = db.select().from(llamaArgumentCatalogs).all();
+  let deleted = 0;
+
+  for (const row of rows) {
+    if (existsSync(row.binaryPath)) {
+      continue;
+    }
+
+    const result = db
+      .delete(llamaArgumentCatalogs)
+      .where(eq(llamaArgumentCatalogs.binaryPath, row.binaryPath))
+      .run();
+    deleted += result.changes;
+  }
+
+  return deleted;
+}
+
 export function listArgumentHelpOverrides(): LlamaArgumentHelpOverride[] {
   return db.select().from(llamaArgumentHelpOverrides).all().map(toOverride);
 }
 
-export function getArgumentHelpOverride(primaryName: string): LlamaArgumentHelpOverride | null {
+export function getArgumentHelpOverride(
+  primaryName: string,
+): LlamaArgumentHelpOverride | null {
   const row = db
     .select()
     .from(llamaArgumentHelpOverrides)
@@ -90,7 +130,9 @@ export function getArgumentHelpOverride(primaryName: string): LlamaArgumentHelpO
   return row ? toOverride(row) : null;
 }
 
-export function saveArgumentHelpOverride(input: LlamaArgumentHelpOverrideUpdate): LlamaArgumentHelpOverride {
+export function saveArgumentHelpOverride(
+  input: LlamaArgumentHelpOverrideUpdate,
+): LlamaArgumentHelpOverride {
   const current = getArgumentHelpOverride(input.primaryName);
   const values = {
     helpRu: input.helpRu,
@@ -104,7 +146,9 @@ export function saveArgumentHelpOverride(input: LlamaArgumentHelpOverrideUpdate)
       .where(eq(llamaArgumentHelpOverrides.primaryName, input.primaryName))
       .run();
   } else {
-    db.insert(llamaArgumentHelpOverrides).values({ primaryName: input.primaryName, ...values }).run();
+    db.insert(llamaArgumentHelpOverrides)
+      .values({ primaryName: input.primaryName, ...values })
+      .run();
   }
 
   const saved = getArgumentHelpOverride(input.primaryName);

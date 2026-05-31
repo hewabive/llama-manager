@@ -5,14 +5,21 @@ import { dirname, resolve } from "node:path";
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const defaultRootDir = resolve(moduleDir, "../../..");
 const rootDir = resolve(process.env.LLAMA_MANAGER_HOME ?? defaultRootDir);
+const runtimeDir = process.env.LLAMA_MANAGER_RUNTIME_DIR
+  ? resolve(process.env.LLAMA_MANAGER_RUNTIME_DIR)
+  : resolve(rootDir, "runtime");
 
 export const config = {
   host: process.env.LLAMA_MANAGER_HOST ?? "127.0.0.1",
   port: Number(process.env.LLAMA_MANAGER_PORT ?? "8787"),
   rootDir,
-  dataDir: resolve(rootDir, "data"),
-  runtimeDir: resolve(rootDir, "runtime"),
-  logsDir: resolve(rootDir, "runtime", "logs"),
+  dataDir: process.env.LLAMA_MANAGER_DATA_DIR
+    ? resolve(process.env.LLAMA_MANAGER_DATA_DIR)
+    : resolve(rootDir, "data"),
+  runtimeDir,
+  logsDir: process.env.LLAMA_MANAGER_LOGS_DIR
+    ? resolve(process.env.LLAMA_MANAGER_LOGS_DIR)
+    : resolve(runtimeDir, "logs"),
   logs: {
     filterRoutineProbeRequests:
       process.env.LLAMA_MANAGER_FILTER_PROBE_LOGS !== "false",
