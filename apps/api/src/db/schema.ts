@@ -89,20 +89,6 @@ export const llamaBuildSettings = sqliteTable("llama_build_settings", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const llamaBuildJobs = sqliteTable("llama_build_jobs", {
-  id: text("id").primaryKey(),
-  status: text("status").notNull(),
-  settingsJson: text("settings_json").notNull(),
-  stepsJson: text("steps_json").notNull(),
-  currentStep: text("current_step"),
-  startedAt: text("started_at").notNull(),
-  finishedAt: text("finished_at"),
-  exitCode: text("exit_code"),
-  logPath: text("log_path").notNull(),
-  binaryPath: text("binary_path"),
-  error: text("error"),
-});
-
 export const llamaArgumentCatalogs = sqliteTable("llama_argument_catalogs", {
   binaryPath: text("binary_path").primaryKey(),
   binarySize: text("binary_size").notNull(),

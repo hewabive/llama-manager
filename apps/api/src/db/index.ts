@@ -12,15 +12,6 @@ sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
 
-function addColumnIfMissing(table: string, column: string, ddl: string) {
-  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
-    name: string;
-  }>;
-  if (!rows.some((row) => row.name === column)) {
-    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
-  }
-}
-
 export function migrate() {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS instances (
@@ -131,22 +122,6 @@ export function migrate() {
   `);
 
   db.run(sql`
-    CREATE TABLE IF NOT EXISTS llama_build_jobs (
-      id TEXT PRIMARY KEY NOT NULL,
-      status TEXT NOT NULL,
-      settings_json TEXT NOT NULL,
-      steps_json TEXT NOT NULL,
-      current_step TEXT,
-      started_at TEXT NOT NULL,
-      finished_at TEXT,
-      exit_code TEXT,
-      log_path TEXT NOT NULL,
-      binary_path TEXT,
-      error TEXT
-    )
-  `);
-
-  db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_argument_catalogs (
       binary_path TEXT PRIMARY KEY NOT NULL,
       binary_size TEXT NOT NULL,
@@ -241,8 +216,6 @@ export function migrate() {
     )
   `);
 
-  addColumnIfMissing("api_proxy_models", "route_to_json", "route_to_json TEXT");
-
   db.run(sql`
     CREATE TABLE IF NOT EXISTS api_proxy_pipelines (
       id TEXT PRIMARY KEY NOT NULL,
@@ -254,22 +227,6 @@ export function migrate() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
-  `);
-
-  addColumnIfMissing(
-    "api_proxy_pipelines",
-    "node_type",
-    "node_type TEXT NOT NULL DEFAULT 'replace-text'",
-  );
-
-  db.run(sql`
-    UPDATE api_proxy_pipelines
-    SET node_type = CASE
-      WHEN steps_json LIKE '%"capture-request"%' AND steps_json NOT LIKE '%"replace-text"%'
-        THEN 'save-request'
-      ELSE 'replace-text'
-    END
-    WHERE node_type = 'sequence'
   `);
 
   db.run(sql`

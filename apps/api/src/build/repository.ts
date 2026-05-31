@@ -1,5 +1,4 @@
 import {
-  BuildJobSchema,
   BuildSettingsSchema,
   type BuildJob,
   type BuildJobStep,
@@ -8,14 +7,14 @@ import {
   type BuildSettings,
   type PathCatalogEntry,
 } from "@llama-manager/core";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { basename, resolve } from "node:path";
 import { newId } from "../utils/id.js";
 
 import { config } from "../config.js";
 import { isCudaToolkitAvailable } from "./cuda.js";
 import { db } from "../db/index.js";
-import { llamaBuildJobs, llamaBuildSettings } from "../db/schema.js";
+import { llamaBuildSettings } from "../db/schema.js";
 import {
   getLlamaSourceSettings,
   getLlamaSourceVersionLabel,
@@ -30,7 +29,6 @@ import {
 const SETTINGS_ID = "default";
 
 type BuildSettingsRow = typeof llamaBuildSettings.$inferSelect;
-type BuildJobRow = typeof llamaBuildJobs.$inferSelect;
 
 function nowIso() {
   return new Date().toISOString();
@@ -98,25 +96,6 @@ function settingsValues(settings: BuildSettings) {
       settings.parallelJobs === null ? null : String(settings.parallelJobs),
     updatedAt: nowIso(),
   };
-}
-
-function toBuildJob(row: BuildJobRow): BuildJob {
-  return BuildJobSchema.parse({
-    id: row.id,
-    status: row.status,
-    settings: JSON.parse(row.settingsJson) as unknown,
-    steps: JSON.parse(row.stepsJson) as unknown,
-    currentStep: row.currentStep,
-    startedAt: row.startedAt,
-    finishedAt: row.finishedAt,
-    exitCode:
-      row.exitCode === null || row.exitCode === undefined
-        ? null
-        : Number(row.exitCode),
-    logPath: row.logPath,
-    binaryPath: row.binaryPath,
-    error: row.error,
-  });
 }
 
 export function getBuildSettings(): BuildSettings {
@@ -199,6 +178,28 @@ export function registerBuiltBinaryInCatalog(
   return createPathCatalogEntry({ kind: "binary", name, path: binaryPath });
 }
 
+const BUILD_JOB_HISTORY_LIMIT = 20;
+const buildJobs = new Map<string, BuildJob>();
+
+function cloneJob(job: BuildJob): BuildJob {
+  return structuredClone(job);
+}
+
+function trimBuildJobHistory() {
+  if (buildJobs.size <= BUILD_JOB_HISTORY_LIMIT) {
+    return;
+  }
+  const removable = [...buildJobs.values()]
+    .filter((job) => job.status !== "running")
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  for (const job of removable) {
+    if (buildJobs.size <= BUILD_JOB_HISTORY_LIMIT) {
+      break;
+    }
+    buildJobs.delete(job.id);
+  }
+}
+
 export function createBuildJob(input: {
   status: BuildJobStatus;
   settings: BuildSettings;
@@ -207,28 +208,22 @@ export function createBuildJob(input: {
   startedAt: string;
   logPath: string;
 }): BuildJob {
-  const id = newId();
-  db.insert(llamaBuildJobs)
-    .values({
-      id,
-      status: input.status,
-      settingsJson: JSON.stringify(input.settings),
-      stepsJson: JSON.stringify(input.steps),
-      currentStep: input.currentStep,
-      startedAt: input.startedAt,
-      finishedAt: null,
-      exitCode: null,
-      logPath: input.logPath,
-      binaryPath: null,
-      error: null,
-    })
-    .run();
-
-  const created = getBuildJob(id);
-  if (!created) {
-    throw new Error("failed to create build job");
-  }
-  return created;
+  const job: BuildJob = {
+    id: newId(),
+    status: input.status,
+    settings: input.settings,
+    steps: input.steps,
+    currentStep: input.currentStep,
+    startedAt: input.startedAt,
+    finishedAt: null,
+    exitCode: null,
+    logPath: input.logPath,
+    binaryPath: null,
+    error: null,
+  };
+  buildJobs.set(job.id, cloneJob(job));
+  trimBuildJobHistory();
+  return cloneJob(job);
 }
 
 export function updateBuildJob(
@@ -243,54 +238,37 @@ export function updateBuildJob(
     error: string | null;
   }>,
 ): BuildJob | null {
-  const current = getBuildJob(id);
+  const current = buildJobs.get(id);
   if (!current) {
     return null;
   }
 
-  db.update(llamaBuildJobs)
-    .set({
-      status: input.status ?? current.status,
-      stepsJson: JSON.stringify(input.steps ?? current.steps),
-      currentStep:
-        input.currentStep === undefined
-          ? current.currentStep
-          : input.currentStep,
-      finishedAt:
-        input.finishedAt === undefined ? current.finishedAt : input.finishedAt,
-      exitCode:
-        input.exitCode === undefined
-          ? current.exitCode === null
-            ? null
-            : String(current.exitCode)
-          : input.exitCode === null
-            ? null
-            : String(input.exitCode),
-      binaryPath:
-        input.binaryPath === undefined ? current.binaryPath : input.binaryPath,
-      error: input.error === undefined ? current.error : input.error,
-    })
-    .where(eq(llamaBuildJobs.id, id))
-    .run();
+  const next: BuildJob = {
+    ...current,
+    status: input.status ?? current.status,
+    steps: input.steps ?? current.steps,
+    currentStep:
+      input.currentStep === undefined ? current.currentStep : input.currentStep,
+    finishedAt:
+      input.finishedAt === undefined ? current.finishedAt : input.finishedAt,
+    exitCode: input.exitCode === undefined ? current.exitCode : input.exitCode,
+    binaryPath:
+      input.binaryPath === undefined ? current.binaryPath : input.binaryPath,
+    error: input.error === undefined ? current.error : input.error,
+  };
 
-  return getBuildJob(id);
+  buildJobs.set(id, cloneJob(next));
+  return cloneJob(next);
 }
 
 export function getBuildJob(id: string): BuildJob | null {
-  const row = db
-    .select()
-    .from(llamaBuildJobs)
-    .where(eq(llamaBuildJobs.id, id))
-    .get();
-  return row ? toBuildJob(row) : null;
+  const job = buildJobs.get(id);
+  return job ? cloneJob(job) : null;
 }
 
 export function listBuildJobs(limit = 20): BuildJob[] {
-  return db
-    .select()
-    .from(llamaBuildJobs)
-    .orderBy(desc(llamaBuildJobs.startedAt))
-    .limit(Math.max(1, Math.min(limit, 100)))
-    .all()
-    .map(toBuildJob);
+  return [...buildJobs.values()]
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .slice(0, Math.max(1, Math.min(limit, 100)))
+    .map(cloneJob);
 }

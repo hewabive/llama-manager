@@ -47,7 +47,7 @@ A separate `proxy` domain fronts both managed `llama-server` instances and exter
 
 ### Database migrations
 
-Schema is declared two places: `db/schema.ts` (Drizzle table defs for typed queries) and `db/index.ts:migrate()` (hand-written idempotent `CREATE TABLE IF NOT EXISTS` + `addColumnIfMissing` for additive columns). There is no drizzle-kit migration pipeline — to evolve the schema, update both and add an `addColumnIfMissing`/backfill `UPDATE` in `migrate()`.
+Schema is declared two places: `db/schema.ts` (Drizzle table defs for typed queries) and `db/index.ts:migrate()` (hand-written idempotent `CREATE TABLE IF NOT EXISTS`). There is no drizzle-kit pipeline and no in-place column migration — the DB is recreated, not migrated; to evolve the schema, update both places. For an additive column against an existing DB, add an idempotent `ALTER TABLE … ADD COLUMN` guard in `migrate()`.
 
 ### Argument documentation
 
