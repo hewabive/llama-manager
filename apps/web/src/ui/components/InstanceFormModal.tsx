@@ -39,7 +39,6 @@ import {
   createInstance,
   getLlamaArgumentDefaults,
   getLlamaArguments,
-  getModelPreset,
   getModelScanSettings,
   getSystemResources,
   instanceAction,
@@ -47,7 +46,6 @@ import {
   previewInstancePreflight,
   scanModels,
   updateInstance,
-  writeModelPreset,
 } from "../../api/client";
 import { defaultBinaryPath } from "../constants";
 import {
@@ -212,7 +210,6 @@ export function InstanceFormModal(props: {
     string | null
   >(null);
   const isMobile = useMediaQuery("(max-width: 48em)");
-  const [writePresetOnSave, setWritePresetOnSave] = useState(true);
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
     initialValues: {
@@ -237,11 +234,6 @@ export function InstanceFormModal(props: {
     enabled: props.opened && modelDirectory !== "",
     retry: false,
     staleTime: 60_000,
-  });
-  const modelPresetQuery = useQuery({
-    queryKey: ["model-preset"],
-    queryFn: getModelPreset,
-    enabled: props.opened,
   });
   const argsCatalogQuery = useQuery({
     queryKey: ["llama-args", form.values.binaryPath],
@@ -325,7 +317,6 @@ export function InstanceFormModal(props: {
     }
     return options;
   }, [selectableModels, selectedModelPath]);
-  const modelPreset = modelPresetQuery.data?.data;
   const binaryCatalogEntries = useMemo(
     () =>
       (pathCatalogQuery.data?.data ?? []).filter(
@@ -356,26 +347,7 @@ export function InstanceFormModal(props: {
       })),
     [presetCatalogEntries],
   );
-  const effectivePresetPath = selectedPresetPath ?? modelPreset?.path ?? null;
-  const presetOptions = useMemo(() => {
-    const options: { value: string; label: string }[] = [];
-    if (modelPreset) {
-      options.push({
-        value: modelPreset.path,
-        label: `${pathBaseName(modelPreset.path)} · ${modelPreset.entries.length} models`,
-      });
-    }
-    if (
-      selectedPresetPath &&
-      !options.some((option) => option.value === selectedPresetPath)
-    ) {
-      options.push({
-        value: selectedPresetPath,
-        label: `${pathBaseName(selectedPresetPath)} · custom path`,
-      });
-    }
-    return options;
-  }, [modelPreset, selectedPresetPath]);
+  const effectivePresetPath = selectedPresetPath;
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
@@ -456,7 +428,6 @@ export function InstanceFormModal(props: {
       setSelectedPresetPath(presetPath);
       setSelectedPresetPathRefId(props.instance.modelsPresetPathRefId ?? null);
       setLaunchMode(presetPath && !modelPath ? "router" : "model");
-      setWritePresetOnSave(false);
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args));
     } else {
@@ -473,7 +444,6 @@ export function InstanceFormModal(props: {
       setSelectedPresetPath(null);
       setSelectedPresetPathRefId(null);
       setLaunchMode("model");
-      setWritePresetOnSave(true);
       setStartAfterCreate(false);
       setArgRows(
         defaultRows(modelPath ?? undefined, port, instanceDefaultArgs),
@@ -488,18 +458,6 @@ export function InstanceFormModal(props: {
     props.instance?.id,
     props.initialModelPath,
   ]);
-
-  useEffect(() => {
-    if (
-      !props.opened ||
-      launchMode !== "router" ||
-      selectedPresetPath ||
-      !modelPreset?.path
-    ) {
-      return;
-    }
-    applyPresetSelection(modelPreset.path);
-  }, [props.opened, launchMode, modelPreset?.path, selectedPresetPath]);
 
   const draftPreview = useMemo(() => {
     try {
@@ -662,14 +620,6 @@ export function InstanceFormModal(props: {
 
   const mutation = useMutation({
     mutationFn: async (input: InstanceCreate | InstanceUpdate) => {
-      if (
-        launchMode === "router" &&
-        writePresetOnSave &&
-        effectivePresetPath &&
-        effectivePresetPath === modelPreset?.path
-      ) {
-        await writeModelPreset();
-      }
       if (props.instance) {
         return updateInstance(props.instance.id, input);
       }
@@ -965,24 +915,6 @@ export function InstanceFormModal(props: {
                     data={presetCatalogOptions}
                     nothingFoundMessage="No preset paths in catalog"
                   />
-                  <Select
-                    label="Router preset"
-                    placeholder={
-                      modelPresetQuery.isFetching
-                        ? "Loading preset..."
-                        : "Select INI preset"
-                    }
-                    searchable
-                    clearable
-                    value={effectivePresetPath}
-                    onChange={(value) => applyPresetSelection(value)}
-                    data={presetOptions}
-                    nothingFoundMessage={
-                      modelPresetQuery.isError
-                        ? (modelPresetQuery.error as Error).message
-                        : "No presets found"
-                    }
-                  />
                   <PathPickerInput
                     label="Preset path"
                     mode="file"
@@ -990,33 +922,15 @@ export function InstanceFormModal(props: {
                     value={effectivePresetPath ?? ""}
                     onChange={(value) => applyPresetSelection(value)}
                   />
-                  <Group justify="space-between" align="center" gap="xs">
-                    <Group gap="xs">
-                      <Badge variant="light">
-                        {modelPreset?.entries.length ?? 0} models
-                      </Badge>
-                      {effectivePresetPath && (
-                        <Badge variant="outline">
-                          {pathBaseName(effectivePresetPath)}
-                        </Badge>
-                      )}
-                    </Group>
-                    <Switch
-                      label="Write INI"
-                      checked={writePresetOnSave}
-                      disabled={
-                        !effectivePresetPath ||
-                        effectivePresetPath !== modelPreset?.path
-                      }
-                      onChange={(event) =>
-                        setWritePresetOnSave(event.currentTarget.checked)
-                      }
-                    />
-                  </Group>
                   {effectivePresetPath && (
-                    <Text c="dimmed" size="xs" lineClamp={1}>
-                      {effectivePresetPath}
-                    </Text>
+                    <Group gap="xs">
+                      <Badge variant="outline">
+                        {pathBaseName(effectivePresetPath)}
+                      </Badge>
+                      <Text c="dimmed" size="xs" lineClamp={1}>
+                        {effectivePresetPath}
+                      </Text>
+                    </Group>
                   )}
                 </Stack>
               )}

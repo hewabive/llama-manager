@@ -1,120 +1,213 @@
 import type {
-  ModelPreset,
-  ModelPresetEntry,
-  ModelPresetPreview,
-  ModelPresetUpdate,
+  LlamaArgumentOption,
+  ModelPresetDocument,
+  ModelPresetFile,
+  ModelPresetSummary,
+  ModelPresetWrite,
+  PresetDiagnostic,
 } from "@llama-manager/core";
-import { eq } from "drizzle-orm";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
 
-import { config } from "../config.js";
-import { db } from "../db/index.js";
-import { modelPresets } from "../db/schema.js";
-import { renderModelPresetIni } from "./ini.js";
+import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
+import {
+  createPathCatalogEntry,
+  getPathCatalogEntry,
+  listPathCatalogEntries,
+} from "../path-catalog/repository.js";
+import { parseModelPresetIni, renderModelPresetFile } from "./ini.js";
+import { presetFileHasErrors, validateModelPresetFile } from "./validate.js";
 
-const PRESET_ID = "default";
-const defaultPresetPath = resolve(config.dataDir, "presets", "models.ini");
-
-function nowIso() {
-  return new Date().toISOString();
+function emptyFile(): ModelPresetFile {
+  return { version: 1, globalArgs: {}, rootArgs: {}, entries: [] };
 }
 
-function sanitizeEntries(entries: ModelPresetEntry[]) {
-  const names = new Set<string>();
-  return entries.map((entry) => {
-    let name = entry.name.trim();
-    if (!name) {
-      name = "model";
-    }
+type CatalogOptions = {
+  options: LlamaArgumentOption[];
+  warning: PresetDiagnostic | null;
+};
 
-    const base = name;
-    let index = 2;
-    while (names.has(name)) {
-      name = `${base}-${index}`;
-      index += 1;
-    }
-    names.add(name);
-
+function loadCatalogOptions(): CatalogOptions {
+  try {
+    return { options: getLlamaArgumentCatalog().options, warning: null };
+  } catch (error) {
     return {
-      ...entry,
+      options: [],
+      warning: {
+        severity: "warning",
+        message: `key validation skipped: ${(error as Error).message}`,
+        section: null,
+        key: null,
+        line: null,
+      },
+    };
+  }
+}
+
+function diagnoseFile(
+  file: ModelPresetFile,
+  catalog: CatalogOptions,
+): PresetDiagnostic[] {
+  if (catalog.warning) {
+    return [catalog.warning];
+  }
+  return validateModelPresetFile(file, catalog.options);
+}
+
+function documentFromEntry(
+  catalogId: string,
+  name: string,
+  path: string,
+  catalog: CatalogOptions,
+): ModelPresetDocument {
+  if (!existsSync(path)) {
+    const file = emptyFile();
+    return {
+      catalogId,
       name,
-      extraArgs: Object.fromEntries(
-        Object.entries(entry.extraArgs ?? {})
-          .map(
-            ([key, value]) =>
-              [key.trim().replace(/^-+/, ""), String(value).trim()] as const,
-          )
-          .filter(([key, value]) => key && value),
-      ),
+      path,
+      exists: false,
+      valid: true,
+      diagnostics: [],
+      file,
+      content: renderModelPresetFile(file),
+      mtimeMs: null,
+    };
+  }
+
+  const content = readFileSync(path, "utf8");
+  const mtimeMs = statSync(path).mtimeMs;
+  const { file, diagnostics: parseDiagnostics } = parseModelPresetIni(content);
+  const diagnostics = [...parseDiagnostics, ...diagnoseFile(file, catalog)];
+
+  return {
+    catalogId,
+    name,
+    path,
+    exists: true,
+    valid: !presetFileHasErrors(diagnostics),
+    diagnostics,
+    file,
+    content,
+    mtimeMs,
+  };
+}
+
+export function listPresets(): ModelPresetSummary[] {
+  const catalog = loadCatalogOptions();
+  return listPathCatalogEntries("preset").map((entry) => {
+    if (!existsSync(entry.path)) {
+      return {
+        catalogId: entry.id,
+        name: entry.name,
+        path: entry.path,
+        exists: false,
+        valid: true,
+        entryCount: 0,
+        mtimeMs: null,
+      };
+    }
+    const content = readFileSync(entry.path, "utf8");
+    const { file, diagnostics } = parseModelPresetIni(content);
+    const all = [...diagnostics, ...diagnoseFile(file, catalog)];
+    return {
+      catalogId: entry.id,
+      name: entry.name,
+      path: entry.path,
+      exists: true,
+      valid: !presetFileHasErrors(all),
+      entryCount: file.entries.length,
+      mtimeMs: statSync(entry.path).mtimeMs,
     };
   });
 }
 
-export function getModelPreset(): ModelPreset {
-  const row = db
-    .select()
-    .from(modelPresets)
-    .where(eq(modelPresets.id, PRESET_ID))
-    .get();
-  if (!row) {
+export function readPreset(catalogId: string): ModelPresetDocument | null {
+  const entry = getPathCatalogEntry(catalogId);
+  if (!entry || entry.kind !== "preset") {
+    return null;
+  }
+  return documentFromEntry(
+    entry.id,
+    entry.name,
+    entry.path,
+    loadCatalogOptions(),
+  );
+}
+
+export type WritePresetResult =
+  | { kind: "ok"; document: ModelPresetDocument }
+  | { kind: "conflict"; document: ModelPresetDocument }
+  | { kind: "not-found" };
+
+export function writePreset(
+  catalogId: string,
+  input: ModelPresetWrite,
+): WritePresetResult {
+  const entry = getPathCatalogEntry(catalogId);
+  if (!entry || entry.kind !== "preset") {
+    return { kind: "not-found" };
+  }
+
+  const currentMtime = existsSync(entry.path)
+    ? statSync(entry.path).mtimeMs
+    : null;
+
+  if (!input.force && input.expectedMtimeMs !== currentMtime) {
     return {
-      entries: [],
-      path: defaultPresetPath,
-      updatedAt: null,
+      kind: "conflict",
+      document: documentFromEntry(
+        entry.id,
+        entry.name,
+        entry.path,
+        loadCatalogOptions(),
+      ),
     };
   }
 
+  const content = renderModelPresetFile(input.file);
+  mkdirSync(dirname(entry.path), { recursive: true });
+  const tmpPath = `${entry.path}.tmp`;
+  writeFileSync(tmpPath, content, "utf8");
+  renameSync(tmpPath, entry.path);
+
   return {
-    entries: sanitizeEntries(JSON.parse(row.entriesJson) as ModelPresetEntry[]),
-    path: row.path,
-    updatedAt: row.updatedAt,
+    kind: "ok",
+    document: documentFromEntry(
+      entry.id,
+      entry.name,
+      entry.path,
+      loadCatalogOptions(),
+    ),
   };
 }
 
-export function saveModelPreset(input: ModelPresetUpdate): ModelPreset {
-  const timestamp = nowIso();
-  const current = getModelPreset();
-  const entries = sanitizeEntries(input.entries);
-  const path = input.path ?? current.path;
+export function createPreset(input: {
+  name: string;
+  path: string;
+}): ModelPresetDocument {
+  const entry = createPathCatalogEntry({
+    kind: "preset",
+    name: input.name,
+    path: input.path,
+  });
 
-  db.insert(modelPresets)
-    .values({
-      id: PRESET_ID,
-      path,
-      entriesJson: JSON.stringify(entries),
-      updatedAt: timestamp,
-    })
-    .onConflictDoUpdate({
-      target: modelPresets.id,
-      set: {
-        path,
-        entriesJson: JSON.stringify(entries),
-        updatedAt: timestamp,
-      },
-    })
-    .run();
+  if (!existsSync(entry.path)) {
+    mkdirSync(dirname(entry.path), { recursive: true });
+    writeFileSync(entry.path, renderModelPresetFile(emptyFile()), "utf8");
+  }
 
-  return {
-    entries,
-    path,
-    updatedAt: timestamp,
-  };
-}
-
-export function writeModelPresetFile(): ModelPreset {
-  const preset = getModelPreset();
-  mkdirSync(dirname(preset.path), { recursive: true });
-  writeFileSync(preset.path, renderModelPresetIni(preset.entries), "utf8");
-  return preset;
-}
-
-export function previewModelPresetIni(): ModelPresetPreview {
-  const preset = getModelPreset();
-  return {
-    path: preset.path,
-    content: renderModelPresetIni(preset.entries),
-    entries: preset.entries.length,
-    updatedAt: preset.updatedAt,
-  };
+  return documentFromEntry(
+    entry.id,
+    entry.name,
+    entry.path,
+    loadCatalogOptions(),
+  );
 }

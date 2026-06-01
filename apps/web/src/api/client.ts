@@ -58,9 +58,10 @@ import type {
   LlamaSlotActionResult,
   LlamaProbe,
   LogTail,
-  ModelPreset,
-  ModelPresetPreview,
-  ModelPresetUpdate,
+  ModelPresetCreate,
+  ModelPresetDocument,
+  ModelPresetSummary,
+  ModelPresetWrite,
   ModelScanSettings,
   ModelScanResult,
   NetworkInterfacesResult,
@@ -70,7 +71,6 @@ import type {
   PathCatalogUpdate,
   ProcessPreflightResult,
   PublicStatus,
-  RouterInstanceCreate,
   RuntimeState,
   SystemResources,
 } from "@llama-manager/core";
@@ -526,32 +526,53 @@ export async function updateModelScanSettings(input: ModelScanSettings) {
   });
 }
 
-export async function getModelPreset() {
-  return request<{ data: ModelPreset }>("/api/model-preset");
+export async function listPresets() {
+  return request<{ data: ModelPresetSummary[] }>("/api/presets");
 }
 
-export async function getModelPresetPreview() {
-  return request<{ data: ModelPresetPreview }>("/api/model-preset/preview");
+export async function getPreset(catalogId: string) {
+  return request<{ data: ModelPresetDocument }>(
+    `/api/presets/${encodeURIComponent(catalogId)}`,
+  );
 }
 
-export async function updateModelPreset(input: ModelPresetUpdate) {
-  return request<{ data: ModelPreset }>("/api/model-preset", {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function writeModelPreset() {
-  return request<{ data: ModelPreset }>("/api/model-preset/write", {
-    method: "POST",
-  });
-}
-
-export async function createRouterInstance(input: RouterInstanceCreate) {
-  return request<{ data: Instance }>("/api/model-preset/router-instance", {
+export async function createPreset(input: ModelPresetCreate) {
+  return request<{ data: ModelPresetDocument }>("/api/presets", {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export type SavePresetResult =
+  | { kind: "ok"; document: ModelPresetDocument }
+  | { kind: "conflict"; document: ModelPresetDocument };
+
+export async function savePreset(
+  catalogId: string,
+  input: ModelPresetWrite,
+): Promise<SavePresetResult> {
+  const response = await fetch(
+    `${apiBase}/api/presets/${encodeURIComponent(catalogId)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
+  const body = (await response.json()) as {
+    data?: ModelPresetDocument;
+    error?: unknown;
+  };
+  if (response.status === 409 && body.data) {
+    return { kind: "conflict", document: body.data };
+  }
+  if (!response.ok || !body.data) {
+    throw new Error(
+      typeof body.error === "string" ? body.error : "failed to save preset",
+    );
+  }
+  return { kind: "ok", document: body.data };
 }
 
 export async function createInstance(input: InstanceCreate) {

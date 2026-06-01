@@ -87,8 +87,6 @@ code {
 .instances-mobile-list,
 .args-mobile-list,
 .models-mobile-list,
-.preset-models-mobile-list,
-.preset-entries-mobile-list,
 .build-jobs-mobile-list,
 .processes-mobile-list {
   display: none;
@@ -365,8 +363,6 @@ code {
   .instances-mobile-list,
   .args-mobile-list,
   .models-mobile-list,
-  .preset-models-mobile-list,
-  .preset-entries-mobile-list,
   .build-jobs-mobile-list,
   .processes-mobile-list {
     display: flex;
@@ -375,8 +371,6 @@ code {
   .instances-table,
   .args-table,
   .models-table,
-  .preset-models-table,
-  .preset-entries-table,
   .build-jobs-table,
   .processes-table {
     display: none;

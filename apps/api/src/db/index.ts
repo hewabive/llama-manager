@@ -1,9 +1,13 @@
+import type { ModelPresetEntry } from "@llama-manager/core";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { sql } from "drizzle-orm";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 
 import { config } from "../config.js";
+import { renderModelPresetFile } from "../presets/ini.js";
+import { newId } from "../utils/id.js";
 import * as schema from "./schema.js";
 
 const sqlite = new Database(resolve(config.dataDir, "llama-manager.db"));
@@ -78,15 +82,6 @@ export function migrate() {
       id TEXT PRIMARY KEY NOT NULL,
       directory TEXT NOT NULL,
       max_depth TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS model_presets (
-      id TEXT PRIMARY KEY NOT NULL,
-      path TEXT NOT NULL,
-      entries_json TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
@@ -253,4 +248,75 @@ export function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_pipelines_name_idx
     ON api_proxy_pipelines (name)
   `);
+
+  migrateModelPresetsToFiles();
+}
+
+function tableExists(name: string): boolean {
+  return Boolean(
+    sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(name),
+  );
+}
+
+function migrateModelPresetsToFiles() {
+  if (!tableExists("model_presets")) {
+    return;
+  }
+
+  try {
+    const rows = sqlite
+      .prepare("SELECT path, entries_json FROM model_presets")
+      .all() as { path: string; entries_json: string }[];
+
+    for (const row of rows) {
+      const existing = sqlite
+        .prepare("SELECT id FROM path_catalog WHERE kind = 'preset' AND path = ?")
+        .get(row.path);
+
+      if (!existing) {
+        const base = basename(row.path).replace(/\.[^.]+$/, "") || "models";
+        let name = base;
+        let suffix = 2;
+        while (
+          sqlite
+            .prepare(
+              "SELECT id FROM path_catalog WHERE kind = 'preset' AND name = ?",
+            )
+            .get(name)
+        ) {
+          name = `${base}-${suffix}`;
+          suffix += 1;
+        }
+        const timestamp = new Date().toISOString();
+        sqlite
+          .prepare(
+            "INSERT INTO path_catalog (id, kind, name, path, created_at, updated_at) VALUES (?, 'preset', ?, ?, ?, ?)",
+          )
+          .run(newId(), name, row.path, timestamp, timestamp);
+      }
+
+      if (!existsSync(row.path)) {
+        const entries = JSON.parse(row.entries_json) as ModelPresetEntry[];
+        mkdirSync(dirname(row.path), { recursive: true });
+        writeFileSync(
+          row.path,
+          renderModelPresetFile({
+            version: 1,
+            globalArgs: {},
+            rootArgs: {},
+            entries,
+          }),
+          "utf8",
+        );
+      }
+    }
+
+    sqlite.exec("DROP TABLE IF EXISTS model_presets");
+  } catch (error) {
+    console.warn(
+      `model_presets migration skipped: ${(error as Error).message}`,
+    );
+  }
 }

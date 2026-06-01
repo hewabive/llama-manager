@@ -1,4 +1,4 @@
-import type { GgufModel, Instance, ModelPreset } from "@llama-manager/core";
+import type { GgufModel, Instance } from "@llama-manager/core";
 import {
   Badge,
   Button,
@@ -17,10 +17,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  getLlamaArgumentDefaults,
   getModelScanSettings,
   scanModels,
-  updateModelPreset,
   updateModelScanSettings,
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
@@ -30,7 +28,6 @@ import {
   isVocabModel,
   modelMatchesSearch,
   modelTitle,
-  presetEntryFromModel,
 } from "../utils/models";
 
 type ModelScanParams = {
@@ -54,12 +51,6 @@ export function ModelsView(props: {
     queryKey: ["model-scan-settings"],
     queryFn: getModelScanSettings,
   });
-  const argumentDefaultsQuery = useQuery({
-    queryKey: ["llama-arg-defaults"],
-    queryFn: getLlamaArgumentDefaults,
-    staleTime: 60_000,
-  });
-  const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
   const modelsQuery = useQuery({
     queryKey: [
       "models",
@@ -135,37 +126,6 @@ export function ModelsView(props: {
       return;
     }
     setScanParams(params);
-  }
-
-  function addModelToPreset(model: GgufModel) {
-    const current = queryClient.getQueryData<{
-      data: ModelPreset;
-    }>(["model-preset"]);
-    const existingEntries = current?.data.entries ?? [];
-    if (existingEntries.some((entry) => entry.modelPath === model.path)) {
-      notifications.show({
-        title: "Preset already contains model",
-        message: modelTitle(model),
-      });
-      return;
-    }
-    const entries = [
-      ...existingEntries,
-      presetEntryFromModel(model, presetDefaultArgs),
-    ];
-    updateModelPreset({
-      entries,
-      path: current?.data.path,
-    }).then(async (result) => {
-      queryClient.setQueryData(["model-preset"], result);
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Added to preset",
-        message: modelTitle(model),
-      });
-    });
   }
 
   const models = useMemo(
@@ -329,14 +289,6 @@ export function ModelsView(props: {
                   >
                     Use selected
                   </Button>
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    disabled={model.isMmproj}
-                    onClick={() => addModelToPreset(model)}
-                  >
-                    Add preset
-                  </Button>
                 </Group>
               </Stack>
             </Paper>
@@ -409,14 +361,6 @@ export function ModelsView(props: {
                         onClick={() => props.onUseInSelected(model)}
                       >
                         Use selected
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        disabled={model.isMmproj}
-                        onClick={() => addModelToPreset(model)}
-                      >
-                        Add preset
                       </Button>
                     </Group>
                   </Table.Td>

@@ -1313,35 +1313,52 @@ export const ModelPresetEntrySchema = z.object({
   extraArgs: z.record(z.string(), z.string()).default({}),
 });
 
-export const ModelPresetSchema = z.object({
-  entries: z.array(ModelPresetEntrySchema),
-  path: z.string(),
-  updatedAt: z.string().nullable(),
+export const ModelPresetFileSchema = z.object({
+  version: z.number().int().nullable().default(1),
+  globalArgs: z.record(z.string(), z.string()).default({}),
+  rootArgs: z.record(z.string(), z.string()).default({}),
+  entries: z.array(ModelPresetEntrySchema).default([]),
 });
 
-export const ModelPresetUpdateSchema = z.object({
-  entries: z.array(ModelPresetEntrySchema),
-  path: z.string().min(1).optional(),
+export const PresetDiagnosticSchema = z.object({
+  severity: z.enum(["error", "warning"]),
+  message: z.string(),
+  section: z.string().nullable(),
+  key: z.string().nullable(),
+  line: z.number().int().nullable(),
 });
 
-export const ModelPresetPreviewSchema = z.object({
+export const ModelPresetSummarySchema = z.object({
+  catalogId: z.string(),
+  name: z.string(),
   path: z.string(),
+  exists: z.boolean(),
+  valid: z.boolean(),
+  entryCount: z.number().int().nonnegative(),
+  mtimeMs: z.number().nullable(),
+});
+
+export const ModelPresetDocumentSchema = z.object({
+  catalogId: z.string(),
+  name: z.string(),
+  path: z.string(),
+  exists: z.boolean(),
+  valid: z.boolean(),
+  diagnostics: z.array(PresetDiagnosticSchema),
+  file: ModelPresetFileSchema,
   content: z.string(),
-  entries: z.number().int().min(0),
-  updatedAt: z.string().nullable(),
+  mtimeMs: z.number().nullable(),
 });
 
-export const RouterInstanceCreateSchema = z.object({
-  name: z.string().min(1).max(80),
-  binaryPath: z.string().min(1),
-  binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
-  modelsPresetPathRefId: PathCatalogIdSchema.nullable().optional(),
-  cwd: z.string().min(1).optional(),
-  host: z.string().min(1).default("127.0.0.1"),
-  port: z.number().int().positive().max(65535).default(8080),
-  modelsMax: z.number().int().min(0).nullable().default(4),
-  modelsAutoload: z.boolean().default(true),
-  writePreset: z.boolean().default(true),
+export const ModelPresetWriteSchema = z.object({
+  file: ModelPresetFileSchema,
+  expectedMtimeMs: z.number().nullable(),
+  force: z.boolean().default(false),
+});
+
+export const ModelPresetCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  path: z.string().min(1),
 });
 
 export type InstanceArgValue = z.infer<typeof InstanceArgValueSchema>;
@@ -1585,7 +1602,9 @@ export type GgufModel = z.infer<typeof GgufModelSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;
 export type ModelScanSettings = z.infer<typeof ModelScanSettingsSchema>;
 export type ModelPresetEntry = z.infer<typeof ModelPresetEntrySchema>;
-export type ModelPreset = z.infer<typeof ModelPresetSchema>;
-export type ModelPresetUpdate = z.infer<typeof ModelPresetUpdateSchema>;
-export type ModelPresetPreview = z.infer<typeof ModelPresetPreviewSchema>;
-export type RouterInstanceCreate = z.infer<typeof RouterInstanceCreateSchema>;
+export type ModelPresetFile = z.infer<typeof ModelPresetFileSchema>;
+export type PresetDiagnostic = z.infer<typeof PresetDiagnosticSchema>;
+export type ModelPresetSummary = z.infer<typeof ModelPresetSummarySchema>;
+export type ModelPresetDocument = z.infer<typeof ModelPresetDocumentSchema>;
+export type ModelPresetWrite = z.infer<typeof ModelPresetWriteSchema>;
+export type ModelPresetCreate = z.infer<typeof ModelPresetCreateSchema>;

@@ -79,7 +79,7 @@ export const appRoutes: {
     id: "presets",
     label: "Presets",
     title: "Presets",
-    description: "Build router preset INI files from scanned models",
+    description: "Pick scanned models for the llama-server --models-preset INI",
   },
   {
     id: "build",

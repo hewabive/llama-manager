@@ -2,15 +2,18 @@ import type {
   GgufModel,
   LlamaArgumentOption,
   ModelPresetEntry,
+  ModelPresetFile,
 } from "@llama-manager/core";
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
   Checkbox,
   Code,
   Group,
+  Loader,
   Modal,
   NumberInput,
   Paper,
@@ -19,7 +22,6 @@ import {
   SimpleGrid,
   Stack,
   Switch,
-  Table,
   Text,
   TextInput,
   Title,
@@ -27,35 +29,30 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  createRouterInstance,
+  createPreset,
   getLlamaArgumentDefaults,
   getLlamaArguments,
-  getModelPreset,
-  getModelPresetPreview,
   getModelScanSettings,
-  listPathCatalog,
+  getPreset,
+  listPresets,
+  savePreset,
   scanModels,
-  updateModelPreset,
-  writeModelPreset,
 } from "../../api/client";
-import { HostPicker } from "../components/HostPicker";
 import { PathPickerInput } from "../components/PathPickerInput";
 import {
   PresetKnownArgRow,
   PresetRawArgRow,
   buildPresetArgOptionMap,
-  canWritePresetArgument,
   isSelectablePresetArgument,
   optionForPresetRow,
   presetArgumentBlockReason,
   presetKeyFromArgument,
   replacePresetArgRow,
 } from "../components/PresetArgumentRows";
-import { defaultBinaryPath } from "../constants";
 import { createUiId } from "../utils/id";
 import {
   compareModelTitles,
@@ -141,51 +138,151 @@ function presetArgumentCount(entry: ModelPresetEntry) {
   );
 }
 
-function PresetEntryDetailModal(props: {
-  opened: boolean;
-  entry: ModelPresetEntry | null;
-  model: GgufModel | null;
-  binaryPath: string;
-  onClose: () => void;
-  onSave: (entry: ModelPresetEntry) => void;
+function ArgRowsEditor(props: {
+  rows: PresetExtraArgRow[];
+  knownArgByPresetKey: Map<string, LlamaArgumentOption>;
+  selectablePresetArgs: LlamaArgumentOption[];
+  isError: boolean;
+  isFetching: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  setRows: (updater: (rows: PresetExtraArgRow[]) => PresetExtraArgRow[]) => void;
 }) {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
-  const [extraRows, setExtraRows] = useState<PresetExtraArgRow[]>([]);
   const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
-  const [argumentPickerKey, setArgumentPickerKey] = useState(0);
+  const [pickerKey, setPickerKey] = useState(0);
+
+  function removeRow(rowId: string) {
+    props.setRows((rows) => {
+      const next = rows.filter((item) => item.id !== rowId);
+      return next.length > 0
+        ? next
+        : [{ id: createUiId("preset-arg"), key: "", value: "" }];
+    });
+  }
+
+  return (
+    <Stack gap="xs">
+      <Group justify="space-between">
+        <Text fw={600} size="sm">
+          INI args
+        </Text>
+        <Button
+          size="xs"
+          variant="light"
+          onClick={() =>
+            props.setRows((rows) => [
+              ...rows,
+              { id: createUiId("preset-arg"), key: "", value: "" },
+            ])
+          }
+        >
+          Add arg
+        </Button>
+      </Group>
+      <Group align="flex-end" gap="xs" wrap="nowrap">
+        <Select
+          key={pickerKey}
+          label="Add INI argument"
+          placeholder={
+            props.isError
+              ? "Unable to read --help from llama-server binary"
+              : "Search llama-server args"
+          }
+          searchable
+          clearable
+          value={selectedKnownArg}
+          onChange={(value) => {
+            if (!value) {
+              setSelectedKnownArg(null);
+              return;
+            }
+            const option = props.knownArgByPresetKey.get(value);
+            if (option) {
+              props.setRows((rows) =>
+                replacePresetArgRow(rows, option, props.knownArgByPresetKey),
+              );
+            }
+            setSelectedKnownArg(null);
+            setPickerKey((key) => key + 1);
+          }}
+          data={props.selectablePresetArgs.map((option) => {
+            const key = presetKeyFromArgument(option);
+            return {
+              value: key,
+              label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
+              disabled: !option.compatibility.presentInBinary,
+            };
+          })}
+          nothingFoundMessage={
+            props.isFetching ? "Loading..." : "No preset arguments found"
+          }
+          disabled={props.isError}
+          style={{ flex: 1 }}
+        />
+        {props.onRefresh && (
+          <Tooltip label="Reload from llama-server --help">
+            <ActionIcon
+              aria-label="Reload preset arguments from llama-server help"
+              variant="subtle"
+              loading={Boolean(props.isFetching || props.refreshing)}
+              onClick={props.onRefresh}
+            >
+              <RefreshCw size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Group>
+      {props.rows.map((row) => {
+        const option = optionForPresetRow(row, props.knownArgByPresetKey);
+        const onChange = (nextRow: PresetExtraArgRow) =>
+          props.setRows((rows) =>
+            rows.map((item) => (item.id === row.id ? nextRow : item)),
+          );
+        const onRemove = () => removeRow(row.id);
+        const canRemove = props.rows.length > 1 || Boolean(row.key || row.value);
+
+        if (option) {
+          return (
+            <PresetKnownArgRow
+              key={row.id}
+              row={row}
+              option={option}
+              canRemove={canRemove}
+              onChange={onChange}
+              onRemove={onRemove}
+            />
+          );
+        }
+        return (
+          <PresetRawArgRow
+            key={row.id}
+            row={row}
+            canRemove={canRemove}
+            onChange={onChange}
+            onRemove={onRemove}
+          />
+        );
+      })}
+    </Stack>
+  );
+}
+
+function useArgsCatalog() {
+  const queryClient = useQueryClient();
   const argsCatalogQuery = useQuery({
-    queryKey: ["llama-args", props.binaryPath],
-    queryFn: () => getLlamaArguments(props.binaryPath),
-    enabled: props.opened && Boolean(props.binaryPath),
+    queryKey: ["llama-args", "preset-default"],
+    queryFn: () => getLlamaArguments(),
     staleTime: 60_000,
     retry: false,
   });
-  const argsCatalog = argsCatalogQuery.data?.data;
-  const knownArgs = useMemo(() => argsCatalog?.options ?? [], [argsCatalog]);
-  const knownArgByPresetKey = useMemo(
-    () => buildPresetArgOptionMap(knownArgs),
-    [knownArgs],
+  const knownArgs = useMemo(
+    () => argsCatalogQuery.data?.data.options ?? [],
+    [argsCatalogQuery.data],
   );
-  const selectablePresetArgs = useMemo(
-    () => knownArgs.filter(isSelectablePresetArgument),
-    [knownArgs],
-  );
-
-  useEffect(() => {
-    if (!props.opened || !props.entry) {
-      return;
-    }
-    setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
-    setExtraRows(presetRowsFromEntry(props.entry));
-    setSelectedKnownArg(null);
-    setArgumentPickerKey((key) => key + 1);
-  }, [props.entry, props.opened]);
-
   const refreshArgsMutation = useMutation({
-    mutationFn: () => getLlamaArguments(props.binaryPath, true),
+    mutationFn: () => getLlamaArguments(undefined, true),
     onSuccess: (result) => {
-      queryClient.setQueryData(["llama-args", props.binaryPath], result);
+      queryClient.setQueryData(["llama-args", "preset-default"], result);
       notifications.show({
         title: "Argument catalog refreshed",
         message: `${result.data.options.length} options`,
@@ -199,28 +296,86 @@ function PresetEntryDetailModal(props: {
       });
     },
   });
+  return {
+    knownArgs,
+    knownArgByPresetKey: buildPresetArgOptionMap(knownArgs),
+    selectablePresetArgs: knownArgs.filter(isSelectablePresetArgument),
+    isError: argsCatalogQuery.isError,
+    isFetching: argsCatalogQuery.isFetching,
+    refresh: () => refreshArgsMutation.mutate(),
+    refreshing: refreshArgsMutation.isPending,
+  };
+}
+
+function GlobalDefaultsEditor(props: {
+  value: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  const catalog = useArgsCatalog();
+  const [rows, setRows] = useState<PresetExtraArgRow[]>(() => {
+    const initial = extraArgsToRows(props.value).filter(
+      (row) => row.key || row.value,
+    );
+    return initial.length > 0
+      ? initial
+      : [{ id: createUiId("preset-arg"), key: "", value: "" }];
+  });
+
+  function updateRows(
+    updater: (rows: PresetExtraArgRow[]) => PresetExtraArgRow[],
+  ) {
+    setRows((current) => {
+      const next = updater(current);
+      props.onChange(rowsToExtraArgs(next));
+      return next;
+    });
+  }
+
+  return (
+    <ArgRowsEditor
+      rows={rows}
+      knownArgByPresetKey={catalog.knownArgByPresetKey}
+      selectablePresetArgs={catalog.selectablePresetArgs}
+      isError={catalog.isError}
+      isFetching={catalog.isFetching}
+      onRefresh={catalog.refresh}
+      refreshing={catalog.refreshing}
+      setRows={updateRows}
+    />
+  );
+}
+
+function PresetEntryDetailModal(props: {
+  opened: boolean;
+  entry: ModelPresetEntry | null;
+  model: GgufModel | null;
+  onClose: () => void;
+  onSave: (entry: ModelPresetEntry) => void;
+}) {
+  const catalog = useArgsCatalog();
+  const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
+  const [extraRows, setExtraRows] = useState<PresetExtraArgRow[]>([]);
+
+  useEffect(() => {
+    if (!props.opened || !props.entry) {
+      return;
+    }
+    setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
+    setExtraRows(presetRowsFromEntry(props.entry));
+  }, [props.entry, props.opened]);
 
   function updateDraft(update: Partial<ModelPresetEntry>) {
     setDraft((current) => (current ? { ...current, ...update } : current));
-  }
-
-  function removeExtraRow(rowId: string) {
-    setExtraRows((rows) => {
-      const next = rows.filter((item) => item.id !== rowId);
-      return next.length > 0
-        ? next
-        : [{ id: createUiId("preset-arg"), key: "", value: "" }];
-    });
   }
 
   function save() {
     if (!draft) {
       return;
     }
-    const parsedArgs = entryArgsFromRows(extraRows, knownArgByPresetKey);
+    const parsedArgs = entryArgsFromRows(extraRows, catalog.knownArgByPresetKey);
     if (parsedArgs.droppedArgs.length > 0) {
       const firstDropped = parsedArgs.droppedArgs[0]!;
-      const option = knownArgByPresetKey.get(
+      const option = catalog.knownArgByPresetKey.get(
         normalizePresetArgKey(firstDropped),
       );
       notifications.show({
@@ -311,118 +466,16 @@ function PresetEntryDetailModal(props: {
             )}
           </Group>
 
-          <Stack gap="xs">
-            <Group justify="space-between">
-              <Text fw={600} size="sm">
-                Extra INI args
-              </Text>
-              <Button
-                size="xs"
-                variant="light"
-                onClick={() =>
-                  setExtraRows((rows) => [
-                    ...rows,
-                    { id: createUiId("preset-arg"), key: "", value: "" },
-                  ])
-                }
-              >
-                Add arg
-              </Button>
-            </Group>
-            <Group align="flex-end" gap="xs" wrap="nowrap">
-              <Select
-                key={argumentPickerKey}
-                label="Add INI argument"
-                placeholder={
-                  argsCatalogQuery.isError
-                    ? "Unable to read --help from router binary"
-                    : "Search llama-server args"
-                }
-                searchable
-                clearable
-                value={selectedKnownArg}
-                onChange={(value) => {
-                  if (!value) {
-                    setSelectedKnownArg(null);
-                    return;
-                  }
-                  const option = knownArgByPresetKey.get(value);
-                  if (option) {
-                    setExtraRows((rows) =>
-                      replacePresetArgRow(rows, option, knownArgByPresetKey),
-                    );
-                  }
-                  setSelectedKnownArg(null);
-                  setArgumentPickerKey((key) => key + 1);
-                }}
-                data={selectablePresetArgs.map((option) => {
-                  const key = presetKeyFromArgument(option);
-                  return {
-                    value: key,
-                    label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
-                    disabled: !option.compatibility.presentInBinary,
-                  };
-                })}
-                nothingFoundMessage={
-                  argsCatalogQuery.isFetching
-                    ? "Loading..."
-                    : "No preset arguments found"
-                }
-                disabled={argsCatalogQuery.isError}
-                style={{ flex: 1 }}
-              />
-              <Tooltip label="Reload from router binary --help">
-                <ActionIcon
-                  aria-label="Reload preset arguments from router binary help"
-                  variant="subtle"
-                  loading={
-                    argsCatalogQuery.isFetching || refreshArgsMutation.isPending
-                  }
-                  onClick={() => refreshArgsMutation.mutate()}
-                >
-                  <RefreshCw size={16} />
-                </ActionIcon>
-              </Tooltip>
-            </Group>
-            {argsCatalogQuery.isError && (
-              <Text c="red" size="xs">
-                {(argsCatalogQuery.error as Error).message}
-              </Text>
-            )}
-            {extraRows.map((row) => {
-              const option = optionForPresetRow(row, knownArgByPresetKey);
-              const onChange = (nextRow: PresetExtraArgRow) =>
-                setExtraRows((rows) =>
-                  rows.map((item) => (item.id === row.id ? nextRow : item)),
-                );
-              const onRemove = () => removeExtraRow(row.id);
-              const canRemove =
-                extraRows.length > 1 || Boolean(row.key || row.value);
-
-              if (option) {
-                return (
-                  <PresetKnownArgRow
-                    key={row.id}
-                    row={row}
-                    option={option}
-                    canRemove={canRemove}
-                    onChange={onChange}
-                    onRemove={onRemove}
-                  />
-                );
-              }
-
-              return (
-                <PresetRawArgRow
-                  key={row.id}
-                  row={row}
-                  canRemove={canRemove}
-                  onChange={onChange}
-                  onRemove={onRemove}
-                />
-              );
-            })}
-          </Stack>
+          <ArgRowsEditor
+            rows={extraRows}
+            knownArgByPresetKey={catalog.knownArgByPresetKey}
+            selectablePresetArgs={catalog.selectablePresetArgs}
+            isError={catalog.isError}
+            isFetching={catalog.isFetching}
+            onRefresh={catalog.refresh}
+            refreshing={catalog.refreshing}
+            setRows={setExtraRows}
+          />
 
           <Group justify="flex-end">
             <Button variant="subtle" onClick={props.onClose}>
@@ -441,33 +494,190 @@ function PresetEntryDetailModal(props: {
   );
 }
 
+function PresetModelCard(props: {
+  model: GgufModel | null;
+  entry: ModelPresetEntry | null;
+  disabled: boolean;
+  onToggle: (checked: boolean) => void;
+  onPatch: (patch: Partial<ModelPresetEntry>) => void;
+  onEdit: () => void;
+}) {
+  const { model, entry } = props;
+  const included = Boolean(entry);
+  const title = model ? modelTitle(model) : (entry?.name ?? "model");
+  const path = model?.path ?? entry?.modelPath ?? "";
+
+  return (
+    <Paper
+      withBorder
+      p="sm"
+      radius="sm"
+      {...(included ? { bg: "var(--mantine-color-default-hover)" } : {})}
+    >
+      <Stack gap="xs">
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Checkbox
+            aria-label={`Use ${title} in preset`}
+            checked={included}
+            disabled={props.disabled}
+            onChange={(event) => props.onToggle(event.currentTarget.checked)}
+            mt={4}
+          />
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={600} size="sm">
+              {title}
+            </Text>
+            <Text c="dimmed" size="xs" className="text-wrap">
+              {path}
+            </Text>
+            <Group gap="xs" mt={6}>
+              {model ? (
+                <>
+                  <Badge variant="light">
+                    {model.metadata.architecture ?? "unknown arch"}
+                  </Badge>
+                  <Badge variant="outline">
+                    {model.metadata.quantization ?? "unknown quant"}
+                  </Badge>
+                  <Badge variant="outline">{formatBytes(model.sizeBytes)}</Badge>
+                </>
+              ) : (
+                <Badge variant="outline" color="yellow">
+                  not in scan dir
+                </Badge>
+              )}
+              {entry && (
+                <Badge variant="outline">{presetArgumentCount(entry)} args</Badge>
+              )}
+            </Group>
+          </Box>
+          {included && (
+            <Tooltip label="Details">
+              <ActionIcon
+                aria-label="Edit preset model details"
+                variant="subtle"
+                onClick={props.onEdit}
+              >
+                <Pencil size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+
+        {entry && (
+          <Group gap="md" align="flex-end" wrap="wrap">
+            <NumberInput
+              label="Context"
+              aria-label={`Context size for ${entry.name}`}
+              value={entry.ctxSize ?? ""}
+              min={1}
+              w={140}
+              onChange={(value) =>
+                props.onPatch({
+                  ctxSize: typeof value === "number" ? value : null,
+                })
+              }
+            />
+            <Switch
+              label="Load on startup"
+              aria-label={`Load ${entry.name} on startup`}
+              checked={entry.loadOnStartup}
+              onChange={(event) =>
+                props.onPatch({ loadOnStartup: event.currentTarget.checked })
+              }
+              mb={6}
+            />
+          </Group>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
+function NewPresetModal(props: {
+  opened: boolean;
+  onClose: () => void;
+  onCreate: (input: { name: string; path: string }) => void;
+  pending: boolean;
+}) {
+  const [name, setName] = useState("");
+  const [path, setPath] = useState("");
+
+  useEffect(() => {
+    if (props.opened) {
+      setName("");
+      setPath("");
+    }
+  }, [props.opened]);
+
+  return (
+    <Modal opened={props.opened} onClose={props.onClose} title="New preset">
+      <Stack gap="sm">
+        <TextInput
+          label="Name"
+          placeholder="my-models"
+          value={name}
+          onChange={(event) => setName(event.currentTarget.value)}
+        />
+        <PathPickerInput
+          label="INI file path"
+          mode="file"
+          filter="preset"
+          value={path}
+          onChange={setPath}
+        />
+        <Text c="dimmed" size="xs">
+          An existing file is adopted as-is; a new path is created empty.
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="subtle" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button
+            loading={props.pending}
+            disabled={!name.trim() || !path.trim()}
+            onClick={() => props.onCreate({ name: name.trim(), path: path.trim() })}
+          >
+            Create
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+type SaveState = "idle" | "saving" | "saved" | "error" | "conflict";
+
 export function PresetsView() {
   const queryClient = useQueryClient();
-  const [routerName, setRouterName] = useState("llama-router");
-  const [routerBinaryPath, setRouterBinaryPath] = useState(defaultBinaryPath);
-  const [routerBinaryPathRefId, setRouterBinaryPathRefId] = useState<
-    string | null
-  >(null);
-  const [routerPresetPathRefId, setRouterPresetPathRefId] = useState<
-    string | null
-  >(null);
-  const [routerCwd, setRouterCwd] = useState("/home/maxim/llama");
-  const [routerHost, setRouterHost] = useState("127.0.0.1");
-  const [routerPort, setRouterPort] = useState(8080);
-  const [routerModelsMax, setRouterModelsMax] = useState<number | "">(4);
-  const [routerModelsAutoload, setRouterModelsAutoload] = useState(true);
-  const [routerWritePreset, setRouterWritePreset] = useState(true);
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(
+    null,
+  );
   const [presetModelSearch, setPresetModelSearch] = useState("");
   const [selectedPresetEntryId, setSelectedPresetEntryId] = useState<
     string | null
   >(null);
-  const presetQuery = useQuery({
-    queryKey: ["model-preset"],
-    queryFn: getModelPreset,
+  const [draft, setDraft] = useState<ModelPresetFile | null>(null);
+  const [previewContent, setPreviewContent] = useState("");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [newOpen, setNewOpen] = useState(false);
+
+  const draftRef = useRef<ModelPresetFile | null>(null);
+  const baseMtimeRef = useRef<number | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  const savingRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const presetsQuery = useQuery({
+    queryKey: ["presets"],
+    queryFn: listPresets,
   });
-  const previewQuery = useQuery({
-    queryKey: ["model-preset-preview"],
-    queryFn: getModelPresetPreview,
+  const documentQuery = useQuery({
+    queryKey: ["preset", selectedCatalogId],
+    queryFn: () => getPreset(selectedCatalogId!),
+    enabled: Boolean(selectedCatalogId),
+    refetchOnWindowFocus: false,
   });
   const modelSettingsQuery = useQuery({
     queryKey: ["model-scan-settings"],
@@ -478,42 +688,10 @@ export function PresetsView() {
     queryFn: getLlamaArgumentDefaults,
     staleTime: 60_000,
   });
-  const pathCatalogQuery = useQuery({
-    queryKey: ["path-catalog"],
-    queryFn: () => listPathCatalog(),
-    staleTime: 60_000,
-  });
+
+  const presets = presetsQuery.data?.data ?? [];
+  const document = documentQuery.data?.data ?? null;
   const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
-  const binaryCatalogEntries = useMemo(
-    () =>
-      (pathCatalogQuery.data?.data ?? []).filter(
-        (entry) => entry.kind === "binary",
-      ),
-    [pathCatalogQuery.data?.data],
-  );
-  const presetCatalogEntries = useMemo(
-    () =>
-      (pathCatalogQuery.data?.data ?? []).filter(
-        (entry) => entry.kind === "preset",
-      ),
-    [pathCatalogQuery.data?.data],
-  );
-  const binaryCatalogOptions = useMemo(
-    () =>
-      binaryCatalogEntries.map((entry) => ({
-        value: entry.id,
-        label: entry.name,
-      })),
-    [binaryCatalogEntries],
-  );
-  const presetCatalogOptions = useMemo(
-    () =>
-      presetCatalogEntries.map((entry) => ({
-        value: entry.id,
-        label: entry.name,
-      })),
-    [presetCatalogEntries],
-  );
   const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
   const presetModelsQuery = useQuery({
@@ -524,8 +702,171 @@ export function PresetsView() {
     retry: false,
     staleTime: 60_000,
   });
-  const preset = presetQuery.data?.data;
-  const preview = previewQuery.data?.data;
+
+  useEffect(() => {
+    selectedIdRef.current = selectedCatalogId;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    draftRef.current = null;
+    setDraft(null);
+    setSaveState("idle");
+    setSelectedPresetEntryId(null);
+  }, [selectedCatalogId]);
+
+  useEffect(() => {
+    if (!presetsQuery.data) {
+      return;
+    }
+    const summaries = presetsQuery.data.data;
+    if (selectedCatalogId === null && summaries.length > 0) {
+      setSelectedCatalogId(summaries[0]!.catalogId);
+      return;
+    }
+    if (
+      selectedCatalogId !== null &&
+      !summaries.some((item) => item.catalogId === selectedCatalogId)
+    ) {
+      setSelectedCatalogId(summaries[0]?.catalogId ?? null);
+    }
+  }, [presetsQuery.data, selectedCatalogId]);
+
+  useEffect(() => {
+    if (!document) {
+      return;
+    }
+    baseMtimeRef.current = document.mtimeMs;
+    setPreviewContent(document.content);
+    if (document.valid) {
+      draftRef.current = document.file;
+      setDraft(document.file);
+    } else {
+      draftRef.current = null;
+      setDraft(null);
+    }
+    setSaveState("idle");
+  }, [document]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, []);
+
+  async function flushSave() {
+    if (savingRef.current) {
+      scheduleSave();
+      return;
+    }
+    const catalogId = selectedIdRef.current;
+    const file = draftRef.current;
+    if (!catalogId || !file) {
+      return;
+    }
+    savingRef.current = true;
+    setSaveState("saving");
+    try {
+      const result = await savePreset(catalogId, {
+        file,
+        expectedMtimeMs: baseMtimeRef.current,
+        force: false,
+      });
+      if (result.kind === "conflict") {
+        baseMtimeRef.current = result.document.mtimeMs;
+        setPreviewContent(result.document.content);
+        setSaveState("conflict");
+      } else {
+        baseMtimeRef.current = result.document.mtimeMs;
+        setPreviewContent(result.document.content);
+        setSaveState("saved");
+        void queryClient.invalidateQueries({ queryKey: ["presets"] });
+      }
+    } catch (error) {
+      setSaveState("error");
+      notifications.show({
+        color: "red",
+        title: "Preset save failed",
+        message: (error as Error).message,
+      });
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  function scheduleSave() {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      void flushSave();
+    }, 400);
+  }
+
+  function applyDraft(next: ModelPresetFile) {
+    draftRef.current = next;
+    setDraft(next);
+    scheduleSave();
+  }
+
+  const createMutation = useMutation({
+    mutationFn: createPreset,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["presets"] });
+      setNewOpen(false);
+      setSelectedCatalogId(result.data.catalogId);
+      notifications.show({
+        title: "Preset created",
+        message: result.data.path,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Preset create failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  function reloadFromDisk() {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    setReloadNonce((value) => value + 1);
+    void documentQuery.refetch();
+  }
+
+  async function overwriteConflict() {
+    const catalogId = selectedIdRef.current;
+    const file = draftRef.current;
+    if (!catalogId || !file) {
+      return;
+    }
+    setSaveState("saving");
+    try {
+      const result = await savePreset(catalogId, {
+        file,
+        expectedMtimeMs: baseMtimeRef.current,
+        force: true,
+      });
+      if (result.kind === "ok") {
+        baseMtimeRef.current = result.document.mtimeMs;
+        setPreviewContent(result.document.content);
+        setSaveState("saved");
+        void queryClient.invalidateQueries({ queryKey: ["presets"] });
+      }
+    } catch (error) {
+      setSaveState("error");
+      notifications.show({
+        color: "red",
+        title: "Preset overwrite failed",
+        message: (error as Error).message,
+      });
+    }
+  }
+
   const scannedModels = useMemo(
     () =>
       (presetModelsQuery.data?.data.models ?? [])
@@ -533,735 +874,268 @@ export function PresetsView() {
         .sort(compareModelTitles),
     [presetModelsQuery.data?.data.models],
   );
-  const presetModels = scannedModels.filter((model) =>
-    modelMatchesSearch(model, presetModelSearch),
+  const entries = draft?.entries ?? [];
+  const entryByModelPath = useMemo(
+    () => new Map(entries.map((entry) => [entry.modelPath, entry])),
+    [entries],
   );
-  const presetEntryByModelPath = useMemo(
-    () =>
-      new Map((preset?.entries ?? []).map((entry) => [entry.modelPath, entry])),
-    [preset?.entries],
-  );
-  const presetModelByPath = useMemo(
+  const modelByPath = useMemo(
     () => new Map(scannedModels.map((model) => [model.path, model])),
     [scannedModels],
   );
+  const scannedPaths = useMemo(
+    () => new Set(scannedModels.map((model) => model.path)),
+    [scannedModels],
+  );
+  const visibleModels = useMemo(
+    () =>
+      scannedModels.filter((model) =>
+        modelMatchesSearch(model, presetModelSearch),
+      ),
+    [scannedModels, presetModelSearch],
+  );
+  const orphanEntries = useMemo(() => {
+    const query = presetModelSearch.trim().toLowerCase();
+    return entries
+      .filter((entry) => !scannedPaths.has(entry.modelPath))
+      .filter(
+        (entry) =>
+          query === "" ||
+          `${entry.name} ${entry.modelPath}`.toLowerCase().includes(query),
+      );
+  }, [entries, scannedPaths, presetModelSearch]);
   const selectedPresetEntry =
-    (preset?.entries ?? []).find(
-      (entry) => entry.id === selectedPresetEntryId,
-    ) ?? null;
+    entries.find((entry) => entry.id === selectedPresetEntryId) ?? null;
   const selectedPresetModel = selectedPresetEntry
-    ? (presetModelByPath.get(selectedPresetEntry.modelPath) ?? null)
+    ? (modelByPath.get(selectedPresetEntry.modelPath) ?? null)
     : null;
 
-  const saveMutation = useMutation({
-    mutationFn: updateModelPreset,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Preset saved",
-        message: "Configuration stored",
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Preset save failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-  const writeMutation = useMutation({
-    mutationFn: writeModelPreset,
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Preset file written",
-        message: result.data.path,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Preset write failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-  const routerMutation = useMutation({
-    mutationFn: () =>
-      createRouterInstance({
-        name: routerName,
-        binaryPath: routerBinaryPath,
-        binaryPathRefId: routerBinaryPathRefId,
-        modelsPresetPathRefId: routerPresetPathRefId,
-        cwd: routerCwd || undefined,
-        host: routerHost,
-        port: routerPort,
-        modelsMax: typeof routerModelsMax === "number" ? routerModelsMax : null,
-        modelsAutoload: routerModelsAutoload,
-        writePreset: routerWritePreset,
-      }),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["instances-health-summary"],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["instance-health-summary", result.data.id],
-      });
-      await queryClient.invalidateQueries({ queryKey: ["model-preset"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["model-preset-preview"],
-      });
-      notifications.show({
-        title: "Router instance created",
-        message: result.data.name,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Router create failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  function updateEntries(entries: ModelPresetEntry[]) {
-    if (!preset) {
+  function setEntries(next: ModelPresetEntry[]) {
+    if (!draftRef.current) {
       return;
     }
-    saveMutation.mutate({ entries, path: preset.path });
-  }
-
-  function applyPresetCatalogPath(refId: string | null) {
-    const entry =
-      presetCatalogEntries.find((item) => item.id === refId) ?? null;
-    if (!entry || !preset) {
-      return;
-    }
-    saveMutation.mutate({
-      entries: preset.entries,
-      path: entry.path,
-    });
-  }
-
-  function applyRouterBinaryPathRef(refId: string | null) {
-    setRouterBinaryPathRefId(refId);
-    const entry =
-      binaryCatalogEntries.find((item) => item.id === refId) ?? null;
-    if (entry) {
-      setRouterBinaryPath(entry.path);
-    }
-  }
-
-  function applyRouterPresetPathRef(refId: string | null) {
-    setRouterPresetPathRefId(refId);
-    if (refId) {
-      setRouterWritePreset(false);
-    }
-  }
-
-  function updateEntry(entry: ModelPresetEntry) {
-    if (!preset) {
-      return;
-    }
-    updateEntries(
-      preset.entries.map((item) => (item.id === entry.id ? entry : item)),
-    );
+    applyDraft({ ...draftRef.current, entries: next });
   }
 
   function patchEntry(entryId: string, patch: Partial<ModelPresetEntry>) {
-    if (!preset) {
-      return;
-    }
-    updateEntries(
-      preset.entries.map((item) =>
+    setEntries(
+      entries.map((item) =>
         item.id === entryId ? { ...item, ...patch } : item,
       ),
     );
   }
 
   function removeEntry(entryId: string) {
-    if (!preset) {
-      return;
-    }
-    updateEntries(preset.entries.filter((item) => item.id !== entryId));
-  }
-
-  function togglePresetModel(model: GgufModel, checked: boolean) {
-    if (!preset) {
-      return;
-    }
-    if (checked) {
-      if (preset.entries.some((entry) => entry.modelPath === model.path)) {
-        return;
-      }
-      const entry = presetEntryFromModel(model, presetDefaultArgs);
-      updateEntries([...preset.entries, entry]);
-      setSelectedPresetEntryId(entry.id);
-      return;
-    }
-    const entry = preset.entries.find((item) => item.modelPath === model.path);
-    updateEntries(
-      preset.entries.filter((item) => item.modelPath !== model.path),
-    );
-    if (entry?.id === selectedPresetEntryId) {
+    setEntries(entries.filter((item) => item.id !== entryId));
+    if (entryId === selectedPresetEntryId) {
       setSelectedPresetEntryId(null);
     }
   }
 
+  function updateEntry(entry: ModelPresetEntry) {
+    setEntries(entries.map((item) => (item.id === entry.id ? entry : item)));
+  }
+
+  function togglePresetModel(model: GgufModel, checked: boolean) {
+    if (checked) {
+      if (entries.some((entry) => entry.modelPath === model.path)) {
+        return;
+      }
+      setEntries([...entries, presetEntryFromModel(model, presetDefaultArgs)]);
+      return;
+    }
+    removeEntry(
+      entries.find((item) => item.modelPath === model.path)?.id ?? "",
+    );
+  }
+
+  const saveLabel: Record<SaveState, string> = {
+    idle: "Up to date",
+    saving: "Saving…",
+    saved: "Saved",
+    error: "Save failed",
+    conflict: "File changed on disk",
+  };
+
   return (
     <>
       <Paper withBorder p="md" radius="sm">
-        <Stack gap="sm">
+        <Stack gap="md">
           <Group justify="space-between" align="flex-start">
             <div>
-              <Title order={3}>Router preset</Title>
+              <Title order={3}>Model presets</Title>
               <Text c="dimmed" size="sm">
-                Generated llama-server --models-preset INI
+                Edit a llama-server --models-preset INI file (the file is the
+                source of truth)
               </Text>
             </div>
             <Group gap="xs">
+              <Text size="sm" c={saveState === "error" ? "red" : "dimmed"}>
+                {saveLabel[saveState]}
+              </Text>
+              <Tooltip label="Reload from disk">
+                <ActionIcon
+                  aria-label="Reload preset from disk"
+                  variant="subtle"
+                  disabled={!selectedCatalogId}
+                  loading={documentQuery.isFetching}
+                  onClick={reloadFromDisk}
+                >
+                  <RefreshCw size={16} />
+                </ActionIcon>
+              </Tooltip>
               <Button
-                variant="light"
-                loading={saveMutation.isPending}
-                disabled={!preset}
-                onClick={() =>
-                  preset &&
-                  saveMutation.mutate({
-                    entries: preset.entries,
-                    path: preset.path,
-                  })
-                }
+                leftSection={<Plus size={16} />}
+                onClick={() => setNewOpen(true)}
               >
-                Save
-              </Button>
-              <Button
-                loading={writeMutation.isPending}
-                disabled={!preset}
-                onClick={() => writeMutation.mutate()}
-              >
-                Write INI
+                New preset
               </Button>
             </Group>
           </Group>
 
           <Select
-            label="Preset catalog"
+            label="Preset"
             placeholder={
-              pathCatalogQuery.isFetching
-                ? "Loading catalog..."
-                : "Select managed preset path"
+              presetsQuery.isFetching
+                ? "Loading presets..."
+                : "Select a preset from the catalog"
             }
             searchable
-            clearable
-            value={null}
-            onChange={applyPresetCatalogPath}
-            data={presetCatalogOptions}
-            nothingFoundMessage="No preset paths in catalog"
+            value={selectedCatalogId}
+            onChange={setSelectedCatalogId}
+            data={presets.map((item) => ({
+              value: item.catalogId,
+              label: `${item.name}${item.valid ? "" : " · invalid"}${item.exists ? "" : " · missing file"} · ${item.entryCount} models`,
+            }))}
+            nothingFoundMessage="No presets in catalog"
           />
 
-          <PathPickerInput
-            label="Preset path"
-            mode="file"
-            filter="preset"
-            value={preset?.path ?? ""}
-            disabled={!preset}
-            onChange={(value) => {
-              if (preset) {
-                saveMutation.mutate({
-                  entries: preset.entries,
-                  path: value,
-                });
-              }
-            }}
-          />
+          {!selectedCatalogId && (
+            <Paper withBorder p="lg" radius="sm">
+              <Text c="dimmed" ta="center">
+                Select a preset above or create a new one.
+              </Text>
+            </Paper>
+          )}
 
-          <Stack gap="xs">
-            <Group justify="space-between" align="flex-end">
-              <TextInput
-                label="Models"
-                placeholder="name, path, architecture, quant"
-                value={presetModelSearch}
-                onChange={(event) =>
-                  setPresetModelSearch(event.currentTarget.value)
-                }
-                style={{ flex: 1 }}
-              />
-              <Group gap="xs" pb={4}>
-                <Badge variant="light">
-                  {preset?.entries.length ?? 0}/{scannedModels.length}
-                </Badge>
-                {presetModelsQuery.data?.data.cache && (
-                  <Badge variant="outline">
-                    cache {presetModelsQuery.data.data.cache.hits}/
-                    {presetModelsQuery.data.data.cache.misses}
-                  </Badge>
-                )}
-              </Group>
+          {selectedCatalogId && documentQuery.isLoading && (
+            <Group justify="center" p="lg">
+              <Loader size="sm" />
             </Group>
-            {presetModelsQuery.isError && (
-              <Text c="red" size="sm">
-                {(presetModelsQuery.error as Error).message}
-              </Text>
-            )}
-            <Stack className="preset-models-mobile-list" gap="xs">
-              {presetModels.slice(0, 12).map((model) => {
-                const entry = presetEntryByModelPath.get(model.path);
-                return (
-                  <Paper key={model.path} withBorder p="sm" radius="sm">
-                    <Stack gap="xs">
-                      <Group
-                        justify="space-between"
-                        align="flex-start"
-                        wrap="nowrap"
-                      >
-                        <Checkbox
-                          aria-label={`Use ${modelTitle(model)} in preset`}
-                          checked={Boolean(entry)}
-                          disabled={!preset}
-                          onChange={(event) =>
-                            togglePresetModel(
-                              model,
-                              event.currentTarget.checked,
-                            )
-                          }
-                        />
-                        <div className="mobile-card__title">
-                          <Text fw={600} size="sm">
-                            {modelTitle(model)}
-                          </Text>
-                          <Text c="dimmed" size="xs" className="text-wrap">
-                            {model.path}
-                          </Text>
-                        </div>
-                        <Tooltip label="Details">
-                          <ActionIcon
-                            aria-label="Edit preset model details"
-                            variant="subtle"
-                            disabled={!entry}
-                            onClick={() =>
-                              entry && setSelectedPresetEntryId(entry.id)
-                            }
-                          >
-                            <Pencil size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      </Group>
-                      <Group gap="xs">
-                        <Badge variant="light">
-                          {model.metadata.architecture ?? "unknown arch"}
-                        </Badge>
-                        <Badge variant="outline">
-                          {model.metadata.quantization ?? "unknown quant"}
-                        </Badge>
-                        <Badge variant="outline">
-                          ctx {model.metadata.contextLength ?? "-"}
-                        </Badge>
-                        <Badge variant="outline">
-                          {formatBytes(model.sizeBytes)}
-                        </Badge>
-                      </Group>
-                    </Stack>
-                  </Paper>
-                );
-              })}
-              {presetModels.length === 0 && (
-                <Paper withBorder p="md" radius="sm">
-                  <Text c="dimmed" ta="center">
-                    {presetModelsQuery.isFetching
-                      ? "Loading models..."
-                      : "No matching GGUF files found"}
-                  </Text>
-                </Paper>
-              )}
-            </Stack>
+          )}
 
-            <Table.ScrollContainer
-              className="preset-models-table"
-              minWidth={980}
+          {document && !document.valid && (
+            <Alert
+              color="red"
+              icon={<AlertTriangle size={18} />}
+              title="This preset file is invalid"
             >
-              <Table striped highlightOnHover verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th aria-label="Selected" w={52}></Table.Th>
-                    <Table.Th>Model</Table.Th>
-                    <Table.Th>Arch</Table.Th>
-                    <Table.Th>Quant</Table.Th>
-                    <Table.Th>Ctx</Table.Th>
-                    <Table.Th>Size</Table.Th>
-                    <Table.Th ta="right">Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {presetModels.slice(0, 12).map((model) => {
-                    const entry = presetEntryByModelPath.get(model.path);
-                    return (
-                      <Table.Tr key={model.path}>
-                        <Table.Td>
-                          <Checkbox
-                            aria-label={`Use ${modelTitle(model)} in preset`}
-                            checked={Boolean(entry)}
-                            disabled={!preset}
-                            onChange={(event) =>
-                              togglePresetModel(
-                                model,
-                                event.currentTarget.checked,
-                              )
-                            }
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fw={600} size="sm" lineClamp={1}>
-                            {modelTitle(model)}
-                          </Text>
-                          <Text c="dimmed" size="xs" lineClamp={1}>
-                            {model.path}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          {model.metadata.architecture ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {model.metadata.quantization ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {model.metadata.contextLength ?? "-"}
-                        </Table.Td>
-                        <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
-                        <Table.Td>
-                          <Group justify="flex-end">
-                            <Tooltip label="Details">
-                              <ActionIcon
-                                aria-label="Edit preset model details"
-                                variant="subtle"
-                                disabled={!entry}
-                                onClick={() =>
-                                  entry && setSelectedPresetEntryId(entry.id)
-                                }
-                              >
-                                <Pencil size={16} />
-                              </ActionIcon>
-                            </Tooltip>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                  {presetModels.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={7}>
-                        <Text c="dimmed" ta="center" py="lg">
-                          {presetModelsQuery.isFetching
-                            ? "Loading models..."
-                            : "No matching GGUF files found"}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          </Stack>
-
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-            <Box>
-              <Group justify="space-between" mb="xs">
-                <Text fw={600} size="sm">
-                  INI preview
+              <Stack gap="xs">
+                <Text size="sm">
+                  llama-server would reject this file. Fix it on disk, then
+                  reload. The editor stays hidden to avoid overwriting it.
                 </Text>
-                <Badge variant="light">{preview?.entries ?? 0} models</Badge>
-              </Group>
-              <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
-                {preview?.path ?? preset?.path ?? "-"}
-              </Text>
-              <ScrollArea h={260} type="auto" offsetScrollbars>
-                <Code block className="ini-preview-code">
-                  {preview?.content ?? "; no preset loaded\n"}
-                </Code>
-              </ScrollArea>
-            </Box>
-
-            <Box>
-              <Group justify="space-between" mb="xs">
-                <Text fw={600} size="sm">
-                  Router instance
-                </Text>
-                <Switch
-                  label="Write INI"
-                  checked={routerWritePreset}
-                  onChange={(event) =>
-                    setRouterWritePreset(event.currentTarget.checked)
-                  }
-                />
-              </Group>
-              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
-                <TextInput
-                  label="Name"
-                  value={routerName}
-                  onChange={(event) => setRouterName(event.currentTarget.value)}
-                />
-                <Select
-                  label="Binary catalog"
-                  placeholder={
-                    pathCatalogQuery.isFetching
-                      ? "Loading catalog..."
-                      : "Select managed binary"
-                  }
-                  searchable
-                  clearable
-                  value={routerBinaryPathRefId}
-                  onChange={applyRouterBinaryPathRef}
-                  data={binaryCatalogOptions}
-                  nothingFoundMessage="No binary paths in catalog"
-                />
-                <PathPickerInput
-                  label="Binary"
-                  mode="file"
-                  filter="binary"
-                  value={routerBinaryPath}
-                  onChange={(value) => {
-                    setRouterBinaryPathRefId(null);
-                    setRouterBinaryPath(value);
-                  }}
-                />
-                <Select
-                  label="Router preset catalog"
-                  placeholder={
-                    pathCatalogQuery.isFetching
-                      ? "Loading catalog..."
-                      : "Use generated preset path"
-                  }
-                  searchable
-                  clearable
-                  value={routerPresetPathRefId}
-                  onChange={applyRouterPresetPathRef}
-                  data={presetCatalogOptions}
-                  nothingFoundMessage="No preset paths in catalog"
-                />
-                <PathPickerInput
-                  label="Working dir"
-                  mode="directory"
-                  value={routerCwd}
-                  onChange={setRouterCwd}
-                />
-                <HostPicker
-                  label="Host"
-                  value={routerHost}
-                  onChange={setRouterHost}
-                />
-                <NumberInput
-                  label="Port"
-                  min={1}
-                  max={65535}
-                  value={routerPort}
-                  onChange={(value) =>
-                    setRouterPort(typeof value === "number" ? value : 8080)
-                  }
-                />
-                <NumberInput
-                  label="Models max"
-                  min={0}
-                  value={routerModelsMax}
-                  onChange={(value) =>
-                    setRouterModelsMax(typeof value === "number" ? value : "")
-                  }
-                />
-              </SimpleGrid>
-              <Group justify="space-between" mt="sm">
-                <Switch
-                  label="Models autoload"
-                  checked={routerModelsAutoload}
-                  onChange={(event) =>
-                    setRouterModelsAutoload(event.currentTarget.checked)
-                  }
-                />
-                <Button
-                  leftSection={<Plus size={16} />}
-                  loading={routerMutation.isPending}
-                  disabled={
-                    !preset || !routerName.trim() || !routerBinaryPath.trim()
-                  }
-                  onClick={() => routerMutation.mutate()}
-                >
-                  Create router
-                </Button>
-              </Group>
-            </Box>
-          </SimpleGrid>
-
-          <Stack className="preset-entries-mobile-list" gap="xs">
-            {(preset?.entries ?? []).map((entry) => (
-              <Paper key={entry.id} withBorder p="sm" radius="sm">
-                <Stack gap="xs">
-                  <Group
-                    justify="space-between"
-                    align="flex-start"
-                    wrap="nowrap"
-                  >
-                    <div className="mobile-card__title">
-                      <Text fw={600} size="sm">
-                        {entry.name}
-                      </Text>
-                      <Text c="dimmed" size="xs" className="text-wrap">
-                        {entry.modelPath}
-                      </Text>
-                      {entry.mmprojPath && (
-                        <Text c="dimmed" size="xs" className="text-wrap">
-                          mmproj: {entry.mmprojPath}
-                        </Text>
-                      )}
-                    </div>
-                    <Group gap="xs" wrap="nowrap">
-                      <Tooltip label="Details">
-                        <ActionIcon
-                          aria-label="Edit preset entry"
-                          variant="subtle"
-                          onClick={() => setSelectedPresetEntryId(entry.id)}
-                        >
-                          <Pencil size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Remove">
-                        <ActionIcon
-                          aria-label="Remove preset entry"
-                          variant="subtle"
-                          color="red"
-                          onClick={() => removeEntry(entry.id)}
-                        >
-                          <Trash2 size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Group>
-                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-                    <TextInput
-                      label="Name"
-                      value={entry.name}
-                      onChange={(event) =>
-                        patchEntry(entry.id, {
-                          name: event.currentTarget.value,
-                        })
-                      }
-                    />
-                    <NumberInput
-                      label="Context"
-                      value={entry.ctxSize ?? ""}
-                      min={1}
-                      onChange={(value) =>
-                        patchEntry(entry.id, {
-                          ctxSize: typeof value === "number" ? value : null,
-                        })
-                      }
-                    />
-                    <Switch
-                      label="Load on startup"
-                      checked={entry.loadOnStartup}
-                      onChange={(event) =>
-                        patchEntry(entry.id, {
-                          loadOnStartup: event.currentTarget.checked,
-                        })
-                      }
-                    />
-                  </SimpleGrid>
-                  <Badge variant="outline">
-                    {presetArgumentCount(entry)} args
-                  </Badge>
+                <Code block>{document.path}</Code>
+                <Stack gap={4}>
+                  {document.diagnostics.map((diagnostic, index) => (
+                    <Text
+                      key={`${diagnostic.section}-${diagnostic.key}-${index}`}
+                      size="xs"
+                      c={diagnostic.severity === "error" ? "red" : "yellow"}
+                    >
+                      {diagnostic.severity === "error" ? "✗" : "⚠"}{" "}
+                      {diagnostic.section ? `[${diagnostic.section}] ` : ""}
+                      {diagnostic.key ? `${diagnostic.key}: ` : ""}
+                      {diagnostic.message}
+                      {diagnostic.line ? ` (line ${diagnostic.line})` : ""}
+                    </Text>
+                  ))}
                 </Stack>
-              </Paper>
-            ))}
-            {(!preset || preset.entries.length === 0) && (
-              <Paper withBorder p="md" radius="sm">
-                <Text c="dimmed" ta="center">
-                  Select models above
-                </Text>
-              </Paper>
-            )}
-          </Stack>
+                <ScrollArea h={200} type="auto" offsetScrollbars>
+                  <Code block className="ini-preview-code">
+                    {document.content || "; empty file\n"}
+                  </Code>
+                </ScrollArea>
+              </Stack>
+            </Alert>
+          )}
 
-          <Table.ScrollContainer
-            className="preset-entries-table"
-            minWidth={860}
-          >
-            <Table striped highlightOnHover verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Model</Table.Th>
-                  <Table.Th>Ctx</Table.Th>
-                  <Table.Th>Startup</Table.Th>
-                  <Table.Th ta="right">Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {(preset?.entries ?? []).map((entry) => (
-                  <Table.Tr key={entry.id}>
-                    <Table.Td>
-                      <TextInput
-                        aria-label={`Name for preset entry ${entry.name}`}
-                        value={entry.name}
-                        onChange={(event) =>
-                          patchEntry(entry.id, {
-                            name: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" lineClamp={1}>
-                        {entry.modelPath}
+          {draft && (
+            <>
+              {document?.diagnostics.length ? (
+                <Alert color="yellow" icon={<AlertTriangle size={16} />}>
+                  <Stack gap={2}>
+                    {document.diagnostics.map((diagnostic, index) => (
+                      <Text key={index} size="xs">
+                        {diagnostic.section ? `[${diagnostic.section}] ` : ""}
+                        {diagnostic.key ? `${diagnostic.key}: ` : ""}
+                        {diagnostic.message}
                       </Text>
-                      {entry.mmprojPath && (
-                        <Text c="dimmed" size="xs" lineClamp={1}>
-                          mmproj: {entry.mmprojPath}
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <NumberInput
-                        aria-label={`Context size for ${entry.name}`}
-                        value={entry.ctxSize ?? ""}
-                        min={1}
-                        onChange={(value) =>
-                          patchEntry(entry.id, {
-                            ctxSize: typeof value === "number" ? value : null,
-                          })
-                        }
-                        w={120}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Switch
-                        aria-label={`Load ${entry.name} on startup`}
-                        checked={entry.loadOnStartup}
-                        onChange={(event) =>
-                          patchEntry(entry.id, {
-                            loadOnStartup: event.currentTarget.checked,
-                          })
-                        }
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Group justify="flex-end" gap="xs">
-                        <Tooltip label="Details">
-                          <ActionIcon
-                            aria-label="Edit preset entry"
-                            variant="subtle"
-                            onClick={() => setSelectedPresetEntryId(entry.id)}
-                          >
-                            <Pencil size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Badge variant="outline">
-                          {presetArgumentCount(entry)} args
-                        </Badge>
+                    ))}
+                  </Stack>
+                </Alert>
+              ) : null}
+
+              <Paper withBorder p="sm" radius="sm">
+                <Text fw={600} size="sm" mb="xs">
+                  Global defaults ([*]) — applied to every model, overridden per
+                  model
+                </Text>
+                <GlobalDefaultsEditor
+                  key={`global:${selectedCatalogId}:${reloadNonce}`}
+                  value={draft.globalArgs}
+                  onChange={(globalArgs) =>
+                    applyDraft({ ...draftRef.current!, globalArgs })
+                  }
+                />
+              </Paper>
+
+              <Stack gap="xs">
+                <Group justify="space-between" align="flex-end">
+                  <TextInput
+                    label="Models"
+                    placeholder="name, path, architecture, quant"
+                    value={presetModelSearch}
+                    onChange={(event) =>
+                      setPresetModelSearch(event.currentTarget.value)
+                    }
+                    style={{ flex: 1 }}
+                  />
+                  <Group gap="xs" pb={4}>
+                    <Badge variant="light">{entries.length} selected</Badge>
+                    <Badge variant="outline">
+                      {scannedModels.length} scanned
+                    </Badge>
+                  </Group>
+                </Group>
+                {presetModelsQuery.isError && (
+                  <Text c="red" size="sm">
+                    {(presetModelsQuery.error as Error).message}
+                  </Text>
+                )}
+                <ScrollArea.Autosize mah={520} type="auto" offsetScrollbars>
+                  <Stack gap="xs">
+                    {orphanEntries.map((entry) => (
+                      <Group
+                        key={entry.id}
+                        gap="xs"
+                        wrap="nowrap"
+                        align="stretch"
+                      >
+                        <Box style={{ flex: 1, minWidth: 0 }}>
+                          <PresetModelCard
+                            model={null}
+                            entry={entry}
+                            disabled={false}
+                            onToggle={(checked) => {
+                              if (!checked) {
+                                removeEntry(entry.id);
+                              }
+                            }}
+                            onPatch={(patch) => patchEntry(entry.id, patch)}
+                            onEdit={() => setSelectedPresetEntryId(entry.id)}
+                          />
+                        </Box>
                         <Tooltip label="Remove">
                           <ActionIcon
                             aria-label="Remove preset entry"
@@ -1273,31 +1147,108 @@ export function PresetsView() {
                           </ActionIcon>
                         </Tooltip>
                       </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-                {(!preset || preset.entries.length === 0) && (
-                  <Table.Tr>
-                    <Table.Td colSpan={6}>
-                      <Text c="dimmed" ta="center" py="lg">
-                        Select models above
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+                    ))}
+                    {visibleModels.map((model) => {
+                      const entry = entryByModelPath.get(model.path) ?? null;
+                      return (
+                        <PresetModelCard
+                          key={model.path}
+                          model={model}
+                          entry={entry}
+                          disabled={false}
+                          onToggle={(checked) =>
+                            togglePresetModel(model, checked)
+                          }
+                          onPatch={(patch) =>
+                            entry && patchEntry(entry.id, patch)
+                          }
+                          onEdit={() =>
+                            entry && setSelectedPresetEntryId(entry.id)
+                          }
+                        />
+                      );
+                    })}
+                    {visibleModels.length === 0 &&
+                      orphanEntries.length === 0 && (
+                        <Paper withBorder p="md" radius="sm">
+                          <Text c="dimmed" ta="center">
+                            {presetModelsQuery.isFetching
+                              ? "Loading models..."
+                              : "No matching GGUF files found"}
+                          </Text>
+                        </Paper>
+                      )}
+                  </Stack>
+                </ScrollArea.Autosize>
+              </Stack>
+
+              <Box>
+                <Group justify="space-between" mb="xs">
+                  <Text fw={600} size="sm">
+                    INI preview
+                  </Text>
+                  <Text c="dimmed" size="xs" lineClamp={1}>
+                    {document?.path ?? ""}
+                  </Text>
+                </Group>
+                <ScrollArea h={260} type="auto" offsetScrollbars>
+                  <Code block className="ini-preview-code">
+                    {previewContent || "; empty preset\n"}
+                  </Code>
+                </ScrollArea>
+              </Box>
+            </>
+          )}
         </Stack>
       </Paper>
+
       <PresetEntryDetailModal
         opened={Boolean(selectedPresetEntry)}
         entry={selectedPresetEntry}
         model={selectedPresetModel}
-        binaryPath={routerBinaryPath}
         onClose={() => setSelectedPresetEntryId(null)}
         onSave={updateEntry}
       />
+
+      <NewPresetModal
+        opened={newOpen}
+        onClose={() => setNewOpen(false)}
+        onCreate={(input) => createMutation.mutate(input)}
+        pending={createMutation.isPending}
+      />
+
+      <Modal
+        opened={saveState === "conflict"}
+        onClose={() => setSaveState("idle")}
+        title="Preset changed on disk"
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            The file was modified outside the editor since it was loaded. Reload
+            to take the on-disk version (your unsaved edits are lost), or
+            overwrite it with your current edits.
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setSaveState("idle");
+                reloadFromDisk();
+              }}
+            >
+              Reload from disk
+            </Button>
+            <Button
+              color="red"
+              onClick={() => {
+                void overwriteConflict();
+              }}
+            >
+              Overwrite
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   );
 }

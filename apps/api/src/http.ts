@@ -38,9 +38,9 @@ import {
   type ProcessPreflightIssue,
   LlamaArgumentDefaultsSchema,
   LlamaArgumentHelpOverrideUpdateSchema,
-  ModelPresetUpdateSchema,
+  ModelPresetCreateSchema,
+  ModelPresetWriteSchema,
   ModelScanSettingsSchema,
-  RouterInstanceCreateSchema,
   type ProcessEvent,
   type RuntimeState,
 } from "@llama-manager/core";
@@ -113,10 +113,10 @@ import {
 } from "./models/cache-repository.js";
 import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
 import {
-  getModelPreset,
-  previewModelPresetIni,
-  saveModelPreset,
-  writeModelPresetFile,
+  createPreset,
+  listPresets,
+  readPreset,
+  writePreset,
 } from "./presets/repository.js";
 import {
   createPathCatalogEntry,
@@ -1378,70 +1378,43 @@ app.put("/api/model-scan-settings", async (c) => {
   return c.json({ data: saveModelScanSettings(parsed.data) });
 });
 
-app.get("/api/model-preset", (c) => {
-  return c.json({ data: getModelPreset() });
+app.get("/api/presets", (c) => {
+  return c.json({ data: listPresets() });
 });
 
-app.get("/api/model-preset/preview", (c) => {
-  return c.json({ data: previewModelPresetIni() });
-});
-
-app.put("/api/model-preset", async (c) => {
-  const parsed = ModelPresetUpdateSchema.safeParse(await c.req.json());
+app.post("/api/presets", async (c) => {
+  const parsed = ModelPresetCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
-  return c.json({ data: saveModelPreset(parsed.data) });
-});
-
-app.post("/api/model-preset/write", (c) => {
-  return c.json({ data: writeModelPresetFile() });
-});
-
-app.post("/api/model-preset/router-instance", async (c) => {
-  const parsed = RouterInstanceCreateSchema.safeParse(await c.req.json());
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-
-  const input = parsed.data;
-  const refError = validateInstancePathRefs(input);
-  if (refError) {
-    return c.json({ error: refError }, 400);
-  }
-  const presetRef = input.modelsPresetPathRefId
-    ? getPathCatalogEntry(input.modelsPresetPathRefId)
-    : null;
-  const preset = input.writePreset ? writeModelPresetFile() : getModelPreset();
-  const presetPath = presetRef?.path ?? preset.path;
-  const args = {
-    "--host": input.host,
-    "--port": input.port,
-    "--models-preset": presetPath,
-    ...(input.modelsMax === null ? {} : { "--models-max": input.modelsMax }),
-    ...(input.modelsAutoload
-      ? { "--models-autoload": true }
-      : { "--no-models-autoload": true }),
-  };
-
   try {
-    return c.json(
-      {
-        data: createInstance({
-          name: input.name,
-          binaryPath: input.binaryPath,
-          binaryPathRefId: input.binaryPathRefId ?? null,
-          modelsPresetPathRefId: input.modelsPresetPathRefId ?? null,
-          cwd: input.cwd,
-          args,
-          env: {},
-        }),
-      },
-      201,
-    );
+    return c.json({ data: createPreset(parsed.data) }, 201);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
+});
+
+app.get("/api/presets/:catalogId", (c) => {
+  const document = readPreset(c.req.param("catalogId"));
+  if (!document) {
+    return c.json({ error: "preset not found" }, 404);
+  }
+  return c.json({ data: document });
+});
+
+app.put("/api/presets/:catalogId", async (c) => {
+  const parsed = ModelPresetWriteSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const result = writePreset(c.req.param("catalogId"), parsed.data);
+  if (result.kind === "not-found") {
+    return c.json({ error: "preset not found" }, 404);
+  }
+  if (result.kind === "conflict") {
+    return c.json({ error: "preset changed on disk", data: result.document }, 409);
+  }
+  return c.json({ data: result.document });
 });
 
 app.post("/api/instances", async (c) => {

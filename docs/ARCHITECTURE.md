@@ -54,7 +54,10 @@
   Commit changes alone do not mark all argument docs stale. The repo-local
   Codex skill `.codex/skills/llama-arg-help-sync` drives agent updates.
 - Model scanner: scan GGUF directories, cache metadata by path, size and mtime.
-- Router presets: generate official `llama-server --models-preset` INI files.
+- Model presets: edit `llama-server --models-preset` INI files where the file on
+  disk is the source of truth. Each preset is a path-catalog entry (`kind=preset`);
+  the `presets` domain reads/parses/validates and writes the file (atomic, with an
+  mtime conflict check). No preset content is stored in the DB.
 - Process health: combine child process state with `/health`, `/props`, `/slots` and `/metrics`.
 - API proxy: keep proxy contracts, scheduling decisions and HTTP forwarding in
   a separate `proxy` domain. See `docs/API_PROXY_FOUNDATION.md`.

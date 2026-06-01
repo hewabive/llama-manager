@@ -56,13 +56,6 @@ export const modelScanSettings = sqliteTable("model_scan_settings", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const modelPresets = sqliteTable("model_presets", {
-  id: text("id").primaryKey(),
-  path: text("path").notNull(),
-  entriesJson: text("entries_json").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const llamaSourceSettings = sqliteTable("llama_source_settings", {
   id: text("id").primaryKey(),
   repoPath: text("repo_path").notNull(),
