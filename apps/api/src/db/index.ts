@@ -74,45 +74,6 @@ export function migrate() {
   `);
 
   db.run(sql`
-    CREATE TABLE IF NOT EXISTS model_scan_settings (
-      id TEXT PRIMARY KEY NOT NULL,
-      directory TEXT NOT NULL,
-      max_depth TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS llama_source_settings (
-      id TEXT PRIMARY KEY NOT NULL,
-      repo_path TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS llama_build_settings (
-      id TEXT PRIMARY KEY NOT NULL,
-      repo_path TEXT NOT NULL,
-      build_dir TEXT NOT NULL,
-      build_type TEXT NOT NULL,
-      build_profile TEXT NOT NULL DEFAULT 'server',
-      cuda TEXT NOT NULL,
-      native TEXT NOT NULL,
-      cuda_architectures TEXT,
-      cuda_fa_all_quants TEXT NOT NULL DEFAULT 'false',
-      cuda_graphs TEXT NOT NULL DEFAULT 'default',
-      cuda_no_vmm TEXT NOT NULL DEFAULT 'false',
-      llguidance TEXT NOT NULL DEFAULT 'default',
-      extra_cmake_args_json TEXT NOT NULL,
-      env_json TEXT NOT NULL DEFAULT '{}',
-      target TEXT NOT NULL,
-      parallel_jobs TEXT,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_argument_catalogs (
       binary_path TEXT PRIMARY KEY NOT NULL,
       binary_size TEXT NOT NULL,

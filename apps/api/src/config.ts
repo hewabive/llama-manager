@@ -19,6 +19,8 @@ export const config = {
   dataDir,
   argumentDefaultsFile: resolve(dataDir, "argument-defaults.json"),
   argumentDefaultsSeedFile: resolve(defaultRootDir, "config/argument-defaults.json"),
+  settingsFile: resolve(dataDir, "settings.json"),
+  settingsSeedFile: resolve(defaultRootDir, "config/settings.json"),
   presetsDir: resolve(dataDir, "presets"),
   runtimeDir,
   logsDir: process.env.LLAMA_MANAGER_LOGS_DIR

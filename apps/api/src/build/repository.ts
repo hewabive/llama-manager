@@ -7,32 +7,22 @@ import {
   type BuildSettings,
   type PathCatalogEntry,
 } from "@llama-manager/core";
-import { eq } from "drizzle-orm";
 import { basename, resolve } from "node:path";
 import { newId } from "../utils/id.js";
 
 import { config } from "../config.js";
 import { isCudaToolkitAvailable } from "./cuda.js";
-import { db } from "../db/index.js";
-import { llamaBuildSettings } from "../db/schema.js";
 import {
   getLlamaSourceSettings,
   getLlamaSourceVersionLabel,
   saveLlamaSourceSettings,
 } from "../llama/source-repository.js";
+import { readSettings, writeSettings } from "../settings/store.js";
 import {
   createPathCatalogEntry,
   listPathCatalogEntries,
   updatePathCatalogEntry,
 } from "../path-catalog/repository.js";
-
-const SETTINGS_ID = "default";
-
-type BuildSettingsRow = typeof llamaBuildSettings.$inferSelect;
-
-function nowIso() {
-  return new Date().toISOString();
-}
 
 function defaultSettings(
   repoPath = getLlamaSourceSettings().repoPath,
@@ -56,57 +46,11 @@ function defaultSettings(
   };
 }
 
-function toBuildSettings(row: BuildSettingsRow): BuildSettings {
-  return BuildSettingsSchema.parse({
-    repoPath: row.repoPath,
-    buildDir: row.buildDir,
-    buildType: row.buildType,
-    buildProfile: row.buildProfile,
-    cuda: row.cuda === "true",
-    native: row.native === "true",
-    cudaArchitectures: row.cudaArchitectures,
-    cudaFaAllQuants: row.cudaFaAllQuants === "true",
-    cudaGraphs: row.cudaGraphs,
-    cudaNoVmm: row.cudaNoVmm === "true",
-    llguidance: row.llguidance,
-    extraCmakeArgs: JSON.parse(row.extraCmakeArgsJson) as unknown,
-    env: JSON.parse(row.envJson) as unknown,
-    target: row.target,
-    parallelJobs: row.parallelJobs ? Number(row.parallelJobs) : null,
-  });
-}
-
-function settingsValues(settings: BuildSettings) {
-  return {
-    repoPath: settings.repoPath,
-    buildDir: settings.buildDir,
-    buildType: settings.buildType,
-    buildProfile: settings.buildProfile,
-    cuda: String(settings.cuda),
-    native: String(settings.native),
-    cudaArchitectures: settings.cudaArchitectures,
-    cudaFaAllQuants: String(settings.cudaFaAllQuants),
-    cudaGraphs: settings.cudaGraphs,
-    cudaNoVmm: String(settings.cudaNoVmm),
-    llguidance: settings.llguidance,
-    extraCmakeArgsJson: JSON.stringify(settings.extraCmakeArgs),
-    envJson: JSON.stringify(settings.env),
-    target: settings.target,
-    parallelJobs:
-      settings.parallelJobs === null ? null : String(settings.parallelJobs),
-    updatedAt: nowIso(),
-  };
-}
-
 export function getBuildSettings(): BuildSettings {
   const sourceSettings = getLlamaSourceSettings();
-  const row = db
-    .select()
-    .from(llamaBuildSettings)
-    .where(eq(llamaBuildSettings.id, SETTINGS_ID))
-    .get();
-  const settings = row
-    ? toBuildSettings(row)
+  const stored = readSettings().build;
+  const settings = stored
+    ? BuildSettingsSchema.parse({ ...stored, repoPath: sourceSettings.repoPath })
     : defaultSettings(sourceSettings.repoPath);
   return {
     ...settings,
@@ -116,29 +60,11 @@ export function getBuildSettings(): BuildSettings {
 
 export function saveBuildSettings(input: BuildSettings): BuildSettings {
   const parsed = BuildSettingsSchema.parse(input);
-  const sourceSettings = saveLlamaSourceSettings({ repoPath: parsed.repoPath });
-  const settings = {
-    ...parsed,
-    repoPath: sourceSettings.repoPath,
-  };
-  const current = db
-    .select()
-    .from(llamaBuildSettings)
-    .where(eq(llamaBuildSettings.id, SETTINGS_ID))
-    .get();
-  const values = settingsValues(settings);
-
-  if (current) {
-    db.update(llamaBuildSettings)
-      .set(values)
-      .where(eq(llamaBuildSettings.id, SETTINGS_ID))
-      .run();
-  } else {
-    db.insert(llamaBuildSettings)
-      .values({ id: SETTINGS_ID, ...values })
-      .run();
-  }
-
+  saveLlamaSourceSettings({ repoPath: parsed.repoPath });
+  writeSettings({
+    ...readSettings(),
+    build: { ...parsed },
+  });
   return getBuildSettings();
 }
 

@@ -6,18 +6,12 @@ import {
   type LlamaSourceSettingsUpdate,
   type LlamaSourceStatus,
 } from "@llama-manager/core";
-import { eq } from "drizzle-orm";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { config } from "../config.js";
-import { db } from "../db/index.js";
-import { llamaSourceSettings } from "../db/schema.js";
-
-const SETTINGS_ID = "default";
-
-type LlamaSourceSettingsRow = typeof llamaSourceSettings.$inferSelect;
+import { readSettings, writeSettings } from "../settings/store.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -27,32 +21,13 @@ export function defaultLlamaSourceRepoPath() {
   return resolve(config.rootDir, "..", "llama.cpp");
 }
 
-function toLlamaSourceSettings(
-  row: LlamaSourceSettingsRow,
-): LlamaSourceSettings {
-  return LlamaSourceSettingsSchema.parse({
-    repoPath: row.repoPath,
-    updatedAt: row.updatedAt,
-  });
-}
-
 export function getLlamaSourceSettings(): LlamaSourceSettings {
-  const row = db
-    .select()
-    .from(llamaSourceSettings)
-    .where(eq(llamaSourceSettings.id, SETTINGS_ID))
-    .get();
-  if (row) {
-    return toLlamaSourceSettings(row);
+  const stored = readSettings().llamaSource;
+  if (stored) {
+    return LlamaSourceSettingsSchema.parse(stored);
   }
-
-  const defaultPath = defaultLlamaSourceRepoPath();
-  if (existsSync(defaultPath)) {
-    return saveLlamaSourceSettings({ repoPath: defaultPath });
-  }
-
   return LlamaSourceSettingsSchema.parse({
-    repoPath: defaultPath,
+    repoPath: defaultLlamaSourceRepoPath(),
     updatedAt: null,
   });
 }
@@ -61,27 +36,10 @@ export function saveLlamaSourceSettings(
   input: LlamaSourceSettingsUpdate,
 ): LlamaSourceSettings {
   const settings = LlamaSourceSettingsUpdateSchema.parse(input);
-  const values = {
-    repoPath: resolve(settings.repoPath),
-    updatedAt: nowIso(),
-  };
-  const current = db
-    .select()
-    .from(llamaSourceSettings)
-    .where(eq(llamaSourceSettings.id, SETTINGS_ID))
-    .get();
-
-  if (current) {
-    db.update(llamaSourceSettings)
-      .set(values)
-      .where(eq(llamaSourceSettings.id, SETTINGS_ID))
-      .run();
-  } else {
-    db.insert(llamaSourceSettings)
-      .values({ id: SETTINGS_ID, ...values })
-      .run();
-  }
-
+  writeSettings({
+    ...readSettings(),
+    llamaSource: { repoPath: resolve(settings.repoPath), updatedAt: nowIso() },
+  });
   return getLlamaSourceSettings();
 }
 

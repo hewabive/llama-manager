@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 
 import { config } from "../config.js";
 import { db } from "../db/index.js";
-import { modelCache, modelScanSettings } from "../db/schema.js";
+import { modelCache } from "../db/schema.js";
+import { readSettings, writeSettings } from "../settings/store.js";
 
-const SETTINGS_ID = "default";
 const defaultModelsDirectory = config.modelsDir;
 
 type ModelCacheRow = typeof modelCache.$inferSelect;
@@ -85,42 +85,17 @@ export function pruneMissingCachedModels(): number {
 }
 
 export function getModelScanSettings(): ModelScanSettings {
-  const row = db
-    .select()
-    .from(modelScanSettings)
-    .where(eq(modelScanSettings.id, SETTINGS_ID))
-    .get();
-  if (!row) {
-    return {
+  return (
+    readSettings().modelScan ?? {
       directory: defaultModelsDirectory,
       maxDepth: 8,
-    };
-  }
-  return {
-    directory: row.directory,
-    maxDepth: Number(row.maxDepth),
-  };
+    }
+  );
 }
 
 export function saveModelScanSettings(
   input: ModelScanSettings,
 ): ModelScanSettings {
-  db.insert(modelScanSettings)
-    .values({
-      id: SETTINGS_ID,
-      directory: input.directory,
-      maxDepth: String(input.maxDepth),
-      updatedAt: new Date().toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: modelScanSettings.id,
-      set: {
-        directory: input.directory,
-        maxDepth: String(input.maxDepth),
-        updatedAt: new Date().toISOString(),
-      },
-    })
-    .run();
-
+  writeSettings({ ...readSettings(), modelScan: input });
   return input;
 }

@@ -1305,6 +1305,16 @@ export const ModelScanSettingsSchema = z.object({
   maxDepth: z.number().int().min(0).max(16),
 });
 
+export const AppSettingsFileSchema = z
+  .object({
+    modelScan: ModelScanSettingsSchema.optional(),
+    llamaSource: LlamaSourceSettingsSchema.optional(),
+    build: BuildSettingsSchema.omit({ repoPath: true }).optional(),
+  })
+  .default({});
+
+export type AppSettingsFile = z.infer<typeof AppSettingsFileSchema>;
+
 export const ModelPresetEntrySchema = z.object({
   id: z.string(),
   name: z.string().min(1),

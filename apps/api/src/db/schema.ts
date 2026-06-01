@@ -49,39 +49,6 @@ export const modelCache = sqliteTable("model_cache", {
   scannedAt: text("scanned_at").notNull(),
 });
 
-export const modelScanSettings = sqliteTable("model_scan_settings", {
-  id: text("id").primaryKey(),
-  directory: text("directory").notNull(),
-  maxDepth: text("max_depth").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-export const llamaSourceSettings = sqliteTable("llama_source_settings", {
-  id: text("id").primaryKey(),
-  repoPath: text("repo_path").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-export const llamaBuildSettings = sqliteTable("llama_build_settings", {
-  id: text("id").primaryKey(),
-  repoPath: text("repo_path").notNull(),
-  buildDir: text("build_dir").notNull(),
-  buildType: text("build_type").notNull(),
-  buildProfile: text("build_profile").notNull(),
-  cuda: text("cuda").notNull(),
-  native: text("native").notNull(),
-  cudaArchitectures: text("cuda_architectures"),
-  cudaFaAllQuants: text("cuda_fa_all_quants").notNull(),
-  cudaGraphs: text("cuda_graphs").notNull(),
-  cudaNoVmm: text("cuda_no_vmm").notNull(),
-  llguidance: text("llguidance").notNull(),
-  extraCmakeArgsJson: text("extra_cmake_args_json").notNull(),
-  envJson: text("env_json").notNull(),
-  target: text("target").notNull(),
-  parallelJobs: text("parallel_jobs"),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const llamaArgumentCatalogs = sqliteTable("llama_argument_catalogs", {
   binaryPath: text("binary_path").primaryKey(),
   binarySize: text("binary_size").notNull(),

@@ -9,6 +9,7 @@ import { app } from "./http.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
 import { pruneProcessRunHistory } from "./process/runs-repository.js";
+import { initAppSettings } from "./settings/store.js";
 import { supervisor } from "./process/supervisor.js";
 
 const logger = pino({
@@ -16,6 +17,7 @@ const logger = pino({
 });
 
 migrate();
+initAppSettings();
 initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const prunedModelCache = pruneMissingCachedModels();
