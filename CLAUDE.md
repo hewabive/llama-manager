@@ -39,7 +39,7 @@ Each subdirectory is a domain with a `repository.ts` (DB access) and logic/test 
 
 ### Process supervision
 
-Instances are launched directly as child processes (`child_process.spawn`) by `process/supervisor.ts` — `systemd` is not involved. Durable config lives in SQLite; live process state is in memory and is reconstructed/reconciled from health checks and `process_runs` rows on startup (`process/reconcile.ts`, `process/stale.ts`). Managed launches write two logs under `runtime/logs/`: a filtered working log (routine `/health`, `/props`, `/slots`, `/v1/models` probes stripped) and a `.raw.log`. Set `LLAMA_MANAGER_FILTER_PROBE_LOGS=false` to disable filtering.
+Instances are launched directly as child processes (`child_process.spawn`) by `process/supervisor.ts` — `systemd` is not involved. Durable config lives in SQLite; live process state is in memory and is reconstructed/reconciled from health checks and `process_runs` rows on startup (`process/reconcile.ts`, `process/stale.ts`). `process_runs` is pruned to the latest + open run per instance (`runs-repository.ts`); closed history is not retained. Managed launches write two logs under `runtime/logs/`: a filtered working log (routine `/health`, `/props`, `/slots`, `/v1/models` probes stripped) and a `.raw.log`. Set `LLAMA_MANAGER_FILTER_PROBE_LOGS=false` to disable filtering.
 
 ### API proxy
 
@@ -47,7 +47,15 @@ A separate `proxy` domain fronts both managed `llama-server` instances and exter
 
 ### Database migrations
 
-Schema is declared two places: `db/schema.ts` (Drizzle table defs for typed queries) and `db/index.ts:migrate()` (hand-written idempotent `CREATE TABLE IF NOT EXISTS`). There is no drizzle-kit pipeline and no in-place column migration — the DB is recreated, not migrated; to evolve the schema, update both places. For an additive column against an existing DB, add an idempotent `ALTER TABLE … ADD COLUMN` guard in `migrate()`.
+Schema is declared two places: `db/schema.ts` (Drizzle table defs for typed queries) and `db/index.ts:migrate()` (hand-written idempotent `CREATE TABLE IF NOT EXISTS`). There is no drizzle-kit pipeline and no in-place column migration — the DB is recreated, not migrated; to evolve the schema, update both places. For an additive column against an existing DB, add an idempotent `ALTER TABLE … ADD COLUMN` guard in `migrate()`. The DB holds runtime state and rebuildable caches; portable config is file-backed (below).
+
+### File-backed config
+
+Portable/hand-editable config lives in files, not the DB — loaded at startup (restart to apply):
+- `data/presets/<name>.ini` — `--models-preset` files; the `presets` domain reads/parses/validates and writes atomically with an mtime conflict check (the only file `llama-server` also edits). Identity = filename; instances link a preset via `modelsPresetName`, resolved to `--models-preset` at launch. `path_catalog` is binary-only.
+- `data/settings.json` — `modelScan` / `llamaSource` / `build` sections (`settings/store.ts`); build `repoPath` is canonical in `llamaSource`.
+- `data/argument-defaults.json` — default instance/preset args.
+JSON files seed from git-tracked `config/*.json` and fail loud on malformed JSON; runtime-computed defaults fill absent sections.
 
 ### Argument documentation
 
@@ -63,9 +71,10 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 ## Runtime layout & key env vars
 
-- `data/llama-manager.db` (WAL): instance definitions, process-run metadata, proxy config, argument catalogs. `llama_source_settings` holds the canonical local llama.cpp repo path used by build and docs-sync.
+- `data/llama-manager.db` (WAL): instance definitions, binary `path_catalog`, process-run metadata, proxy config, and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs`, help overrides). Portable config is file-backed — see **File-backed config**.
+- `data/presets/`, `data/settings.json`, `data/argument-defaults.json`: file-backed config (seeded from `config/*.json`).
 - `runtime/logs/`: managed-process stdout/stderr.
-- `runtime/models/`: default GGUF scan root (`config.modelsDir`, used as `defaultModelsDirectory` when no `modelScanSettings.directory` row exists). Created on startup; overridable via `LLAMA_MANAGER_MODELS_DIR`.
+- `runtime/models/`: default GGUF scan root (`config.modelsDir`, used when `settings.json` has no `modelScan.directory`). Created on startup; overridable via `LLAMA_MANAGER_MODELS_DIR`.
 - `runtime/builds/`: llama.cpp CMake build trees (default `runtime/builds/build`). Build output lives here — **outside the llama.cpp checkout** — so source builds never touch the source tree; the build runner reads/writes binaries relative to this `buildDir`. The default `cuda` flag in `defaultSettings()` is auto-detected via `isCudaToolkitAvailable()` (`build/cuda.ts`, which locates `nvcc`) — off when no CUDA toolkit is present. On a successful build the produced binary is auto-registered into the path catalog (kind `binary`) named `<binary> (<latest reachable tag>)`, deduped by path (`registerBuiltBinaryInCatalog`).
 - Paths overridable via `LLAMA_MANAGER_HOME`, `LLAMA_MANAGER_DATA_DIR`, `LLAMA_MANAGER_RUNTIME_DIR`, `LLAMA_MANAGER_LOGS_DIR`, `LLAMA_MANAGER_BUILDS_DIR`, `LLAMA_MANAGER_MODELS_DIR`; host/port via `LLAMA_MANAGER_HOST`/`LLAMA_MANAGER_PORT`.
 - Admin auth is **off by default** (admin routes open for local dev). Enable with `LLAMA_MANAGER_ADMIN_PASSWORD` or `..._ADMIN_PASSWORD_HASH` (`scrypt$...`); related: `..._AUTH_SECRET`, `..._SECURE_COOKIE`, `..._SESSION_TTL_SECONDS`. The default `/#/status` route is a public, redacted diagnostics page.

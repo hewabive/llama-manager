@@ -32,19 +32,27 @@
   accelerator list reserved for GPU/VRAM inventory later.
 - `systemd` is not the source of truth; it can be added later as an optional Linux adapter.
 - Instances are managed directly as child processes.
-- SQLite stores durable configuration; running process state is in memory and reconstructed from health checks later.
+- SQLite stores durable runtime state and rebuildable caches; portable, hand-editable config is file-backed. Running process state is in memory and reconstructed from health checks.
 
 ## Durable Data
 
-- `data/llama-manager.db`: instance definitions and process run metadata
-- `llama_source_settings`: canonical local `llama.cpp` source repository path.
-  Build settings, source status and argument documentation sync use this record
-  instead of carrying independent repository paths.
+- `data/llama-manager.db`: instance definitions, binary path-catalog, process-run
+  metadata (pruned to the latest + open run per instance), proxy config, and
+  rebuildable caches (model scan, parsed `--help`).
+- File-backed config, loaded at startup (restart to apply):
+  - `data/presets/<name>.ini`: `--models-preset` files; the file on disk is the
+    source of truth and instances reference a preset by filename.
+  - `data/settings.json`: `modelScan` / `llamaSource` / `build` sections. The
+    canonical local `llama.cpp` repo path lives in `llamaSource` and is shared by
+    build, source status and argument-docs sync.
+  - `data/argument-defaults.json`: default instance/preset arguments.
+  JSON files seed from git-tracked `config/*.json` and fail loud on malformed JSON.
 - `runtime/logs`: stdout/stderr logs for managed processes
 
 ## Extension Points
 
-- Build jobs: add a job table and a build runner for `git pull`, CMake configure and CMake build.
+- Build jobs: a build runner drives `git pull`, CMake configure and CMake build;
+  jobs are tracked in memory (recent-history cap), not persisted in the DB.
 - Argument schema sync: extract `llama-server --help` or `common/arg.cpp` from
   the canonical source repository into generated JSON, then store Russian help
   as an overlay.
@@ -55,9 +63,10 @@
   Codex skill `.codex/skills/llama-arg-help-sync` drives agent updates.
 - Model scanner: scan GGUF directories, cache metadata by path, size and mtime.
 - Model presets: edit `llama-server --models-preset` INI files where the file on
-  disk is the source of truth. Each preset is a path-catalog entry (`kind=preset`);
-  the `presets` domain reads/parses/validates and writes the file (atomic, with an
-  mtime conflict check). No preset content is stored in the DB.
+  disk is the source of truth. Presets live in `data/presets/<name>.ini` (identity
+  = filename); the `presets` domain reads/parses/validates and writes the file
+  (atomic, with an mtime conflict check). Instances link a preset by name. No
+  preset content or catalog is stored in the DB.
 - Process health: combine child process state with `/health`, `/props`, `/slots` and `/metrics`.
 - API proxy: keep proxy contracts, scheduling decisions and HTTP forwarding in
   a separate `proxy` domain. See `docs/API_PROXY_FOUNDATION.md`.
