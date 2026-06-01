@@ -17,11 +17,6 @@ function line(key: string, value: string | number | boolean | null) {
 
 const reservedEntryKeys = new Set([
   "model",
-  "ctx-size",
-  "c",
-  "gpu-layers",
-  "n-gpu-layers",
-  "ngl",
   "mmproj",
   "load-on-startup",
   "stop-timeout",
@@ -33,30 +28,16 @@ function extraArgLines(entry: ModelPresetEntry) {
       ([rawKey, value]) =>
         [rawKey.trim().replace(/^-+/, ""), value.trim()] as const,
     )
-    .filter(([key, value]) => key && value && !reservedEntryKeys.has(key))
-    .map(([key, value]) => line(key, value))
-    .filter((item): item is string => Boolean(item));
+    .filter(([key]) => key && !reservedEntryKeys.has(key))
+    .map(([key, value]) => (value ? `${key} = ${escapeValue(value)}` : `${key} =`));
 }
 
-type StructuredField =
-  | "model"
-  | "ctxSize"
-  | "nGpuLayers"
-  | "mmproj"
-  | "loadOnStartup"
-  | "stopTimeout";
+type StructuredField = "model" | "mmproj" | "loadOnStartup" | "stopTimeout";
 
 const structuredAliases: Record<string, StructuredField> = {
   m: "model",
   model: "model",
   LLAMA_ARG_MODEL: "model",
-  c: "ctxSize",
-  "ctx-size": "ctxSize",
-  LLAMA_ARG_CTX_SIZE: "ctxSize",
-  ngl: "nGpuLayers",
-  "gpu-layers": "nGpuLayers",
-  "n-gpu-layers": "nGpuLayers",
-  LLAMA_ARG_N_GPU_LAYERS: "nGpuLayers",
   mm: "mmproj",
   mmproj: "mmproj",
   LLAMA_ARG_MMPROJ: "mmproj",
@@ -67,7 +48,6 @@ const structuredAliases: Record<string, StructuredField> = {
 };
 
 const truthyValues = new Set(["on", "enabled", "true", "1"]);
-const autoValues = new Set(["auto", "-1"]);
 
 export interface PresetParseResult {
   file: ModelPresetFile;
@@ -80,17 +60,6 @@ function toInt(value: string): number | null {
 
 function toBool(value: string): boolean {
   return truthyValues.has(value.trim().toLowerCase());
-}
-
-function toNgl(value: string): ModelPresetEntry["nGpuLayers"] {
-  const normalized = value.trim().toLowerCase();
-  if (autoValues.has(normalized)) {
-    return "auto";
-  }
-  if (normalized === "all") {
-    return "all";
-  }
-  return toInt(value);
 }
 
 function matchKv(line: string): { key: string; value: string } | null {
@@ -111,8 +80,6 @@ function entryFromSection(name: string, kv: Map<string, string>): ModelPresetEnt
     id: name,
     name,
     modelPath: "",
-    ctxSize: null,
-    nGpuLayers: null,
     mmprojPath: null,
     loadOnStartup: false,
     stopTimeout: null,
@@ -128,12 +95,6 @@ function entryFromSection(name: string, kv: Map<string, string>): ModelPresetEnt
     switch (field) {
       case "model":
         entry.modelPath = value;
-        break;
-      case "ctxSize":
-        entry.ctxSize = toInt(value);
-        break;
-      case "nGpuLayers":
-        entry.nGpuLayers = toNgl(value);
         break;
       case "mmproj":
         entry.mmprojPath = value || null;
@@ -255,8 +216,6 @@ export function renderModelPresetFile(file: ModelPresetFile): string {
     lines.push(`[${entry.name}]`);
     const sectionLines = [
       line("model", entry.modelPath),
-      line("ctx-size", entry.ctxSize),
-      line("n-gpu-layers", entry.nGpuLayers),
       line("mmproj", entry.mmprojPath),
       entry.loadOnStartup ? line("load-on-startup", true) : null,
       line("stop-timeout", entry.stopTimeout),

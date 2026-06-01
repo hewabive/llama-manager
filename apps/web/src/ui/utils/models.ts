@@ -97,19 +97,10 @@ function defaultPresetBoolean(value: string) {
   return ["1", "on", "true", "yes"].includes(value.trim().toLowerCase());
 }
 
-function defaultPresetGpuLayers(value: string): ModelPresetEntry["nGpuLayers"] {
-  const normalized = value.trim();
-  if (!normalized) return null;
-  if (normalized === "auto" || normalized === "all") return normalized;
-  const parsed = Number(normalized);
-  return Number.isInteger(parsed) ? parsed : null;
-}
-
 function applyPresetDefaults(
   entry: ModelPresetEntry,
   defaults: LlamaArgumentDefault[],
 ) {
-  const extraArgs: Record<string, string> = {};
   let next = { ...entry };
 
   for (const item of defaults) {
@@ -119,18 +110,7 @@ function applyPresetDefaults(
       continue;
     }
 
-    if (key === "ctx-size" || key === "c") {
-      const parsed = Number(value);
-      if (Number.isInteger(parsed) && parsed > 0) {
-        next = { ...next, ctxSize: parsed };
-      }
-    } else if (
-      key === "n-gpu-layers" ||
-      key === "gpu-layers" ||
-      key === "ngl"
-    ) {
-      next = { ...next, nGpuLayers: defaultPresetGpuLayers(value) };
-    } else if (key === "mmproj") {
+    if (key === "mmproj") {
       next = { ...next, mmprojPath: value || null };
     } else if (key === "load-on-startup") {
       next = { ...next, loadOnStartup: defaultPresetBoolean(value) };
@@ -140,12 +120,10 @@ function applyPresetDefaults(
         ...next,
         stopTimeout: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
       };
-    } else if (key !== "model") {
-      extraArgs[key] = item.valueType === "flag" ? "true" : value;
     }
   }
 
-  return { ...next, extraArgs };
+  return next;
 }
 
 export function presetEntryFromModel(
@@ -157,8 +135,6 @@ export function presetEntryFromModel(
       id: createUiId("preset"),
       name: presetEntryNameFromModel(model),
       modelPath: model.path,
-      ctxSize: model.metadata.contextLength,
-      nGpuLayers: null,
       mmprojPath: model.mmprojPaths[0] ?? null,
       loadOnStartup: false,
       stopTimeout: null,

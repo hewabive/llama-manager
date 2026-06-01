@@ -969,8 +969,8 @@ export function ArgumentsView() {
                         Defaults
                       </Text>
                       <Text c="dimmed" size="xs">
-                        Automatically add this argument to newly created
-                        instances or model presets.
+                        Pre-list this argument in new instances and in the model
+                        preset editor so it is one toggle away.
                       </Text>
                     </div>
                     {argumentDefaults.updatedAt && (

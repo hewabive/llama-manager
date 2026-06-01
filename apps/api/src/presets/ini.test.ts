@@ -10,8 +10,6 @@ function presetEntry(input: Partial<ModelPresetEntry>): ModelPresetEntry {
     id: "test-model-id",
     name: "test-model",
     modelPath: "/models/test.gguf",
-    ctxSize: 4096,
-    nGpuLayers: "auto",
     mmprojPath: null,
     loadOnStartup: false,
     stopTimeout: 10,
@@ -49,11 +47,28 @@ test("parseModelPresetIni maps aliases, globals, inline comments and extras", ()
   assert.equal(entry.name, "ggml-org/MY-MODEL");
   assert.equal(entry.id, "ggml-org/MY-MODEL");
   assert.equal(entry.modelPath, "/abs/my-model.gguf");
-  assert.equal(entry.ctxSize, 4096);
-  assert.equal(entry.nGpuLayers, 123);
   assert.equal(entry.stopTimeout, 30);
   assert.equal(entry.loadOnStartup, true);
-  assert.deepEqual(entry.extraArgs, { jinja: "true" });
+  assert.deepEqual(entry.extraArgs, { c: "4096", jinja: "true", ngl: "123" });
+});
+
+test("renderModelPresetFile writes enabled args with empty values", () => {
+  const rendered = renderModelPresetFile({
+    version: 1,
+    globalArgs: {},
+    rootArgs: {},
+    entries: [
+      presetEntry({
+        name: "alpha",
+        modelPath: "/m.gguf",
+        stopTimeout: null,
+        extraArgs: { "ctx-size": "" },
+      }),
+    ],
+  });
+  assert.match(rendered, /\nctx-size =\n/);
+  const { file } = parseModelPresetIni(rendered);
+  assert.deepEqual(file.entries[0]!.extraArgs, { "ctx-size": "" });
 });
 
 test("parseModelPresetIni records diagnostics for unparseable lines", () => {
@@ -75,23 +90,19 @@ test("renderModelPresetFile round-trips through parseModelPresetIni", () => {
         id: "alpha",
         name: "alpha",
         modelPath: "/models/alpha.gguf",
-        ctxSize: 4096,
-        nGpuLayers: "auto",
         mmprojPath: null,
         loadOnStartup: true,
         stopTimeout: 30,
-        extraArgs: { jinja: "true" },
+        extraArgs: { "ctx-size": "4096", "n-gpu-layers": "auto", jinja: "true" },
       }),
       presetEntry({
         id: "beta",
         name: "beta",
         modelPath: "/models/beta.gguf",
-        ctxSize: null,
-        nGpuLayers: 12,
         mmprojPath: "/models/beta.mmproj",
         loadOnStartup: false,
         stopTimeout: null,
-        extraArgs: {},
+        extraArgs: { "n-gpu-layers": "12" },
       }),
     ],
   };

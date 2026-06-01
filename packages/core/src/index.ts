@@ -1303,10 +1303,6 @@ export const ModelPresetEntrySchema = z.object({
   id: z.string(),
   name: z.string().min(1),
   modelPath: z.string().min(1),
-  ctxSize: z.number().int().positive().nullable(),
-  nGpuLayers: z
-    .union([z.number().int(), z.literal("auto"), z.literal("all")])
-    .nullable(),
   mmprojPath: z.string().nullable(),
   loadOnStartup: z.boolean(),
   stopTimeout: z.number().int().positive().nullable(),

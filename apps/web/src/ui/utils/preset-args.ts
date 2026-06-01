@@ -36,17 +36,3 @@ export function rowsToExtraArgs(rows: PresetExtraArgRow[]) {
   }
   return result;
 }
-
-export function parseGpuLayersInput(
-  value: string,
-): ModelPresetEntry["nGpuLayers"] {
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized === "auto" || normalized === "all") {
-    return normalized;
-  }
-  const parsed = Number(normalized);
-  return Number.isInteger(parsed) ? parsed : null;
-}

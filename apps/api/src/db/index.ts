@@ -250,6 +250,22 @@ export function migrate() {
   `);
 
   migrateModelPresetsToFiles();
+  seedArgumentDefaults();
+}
+
+function seedArgumentDefaults() {
+  const existing = sqlite
+    .prepare("SELECT COUNT(*) AS n FROM llama_argument_defaults")
+    .get() as { n: number };
+  if (existing.n > 0) {
+    return;
+  }
+  const timestamp = new Date().toISOString();
+  const insert = sqlite.prepare(
+    "INSERT INTO llama_argument_defaults (scope, key, value, value_type, updated_at) VALUES (?, ?, '', ?, ?)",
+  );
+  insert.run("instance", "--ctx-size", "null", timestamp);
+  insert.run("preset", "ctx-size", "number", timestamp);
 }
 
 function tableExists(name: string): boolean {
