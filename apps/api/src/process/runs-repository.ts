@@ -6,6 +6,8 @@ import { processRuns } from "../db/schema.js";
 
 export type ProcessRun = typeof processRuns.$inferSelect;
 
+const openRunPredicate = sql`${processRuns.stoppedAt} IS NULL AND ${processRuns.status} IN ('starting', 'running', 'stopping', 'stale')`;
+
 export function createProcessRun(input: {
   instanceId: string;
   pid: number | null;
@@ -28,7 +30,17 @@ export function createProcessRun(input: {
       rawLogPath: input.rawLogPath,
     })
     .run();
+  db.run(
+    sql`DELETE FROM ${processRuns} WHERE ${processRuns.instanceId} = ${input.instanceId} AND ${processRuns.id} != ${id} AND NOT (${openRunPredicate})`,
+  );
   return id;
+}
+
+export function pruneProcessRunHistory(): { deleted: number } {
+  const result = db.run(
+    sql`DELETE FROM ${processRuns} WHERE NOT (${openRunPredicate}) AND ${processRuns.id} NOT IN (SELECT id FROM ${processRuns} AS latest WHERE latest.instance_id = ${processRuns}.instance_id ORDER BY latest.started_at DESC LIMIT 1)`,
+  );
+  return { deleted: Number(result.changes) };
 }
 
 export function updateProcessRun(

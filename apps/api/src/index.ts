@@ -8,6 +8,7 @@ import { migrate } from "./db/index.js";
 import { app } from "./http.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
+import { pruneProcessRunHistory } from "./process/runs-repository.js";
 import { supervisor } from "./process/supervisor.js";
 
 const logger = pino({
@@ -19,6 +20,7 @@ initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const prunedModelCache = pruneMissingCachedModels();
 const reconciliation = reconcileProcessRuns();
+const prunedProcessRuns = pruneProcessRunHistory();
 
 const server = serve(
   {
@@ -32,6 +34,7 @@ const server = serve(
         address: info.address,
         port: info.port,
         reconciliation,
+        prunedProcessRuns,
         prunedArgumentCatalogs,
         prunedModelCache,
       },
