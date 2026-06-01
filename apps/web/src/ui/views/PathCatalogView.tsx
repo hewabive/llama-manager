@@ -21,15 +21,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Copy,
-  FileText,
-  Pencil,
-  Plus,
-  Save,
-  Server,
-  Trash2,
-} from "lucide-react";
+import { Copy, Pencil, Plus, Save, Server, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -55,26 +47,26 @@ type EditorState =
 type KindFilter = PathCatalogKind | "all";
 
 const emptyDraft: Draft = { name: "", path: "" };
-const pathKinds: PathCatalogKind[] = ["binary", "preset"];
+const pathKinds: PathCatalogKind[] = ["binary"];
 
-function kindTitle(kind: PathCatalogKind) {
-  return kind === "binary" ? "Binary paths" : "Preset paths";
+function kindTitle(_kind: PathCatalogKind) {
+  return "Binary paths";
 }
 
-function kindLabel(kind: PathCatalogKind) {
-  return kind === "binary" ? "binary" : "preset";
+function kindLabel(_kind: PathCatalogKind) {
+  return "binary";
 }
 
-function pickerFilter(kind: PathCatalogKind) {
-  return kind === "binary" ? "binary" : "preset";
+function pickerFilter(_kind: PathCatalogKind): "binary" {
+  return "binary";
 }
 
-function kindColor(kind: PathCatalogKind) {
-  return kind === "binary" ? "blue" : "teal";
+function kindColor(_kind: PathCatalogKind) {
+  return "blue";
 }
 
-function kindIcon(kind: PathCatalogKind) {
-  return kind === "binary" ? <Server size={18} /> : <FileText size={18} />;
+function kindIcon(_kind: PathCatalogKind) {
+  return <Server size={18} />;
 }
 
 function entryMatchesSearch(
@@ -124,11 +116,7 @@ export function PathCatalogView() {
     for (const entry of entries) {
       map.set(
         entry.id,
-        instances.filter((instance) =>
-          entry.kind === "binary"
-            ? instance.binaryPathRefId === entry.id
-            : instance.modelsPresetPathRefId === entry.id,
-        ),
+        instances.filter((instance) => instance.binaryPathRefId === entry.id),
       );
     }
     return map;
@@ -136,7 +124,6 @@ export function PathCatalogView() {
   const counts = useMemo(
     () => ({
       binary: entries.filter((entry) => entry.kind === "binary").length,
-      preset: entries.filter((entry) => entry.kind === "preset").length,
       linked: entries.filter(
         (entry) => (usageByEntry.get(entry.id) ?? []).length > 0,
       ).length,
@@ -160,7 +147,6 @@ export function PathCatalogView() {
   const entriesByKind = useMemo(
     () => ({
       binary: filteredEntries.filter((entry) => entry.kind === "binary"),
-      preset: filteredEntries.filter((entry) => entry.kind === "preset"),
     }),
     [filteredEntries],
   );
@@ -431,7 +417,6 @@ export function PathCatalogView() {
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <Group gap="xs" wrap="wrap">
             <Badge variant="light">{counts.binary} binaries</Badge>
-            <Badge variant="light">{counts.preset} presets</Badge>
             <Badge variant="outline">{counts.linked} linked</Badge>
           </Group>
           <Group gap="xs" wrap="wrap">
@@ -441,13 +426,6 @@ export function PathCatalogView() {
               onClick={() => openCreate("binary")}
             >
               Add binary
-            </Button>
-            <Button
-              variant="light"
-              leftSection={<Plus size={16} />}
-              onClick={() => openCreate("preset")}
-            >
-              Add preset
             </Button>
           </Group>
         </Group>
@@ -468,7 +446,6 @@ export function PathCatalogView() {
             data={[
               { value: "all", label: "All" },
               { value: "binary", label: "Binary" },
-              { value: "preset", label: "Preset" },
             ]}
           />
         </Group>

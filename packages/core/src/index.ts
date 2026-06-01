@@ -15,7 +15,13 @@ const InstanceNameSchema = z.string().min(1).max(80);
 const InstancePathSchema = z.string().min(1);
 const PathCatalogIdSchema = z.string().min(1);
 
-export const PathCatalogKindSchema = z.enum(["binary", "preset"]);
+export const PathCatalogKindSchema = z.enum(["binary"]);
+
+export const PresetNameSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[A-Za-z0-9._-]+$/);
 
 export const PathCatalogEntrySchema = z.object({
   id: z.string(),
@@ -41,7 +47,7 @@ export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
   binaryPath: InstancePathSchema,
   binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
-  modelsPresetPathRefId: PathCatalogIdSchema.nullable().optional(),
+  modelsPresetName: PresetNameSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
@@ -55,7 +61,7 @@ export const InstanceUpdateSchema = z.object({
   name: InstanceNameSchema.optional(),
   binaryPath: InstancePathSchema.optional(),
   binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
-  modelsPresetPathRefId: PathCatalogIdSchema.nullable().optional(),
+  modelsPresetName: PresetNameSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.optional(),
   env: InstanceEnvSchema.optional(),
@@ -1323,20 +1329,16 @@ export const PresetDiagnosticSchema = z.object({
 });
 
 export const ModelPresetSummarySchema = z.object({
-  catalogId: z.string(),
   name: z.string(),
   path: z.string(),
-  exists: z.boolean(),
   valid: z.boolean(),
   entryCount: z.number().int().nonnegative(),
   mtimeMs: z.number().nullable(),
 });
 
 export const ModelPresetDocumentSchema = z.object({
-  catalogId: z.string(),
   name: z.string(),
   path: z.string(),
-  exists: z.boolean(),
   valid: z.boolean(),
   diagnostics: z.array(PresetDiagnosticSchema),
   file: ModelPresetFileSchema,
@@ -1351,8 +1353,7 @@ export const ModelPresetWriteSchema = z.object({
 });
 
 export const ModelPresetCreateSchema = z.object({
-  name: z.string().min(1).max(120),
-  path: z.string().min(1),
+  name: PresetNameSchema,
 });
 
 export type InstanceArgValue = z.infer<typeof InstanceArgValueSchema>;

@@ -10,20 +10,29 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { resolve } from "node:path";
 
 import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
-import {
-  createPathCatalogEntry,
-  getPathCatalogEntry,
-  listPathCatalogEntries,
-} from "../path-catalog/repository.js";
+import { config } from "../config.js";
 import { parseModelPresetIni, renderModelPresetFile } from "./ini.js";
 import { presetFileHasErrors, validateModelPresetFile } from "./validate.js";
+
+const presetsDir = config.presetsDir;
+const presetNamePattern = /^[A-Za-z0-9._-]+$/;
+
+export function presetPath(name: string): string {
+  return resolve(presetsDir, `${name}.ini`);
+}
+
+function isValidPresetName(name: string): boolean {
+  return presetNamePattern.test(name);
+}
 
 function emptyFile(): ModelPresetFile {
   return { version: 1, globalArgs: {}, rootArgs: {}, entries: [] };
@@ -61,37 +70,19 @@ function diagnoseFile(
   return validateModelPresetFile(file, catalog.options);
 }
 
-function documentFromEntry(
-  catalogId: string,
+function documentFromName(
   name: string,
-  path: string,
   catalog: CatalogOptions,
 ): ModelPresetDocument {
-  if (!existsSync(path)) {
-    const file = emptyFile();
-    return {
-      catalogId,
-      name,
-      path,
-      exists: false,
-      valid: true,
-      diagnostics: [],
-      file,
-      content: renderModelPresetFile(file),
-      mtimeMs: null,
-    };
-  }
-
+  const path = presetPath(name);
   const content = readFileSync(path, "utf8");
   const mtimeMs = statSync(path).mtimeMs;
   const { file, diagnostics: parseDiagnostics } = parseModelPresetIni(content);
   const diagnostics = [...parseDiagnostics, ...diagnoseFile(file, catalog)];
 
   return {
-    catalogId,
     name,
     path,
-    exists: true,
     valid: !presetFileHasErrors(diagnostics),
     diagnostics,
     file,
@@ -100,46 +91,39 @@ function documentFromEntry(
   };
 }
 
+function listPresetNames(): string[] {
+  if (!existsSync(presetsDir)) {
+    return [];
+  }
+  return readdirSync(presetsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".ini"))
+    .map((entry) => entry.name.slice(0, -".ini".length))
+    .filter(isValidPresetName)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 export function listPresets(): ModelPresetSummary[] {
   const catalog = loadCatalogOptions();
-  return listPathCatalogEntries("preset").map((entry) => {
-    if (!existsSync(entry.path)) {
-      return {
-        catalogId: entry.id,
-        name: entry.name,
-        path: entry.path,
-        exists: false,
-        valid: true,
-        entryCount: 0,
-        mtimeMs: null,
-      };
-    }
-    const content = readFileSync(entry.path, "utf8");
+  return listPresetNames().map((name) => {
+    const path = presetPath(name);
+    const content = readFileSync(path, "utf8");
     const { file, diagnostics } = parseModelPresetIni(content);
     const all = [...diagnostics, ...diagnoseFile(file, catalog)];
     return {
-      catalogId: entry.id,
-      name: entry.name,
-      path: entry.path,
-      exists: true,
+      name,
+      path,
       valid: !presetFileHasErrors(all),
       entryCount: file.entries.length,
-      mtimeMs: statSync(entry.path).mtimeMs,
+      mtimeMs: statSync(path).mtimeMs,
     };
   });
 }
 
-export function readPreset(catalogId: string): ModelPresetDocument | null {
-  const entry = getPathCatalogEntry(catalogId);
-  if (!entry || entry.kind !== "preset") {
+export function readPreset(name: string): ModelPresetDocument | null {
+  if (!isValidPresetName(name) || !existsSync(presetPath(name))) {
     return null;
   }
-  return documentFromEntry(
-    entry.id,
-    entry.name,
-    entry.path,
-    loadCatalogOptions(),
-  );
+  return documentFromName(name, loadCatalogOptions());
 }
 
 export type WritePresetResult =
@@ -148,66 +132,52 @@ export type WritePresetResult =
   | { kind: "not-found" };
 
 export function writePreset(
-  catalogId: string,
+  name: string,
   input: ModelPresetWrite,
 ): WritePresetResult {
-  const entry = getPathCatalogEntry(catalogId);
-  if (!entry || entry.kind !== "preset") {
+  if (!isValidPresetName(name) || !existsSync(presetPath(name))) {
     return { kind: "not-found" };
   }
 
-  const currentMtime = existsSync(entry.path)
-    ? statSync(entry.path).mtimeMs
-    : null;
+  const path = presetPath(name);
+  const currentMtime = statSync(path).mtimeMs;
 
   if (!input.force && input.expectedMtimeMs !== currentMtime) {
     return {
       kind: "conflict",
-      document: documentFromEntry(
-        entry.id,
-        entry.name,
-        entry.path,
-        loadCatalogOptions(),
-      ),
+      document: documentFromName(name, loadCatalogOptions()),
     };
   }
 
   const content = renderModelPresetFile(input.file);
-  mkdirSync(dirname(entry.path), { recursive: true });
-  const tmpPath = `${entry.path}.tmp`;
+  const tmpPath = `${path}.tmp`;
   writeFileSync(tmpPath, content, "utf8");
-  renameSync(tmpPath, entry.path);
+  renameSync(tmpPath, path);
 
   return {
     kind: "ok",
-    document: documentFromEntry(
-      entry.id,
-      entry.name,
-      entry.path,
-      loadCatalogOptions(),
-    ),
+    document: documentFromName(name, loadCatalogOptions()),
   };
 }
 
-export function createPreset(input: {
-  name: string;
-  path: string;
-}): ModelPresetDocument {
-  const entry = createPathCatalogEntry({
-    kind: "preset",
-    name: input.name,
-    path: input.path,
-  });
+export type CreatePresetResult =
+  | { kind: "ok"; document: ModelPresetDocument }
+  | { kind: "exists" };
 
-  if (!existsSync(entry.path)) {
-    mkdirSync(dirname(entry.path), { recursive: true });
-    writeFileSync(entry.path, renderModelPresetFile(emptyFile()), "utf8");
+export function createPreset(input: { name: string }): CreatePresetResult {
+  const path = presetPath(input.name);
+  if (existsSync(path)) {
+    return { kind: "exists" };
   }
+  mkdirSync(presetsDir, { recursive: true });
+  writeFileSync(path, renderModelPresetFile(emptyFile()), "utf8");
+  return { kind: "ok", document: documentFromName(input.name, loadCatalogOptions()) };
+}
 
-  return documentFromEntry(
-    entry.id,
-    entry.name,
-    entry.path,
-    loadCatalogOptions(),
-  );
+export function deletePreset(name: string): boolean {
+  if (!isValidPresetName(name) || !existsSync(presetPath(name))) {
+    return false;
+  }
+  rmSync(presetPath(name));
+  return true;
 }

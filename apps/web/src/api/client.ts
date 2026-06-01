@@ -530,9 +530,9 @@ export async function listPresets() {
   return request<{ data: ModelPresetSummary[] }>("/api/presets");
 }
 
-export async function getPreset(catalogId: string) {
+export async function getPreset(name: string) {
   return request<{ data: ModelPresetDocument }>(
-    `/api/presets/${encodeURIComponent(catalogId)}`,
+    `/api/presets/${encodeURIComponent(name)}`,
   );
 }
 
@@ -543,16 +543,23 @@ export async function createPreset(input: ModelPresetCreate) {
   });
 }
 
+export async function deletePreset(name: string) {
+  return request<{ data: { deleted: boolean } }>(
+    `/api/presets/${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+  );
+}
+
 export type SavePresetResult =
   | { kind: "ok"; document: ModelPresetDocument }
   | { kind: "conflict"; document: ModelPresetDocument };
 
 export async function savePreset(
-  catalogId: string,
+  name: string,
   input: ModelPresetWrite,
 ): Promise<SavePresetResult> {
   const response = await fetch(
-    `${apiBase}/api/presets/${encodeURIComponent(catalogId)}`,
+    `${apiBase}/api/presets/${encodeURIComponent(name)}`,
     {
       method: "PUT",
       headers: { "content-type": "application/json" },

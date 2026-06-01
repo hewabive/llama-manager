@@ -43,6 +43,7 @@ import {
   getSystemResources,
   instanceAction,
   listPathCatalog,
+  listPresets,
   previewInstancePreflight,
   scanModels,
   updateInstance,
@@ -203,12 +204,9 @@ export function InstanceFormModal(props: {
   const [selectedBinaryPathRefId, setSelectedBinaryPathRefId] = useState<
     string | null
   >(null);
-  const [selectedPresetPath, setSelectedPresetPath] = useState<string | null>(
+  const [selectedPresetName, setSelectedPresetName] = useState<string | null>(
     null,
   );
-  const [selectedPresetPathRefId, setSelectedPresetPathRefId] = useState<
-    string | null
-  >(null);
   const isMobile = useMediaQuery("(max-width: 48em)");
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
@@ -257,6 +255,12 @@ export function InstanceFormModal(props: {
   const pathCatalogQuery = useQuery({
     queryKey: ["path-catalog"],
     queryFn: () => listPathCatalog(),
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const presetsQuery = useQuery({
+    queryKey: ["presets"],
+    queryFn: listPresets,
     enabled: props.opened,
     staleTime: 60_000,
   });
@@ -324,13 +328,6 @@ export function InstanceFormModal(props: {
       ),
     [pathCatalogQuery.data?.data],
   );
-  const presetCatalogEntries = useMemo(
-    () =>
-      (pathCatalogQuery.data?.data ?? []).filter(
-        (entry) => entry.kind === "preset",
-      ),
-    [pathCatalogQuery.data?.data],
-  );
   const binaryCatalogOptions = useMemo(
     () =>
       binaryCatalogEntries.map((entry) => ({
@@ -339,15 +336,23 @@ export function InstanceFormModal(props: {
       })),
     [binaryCatalogEntries],
   );
-  const presetCatalogOptions = useMemo(
-    () =>
-      presetCatalogEntries.map((entry) => ({
-        value: entry.id,
-        label: `${entry.name} · ${pathBaseName(entry.path)}`,
-      })),
-    [presetCatalogEntries],
-  );
-  const effectivePresetPath = selectedPresetPath;
+  const presetOptions = useMemo(() => {
+    const summaries = presetsQuery.data?.data ?? [];
+    const options = summaries.map((summary) => ({
+      value: summary.name,
+      label: `${summary.name}${summary.valid ? "" : " · invalid"} · ${summary.entryCount} models`,
+    }));
+    if (
+      selectedPresetName &&
+      !options.some((option) => option.value === selectedPresetName)
+    ) {
+      options.push({
+        value: selectedPresetName,
+        label: `${selectedPresetName} · missing file`,
+      });
+    }
+    return options;
+  }, [presetsQuery.data?.data, selectedPresetName]);
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
@@ -415,8 +420,7 @@ export function InstanceFormModal(props: {
 
     if (props.instance) {
       const modelPath = argString(props.instance.args, "--model") || null;
-      const presetPath =
-        argString(props.instance.args, "--models-preset") || null;
+      const presetName = props.instance.modelsPresetName ?? null;
       form.setValues({
         name: props.instance.name,
         binaryPath: props.instance.binaryPath,
@@ -425,9 +429,8 @@ export function InstanceFormModal(props: {
       });
       setSelectedBinaryPathRefId(props.instance.binaryPathRefId ?? null);
       setSelectedModelPath(modelPath);
-      setSelectedPresetPath(presetPath);
-      setSelectedPresetPathRefId(props.instance.modelsPresetPathRefId ?? null);
-      setLaunchMode(presetPath && !modelPath ? "router" : "model");
+      setSelectedPresetName(presetName);
+      setLaunchMode(presetName && !modelPath ? "router" : "model");
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args));
     } else {
@@ -441,8 +444,7 @@ export function InstanceFormModal(props: {
       });
       setSelectedBinaryPathRefId(null);
       setSelectedModelPath(modelPath);
-      setSelectedPresetPath(null);
-      setSelectedPresetPathRefId(null);
+      setSelectedPresetName(null);
       setLaunchMode("model");
       setStartAfterCreate(false);
       setArgRows(
@@ -470,8 +472,8 @@ export function InstanceFormModal(props: {
         name: form.values.name,
         binaryPath: form.values.binaryPath,
         binaryPathRefId: selectedBinaryPathRefId,
-        modelsPresetPathRefId:
-          launchMode === "router" ? selectedPresetPathRefId : null,
+        modelsPresetName:
+          launchMode === "router" ? selectedPresetName : null,
         ...(form.values.cwd ? { cwd: form.values.cwd } : {}),
         args,
         env,
@@ -490,7 +492,7 @@ export function InstanceFormModal(props: {
     launchMode,
     props.instance?.id,
     selectedBinaryPathRefId,
-    selectedPresetPathRefId,
+    selectedPresetName,
   ]);
 
   const preflightPreviewQuery = useQuery({
@@ -504,8 +506,7 @@ export function InstanceFormModal(props: {
   function applyLaunchMode(mode: LaunchMode) {
     setLaunchMode(mode);
     if (mode === "model") {
-      setSelectedPresetPath(null);
-      setSelectedPresetPathRefId(null);
+      setSelectedPresetName(null);
       setArgRows((rows) =>
         removeArgRows(rows, [
           "--models-preset",
@@ -517,7 +518,7 @@ export function InstanceFormModal(props: {
       return;
     }
 
-    applyPresetSelection(effectivePresetPath);
+    applyPresetSelection(selectedPresetName);
   }
 
   function applyBinaryPathRef(refId: string | null) {
@@ -529,33 +530,17 @@ export function InstanceFormModal(props: {
     }
   }
 
-  function applyPresetPathRef(refId: string | null) {
-    setSelectedPresetPathRefId(refId);
-    const entry =
-      presetCatalogEntries.find((item) => item.id === refId) ?? null;
-    if (entry) {
-      applyPresetSelection(entry.path, refId);
-    }
-  }
-
-  function applyPresetSelection(
-    presetPath: string | null,
-    refId: string | null = null,
-  ) {
+  function applyPresetSelection(presetName: string | null) {
     setLaunchMode("router");
-    setSelectedPresetPathRefId(refId);
-    setSelectedPresetPath(presetPath);
+    setSelectedPresetName(presetName);
     setSelectedModelPath(null);
     setArgRows((rows) => {
-      let next = removeArgRows(rows, ["--model"]);
-      next = presetPath
-        ? upsertArgRow(next, "--models-preset", presetPath, "string")
-        : removeArgRow(next, "--models-preset");
-      if (presetPath && !rowValue(next, "--models-max")) {
+      let next = removeArgRows(rows, ["--model", "--models-preset"]);
+      if (presetName && !rowValue(next, "--models-max")) {
         next = upsertArgRow(next, "--models-max", "4", "number");
       }
       if (
-        presetPath &&
+        presetName &&
         !rowValue(next, "--models-autoload") &&
         !rowValue(next, "--no-models-autoload")
       ) {
@@ -565,7 +550,7 @@ export function InstanceFormModal(props: {
     });
     if (
       !isEdit &&
-      presetPath &&
+      presetName &&
       (!form.values.name ||
         form.values.name === "local-server" ||
         form.values.name === "local-router")
@@ -577,8 +562,7 @@ export function InstanceFormModal(props: {
   function applyModelSelection(modelPath: string | null) {
     setLaunchMode("model");
     setSelectedModelPath(modelPath);
-    setSelectedPresetPath(null);
-    setSelectedPresetPathRefId(null);
+    setSelectedPresetName(null);
     setArgRows((rows) => {
       let next = modelPath
         ? upsertArgRow(rows, "--model", modelPath, "string")
@@ -748,17 +732,12 @@ export function InstanceFormModal(props: {
 
   function submit(values: typeof form.values) {
     try {
-      if (launchMode === "router" && !effectivePresetPath) {
+      if (launchMode === "router" && !selectedPresetName) {
         throw new Error("Router preset is not selected");
       }
       const rows =
-        launchMode === "router" && effectivePresetPath
-          ? upsertArgRow(
-              removeArgRows(argRows, ["--model"]),
-              "--models-preset",
-              effectivePresetPath,
-              "string",
-            )
+        launchMode === "router"
+          ? removeArgRows(argRows, ["--model", "--models-preset"])
           : removeArgRows(argRows, [
               "--models-preset",
               "--models-max",
@@ -777,8 +756,7 @@ export function InstanceFormModal(props: {
         name: values.name,
         binaryPath: values.binaryPath,
         binaryPathRefId: selectedBinaryPathRefId,
-        modelsPresetPathRefId:
-          launchMode === "router" ? selectedPresetPathRefId : null,
+        modelsPresetName: launchMode === "router" ? selectedPresetName : null,
         args,
         env: parseEnvJson(values.envJson),
         ...(values.cwd ? { cwd: values.cwd } : {}),
@@ -902,36 +880,23 @@ export function InstanceFormModal(props: {
               ) : (
                 <Stack gap={6}>
                   <Select
-                    label="Preset catalog"
+                    label="Preset"
                     placeholder={
-                      pathCatalogQuery.isFetching
-                        ? "Loading catalog..."
-                        : "Select managed preset path"
+                      presetsQuery.isFetching
+                        ? "Loading presets..."
+                        : "Select a preset"
                     }
                     searchable
                     clearable
-                    value={selectedPresetPathRefId}
-                    onChange={applyPresetPathRef}
-                    data={presetCatalogOptions}
-                    nothingFoundMessage="No preset paths in catalog"
-                  />
-                  <PathPickerInput
-                    label="Preset path"
-                    mode="file"
-                    filter="preset"
-                    value={effectivePresetPath ?? ""}
+                    value={selectedPresetName}
                     onChange={(value) => applyPresetSelection(value)}
+                    data={presetOptions}
+                    nothingFoundMessage="No presets in data/presets"
                   />
-                  {effectivePresetPath && (
-                    <Group gap="xs">
-                      <Badge variant="outline">
-                        {pathBaseName(effectivePresetPath)}
-                      </Badge>
-                      <Text c="dimmed" size="xs" lineClamp={1}>
-                        {effectivePresetPath}
-                      </Text>
-                    </Group>
-                  )}
+                  <Text c="dimmed" size="xs">
+                    Managed in the Presets page; resolved to
+                    data/presets/&lt;name&gt;.ini at launch.
+                  </Text>
                 </Stack>
               )}
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">

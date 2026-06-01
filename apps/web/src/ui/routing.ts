@@ -48,7 +48,7 @@ export const appRoutes: {
     id: "paths",
     label: "Paths",
     title: "Path Catalog",
-    description: "Shared binary and preset paths for instances",
+    description: "Shared binary paths for instances",
   },
   {
     id: "endpoints",

@@ -36,7 +36,7 @@ import { listFilesystemDirectory } from "../../api/client";
 import { formatBytes } from "../utils/models";
 
 type PathPickerMode = "file" | "directory";
-type PathPickerFilter = "any" | "binary" | "model" | "preset";
+type PathPickerFilter = "any" | "binary" | "model";
 
 function dirname(path: string) {
   const normalized = path.replace(/[\\/]+$/, "");
@@ -103,9 +103,6 @@ function isSelectableEntry(
   }
   if (filter === "model") {
     return entry.extension === ".gguf" && !isNonPrimaryGgufShard(entry.name);
-  }
-  if (filter === "preset") {
-    return entry.extension === ".ini";
   }
   if (filter === "binary") {
     return entry.executable;

@@ -31,7 +31,7 @@ function instance(id = "instance-a"): Instance {
     name: "Instance A",
     binaryPath: "/tmp/llama-server",
     binaryPathRefId: null,
-    modelsPresetPathRefId: null,
+    modelsPresetName: null,
     args: {},
     env: {},
     status: "running",

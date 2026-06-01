@@ -19,6 +19,7 @@ export const config = {
   dataDir,
   argumentDefaultsFile: resolve(dataDir, "argument-defaults.json"),
   argumentDefaultsSeedFile: resolve(defaultRootDir, "config/argument-defaults.json"),
+  presetsDir: resolve(dataDir, "presets"),
   runtimeDir,
   logsDir: process.env.LLAMA_MANAGER_LOGS_DIR
     ? resolve(process.env.LLAMA_MANAGER_LOGS_DIR)
@@ -54,5 +55,6 @@ export const config = {
 };
 
 mkdirSync(config.dataDir, { recursive: true });
+mkdirSync(config.presetsDir, { recursive: true });
 mkdirSync(config.logsDir, { recursive: true });
 mkdirSync(config.modelsDir, { recursive: true });

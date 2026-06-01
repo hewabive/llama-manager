@@ -471,21 +471,24 @@ function PresetModelCard(props: {
   );
 }
 
+const presetNamePattern = /^[A-Za-z0-9._-]+$/;
+
 function NewPresetModal(props: {
   opened: boolean;
   onClose: () => void;
-  onCreate: (input: { name: string; path: string }) => void;
+  onCreate: (input: { name: string }) => void;
   pending: boolean;
 }) {
   const [name, setName] = useState("");
-  const [path, setPath] = useState("");
 
   useEffect(() => {
     if (props.opened) {
       setName("");
-      setPath("");
     }
   }, [props.opened]);
+
+  const trimmed = name.trim();
+  const valid = presetNamePattern.test(trimmed);
 
   return (
     <Modal opened={props.opened} onClose={props.onClose} title="New preset">
@@ -495,16 +498,14 @@ function NewPresetModal(props: {
           placeholder="my-models"
           value={name}
           onChange={(event) => setName(event.currentTarget.value)}
-        />
-        <PathPickerInput
-          label="INI file path"
-          mode="file"
-          filter="preset"
-          value={path}
-          onChange={setPath}
+          error={
+            trimmed && !valid
+              ? "Use letters, digits, dot, dash, underscore only"
+              : undefined
+          }
         />
         <Text c="dimmed" size="xs">
-          An existing file is adopted as-is; a new path is created empty.
+          Creates an empty <Code>data/presets/{trimmed || "name"}.ini</Code>.
         </Text>
         <Group justify="flex-end">
           <Button variant="subtle" onClick={props.onClose}>
@@ -512,8 +513,8 @@ function NewPresetModal(props: {
           </Button>
           <Button
             loading={props.pending}
-            disabled={!name.trim() || !path.trim()}
-            onClick={() => props.onCreate({ name: name.trim(), path: path.trim() })}
+            disabled={!valid}
+            onClick={() => props.onCreate({ name: trimmed })}
           >
             Create
           </Button>
@@ -527,7 +528,7 @@ type SaveState = "idle" | "saving" | "saved" | "error" | "conflict";
 
 export function PresetsView() {
   const queryClient = useQueryClient();
-  const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(
+  const [selectedName, setSelectedName] = useState<string | null>(
     null,
   );
   const [presetModelSearch, setPresetModelSearch] = useState("");
@@ -542,7 +543,7 @@ export function PresetsView() {
 
   const draftRef = useRef<ModelPresetFile | null>(null);
   const baseMtimeRef = useRef<number | null>(null);
-  const selectedIdRef = useRef<string | null>(null);
+  const selectedNameRef = useRef<string | null>(null);
   const savingRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -551,9 +552,9 @@ export function PresetsView() {
     queryFn: listPresets,
   });
   const documentQuery = useQuery({
-    queryKey: ["preset", selectedCatalogId],
-    queryFn: () => getPreset(selectedCatalogId!),
-    enabled: Boolean(selectedCatalogId),
+    queryKey: ["preset", selectedName],
+    queryFn: () => getPreset(selectedName!),
+    enabled: Boolean(selectedName),
     refetchOnWindowFocus: false,
   });
   const modelSettingsQuery = useQuery({
@@ -581,7 +582,7 @@ export function PresetsView() {
   });
 
   useEffect(() => {
-    selectedIdRef.current = selectedCatalogId;
+    selectedNameRef.current = selectedName;
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
@@ -589,24 +590,24 @@ export function PresetsView() {
     setDraft(null);
     setSaveState("idle");
     setSelectedPresetEntryId(null);
-  }, [selectedCatalogId]);
+  }, [selectedName]);
 
   useEffect(() => {
     if (!presetsQuery.data) {
       return;
     }
     const summaries = presetsQuery.data.data;
-    if (selectedCatalogId === null && summaries.length > 0) {
-      setSelectedCatalogId(summaries[0]!.catalogId);
+    if (selectedName === null && summaries.length > 0) {
+      setSelectedName(summaries[0]!.name);
       return;
     }
     if (
-      selectedCatalogId !== null &&
-      !summaries.some((item) => item.catalogId === selectedCatalogId)
+      selectedName !== null &&
+      !summaries.some((item) => item.name === selectedName)
     ) {
-      setSelectedCatalogId(summaries[0]?.catalogId ?? null);
+      setSelectedName(summaries[0]?.name ?? null);
     }
-  }, [presetsQuery.data, selectedCatalogId]);
+  }, [presetsQuery.data, selectedName]);
 
   useEffect(() => {
     if (!document) {
@@ -637,15 +638,15 @@ export function PresetsView() {
       scheduleSave();
       return;
     }
-    const catalogId = selectedIdRef.current;
+    const presetName = selectedNameRef.current;
     const file = draftRef.current;
-    if (!catalogId || !file) {
+    if (!presetName || !file) {
       return;
     }
     savingRef.current = true;
     setSaveState("saving");
     try {
-      const result = await savePreset(catalogId, {
+      const result = await savePreset(presetName, {
         file,
         expectedMtimeMs: baseMtimeRef.current,
         force: false,
@@ -692,7 +693,7 @@ export function PresetsView() {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["presets"] });
       setNewOpen(false);
-      setSelectedCatalogId(result.data.catalogId);
+      setSelectedName(result.data.name);
       notifications.show({
         title: "Preset created",
         message: result.data.path,
@@ -716,14 +717,14 @@ export function PresetsView() {
   }
 
   async function overwriteConflict() {
-    const catalogId = selectedIdRef.current;
+    const presetName = selectedNameRef.current;
     const file = draftRef.current;
-    if (!catalogId || !file) {
+    if (!presetName || !file) {
       return;
     }
     setSaveState("saving");
     try {
-      const result = await savePreset(catalogId, {
+      const result = await savePreset(presetName, {
         file,
         expectedMtimeMs: baseMtimeRef.current,
         force: true,
@@ -846,7 +847,7 @@ export function PresetsView() {
                 <ActionIcon
                   aria-label="Reload preset from disk"
                   variant="subtle"
-                  disabled={!selectedCatalogId}
+                  disabled={!selectedName}
                   loading={documentQuery.isFetching}
                   onClick={reloadFromDisk}
                 >
@@ -867,19 +868,19 @@ export function PresetsView() {
             placeholder={
               presetsQuery.isFetching
                 ? "Loading presets..."
-                : "Select a preset from the catalog"
+                : "Select a preset"
             }
             searchable
-            value={selectedCatalogId}
-            onChange={setSelectedCatalogId}
+            value={selectedName}
+            onChange={setSelectedName}
             data={presets.map((item) => ({
-              value: item.catalogId,
-              label: `${item.name}${item.valid ? "" : " · invalid"}${item.exists ? "" : " · missing file"} · ${item.entryCount} models`,
+              value: item.name,
+              label: `${item.name}${item.valid ? "" : " · invalid"} · ${item.entryCount} models`,
             }))}
-            nothingFoundMessage="No presets in catalog"
+            nothingFoundMessage="No presets in data/presets"
           />
 
-          {!selectedCatalogId && (
+          {!selectedName && (
             <Paper withBorder p="lg" radius="sm">
               <Text c="dimmed" ta="center">
                 Select a preset above or create a new one.
@@ -887,7 +888,7 @@ export function PresetsView() {
             </Paper>
           )}
 
-          {selectedCatalogId && documentQuery.isLoading && (
+          {selectedName && documentQuery.isLoading && (
             <Group justify="center" p="lg">
               <Loader size="sm" />
             </Group>
@@ -951,7 +952,7 @@ export function PresetsView() {
                   model
                 </Text>
                 <PresetArgsEditor
-                  key={`global:${selectedCatalogId}:${reloadNonce}`}
+                  key={`global:${selectedName}:${reloadNonce}`}
                   label="Global arguments"
                   emptyHint="No global arguments yet."
                   extraArgs={draft.globalArgs}

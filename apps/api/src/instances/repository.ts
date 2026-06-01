@@ -9,6 +9,7 @@ import { newId } from "../utils/id.js";
 import { db } from "../db/index.js";
 import { instances } from "../db/schema.js";
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
+import { presetPath } from "../presets/repository.js";
 import { latestProcessRun } from "../process/runs-repository.js";
 import { supervisor } from "../process/supervisor.js";
 
@@ -47,11 +48,8 @@ function toInstance(row: InstanceRow): Instance {
   const binaryRef = row.binaryPathRefId
     ? getPathCatalogEntry(row.binaryPathRefId)
     : null;
-  const modelsPresetRef = row.modelsPresetPathRefId
-    ? getPathCatalogEntry(row.modelsPresetPathRefId)
-    : null;
-  if (modelsPresetRef) {
-    args["--models-preset"] = modelsPresetRef.path;
+  if (row.modelsPresetName) {
+    args["--models-preset"] = presetPath(row.modelsPresetName);
   }
 
   return {
@@ -59,7 +57,7 @@ function toInstance(row: InstanceRow): Instance {
     name: row.name,
     binaryPath: binaryRef?.path ?? row.binaryPath,
     binaryPathRefId: row.binaryPathRefId ?? null,
-    modelsPresetPathRefId: row.modelsPresetPathRefId ?? null,
+    modelsPresetName: row.modelsPresetName ?? null,
     cwd: row.cwd ?? undefined,
     args,
     env: JSON.parse(row.envJson) as Instance["env"],
@@ -89,7 +87,7 @@ export function createInstance(input: InstanceCreate): Instance {
       name: input.name,
       binaryPath: input.binaryPath,
       binaryPathRefId: input.binaryPathRefId ?? null,
-      modelsPresetPathRefId: input.modelsPresetPathRefId ?? null,
+      modelsPresetName: input.modelsPresetName ?? null,
       cwd: input.cwd ?? null,
       argsJson: JSON.stringify(input.args),
       envJson: JSON.stringify(input.env),
@@ -122,10 +120,10 @@ export function updateInstance(
         input.binaryPathRefId === undefined
           ? current.binaryPathRefId
           : input.binaryPathRefId,
-      modelsPresetPathRefId:
-        input.modelsPresetPathRefId === undefined
-          ? current.modelsPresetPathRefId
-          : input.modelsPresetPathRefId,
+      modelsPresetName:
+        input.modelsPresetName === undefined
+          ? current.modelsPresetName
+          : input.modelsPresetName,
       cwd: input.cwd ?? current.cwd ?? null,
       argsJson: JSON.stringify(input.args ?? current.args),
       envJson: JSON.stringify(input.env ?? current.env),

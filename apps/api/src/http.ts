@@ -114,7 +114,9 @@ import {
 import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
 import {
   createPreset,
+  deletePreset,
   listPresets,
+  presetPath,
   readPreset,
   writePreset,
 } from "./presets/repository.js";
@@ -209,12 +211,9 @@ function resolveInstancePathRefs(instance: Instance): Instance {
   const binaryRef = instance.binaryPathRefId
     ? getPathCatalogEntry(instance.binaryPathRefId)
     : null;
-  const modelsPresetRef = instance.modelsPresetPathRefId
-    ? getPathCatalogEntry(instance.modelsPresetPathRefId)
-    : null;
   const args = { ...instance.args };
-  if (modelsPresetRef) {
-    args["--models-preset"] = modelsPresetRef.path;
+  if (instance.modelsPresetName) {
+    args["--models-preset"] = presetPath(instance.modelsPresetName);
   }
 
   return {
@@ -226,17 +225,11 @@ function resolveInstancePathRefs(instance: Instance): Instance {
 
 function validateInstancePathRefs(input: {
   binaryPathRefId?: string | null | undefined;
-  modelsPresetPathRefId?: string | null | undefined;
 }) {
   if (input.binaryPathRefId) {
     const entry = getPathCatalogEntry(input.binaryPathRefId);
     if (!entry) return "binary path catalog entry not found";
     if (entry.kind !== "binary") return "binary path reference is not a binary";
-  }
-  if (input.modelsPresetPathRefId) {
-    const entry = getPathCatalogEntry(input.modelsPresetPathRefId);
-    if (!entry) return "preset path catalog entry not found";
-    if (entry.kind !== "preset") return "preset path reference is not a preset";
   }
   return null;
 }
@@ -775,8 +768,7 @@ app.patch("/api/path-catalog/:id", async (c) => {
 app.delete("/api/path-catalog/:id", (c) => {
   const id = c.req.param("id");
   const usedBy = listInstances().filter(
-    (instance) =>
-      instance.binaryPathRefId === id || instance.modelsPresetPathRefId === id,
+    (instance) => instance.binaryPathRefId === id,
   );
   if (usedBy.length > 0) {
     return c.json(
@@ -1387,27 +1379,27 @@ app.post("/api/presets", async (c) => {
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
-  try {
-    return c.json({ data: createPreset(parsed.data) }, 201);
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
+  const result = createPreset(parsed.data);
+  if (result.kind === "exists") {
+    return c.json({ error: "preset already exists" }, 409);
   }
+  return c.json({ data: result.document }, 201);
 });
 
-app.get("/api/presets/:catalogId", (c) => {
-  const document = readPreset(c.req.param("catalogId"));
+app.get("/api/presets/:name", (c) => {
+  const document = readPreset(c.req.param("name"));
   if (!document) {
     return c.json({ error: "preset not found" }, 404);
   }
   return c.json({ data: document });
 });
 
-app.put("/api/presets/:catalogId", async (c) => {
+app.put("/api/presets/:name", async (c) => {
   const parsed = ModelPresetWriteSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
-  const result = writePreset(c.req.param("catalogId"), parsed.data);
+  const result = writePreset(c.req.param("name"), parsed.data);
   if (result.kind === "not-found") {
     return c.json({ error: "preset not found" }, 404);
   }
@@ -1415,6 +1407,11 @@ app.put("/api/presets/:catalogId", async (c) => {
     return c.json({ error: "preset changed on disk", data: result.document }, 409);
   }
   return c.json({ data: result.document });
+});
+
+app.delete("/api/presets/:name", (c) => {
+  const deleted = deletePreset(c.req.param("name"));
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.post("/api/instances", async (c) => {
@@ -1446,7 +1443,7 @@ app.post("/api/instances/preflight", async (c) => {
     name: preview.name,
     binaryPath: preview.binaryPath,
     binaryPathRefId: preview.binaryPathRefId ?? null,
-    modelsPresetPathRefId: preview.modelsPresetPathRefId ?? null,
+    modelsPresetName: preview.modelsPresetName ?? null,
     cwd: preview.cwd,
     args: preview.args,
     env: preview.env,
