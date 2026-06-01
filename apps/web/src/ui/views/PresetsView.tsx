@@ -1,7 +1,6 @@
 import type {
   GgufModel,
   LlamaArgumentDefault,
-  LlamaArgumentOption,
   ModelPresetEntry,
   ModelPresetFile,
 } from "@llama-manager/core";
@@ -16,7 +15,6 @@ import {
   Group,
   Loader,
   Modal,
-  NumberInput,
   Paper,
   ScrollArea,
   Select,
@@ -45,16 +43,13 @@ import {
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
 import {
-  PresetKnownArgRow,
-  PresetRawArgRow,
+  PresetArgInfo,
+  PresetArgValueControl,
   buildPresetArgOptionMap,
   isSelectablePresetArgument,
-  optionForPresetRow,
   presetKeyFromArgument,
-  replacePresetArgRow,
-} from "../components/PresetArgumentRows";
+} from "../components/PresetArguments";
 import { defaultArgumentValue } from "../utils/argument-defaults";
-import { createUiId } from "../utils/id";
 import {
   compareModelTitles,
   formatBytes,
@@ -63,147 +58,10 @@ import {
   modelTitle,
   presetEntryFromModel,
 } from "../utils/models";
-import {
-  type PresetExtraArgRow,
-  extraArgsToRows,
-  normalizePresetArgKey,
-  rowsToExtraArgs,
-} from "../utils/preset-args";
+import { normalizePresetArgKey } from "../utils/preset-args";
 
 function presetArgumentCount(entry: ModelPresetEntry) {
-  return (
-    Object.keys(entry.extraArgs ?? {}).length +
-    (entry.stopTimeout !== null ? 1 : 0)
-  );
-}
-
-function ArgRowsEditor(props: {
-  rows: PresetExtraArgRow[];
-  knownArgByPresetKey: Map<string, LlamaArgumentOption>;
-  selectablePresetArgs: LlamaArgumentOption[];
-  isError: boolean;
-  isFetching: boolean;
-  onRefresh?: () => void;
-  refreshing?: boolean;
-  setRows: (updater: (rows: PresetExtraArgRow[]) => PresetExtraArgRow[]) => void;
-}) {
-  const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
-  const [pickerKey, setPickerKey] = useState(0);
-
-  function removeRow(rowId: string) {
-    props.setRows((rows) => {
-      const next = rows.filter((item) => item.id !== rowId);
-      return next.length > 0
-        ? next
-        : [{ id: createUiId("preset-arg"), key: "", value: "" }];
-    });
-  }
-
-  return (
-    <Stack gap="xs">
-      <Group justify="space-between">
-        <Text fw={600} size="sm">
-          INI args
-        </Text>
-        <Button
-          size="xs"
-          variant="light"
-          onClick={() =>
-            props.setRows((rows) => [
-              ...rows,
-              { id: createUiId("preset-arg"), key: "", value: "" },
-            ])
-          }
-        >
-          Add arg
-        </Button>
-      </Group>
-      <Group align="flex-end" gap="xs" wrap="nowrap">
-        <Select
-          key={pickerKey}
-          label="Add INI argument"
-          placeholder={
-            props.isError
-              ? "Unable to read --help from llama-server binary"
-              : "Search llama-server args"
-          }
-          searchable
-          clearable
-          value={selectedKnownArg}
-          onChange={(value) => {
-            if (!value) {
-              setSelectedKnownArg(null);
-              return;
-            }
-            const option = props.knownArgByPresetKey.get(value);
-            if (option) {
-              props.setRows((rows) =>
-                replacePresetArgRow(rows, option, props.knownArgByPresetKey),
-              );
-            }
-            setSelectedKnownArg(null);
-            setPickerKey((key) => key + 1);
-          }}
-          data={props.selectablePresetArgs.map((option) => {
-            const key = presetKeyFromArgument(option);
-            return {
-              value: key,
-              label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
-              disabled: !option.compatibility.presentInBinary,
-            };
-          })}
-          nothingFoundMessage={
-            props.isFetching ? "Loading..." : "No preset arguments found"
-          }
-          disabled={props.isError}
-          style={{ flex: 1 }}
-        />
-        {props.onRefresh && (
-          <Tooltip label="Reload from llama-server --help">
-            <ActionIcon
-              aria-label="Reload preset arguments from llama-server help"
-              variant="subtle"
-              loading={Boolean(props.isFetching || props.refreshing)}
-              onClick={props.onRefresh}
-            >
-              <RefreshCw size={16} />
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </Group>
-      {props.rows.map((row) => {
-        const option = optionForPresetRow(row, props.knownArgByPresetKey);
-        const onChange = (nextRow: PresetExtraArgRow) =>
-          props.setRows((rows) =>
-            rows.map((item) => (item.id === row.id ? nextRow : item)),
-          );
-        const onRemove = () => removeRow(row.id);
-        const canRemove = props.rows.length > 1 || Boolean(row.key || row.value);
-
-        if (option) {
-          return (
-            <PresetKnownArgRow
-              key={row.id}
-              row={row}
-              option={option}
-              canRemove={canRemove}
-              onChange={onChange}
-              onRemove={onRemove}
-            />
-          );
-        }
-        return (
-          <PresetRawArgRow
-            key={row.id}
-            row={row}
-            canRemove={canRemove}
-            onChange={onChange}
-            onRemove={onRemove}
-          />
-        );
-      })}
-    </Stack>
-  );
+  return Object.keys(entry.extraArgs ?? {}).length;
 }
 
 function useArgsCatalog() {
@@ -246,66 +104,26 @@ function useArgsCatalog() {
   };
 }
 
-function GlobalDefaultsEditor(props: {
-  value: Record<string, string>;
-  onChange: (next: Record<string, string>) => void;
-}) {
-  const catalog = useArgsCatalog();
-  const [rows, setRows] = useState<PresetExtraArgRow[]>(() => {
-    const initial = extraArgsToRows(props.value).filter(
-      (row) => row.key || row.value,
-    );
-    return initial.length > 0
-      ? initial
-      : [{ id: createUiId("preset-arg"), key: "", value: "" }];
-  });
+const structuredArgKeys = new Set(["model", "m", "mmproj", "mm"]);
 
-  function updateRows(
-    updater: (rows: PresetExtraArgRow[]) => PresetExtraArgRow[],
-  ) {
-    setRows((current) => {
-      const next = updater(current);
-      props.onChange(rowsToExtraArgs(next));
-      return next;
-    });
-  }
+const noPresetDefaults: LlamaArgumentDefault[] = [];
 
-  return (
-    <ArgRowsEditor
-      rows={rows}
-      knownArgByPresetKey={catalog.knownArgByPresetKey}
-      selectablePresetArgs={catalog.selectablePresetArgs}
-      isError={catalog.isError}
-      isFetching={catalog.isFetching}
-      onRefresh={catalog.refresh}
-      refreshing={catalog.refreshing}
-      setRows={updateRows}
-    />
-  );
-}
-
-const structuredArgKeys = new Set([
-  "model",
-  "m",
-  "mmproj",
-  "mm",
-  "load-on-startup",
-  "stop-timeout",
-]);
-
-function PresetEntryArgsEditor(props: {
+function PresetArgsEditor(props: {
   extraArgs: Record<string, string>;
-  presetDefaults: LlamaArgumentDefault[];
+  presetDefaults?: LlamaArgumentDefault[];
+  label?: string;
+  emptyHint?: string;
   onChange: (next: Record<string, string>) => void;
 }) {
   const catalog = useArgsCatalog();
   const [selected, setSelected] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
+  const presetDefaults = props.presetDefaults ?? noPresetDefaults;
 
   const overlay = useMemo(() => {
     const seen = new Set<string>();
     const out: { key: string; value: string }[] = [];
-    for (const item of props.presetDefaults) {
+    for (const item of presetDefaults) {
       const key = normalizePresetArgKey(item.key);
       if (!key || structuredArgKeys.has(key) || seen.has(key)) {
         continue;
@@ -314,7 +132,7 @@ function PresetEntryArgsEditor(props: {
       out.push({ key, value: item.value });
     }
     return out;
-  }, [props.presetDefaults]);
+  }, [presetDefaults]);
 
   const overlayKeys = new Set(overlay.map((item) => item.key));
   const slots = [
@@ -360,7 +178,7 @@ function PresetEntryArgsEditor(props: {
     <Stack gap="xs">
       <Group justify="space-between">
         <Text fw={600} size="sm">
-          Arguments
+          {props.label ?? "Arguments"}
         </Text>
         <Tooltip label="Reload from llama-server --help">
           <ActionIcon
@@ -404,7 +222,8 @@ function PresetEntryArgsEditor(props: {
           return {
             value: key,
             label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
-            disabled: presentKeys.has(key) || !option.compatibility.presentInBinary,
+            disabled:
+              presentKeys.has(key) || !option.compatibility.presentInBinary,
           };
         })}
         nothingFoundMessage={
@@ -414,7 +233,7 @@ function PresetEntryArgsEditor(props: {
       />
       {slots.length === 0 && (
         <Text c="dimmed" size="xs">
-          No arguments yet. Preset defaults appear here as toggles.
+          {props.emptyHint ?? "No arguments yet."}
         </Text>
       )}
       {slots.map((slot) => {
@@ -423,7 +242,9 @@ function PresetEntryArgsEditor(props: {
           <Group key={slot.key} gap="xs" wrap="nowrap" align="center">
             {slot.isDefault ? (
               <Tooltip
-                label={slot.active ? "Written to file" : "Default — off, not written"}
+                label={
+                  slot.active ? "Written to file" : "Default — off, not written"
+                }
               >
                 <Switch
                   aria-label={`${slot.key} enabled`}
@@ -456,14 +277,14 @@ function PresetEntryArgsEditor(props: {
               {slot.key}
               {slot.isDefault ? " · default" : ""}
             </Text>
-            <TextInput
-              aria-label={`${slot.key} value`}
-              placeholder={option?.valueHint ?? "value"}
+            <PresetArgValueControl
+              name={slot.key}
+              option={option}
               value={slot.value}
               disabled={slot.isDefault && !slot.active}
-              onChange={(event) => setValue(slot.key, event.currentTarget.value)}
-              style={{ flex: 1 }}
+              onChange={(value) => setValue(slot.key, value)}
             />
+            {option && <PresetArgInfo option={option} />}
           </Group>
         );
       })}
@@ -539,43 +360,24 @@ function PresetEntryDetailModal(props: {
             />
           </SimpleGrid>
 
-          <Group gap="lg" align="flex-end">
-            <Switch
-              label="Load on startup"
-              checked={draft.loadOnStartup}
-              onChange={(event) =>
-                updateDraft({ loadOnStartup: event.currentTarget.checked })
-              }
-            />
-            <NumberInput
-              label="Stop timeout (s)"
-              min={1}
-              w={160}
-              value={draft.stopTimeout ?? ""}
-              onChange={(value) =>
-                updateDraft({
-                  stopTimeout: typeof value === "number" ? value : null,
-                })
-              }
-            />
-            {props.model && (
-              <Group gap="xs">
-                <Badge variant="light">
-                  {props.model.metadata.architecture ?? "unknown arch"}
-                </Badge>
-                <Badge variant="outline">
-                  {props.model.metadata.quantization ?? "unknown quant"}
-                </Badge>
-                <Badge variant="outline">
-                  {formatBytes(props.model.sizeBytes)}
-                </Badge>
-              </Group>
-            )}
-          </Group>
+          {props.model && (
+            <Group gap="xs">
+              <Badge variant="light">
+                {props.model.metadata.architecture ?? "unknown arch"}
+              </Badge>
+              <Badge variant="outline">
+                {props.model.metadata.quantization ?? "unknown quant"}
+              </Badge>
+              <Badge variant="outline">
+                {formatBytes(props.model.sizeBytes)}
+              </Badge>
+            </Group>
+          )}
 
-          <PresetEntryArgsEditor
+          <PresetArgsEditor
             extraArgs={draft.extraArgs}
             presetDefaults={props.presetDefaults}
+            emptyHint="No arguments yet. Preset defaults appear here as toggles."
             onChange={(extraArgs) => updateDraft({ extraArgs })}
           />
 
@@ -601,7 +403,6 @@ function PresetModelCard(props: {
   entry: ModelPresetEntry | null;
   disabled: boolean;
   onToggle: (checked: boolean) => void;
-  onPatch: (patch: Partial<ModelPresetEntry>) => void;
   onEdit: () => void;
 }) {
   const { model, entry } = props;
@@ -665,17 +466,6 @@ function PresetModelCard(props: {
             </Tooltip>
           )}
         </Group>
-
-        {entry && (
-          <Switch
-            label="Load on startup"
-            aria-label={`Load ${entry.name} on startup`}
-            checked={entry.loadOnStartup}
-            onChange={(event) =>
-              props.onPatch({ loadOnStartup: event.currentTarget.checked })
-            }
-          />
-        )}
       </Stack>
     </Paper>
   );
@@ -1004,14 +794,6 @@ export function PresetsView() {
     applyDraft({ ...draftRef.current, entries: next });
   }
 
-  function patchEntry(entryId: string, patch: Partial<ModelPresetEntry>) {
-    setEntries(
-      entries.map((item) =>
-        item.id === entryId ? { ...item, ...patch } : item,
-      ),
-    );
-  }
-
   function removeEntry(entryId: string) {
     setEntries(entries.filter((item) => item.id !== entryId));
     if (entryId === selectedPresetEntryId) {
@@ -1168,9 +950,11 @@ export function PresetsView() {
                   Global defaults ([*]) — applied to every model, overridden per
                   model
                 </Text>
-                <GlobalDefaultsEditor
+                <PresetArgsEditor
                   key={`global:${selectedCatalogId}:${reloadNonce}`}
-                  value={draft.globalArgs}
+                  label="Global arguments"
+                  emptyHint="No global arguments yet."
+                  extraArgs={draft.globalArgs}
                   onChange={(globalArgs) =>
                     applyDraft({ ...draftRef.current!, globalArgs })
                   }
@@ -1219,7 +1003,6 @@ export function PresetsView() {
                                 removeEntry(entry.id);
                               }
                             }}
-                            onPatch={(patch) => patchEntry(entry.id, patch)}
                             onEdit={() => setSelectedPresetEntryId(entry.id)}
                           />
                         </Box>
@@ -1245,9 +1028,6 @@ export function PresetsView() {
                           disabled={false}
                           onToggle={(checked) =>
                             togglePresetModel(model, checked)
-                          }
-                          onPatch={(patch) =>
-                            entry && patchEntry(entry.id, patch)
                           }
                           onEdit={() =>
                             entry && setSelectedPresetEntryId(entry.id)

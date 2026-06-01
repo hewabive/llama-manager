@@ -1,0 +1,15 @@
+{
+  "instance": [
+    { "key": "--ctx-size", "value": "", "valueType": "null" },
+    { "key": "--cache-type-k", "value": "", "valueType": "null" },
+    { "key": "--cache-type-v", "value": "", "valueType": "null" },
+    { "key": "--metrics", "value": "", "valueType": "null" }
+  ],
+  "preset": [
+    { "key": "ctx-size", "value": "", "valueType": "number" },
+    { "key": "cache-type-k", "value": "", "valueType": "string" },
+    { "key": "cache-type-v", "value": "", "valueType": "string" },
+    { "key": "load-on-startup", "value": "true", "valueType": "boolean" },
+    { "key": "stop-timeout", "value": "10", "valueType": "number" }
+  ]
+}

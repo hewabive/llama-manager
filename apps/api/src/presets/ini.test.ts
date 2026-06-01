@@ -11,8 +11,6 @@ function presetEntry(input: Partial<ModelPresetEntry>): ModelPresetEntry {
     name: "test-model",
     modelPath: "/models/test.gguf",
     mmprojPath: null,
-    loadOnStartup: false,
-    stopTimeout: 10,
     extraArgs: {},
     ...input,
   };
@@ -47,9 +45,13 @@ test("parseModelPresetIni maps aliases, globals, inline comments and extras", ()
   assert.equal(entry.name, "ggml-org/MY-MODEL");
   assert.equal(entry.id, "ggml-org/MY-MODEL");
   assert.equal(entry.modelPath, "/abs/my-model.gguf");
-  assert.equal(entry.stopTimeout, 30);
-  assert.equal(entry.loadOnStartup, true);
-  assert.deepEqual(entry.extraArgs, { c: "4096", jinja: "true", ngl: "123" });
+  assert.deepEqual(entry.extraArgs, {
+    c: "4096",
+    jinja: "true",
+    ngl: "123",
+    "stop-timeout": "30",
+    "load-on-startup": "on",
+  });
 });
 
 test("renderModelPresetFile writes enabled args with empty values", () => {
@@ -61,7 +63,6 @@ test("renderModelPresetFile writes enabled args with empty values", () => {
       presetEntry({
         name: "alpha",
         modelPath: "/m.gguf",
-        stopTimeout: null,
         extraArgs: { "ctx-size": "" },
       }),
     ],
@@ -91,17 +92,19 @@ test("renderModelPresetFile round-trips through parseModelPresetIni", () => {
         name: "alpha",
         modelPath: "/models/alpha.gguf",
         mmprojPath: null,
-        loadOnStartup: true,
-        stopTimeout: 30,
-        extraArgs: { "ctx-size": "4096", "n-gpu-layers": "auto", jinja: "true" },
+        extraArgs: {
+          "ctx-size": "4096",
+          "n-gpu-layers": "auto",
+          jinja: "true",
+          "load-on-startup": "true",
+          "stop-timeout": "30",
+        },
       }),
       presetEntry({
         id: "beta",
         name: "beta",
         modelPath: "/models/beta.gguf",
         mmprojPath: "/models/beta.mmproj",
-        loadOnStartup: false,
-        stopTimeout: null,
         extraArgs: { "n-gpu-layers": "12" },
       }),
     ],

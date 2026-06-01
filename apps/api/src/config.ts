@@ -8,14 +8,17 @@ const rootDir = resolve(process.env.LLAMA_MANAGER_HOME ?? defaultRootDir);
 const runtimeDir = process.env.LLAMA_MANAGER_RUNTIME_DIR
   ? resolve(process.env.LLAMA_MANAGER_RUNTIME_DIR)
   : resolve(rootDir, "runtime");
+const dataDir = process.env.LLAMA_MANAGER_DATA_DIR
+  ? resolve(process.env.LLAMA_MANAGER_DATA_DIR)
+  : resolve(rootDir, "data");
 
 export const config = {
   host: process.env.LLAMA_MANAGER_HOST ?? "127.0.0.1",
   port: Number(process.env.LLAMA_MANAGER_PORT ?? "8787"),
   rootDir,
-  dataDir: process.env.LLAMA_MANAGER_DATA_DIR
-    ? resolve(process.env.LLAMA_MANAGER_DATA_DIR)
-    : resolve(rootDir, "data"),
+  dataDir,
+  argumentDefaultsFile: resolve(dataDir, "argument-defaults.json"),
+  argumentDefaultsSeedFile: resolve(defaultRootDir, "config/argument-defaults.json"),
   runtimeDir,
   logsDir: process.env.LLAMA_MANAGER_LOGS_DIR
     ? resolve(process.env.LLAMA_MANAGER_LOGS_DIR)

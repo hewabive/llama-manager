@@ -3,16 +3,19 @@ import {
   type LlamaArgumentDefault,
   type LlamaArgumentDefaults,
 } from "@llama-manager/core";
-import { and, eq } from "drizzle-orm";
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 
-import { db } from "../db/index.js";
-import { llamaArgumentDefaults } from "../db/schema.js";
+import { config } from "../config.js";
 
-type DefaultScope = "instance" | "preset";
-
-function nowIso() {
-  return new Date().toISOString();
-}
+const filePath = config.argumentDefaultsFile;
+const seedPath = config.argumentDefaultsSeedFile;
 
 function sanitizeDefaults(defaults: LlamaArgumentDefault[]) {
   const seen = new Set<string>();
@@ -31,31 +34,55 @@ function sanitizeDefaults(defaults: LlamaArgumentDefault[]) {
     });
 }
 
-function scopeRows(scope: DefaultScope) {
-  return db
-    .select()
-    .from(llamaArgumentDefaults)
-    .where(eq(llamaArgumentDefaults.scope, scope))
-    .all()
-    .map((row) => ({
-      key: row.key,
-      value: row.value,
-      valueType: row.valueType,
-    }));
+function ensureFile() {
+  if (existsSync(filePath)) {
+    return;
+  }
+  if (existsSync(seedPath)) {
+    copyFileSync(seedPath, filePath);
+    return;
+  }
+  writeFileSync(
+    filePath,
+    `${JSON.stringify({ instance: [], preset: [] }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function readDefaults(): LlamaArgumentDefaults {
+  const raw = readFileSync(filePath, "utf8");
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON in ${filePath}: ${(error as Error).message}`,
+    );
+  }
+  return LlamaArgumentDefaultsSchema.parse(json);
+}
+
+function writeDefaults(input: {
+  instance: LlamaArgumentDefault[];
+  preset: LlamaArgumentDefault[];
+}) {
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(input, null, 2)}\n`, "utf8");
+  renameSync(tmp, filePath);
+}
+
+export function initArgumentDefaults() {
+  ensureFile();
+  readDefaults();
 }
 
 export function getArgumentDefaults(): LlamaArgumentDefaults {
-  const rows = db.select().from(llamaArgumentDefaults).all();
-  const updatedAt =
-    rows
-      .map((row) => row.updatedAt)
-      .sort()
-      .at(-1) ?? null;
-
+  ensureFile();
+  const parsed = readDefaults();
   return LlamaArgumentDefaultsSchema.parse({
-    instance: scopeRows("instance"),
-    preset: scopeRows("preset"),
-    updatedAt,
+    instance: parsed.instance,
+    preset: parsed.preset,
+    updatedAt: statSync(filePath).mtime.toISOString(),
   });
 }
 
@@ -63,43 +90,9 @@ export function saveArgumentDefaults(
   input: LlamaArgumentDefaults,
 ): LlamaArgumentDefaults {
   const parsed = LlamaArgumentDefaultsSchema.parse(input);
-  const timestamp = nowIso();
-
-  db.transaction((tx) => {
-    for (const [scope, defaults] of [
-      ["instance", parsed.instance],
-      ["preset", parsed.preset],
-    ] as const) {
-      tx.delete(llamaArgumentDefaults)
-        .where(eq(llamaArgumentDefaults.scope, scope))
-        .run();
-
-      for (const item of sanitizeDefaults(defaults)) {
-        tx.insert(llamaArgumentDefaults)
-          .values({
-            scope,
-            key: item.key,
-            value: item.value,
-            valueType: item.valueType,
-            updatedAt: timestamp,
-          })
-          .run();
-      }
-    }
+  writeDefaults({
+    instance: sanitizeDefaults(parsed.instance),
+    preset: sanitizeDefaults(parsed.preset),
   });
-
   return getArgumentDefaults();
-}
-
-export function deleteArgumentDefault(scope: DefaultScope, key: string) {
-  const result = db
-    .delete(llamaArgumentDefaults)
-    .where(
-      and(
-        eq(llamaArgumentDefaults.scope, scope),
-        eq(llamaArgumentDefaults.key, key),
-      ),
-    )
-    .run();
-  return result.changes > 0;
 }

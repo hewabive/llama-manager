@@ -93,10 +93,6 @@ function presetEntryNameFromModel(model: GgufModel) {
   return baseName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "model";
 }
 
-function defaultPresetBoolean(value: string) {
-  return ["1", "on", "true", "yes"].includes(value.trim().toLowerCase());
-}
-
 function applyPresetDefaults(
   entry: ModelPresetEntry,
   defaults: LlamaArgumentDefault[],
@@ -112,14 +108,6 @@ function applyPresetDefaults(
 
     if (key === "mmproj") {
       next = { ...next, mmprojPath: value || null };
-    } else if (key === "load-on-startup") {
-      next = { ...next, loadOnStartup: defaultPresetBoolean(value) };
-    } else if (key === "stop-timeout") {
-      const parsed = Number(value);
-      next = {
-        ...next,
-        stopTimeout: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
-      };
     }
   }
 
@@ -136,8 +124,6 @@ export function presetEntryFromModel(
       name: presetEntryNameFromModel(model),
       modelPath: model.path,
       mmprojPath: model.mmprojPaths[0] ?? null,
-      loadOnStartup: false,
-      stopTimeout: null,
       extraArgs: {},
     },
     defaults,

@@ -15,12 +15,7 @@ function line(key: string, value: string | number | boolean | null) {
   return `${key} = ${escapeValue(String(value))}`;
 }
 
-const reservedEntryKeys = new Set([
-  "model",
-  "mmproj",
-  "load-on-startup",
-  "stop-timeout",
-]);
+const reservedEntryKeys = new Set(["model", "mmproj"]);
 
 function extraArgLines(entry: ModelPresetEntry) {
   return Object.entries(entry.extraArgs ?? {})
@@ -32,7 +27,7 @@ function extraArgLines(entry: ModelPresetEntry) {
     .map(([key, value]) => (value ? `${key} = ${escapeValue(value)}` : `${key} =`));
 }
 
-type StructuredField = "model" | "mmproj" | "loadOnStartup" | "stopTimeout";
+type StructuredField = "model" | "mmproj";
 
 const structuredAliases: Record<string, StructuredField> = {
   m: "model",
@@ -41,13 +36,7 @@ const structuredAliases: Record<string, StructuredField> = {
   mm: "mmproj",
   mmproj: "mmproj",
   LLAMA_ARG_MMPROJ: "mmproj",
-  "load-on-startup": "loadOnStartup",
-  __PRESET_LOAD_ON_STARTUP: "loadOnStartup",
-  "stop-timeout": "stopTimeout",
-  __PRESET_STOP_TIMEOUT: "stopTimeout",
 };
-
-const truthyValues = new Set(["on", "enabled", "true", "1"]);
 
 export interface PresetParseResult {
   file: ModelPresetFile;
@@ -56,10 +45,6 @@ export interface PresetParseResult {
 
 function toInt(value: string): number | null {
   return /^[+-]?\d+$/.test(value.trim()) ? Number(value.trim()) : null;
-}
-
-function toBool(value: string): boolean {
-  return truthyValues.has(value.trim().toLowerCase());
 }
 
 function matchKv(line: string): { key: string; value: string } | null {
@@ -81,8 +66,6 @@ function entryFromSection(name: string, kv: Map<string, string>): ModelPresetEnt
     name,
     modelPath: "",
     mmprojPath: null,
-    loadOnStartup: false,
-    stopTimeout: null,
     extraArgs: {},
   };
 
@@ -98,12 +81,6 @@ function entryFromSection(name: string, kv: Map<string, string>): ModelPresetEnt
         break;
       case "mmproj":
         entry.mmprojPath = value || null;
-        break;
-      case "loadOnStartup":
-        entry.loadOnStartup = toBool(value);
-        break;
-      case "stopTimeout":
-        entry.stopTimeout = toInt(value);
         break;
     }
   }
@@ -217,8 +194,6 @@ export function renderModelPresetFile(file: ModelPresetFile): string {
     const sectionLines = [
       line("model", entry.modelPath),
       line("mmproj", entry.mmprojPath),
-      entry.loadOnStartup ? line("load-on-startup", true) : null,
-      line("stop-timeout", entry.stopTimeout),
       ...extraArgLines(entry),
     ].filter((item): item is string => Boolean(item));
     lines.push(...sectionLines, "");

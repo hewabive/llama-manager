@@ -7,7 +7,7 @@ category: "Пресеты"
 valueType: "boolean"
 valueHint: null
 controlKind: "toggle"
-presetSupport: "model-managed"
+presetSupport: "preset-only"
 aliases:
   - "load-on-startup"
 allowedValues:

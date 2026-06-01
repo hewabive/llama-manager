@@ -102,14 +102,6 @@ export const llamaArgumentHelpOverrides = sqliteTable(
   },
 );
 
-export const llamaArgumentDefaults = sqliteTable("llama_argument_defaults", {
-  scope: text("scope").notNull(),
-  key: text("key").notNull(),
-  value: text("value").notNull(),
-  valueType: text("value_type").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const apiEndpoints = sqliteTable("api_endpoints", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

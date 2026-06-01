@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import pino from "pino";
 
+import { initArgumentDefaults } from "./arguments/defaults-repository.js";
 import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
 import { migrate } from "./db/index.js";
@@ -14,6 +15,7 @@ const logger = pino({
 });
 
 migrate();
+initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const prunedModelCache = pruneMissingCachedModels();
 const reconciliation = reconcileProcessRuns();

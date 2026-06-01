@@ -1304,8 +1304,6 @@ export const ModelPresetEntrySchema = z.object({
   name: z.string().min(1),
   modelPath: z.string().min(1),
   mmprojPath: z.string().nullable(),
-  loadOnStartup: z.boolean(),
-  stopTimeout: z.number().int().positive().nullable(),
   extraArgs: z.record(z.string(), z.string()).default({}),
 });
 
