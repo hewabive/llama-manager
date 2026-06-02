@@ -19,7 +19,6 @@ export function migrate() {
       name TEXT NOT NULL UNIQUE,
       binary_path TEXT NOT NULL,
       binary_path_ref_id TEXT,
-      models_preset_name TEXT,
       cwd TEXT,
       args_json TEXT NOT NULL,
       env_json TEXT NOT NULL,

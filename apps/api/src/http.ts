@@ -117,7 +117,6 @@ import {
   createPreset,
   deletePreset,
   listPresets,
-  presetPath,
   readPreset,
   writePreset,
 } from "./presets/repository.js";
@@ -212,15 +211,10 @@ function resolveInstancePathRefs(instance: Instance): Instance {
   const binaryRef = instance.binaryPathRefId
     ? getPathCatalogEntry(instance.binaryPathRefId)
     : null;
-  const args = { ...instance.args };
-  if (instance.modelsPresetName) {
-    args["--models-preset"] = presetPath(instance.modelsPresetName);
-  }
 
   return {
     ...instance,
     binaryPath: binaryRef?.path ?? "",
-    args,
   };
 }
 
@@ -1090,7 +1084,8 @@ app.delete("/api/proxy/targets/:id", (c) => {
     (pipeline) =>
       pipeline.routeTo?.type === "target" && pipeline.routeTo.id === id,
   );
-  const usedCount = usedBy.length + usedByModels.length + usedByPipelines.length;
+  const usedCount =
+    usedBy.length + usedByModels.length + usedByPipelines.length;
   if (usedCount > 0) {
     return c.json(
       { error: `proxy target is used by ${usedCount} route(s)` },
@@ -1409,7 +1404,10 @@ app.put("/api/presets/:name", async (c) => {
     return c.json({ error: "preset not found" }, 404);
   }
   if (result.kind === "conflict") {
-    return c.json({ error: "preset changed on disk", data: result.document }, 409);
+    return c.json(
+      { error: "preset changed on disk", data: result.document },
+      409,
+    );
   }
   return c.json({ data: result.document });
 });
@@ -1448,7 +1446,6 @@ app.post("/api/instances/preflight", async (c) => {
     name: preview.name,
     binaryPath: "",
     binaryPathRefId: preview.binaryPathRefId,
-    modelsPresetName: preview.modelsPresetName ?? null,
     cwd: preview.cwd,
     args: preview.args,
     env: preview.env,

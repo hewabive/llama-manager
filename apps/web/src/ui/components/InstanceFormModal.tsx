@@ -63,6 +63,7 @@ import {
   type ArgRow,
   RawArgRow,
   argsToRows,
+  cliNameForArgument,
   createArgRow,
   defaultRows,
   defaultValueForArgument,
@@ -76,6 +77,7 @@ import {
   canonicalOptionForRow,
 } from "./InstanceArgumentRows";
 import { PathPickerInput } from "./PathPickerInput";
+import { createUiId } from "../utils/id";
 
 type LaunchMode = "model" | "router";
 
@@ -178,6 +180,10 @@ const managedArgumentKeys = new Set([
 
 function isManagedArgRow(row: ArgRow) {
   return managedArgumentKeys.has(row.key.trim());
+}
+
+function presetNameFromPath(path: string) {
+  return pathBaseName(path).replace(/\.ini$/i, "");
 }
 
 export function InstanceFormModal(props: {
@@ -291,14 +297,23 @@ export function InstanceFormModal(props: {
     }
     return map;
   }, [knownArgs]);
-  const instanceDefaultKeys = useMemo(() => {
-    const set = new Set<string>();
+  const defaultOverlay = useMemo(() => {
+    const seen = new Set<string>();
+    const out: LlamaArgumentOption[] = [];
     for (const item of instanceDefaultArgs) {
       const option = knownArgByName.get(item.key);
-      set.add(option ? option.primaryName : item.key);
+      if (!option || seen.has(option.primaryName)) {
+        continue;
+      }
+      seen.add(option.primaryName);
+      out.push(option);
     }
-    return set;
+    return out;
   }, [instanceDefaultArgs, knownArgByName]);
+  const defaultKeySet = useMemo(
+    () => new Set(defaultOverlay.map((option) => option.primaryName)),
+    [defaultOverlay],
+  );
   const visibleKnownArgs = knownArgs.filter(
     (option) =>
       isSelectableInstanceArgument(option) &&
@@ -307,6 +322,14 @@ export function InstanceFormModal(props: {
   const visibleArgRows = useMemo(
     () => argRows.filter((row) => !isManagedArgRow(row)),
     [argRows],
+  );
+  const manualArgRows = useMemo(
+    () =>
+      visibleArgRows.filter((row) => {
+        const option = canonicalOptionForRow(row, knownArgByName);
+        return !option || !defaultKeySet.has(option.primaryName);
+      }),
+    [visibleArgRows, knownArgByName, defaultKeySet],
   );
   const selectableModels = useMemo(
     () =>
@@ -347,6 +370,16 @@ export function InstanceFormModal(props: {
         label: `${entry.name} · ${pathBaseName(entry.path)}`,
       })),
     [binaryCatalogEntries],
+  );
+  const presetByName = useMemo(
+    () =>
+      new Map(
+        (presetsQuery.data?.data ?? []).map((summary) => [
+          summary.name,
+          summary,
+        ]),
+      ),
+    [presetsQuery.data?.data],
   );
   const presetOptions = useMemo(() => {
     const summaries = presetsQuery.data?.data ?? [];
@@ -432,7 +465,11 @@ export function InstanceFormModal(props: {
 
     if (props.instance) {
       const modelPath = argString(props.instance.args, "--model") || null;
-      const presetName = props.instance.modelsPresetName ?? null;
+      const presetPathValue =
+        argString(props.instance.args, "--models-preset") || null;
+      const presetName = presetPathValue
+        ? presetNameFromPath(presetPathValue)
+        : null;
       form.setValues({
         name: props.instance.name,
         envJson: JSON.stringify(props.instance.env, null, 2),
@@ -455,13 +492,10 @@ export function InstanceFormModal(props: {
       setSelectedPresetName(null);
       setLaunchMode("model");
       setStartAfterCreate(false);
-      setArgRows(
-        defaultRows(modelPath ?? undefined, port, instanceDefaultArgs),
-      );
+      setArgRows(defaultRows(modelPath ?? undefined, port));
     }
   }, [
     argumentDefaultsQuery.isLoading,
-    instanceDefaultArgs,
     props.opened,
     props.instance?.id,
     props.initialModelPath,
@@ -500,7 +534,6 @@ export function InstanceFormModal(props: {
         ...(props.instance?.id ? { id: props.instance.id } : {}),
         name: form.values.name,
         binaryPathRefId: selectedBinaryPathRefId,
-        modelsPresetName: launchMode === "router" ? selectedPresetName : null,
         args,
         env,
       };
@@ -513,10 +546,8 @@ export function InstanceFormModal(props: {
     form.values.envJson,
     form.values.name,
     knownArgByName,
-    launchMode,
     props.instance?.id,
     selectedBinaryPathRefId,
-    selectedPresetName,
   ]);
 
   const preflightPreviewQuery = useQuery({
@@ -549,12 +580,87 @@ export function InstanceFormModal(props: {
     setSelectedBinaryPathRefId(refId);
   }
 
+  function defaultRowActive(option: LlamaArgumentOption) {
+    const row = argRows.find(
+      (item) =>
+        canonicalOptionForRow(item, knownArgByName)?.primaryName ===
+        option.primaryName,
+    );
+    return Boolean(row) && row?.valueType !== "null";
+  }
+
+  function defaultRowValue(option: LlamaArgumentOption) {
+    const row = argRows.find(
+      (item) =>
+        canonicalOptionForRow(item, knownArgByName)?.primaryName ===
+        option.primaryName,
+    );
+    return row?.value ?? defaultValueForArgument(option);
+  }
+
+  function setDefaultActive(option: LlamaArgumentOption, active: boolean) {
+    setArgRows((rows) => {
+      const without = rows.filter(
+        (row) =>
+          canonicalOptionForRow(row, knownArgByName)?.primaryName !==
+          option.primaryName,
+      );
+      if (!active) {
+        return without;
+      }
+      const existing = rows.find(
+        (row) =>
+          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
+          option.primaryName,
+      );
+      return [
+        ...without,
+        {
+          id: existing?.id ?? createUiId(),
+          key: cliNameForArgument(option),
+          value: existing?.value || defaultValueForArgument(option),
+          valueType: valueTypeFromArgument(option),
+        },
+      ];
+    });
+  }
+
+  function setDefaultValue(option: LlamaArgumentOption, value: string) {
+    setArgRows((rows) => {
+      const next: ArgRow = {
+        id: createUiId(),
+        key: cliNameForArgument(option),
+        value,
+        valueType: valueTypeFromArgument(option),
+      };
+      let replaced = false;
+      const mapped = rows.map((row) => {
+        if (
+          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
+          option.primaryName
+        ) {
+          replaced = true;
+          return { ...next, id: row.id };
+        }
+        return row;
+      });
+      return replaced ? mapped : [...mapped, next];
+    });
+  }
+
   function applyPresetSelection(presetName: string | null) {
     setLaunchMode("router");
     setSelectedPresetName(presetName);
     setSelectedModelPath(null);
+    const presetFilePath = presetName
+      ? (presetByName.get(presetName)?.path ?? "")
+      : "";
     setArgRows((rows) => {
-      let next = removeArgRows(rows, ["--model", "--models-preset"]);
+      let next = removeArgRow(rows, "--model");
+      next =
+        presetName && presetFilePath
+          ? upsertArgRow(next, "--models-preset", presetFilePath, "string")
+          : removeArgRow(next, "--models-preset");
       if (presetName && !rowValue(next, "--models-max")) {
         next = upsertArgRow(next, "--models-max", "4", "number");
       }
@@ -759,7 +865,7 @@ export function InstanceFormModal(props: {
       }
       const rows =
         launchMode === "router"
-          ? removeArgRows(argRows, ["--model", "--models-preset"])
+          ? removeArgRow(argRows, "--model")
           : removeArgRows(argRows, [
               "--models-preset",
               "--models-max",
@@ -777,7 +883,6 @@ export function InstanceFormModal(props: {
       const input: InstanceCreate = {
         name: values.name,
         binaryPathRefId: selectedBinaryPathRefId,
-        modelsPresetName: launchMode === "router" ? selectedPresetName : null,
         args,
         env: parseEnvJson(values.envJson),
       };
@@ -1032,13 +1137,27 @@ export function InstanceFormModal(props: {
                 {(argsCatalogQuery.error as Error).message}
               </Text>
             )}
-            {visibleArgRows.length === 0 && (
+            {defaultOverlay.map((option) => (
+              <ArgumentRow
+                key={`default:${option.primaryName}`}
+                keyLabel={option.primaryName}
+                option={option}
+                value={defaultRowValue(option)}
+                scope="instance"
+                isDefault
+                active={defaultRowActive(option)}
+                onToggle={(nextActive) => setDefaultActive(option, nextActive)}
+                onRemove={() => undefined}
+                onValueChange={(value) => setDefaultValue(option, value)}
+              />
+            ))}
+            {manualArgRows.length === 0 && (
               <Text c="dimmed" size="xs">
                 No extra arguments. Host, port, model and router preset are
                 configured above.
               </Text>
             )}
-            {visibleArgRows.map((row, index) => {
+            {manualArgRows.map((row, index) => {
               const option = canonicalOptionForRow(row, knownArgByName);
               const onChange = (nextRow: ArgRow) =>
                 setArgRows((rows) =>
@@ -1048,7 +1167,6 @@ export function InstanceFormModal(props: {
                 setArgRows((rows) => rows.filter((item) => item.id !== row.id));
 
               if (option && !showRawArgs) {
-                const isDefault = instanceDefaultKeys.has(option.primaryName);
                 return (
                   <ArgumentRow
                     key={row.id}
@@ -1056,21 +1174,9 @@ export function InstanceFormModal(props: {
                     option={option}
                     value={row.value}
                     scope="instance"
-                    isDefault={isDefault}
-                    active={row.valueType !== "null"}
-                    onToggle={(nextActive) =>
-                      onChange({
-                        ...row,
-                        key: option.primaryName,
-                        value:
-                          nextActive && !row.value
-                            ? defaultValueForArgument(option)
-                            : row.value,
-                        valueType: nextActive
-                          ? valueTypeFromArgument(option)
-                          : "null",
-                      })
-                    }
+                    isDefault={false}
+                    active
+                    onToggle={() => undefined}
                     onRemove={onRemove}
                     onValueChange={(value) =>
                       onChange({

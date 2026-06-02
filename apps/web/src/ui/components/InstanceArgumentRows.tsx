@@ -1,8 +1,4 @@
-import type {
-  Instance,
-  LlamaArgumentDefault,
-  LlamaArgumentOption,
-} from "@llama-manager/core";
+import type { Instance, LlamaArgumentOption } from "@llama-manager/core";
 import { ActionIcon, Group, Select, TextInput, Tooltip } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 
@@ -24,38 +20,16 @@ const defaultArgRows: ArgRow[] = [
   { id: "port", key: "--port", value: "8080", valueType: "number" },
 ];
 
-function rowsFromDefaults(defaults: LlamaArgumentDefault[]): ArgRow[] {
-  return defaults.map((item) => ({
-    id: createUiId(),
-    key: item.key,
-    value: item.value,
-    valueType: item.valueType as ArgRow["valueType"],
-  }));
-}
-
-export function defaultRows(
-  modelPath?: string,
-  port = 8080,
-  defaults: LlamaArgumentDefault[] = [],
-): ArgRow[] {
+export function defaultRows(modelPath?: string, port = 8080): ArgRow[] {
   const baseRows = defaultArgRows.map((row) =>
     row.key === "--port" ? { ...row, value: String(port) } : { ...row },
   );
-  const rows: ArgRow[] = modelPath
-    ? [
-        ...baseRows,
-        {
-          id: "model",
-          key: "--model",
-          value: modelPath,
-          valueType: "string",
-        },
-      ]
-    : baseRows;
-  const existingKeys = new Set(rows.map((row) => row.key));
+  if (!modelPath) {
+    return baseRows;
+  }
   return [
-    ...rows,
-    ...rowsFromDefaults(defaults).filter((row) => !existingKeys.has(row.key)),
+    ...baseRows,
+    { id: "model", key: "--model", value: modelPath, valueType: "string" },
   ];
 }
 

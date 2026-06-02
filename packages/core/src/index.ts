@@ -46,7 +46,6 @@ export const PathCatalogUpdateSchema = z.object({
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
   binaryPathRefId: PathCatalogIdSchema,
-  modelsPresetName: PresetNameSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
@@ -59,7 +58,6 @@ export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
 export const InstanceUpdateSchema = z.object({
   name: InstanceNameSchema.optional(),
   binaryPathRefId: PathCatalogIdSchema.optional(),
-  modelsPresetName: PresetNameSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.optional(),
   env: InstanceEnvSchema.optional(),
@@ -602,10 +600,12 @@ export const ApiProxyModelRecordSchema = ApiProxyModelConfigSchema.extend({
   updatedAt: z.string(),
 });
 
-export const ApiProxyPipelineRecordSchema = ApiProxyPipelineConfigSchema.extend({
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+export const ApiProxyPipelineRecordSchema = ApiProxyPipelineConfigSchema.extend(
+  {
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  },
+);
 
 export const ApiProxyConfigSchema = z.object({
   models: z.array(ApiProxyModelRecordSchema),
@@ -1536,9 +1536,7 @@ export type LlamaSourceSettingsUpdate = z.infer<
   typeof LlamaSourceSettingsUpdateSchema
 >;
 export type LlamaSourceStatus = z.infer<typeof LlamaSourceStatusSchema>;
-export type LlamaSourcePullResult = z.infer<
-  typeof LlamaSourcePullResultSchema
->;
+export type LlamaSourcePullResult = z.infer<typeof LlamaSourcePullResultSchema>;
 export type LlamaArgumentHelpSourceSnapshot = z.infer<
   typeof LlamaArgumentHelpSourceSnapshotSchema
 >;

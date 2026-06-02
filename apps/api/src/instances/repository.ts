@@ -9,7 +9,6 @@ import { newId } from "../utils/id.js";
 import { db } from "../db/index.js";
 import { instances } from "../db/schema.js";
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
-import { presetPath } from "../presets/repository.js";
 import { latestProcessRun } from "../process/runs-repository.js";
 import { supervisor } from "../process/supervisor.js";
 
@@ -48,16 +47,12 @@ function toInstance(row: InstanceRow): Instance {
   const binaryRef = row.binaryPathRefId
     ? getPathCatalogEntry(row.binaryPathRefId)
     : null;
-  if (row.modelsPresetName) {
-    args["--models-preset"] = presetPath(row.modelsPresetName);
-  }
 
   return {
     id: row.id,
     name: row.name,
     binaryPath: binaryRef?.path ?? "",
     binaryPathRefId: row.binaryPathRefId ?? "",
-    modelsPresetName: row.modelsPresetName ?? null,
     cwd: row.cwd ?? undefined,
     args,
     env: JSON.parse(row.envJson) as Instance["env"],
@@ -88,7 +83,6 @@ export function createInstance(input: InstanceCreate): Instance {
       name: input.name,
       binaryPath: binaryRef?.path ?? "",
       binaryPathRefId: input.binaryPathRefId,
-      modelsPresetName: input.modelsPresetName ?? null,
       cwd: input.cwd ?? null,
       argsJson: JSON.stringify(input.args),
       envJson: JSON.stringify(input.env),
@@ -121,10 +115,6 @@ export function updateInstance(
       name: input.name ?? current.name,
       binaryPath: binaryRef?.path ?? "",
       binaryPathRefId: nextRefId,
-      modelsPresetName:
-        input.modelsPresetName === undefined
-          ? current.modelsPresetName
-          : input.modelsPresetName,
       cwd: input.cwd ?? current.cwd ?? null,
       argsJson: JSON.stringify(input.args ?? current.args),
       envJson: JSON.stringify(input.env ?? current.env),

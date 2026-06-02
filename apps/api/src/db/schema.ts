@@ -5,7 +5,6 @@ export const instances = sqliteTable("instances", {
   name: text("name").notNull().unique(),
   binaryPath: text("binary_path").notNull(),
   binaryPathRefId: text("binary_path_ref_id"),
-  modelsPresetName: text("models_preset_name"),
   cwd: text("cwd"),
   argsJson: text("args_json").notNull(),
   envJson: text("env_json").notNull(),
@@ -138,4 +137,3 @@ export const apiProxyPipelines = sqliteTable("api_proxy_pipelines", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
-
