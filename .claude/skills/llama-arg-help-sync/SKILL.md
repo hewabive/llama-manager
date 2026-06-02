@@ -5,12 +5,9 @@ description: Use when llama-manager reports that the stored llama-server generat
 
 # llama-server Argument Help Sync
 
-Follow the full procedure in `docs/ARGUMENT_HELP_WORKFLOW.md` — it is the single
-source of truth for this task. Read it before making changes.
+Follow the full procedure in `docs/ARGUMENT_HELP_WORKFLOW.md` — it is the single source of truth for this task. Read it before making changes.
 
-In short: review the generated help diff, edit only the affected Engineering
-help files under `content/llama-args/llama-server/`, then write the new
-snapshot/hash and validate.
+In short: review the generated help diff, edit only the affected Engineering help files under `content/llama-args/llama-server/`, then write the new snapshot/hash and validate.
 
 ```bash
 pnpm --filter @llama-manager/api args:docs:source-sync -- --diff
