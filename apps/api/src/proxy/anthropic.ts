@@ -33,6 +33,11 @@ function endpointLabel(operation: ApiProxyProtocolOperation) {
   return operation.routePath || operation.endpoint;
 }
 
+const upstreamPaths: Record<string, string> = {
+  messages: "/v1/messages",
+  "messages.count_tokens": "/v1/messages/count_tokens",
+};
+
 export const anthropicProtocolAdapter: ApiProxyProtocolAdapter = {
   id: "anthropic",
   displayName: "Anthropic Messages",
@@ -58,7 +63,7 @@ export const anthropicProtocolAdapter: ApiProxyProtocolAdapter = {
       type: "api_error",
     }),
   }),
-  upstreamPath: () => null,
+  upstreamPath: (operation) => upstreamPaths[operation.endpoint] ?? null,
   notImplemented: (request) => ({
     status: 501,
     body: anthropicError({

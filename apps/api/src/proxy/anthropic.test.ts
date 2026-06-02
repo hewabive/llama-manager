@@ -69,6 +69,25 @@ test("anthropicProtocolAdapter returns not implemented response", () => {
   });
 });
 
-test("anthropicProtocolAdapter does not forward without a transform", () => {
-  assert.equal(anthropicProtocolAdapter.upstreamPath(operation), null);
+test("anthropicProtocolAdapter forwards messages to llama-server upstream", () => {
+  assert.equal(
+    anthropicProtocolAdapter.upstreamPath(operation),
+    "/v1/messages",
+  );
+  assert.equal(
+    anthropicProtocolAdapter.upstreamPath({
+      ...operation,
+      endpoint: "messages.count_tokens",
+      routePath: "/v1/messages/count_tokens",
+    }),
+    "/v1/messages/count_tokens",
+  );
+  assert.equal(
+    anthropicProtocolAdapter.upstreamPath({
+      ...operation,
+      endpoint: "unknown",
+      routePath: "/v1/unknown",
+    }),
+    null,
+  );
 });

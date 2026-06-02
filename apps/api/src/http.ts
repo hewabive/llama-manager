@@ -641,6 +641,17 @@ function registerAnthropicProxyRoutes(prefix: string) {
       }),
     ),
   );
+  app.post(`${prefix}/messages/count_tokens`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      anthropicProtocolAdapter,
+      protocolOperation({
+        protocol: "anthropic",
+        endpoint: "messages.count_tokens",
+        routePath: `${prefix}/messages/count_tokens`,
+      }),
+    ),
+  );
 }
 
 app.use(
