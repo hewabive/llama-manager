@@ -89,8 +89,11 @@ function unloadActions(
 
   const actions: ApiProxySchedulerAction[] = [];
   if (target.saveSlotsBeforeUnload) {
+    const alreadySaved = new Set(target.runtime?.savedSlotIds ?? []);
     for (const slotId of target.slotIds) {
-      actions.push(action("save-slot", target, reason, slotId));
+      if (!alreadySaved.has(slotId)) {
+        actions.push(action("save-slot", target, reason, slotId));
+      }
     }
   }
 

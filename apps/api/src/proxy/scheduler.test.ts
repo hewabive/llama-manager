@@ -25,6 +25,7 @@ function target(input: {
   idleUnloadMs?: number | null;
   saveSlotsBeforeUnload?: boolean;
   slotIds?: number[];
+  savedSlotIds?: number[];
 }) {
   return {
     id: input.id,
@@ -52,7 +53,7 @@ function target(input: {
       activeRequests: input.activeRequests ?? 0,
       idleSince: input.idleSince ?? null,
       lastRequestAt: null,
-      savedSlotIds: [],
+      savedSlotIds: input.savedSlotIds ?? [],
     },
   };
 }
@@ -102,6 +103,45 @@ test("planApiProxyRequest preempts lower-priority target and saves slots", () =>
   assert.equal(plan.actions[0]?.targetId, "background");
   assert.equal(plan.actions[0]?.slotId, 0);
   assert.equal(plan.actions.at(-1)?.targetId, "urgent");
+});
+
+test("planApiProxyRequest does not re-emit save-slot for already-saved slots", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      targets: [
+        target({
+          id: "background",
+          name: "Background batch",
+          instanceId: "inst-bg",
+          model: "slow",
+          priority: 10,
+          role: "background",
+          state: "busy",
+          activeRequests: 1,
+          saveSlotsBeforeUnload: true,
+          slotIds: [0],
+          savedSlotIds: [0],
+        }),
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["unload-model", "load-model", "wait-model-ready", "route-request"],
+  );
 });
 
 test("planApiProxyRequest routes external API targets without instance actions", () => {
