@@ -63,6 +63,8 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 ## Conventions
 
+- **Reply to the user in Russian** (code, identifiers, commit messages, and docs stay in English).
+- **Never create git branches unless asked** — commit to the current branch (on `main`, commit to `main`).
 - **Keep this file token-dense.** Write CLAUDE.md tersely — every line must earn its tokens. Don't pad with restated context, examples already obvious from code, or motivational prose. Prefer editing/tightening an existing line over appending a new one; remove what's stale.
 - **No code comments — categorical.** Do not write comments in source code (no `//`, `/* */`, JSDoc, or block banners). Code must be self-documenting: express intent through clear names, small functions, and types. If something genuinely needs explanation (non-obvious rationale, design constraints, gotchas), put it in a dedicated document under `docs/` and reference that doc from the relevant code path's surrounding documentation — never inline. This overrides any default tendency to add explanatory comments.
 - **React event captures**: `pnpm check:events` (part of `pnpm check`) fails the build if `event.currentTarget`/`event.target` from an outer handler is referenced inside a nested callback (setState updater, timer, promise). Read the value into a local first.
