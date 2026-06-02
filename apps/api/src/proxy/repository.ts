@@ -11,6 +11,7 @@ import {
   ApiProxyPipelineUpdateSchema,
   ApiProxyRouteToSchema,
   ApiProxyRequestLogRecordSchema,
+  ApiProxyRuntimeMetadataRecordSchema,
   ApiProxyRouteConfigSchema,
   ApiProxyRouteCreateSchema,
   ApiProxyRouteRecordSchema,
@@ -28,6 +29,7 @@ import {
   type ApiProxyPipelineUpdate,
   type ApiProxyRouteTo,
   type ApiProxyRequestLogRecord,
+  type ApiProxyRuntimeMetadataRecord,
   type ApiProxyRouteCreate,
   type ApiProxyRouteRecord,
   type ApiProxyRouteUpdate,
@@ -52,6 +54,7 @@ import {
   apiProxyModels,
   apiProxyPipelines,
   apiProxyRoutes,
+  apiProxyRuntimeMetadata,
   apiProxyTargets,
 } from "../db/schema.js";
 
@@ -59,6 +62,7 @@ type TargetRow = typeof apiProxyTargets.$inferSelect;
 type RouteRow = typeof apiProxyRoutes.$inferSelect;
 type ModelRow = typeof apiProxyModels.$inferSelect;
 type PipelineRow = typeof apiProxyPipelines.$inferSelect;
+type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
 
 function nowIso() {
   return new Date().toISOString();
@@ -221,6 +225,17 @@ function toPipeline(row: PipelineRow): ApiProxyPipelineRecord {
   });
 }
 
+function toRuntimeMetadata(
+  row: RuntimeMetadataRow,
+): ApiProxyRuntimeMetadataRecord {
+  return ApiProxyRuntimeMetadataRecordSchema.parse({
+    targetId: row.targetId,
+    savedSlotIds: parseSlotIds(row.savedSlotIdsJson),
+    lastRequestAt: row.lastRequestAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
 function targetValues(input: ApiProxyTargetCreate | ApiProxyTargetRecord) {
   return {
     name: input.name,
@@ -259,7 +274,9 @@ function modelValues(input: ApiProxyModelCreate | ApiProxyModelRecord) {
   };
 }
 
-function pipelineValues(input: ApiProxyPipelineCreate | ApiProxyPipelineRecord) {
+function pipelineValues(
+  input: ApiProxyPipelineCreate | ApiProxyPipelineRecord,
+) {
   return {
     name: input.name,
     enabled: boolText(input.enabled),
@@ -369,6 +386,102 @@ export function getApiProxyConfig(): ApiProxyConfig {
     targets: listApiProxyTargets(),
     routes: listApiProxyRoutes(),
   });
+}
+
+export function listApiProxyRuntimeMetadata(): Map<
+  string,
+  ApiProxyRuntimeMetadataRecord
+> {
+  return new Map(
+    db
+      .select()
+      .from(apiProxyRuntimeMetadata)
+      .all()
+      .map((row) => {
+        const record = toRuntimeMetadata(row);
+        return [record.targetId, record] as const;
+      }),
+  );
+}
+
+export function getApiProxyRuntimeMetadata(
+  targetId: string,
+): ApiProxyRuntimeMetadataRecord | null {
+  const row = db
+    .select()
+    .from(apiProxyRuntimeMetadata)
+    .where(eq(apiProxyRuntimeMetadata.targetId, targetId))
+    .get();
+  return row ? toRuntimeMetadata(row) : null;
+}
+
+export function setApiProxyRuntimeMetadata(
+  targetId: string,
+  patch: { savedSlotIds?: number[]; lastRequestAt?: string | null },
+): ApiProxyRuntimeMetadataRecord {
+  const current = getApiProxyRuntimeMetadata(targetId);
+  const savedSlotIds = patch.savedSlotIds ?? current?.savedSlotIds ?? [];
+  const lastRequestAt =
+    patch.lastRequestAt !== undefined
+      ? patch.lastRequestAt
+      : (current?.lastRequestAt ?? null);
+  const timestamp = nowIso();
+  const values = {
+    savedSlotIdsJson: JSON.stringify(savedSlotIds),
+    lastRequestAt,
+    updatedAt: timestamp,
+  };
+
+  db.insert(apiProxyRuntimeMetadata)
+    .values({ targetId, ...values })
+    .onConflictDoUpdate({
+      target: apiProxyRuntimeMetadata.targetId,
+      set: values,
+    })
+    .run();
+
+  const saved = getApiProxyRuntimeMetadata(targetId);
+  if (!saved) {
+    throw new Error("failed to persist API proxy runtime metadata");
+  }
+  return saved;
+}
+
+export function apiProxySlotFilename(targetId: string, slotId: number): string {
+  const slug = targetId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `llama-manager-${slug}-slot-${slotId}.bin`;
+}
+
+export function addApiProxySavedSlotId(
+  targetId: string,
+  slotId: number,
+): ApiProxyRuntimeMetadataRecord {
+  const current = getApiProxyRuntimeMetadata(targetId);
+  const next = new Set(current?.savedSlotIds ?? []);
+  next.add(slotId);
+  return setApiProxyRuntimeMetadata(targetId, {
+    savedSlotIds: [...next].sort((left, right) => left - right),
+  });
+}
+
+export function removeApiProxySavedSlotId(
+  targetId: string,
+  slotId: number,
+): ApiProxyRuntimeMetadataRecord {
+  const current = getApiProxyRuntimeMetadata(targetId);
+  const next = new Set(current?.savedSlotIds ?? []);
+  next.delete(slotId);
+  return setApiProxyRuntimeMetadata(targetId, {
+    savedSlotIds: [...next].sort((left, right) => left - right),
+  });
+}
+
+export function deleteApiProxyRuntimeMetadata(targetId: string): boolean {
+  const result = db
+    .delete(apiProxyRuntimeMetadata)
+    .where(eq(apiProxyRuntimeMetadata.targetId, targetId))
+    .run();
+  return result.changes > 0;
 }
 
 export function saveApiProxyRequestLog(input: {

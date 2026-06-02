@@ -137,6 +137,8 @@ import {
   deleteApiProxyPipeline,
   deleteApiProxyRoute,
   deleteApiProxyTarget,
+  addApiProxySavedSlotId,
+  apiProxySlotFilename,
   getApiProxyConfig,
   getApiProxyModel,
   getApiProxyModelByModelId,
@@ -147,7 +149,9 @@ import {
   listApiProxyPipelines,
   listApiProxyRequestLogs,
   listApiProxyRoutes,
+  listApiProxyRuntimeMetadata,
   listApiProxyTargets,
+  removeApiProxySavedSlotId,
   saveApiProxyRequestLog,
   updateApiProxyModel,
   updateApiProxyPipeline,
@@ -164,11 +168,25 @@ import {
   updateApiEndpoint,
 } from "./proxy/endpoints.js";
 import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
+import { config } from "./config.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
-import { forwardApiProxyRequest } from "./proxy/forwarder.js";
+import {
+  attachLeaseRelease,
+  resourceGroupCoordinator,
+  type ResourceLease,
+} from "./proxy/coordinator.js";
+import {
+  apiProxyForwardUrl,
+  forwardApiProxyRequest,
+} from "./proxy/forwarder.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./proxy/gateway.js";
 import { resolveApiProxyRouteChain } from "./proxy/pipeline.js";
 import { executeApiProxyPublicMvpPlan } from "./proxy/public-executor.js";
+import {
+  createResumableBufferState,
+  runResumableForward,
+  runResumableUpstreamAttempt,
+} from "./proxy/resumable-forward.js";
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
@@ -327,6 +345,7 @@ async function getApiProxyRuntimeSnapshot() {
       endpoints,
       instances,
       healthByInstanceId: new Map(healthEntries),
+      metadataByTargetId: listApiProxyRuntimeMetadata(),
     }),
   };
 }
@@ -371,6 +390,86 @@ async function getApiProxyPlanPreview(input: {
     runtime: runtime.snapshot,
     plan,
   });
+}
+
+async function runApiProxyIdleMaintenancePass() {
+  const targets = listApiProxyTargets();
+  const groupByTargetId = new Map(
+    targets.map((target) => [target.id, target.resourceGroupId]),
+  );
+  const groupKeys = new Set(
+    targets
+      .map((target) => target.resourceGroupId)
+      .filter((groupKey): groupKey is string => Boolean(groupKey)),
+  );
+
+  for (const groupKey of groupKeys) {
+    const lease = resourceGroupCoordinator.tryAcquireMaintenance(groupKey);
+    if (!lease) {
+      continue;
+    }
+    try {
+      const preview = await getApiProxyPlanPreview({ mode: "idle" });
+      for (const action of preview.plan.actions) {
+        if (
+          action.type !== "save-slot" &&
+          action.type !== "unload-model" &&
+          action.type !== "stop-instance"
+        ) {
+          continue;
+        }
+        if (groupByTargetId.get(action.targetId) !== groupKey) {
+          continue;
+        }
+        const instance = action.instanceId
+          ? getInstance(action.instanceId)
+          : null;
+        if (!instance) {
+          continue;
+        }
+        if (action.type === "save-slot" && action.slotId !== null) {
+          await requestLlamaSlotAction(instance, "save", action.slotId, {
+            filename: apiProxySlotFilename(action.targetId, action.slotId),
+          });
+          addApiProxySavedSlotId(action.targetId, action.slotId);
+        } else if (action.type === "unload-model" && action.model) {
+          await requestLlamaModelAction(instance, "unload", action.model);
+        } else if (action.type === "stop-instance") {
+          supervisor.stop(instance.id);
+        }
+      }
+    } finally {
+      lease.release();
+    }
+  }
+}
+
+export function startApiProxyIdleMaintenanceLoop(options?: {
+  intervalMs?: number | undefined;
+  onError?: ((error: unknown) => void) | undefined;
+}): () => void {
+  const intervalMs =
+    options?.intervalMs ?? config.proxy.idleMaintenanceIntervalMs;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    return () => undefined;
+  }
+
+  let running = false;
+  const tick = () => {
+    if (running) {
+      return;
+    }
+    running = true;
+    void runApiProxyIdleMaintenancePass()
+      .catch((error) => options?.onError?.(error))
+      .finally(() => {
+        running = false;
+      });
+  };
+
+  const timer = setInterval(tick, intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 function normalizeApiLabBaseUrl(profile: ApiLabProbeProfile, value: string) {
@@ -489,93 +588,287 @@ async function proxyProtocolEndpoint(
     return c.json(decision.response.body, decision.response.status);
   }
 
-  const upstreamPath = adapter.upstreamPath(operation);
-  if (!upstreamPath) {
-    const response = adapter.notImplemented(route.request);
-    return c.json(response.body, response.status);
+  const groupKey = decision.target.resourceGroupId;
+  let lease: ResourceLease | null = null;
+  if (groupKey) {
+    try {
+      lease = await resourceGroupCoordinator.acquire({
+        groupKey,
+        targetId: decision.target.id,
+        priority: decision.target.priority,
+        preemptible: decision.target.preemptible,
+        signal: c.req.raw.signal,
+      });
+    } catch {
+      const response = adapter.diagnosticError(route.request, {
+        status: 503,
+        code: "llama_manager_proxy_upstream_unavailable",
+        param: "model",
+        message: `Request for model ${route.request.modelId} was aborted while queued.`,
+      });
+      return c.json(response.body, response.status);
+    }
   }
 
-  const execution = await executeApiProxyPublicMvpPlan({
-    target: decision.target,
-    initialPreview: decision.preview,
-    getInstance,
-    startInstance: async (instance) => {
-      try {
-        return await startOrRecoverManagedInstance(instance);
-      } catch (error) {
-        throw new Error(actionErrorProxyMessage(error));
-      }
-    },
-    loadModel: async (instance, model) => {
-      const result = await requestLlamaModelAction(instance, "load", model);
-      if (!result.response.ok) {
-        throw new Error(llamaEndpointErrorMessage(result.response));
-      }
-    },
-    getPlanPreview: (targetId) =>
-      getApiProxyPlanPreview({
-        mode: "request",
-        requestedTargetId: targetId,
-      }),
-  });
-  if (!execution.ok) {
-    const response = adapter.diagnosticError(
-      route.request,
-      execution.diagnostic,
+  const makeTargetReady = (
+    initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
+  ) =>
+    executeApiProxyPublicMvpPlan({
+      target: decision.target,
+      initialPreview,
+      getInstance,
+      startInstance: async (instance) => {
+        try {
+          return await startOrRecoverManagedInstance(instance);
+        } catch (error) {
+          throw new Error(actionErrorProxyMessage(error));
+        }
+      },
+      loadModel: async (instance, model) => {
+        const result = await requestLlamaModelAction(instance, "load", model);
+        if (!result.response.ok) {
+          throw new Error(llamaEndpointErrorMessage(result.response));
+        }
+      },
+      unloadModel: async (instance, model) => {
+        const result = await requestLlamaModelAction(instance, "unload", model);
+        if (!result.response.ok) {
+          throw new Error(llamaEndpointErrorMessage(result.response));
+        }
+      },
+      stopInstance: (instance) => supervisor.stop(instance.id),
+      saveSlot: async (instance, slotId, targetId) => {
+        const result = await requestLlamaSlotAction(instance, "save", slotId, {
+          filename: apiProxySlotFilename(targetId, slotId),
+        });
+        if (!result.response.ok) {
+          throw new Error(llamaEndpointErrorMessage(result.response));
+        }
+        addApiProxySavedSlotId(targetId, slotId);
+      },
+      restoreSlot: async (instance, slotId, targetId) => {
+        const result = await requestLlamaSlotAction(
+          instance,
+          "restore",
+          slotId,
+          { filename: apiProxySlotFilename(targetId, slotId) },
+        );
+        if (!result.response.ok) {
+          throw new Error(llamaEndpointErrorMessage(result.response));
+        }
+        removeApiProxySavedSlotId(targetId, slotId);
+      },
+      getPlanPreview: (targetId) =>
+        getApiProxyPlanPreview({
+          mode: "request",
+          requestedTargetId: targetId,
+        }),
+    });
+
+  const freshRequestPreview = () =>
+    getApiProxyPlanPreview({
+      mode: "request",
+      requestedTargetId: decision.target.id,
+    });
+
+  const respond = async (): Promise<Response> => {
+    const upstreamPath = adapter.upstreamPath(operation);
+    if (!upstreamPath) {
+      const response = adapter.notImplemented(route.request);
+      return c.json(response.body, response.status);
+    }
+
+    const execution = await makeTargetReady(decision.preview);
+    if (!execution.ok) {
+      const response = adapter.diagnosticError(
+        route.request,
+        execution.diagnostic,
+      );
+      return c.json(response.body, response.status);
+    }
+
+    const instances = listInstances();
+    const targetResolution = resolveApiProxyTarget(
+      decision.target,
+      instances,
+      listApiEndpointCatalog(instances),
     );
-    return c.json(response.body, response.status);
+    if (!targetResolution.enabled) {
+      const response = adapter.diagnosticError(route.request, {
+        status: 503,
+        code: "llama_manager_proxy_upstream_unavailable",
+        param: "model",
+        message:
+          targetResolution.error ??
+          `Proxy target ${decision.target.name} endpoint is unavailable.`,
+      });
+      return c.json(response.body, response.status);
+    }
+    const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
+    if (!auth.ok) {
+      const response = adapter.diagnosticError(route.request, {
+        status: 503,
+        code: "llama_manager_proxy_upstream_unavailable",
+        param: "model",
+        message: auth.error,
+      });
+      return c.json(response.body, response.status);
+    }
+
+    try {
+      return await forwardApiProxyRequest({
+        baseUrl: targetResolution.baseUrl,
+        method: c.req.method,
+        upstreamPath,
+        search: new URL(c.req.url).search,
+        headers: c.req.raw.headers,
+        body: route.request.body,
+        upstreamHeaders: auth.headers,
+        modelOverride: decision.target.model,
+        signal: c.req.raw.signal,
+      });
+    } catch (error) {
+      const response = adapter.diagnosticError(route.request, {
+        status: 502,
+        code: "llama_manager_proxy_upstream_error",
+        param: "model",
+        message: `Proxy target ${decision.target.name} failed to forward request: ${
+          (error as Error).message
+        }`,
+      });
+      return c.json(response.body, response.status);
+    }
+  };
+
+  const respondResumable = async (
+    heldLease: ResourceLease,
+    upstreamPath: string,
+    codec: NonNullable<typeof adapter.resumable>,
+  ): Promise<Response> => {
+    const instances = listInstances();
+    const targetResolution = resolveApiProxyTarget(
+      decision.target,
+      instances,
+      listApiEndpointCatalog(instances),
+    );
+    if (!targetResolution.enabled) {
+      const response = adapter.diagnosticError(route.request, {
+        status: 503,
+        code: "llama_manager_proxy_upstream_unavailable",
+        param: "model",
+        message:
+          targetResolution.error ??
+          `Proxy target ${decision.target.name} endpoint is unavailable.`,
+      });
+      return c.json(response.body, response.status);
+    }
+    const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
+    if (!auth.ok) {
+      const response = adapter.diagnosticError(route.request, {
+        status: 503,
+        code: "llama_manager_proxy_upstream_unavailable",
+        param: "model",
+        message: auth.error,
+      });
+      return c.json(response.body, response.status);
+    }
+
+    const url = apiProxyForwardUrl(
+      targetResolution.baseUrl,
+      upstreamPath,
+      new URL(c.req.url).search,
+    );
+    const state = createResumableBufferState();
+    const buildBody = (tail: string | null) => {
+      const built = codec.upstreamBody(route.request.body, tail) as Record<
+        string,
+        unknown
+      >;
+      return decision.target.model
+        ? { ...built, model: decision.target.model }
+        : built;
+    };
+
+    const final = await runResumableForward({
+      makeReady: async () => {
+        const execution = await makeTargetReady(await freshRequestPreview());
+        if (execution.ok) {
+          return { ok: true };
+        }
+        const response = adapter.diagnosticError(
+          route.request,
+          execution.diagnostic,
+        );
+        return {
+          ok: false,
+          final: {
+            status: response.status,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(response.body),
+          },
+        };
+      },
+      attempt: (tail) =>
+        runResumableUpstreamAttempt({
+          url,
+          method: c.req.method,
+          headers: auth.headers,
+          body: buildBody(tail),
+          codec,
+          state,
+          preemptSignal: heldLease.preemptSignal,
+          consumerSignal: c.req.raw.signal,
+        }),
+      state,
+      codec,
+      yieldLease: () => heldLease.yield(),
+      wantsStream: route.request.stream,
+      onError: (message) => {
+        const response = adapter.diagnosticError(route.request, {
+          status: 502,
+          code: "llama_manager_proxy_upstream_error",
+          param: "model",
+          message: `Proxy target ${decision.target.name} failed to forward request: ${message}`,
+        });
+        return {
+          status: response.status,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(response.body),
+        };
+      },
+    });
+
+    return new Response(final.body, {
+      status: final.status,
+      headers: final.headers,
+    });
+  };
+
+  if (!lease) {
+    return respond();
   }
 
-  const instances = listInstances();
-  const targetResolution = resolveApiProxyTarget(
-    decision.target,
-    instances,
-    listApiEndpointCatalog(instances),
-  );
-  if (!targetResolution.enabled) {
-    const response = adapter.diagnosticError(route.request, {
-      status: 503,
-      code: "llama_manager_proxy_upstream_unavailable",
-      param: "model",
-      message:
-        targetResolution.error ??
-        `Proxy target ${decision.target.name} endpoint is unavailable.`,
-    });
-    return c.json(response.body, response.status);
-  }
-  const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
-  if (!auth.ok) {
-    const response = adapter.diagnosticError(route.request, {
-      status: 503,
-      code: "llama_manager_proxy_upstream_unavailable",
-      param: "model",
-      message: auth.error,
-    });
-    return c.json(response.body, response.status);
+  const heldLease = lease;
+  const resumableUpstreamPath = adapter.upstreamPath(operation);
+  if (
+    decision.target.preemptible &&
+    adapter.resumable &&
+    operation.endpoint === "chat.completions" &&
+    resumableUpstreamPath
+  ) {
+    const codec = adapter.resumable;
+    try {
+      return await respondResumable(heldLease, resumableUpstreamPath, codec);
+    } finally {
+      heldLease.release();
+    }
   }
 
   try {
-    return await forwardApiProxyRequest({
-      baseUrl: targetResolution.baseUrl,
-      method: c.req.method,
-      upstreamPath,
-      search: new URL(c.req.url).search,
-      headers: c.req.raw.headers,
-      body: route.request.body,
-      upstreamHeaders: auth.headers,
-      modelOverride: decision.target.model,
-      signal: c.req.raw.signal,
-    });
+    return attachLeaseRelease(await respond(), heldLease);
   } catch (error) {
-    const response = adapter.diagnosticError(route.request, {
-      status: 502,
-      code: "llama_manager_proxy_upstream_error",
-      param: "model",
-      message: `Proxy target ${decision.target.name} failed to forward request: ${
-        (error as Error).message
-      }`,
-    });
-    return c.json(response.body, response.status);
+    heldLease.release();
+    throw error;
   }
 }
 

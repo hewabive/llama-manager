@@ -57,9 +57,35 @@ export type ApiProxyProtocolModelResolution =
       response: ApiProxyProtocolResponse;
     };
 
+export type ApiProxyResumableStreamChunk = {
+  text: string;
+  finishReason: string | null;
+  id: string | null;
+  model: string | null;
+};
+
+export type ApiProxyResumableFinalResponse = {
+  status: ContentfulStatusCode;
+  headers: Record<string, string>;
+  body: string;
+};
+
+export type ApiProxyResumableCodec = {
+  upstreamBody: (originalBody: unknown, tail: string | null) => unknown;
+  parseChunk: (data: string) => ApiProxyResumableStreamChunk | "done" | null;
+  finalResponse: (input: {
+    text: string;
+    id: string | null;
+    model: string | null;
+    finishReason: string | null;
+    wantsStream: boolean;
+  }) => ApiProxyResumableFinalResponse;
+};
+
 export type ApiProxyProtocolAdapter = {
   id: ApiProxyProtocolId;
   displayName: string;
+  resumable?: ApiProxyResumableCodec | undefined;
   modelIdFromBody: (body: unknown) => string | null;
   missingModel: (
     operation: ApiProxyProtocolOperation,

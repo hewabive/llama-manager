@@ -2,6 +2,7 @@ import type { ApiProxyModelRecord } from "@llama-manager/core";
 import type {
   ApiProxyProtocolAdapter,
   ApiProxyProtocolOperation,
+  ApiProxyResumableCodec,
 } from "./protocol.js";
 
 export type OpenAiErrorType =
@@ -66,9 +67,97 @@ const upstreamPaths: Record<string, string> = {
   embeddings: "/v1/embeddings",
 };
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export const openAiResumableCodec: ApiProxyResumableCodec = {
+  upstreamBody(originalBody, tail) {
+    const base = asObject(originalBody) ?? {};
+    const messages = Array.isArray(base.messages) ? [...base.messages] : [];
+    const next =
+      tail !== null
+        ? [...messages, { role: "assistant", content: tail }]
+        : messages;
+    return { ...base, messages: next, stream: true };
+  },
+  parseChunk(data) {
+    if (data === "[DONE]") {
+      return "done";
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return null;
+    }
+    const event = asObject(parsed);
+    if (!event) {
+      return null;
+    }
+    const choices = Array.isArray(event.choices) ? event.choices : [];
+    const choice = asObject(choices[0]);
+    const delta = asObject(choice?.delta);
+    const content = typeof delta?.content === "string" ? delta.content : "";
+    return {
+      text: content,
+      finishReason:
+        typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
+      id: typeof event.id === "string" ? event.id : null,
+      model: typeof event.model === "string" ? event.model : null,
+    };
+  },
+  finalResponse({ text, id, model, finishReason, wantsStream }) {
+    const created = Math.floor(Date.now() / 1000);
+    const resolvedId = id ?? "chatcmpl-llama-manager";
+    const resolvedModel = model ?? "unknown";
+    const finish = finishReason ?? "stop";
+
+    if (wantsStream) {
+      const chunk = (delta: unknown, reason: string | null) =>
+        `data: ${JSON.stringify({
+          id: resolvedId,
+          object: "chat.completion.chunk",
+          created,
+          model: resolvedModel,
+          choices: [{ index: 0, delta, finish_reason: reason }],
+        })}\n\n`;
+      return {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body:
+          chunk({ role: "assistant", content: text }, null) +
+          chunk({}, finish) +
+          "data: [DONE]\n\n",
+      };
+    }
+
+    return {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: resolvedId,
+        object: "chat.completion",
+        created,
+        model: resolvedModel,
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: text },
+            finish_reason: finish,
+          },
+        ],
+      }),
+    };
+  },
+};
+
 export const openAiProtocolAdapter: ApiProxyProtocolAdapter = {
   id: "openai",
   displayName: "OpenAI-compatible",
+  resumable: openAiResumableCodec,
   modelIdFromBody,
   missingModel: () => ({
     status: 400,

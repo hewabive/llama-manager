@@ -43,13 +43,14 @@ const instance: Instance = {
 
 function action(
   type: ApiProxySchedulerAction["type"],
+  slotId: number | null = null,
 ): ApiProxySchedulerAction {
   return {
     type,
     targetId: target.id,
     instanceId: instance.id,
     model: target.model,
-    slotId: null,
+    slotId,
     reason: "test",
   };
 }
@@ -81,6 +82,24 @@ function executorDefaults(
     loadModel?:
       | ((targetInstance: Instance, model: string) => Promise<void>)
       | undefined;
+    unloadModel?:
+      | ((targetInstance: Instance, model: string) => Promise<void>)
+      | undefined;
+    stopInstance?: ((targetInstance: Instance) => unknown) | undefined;
+    saveSlot?:
+      | ((
+          targetInstance: Instance,
+          slotId: number,
+          targetId: string,
+        ) => Promise<void>)
+      | undefined;
+    restoreSlot?:
+      | ((
+          targetInstance: Instance,
+          slotId: number,
+          targetId: string,
+        ) => Promise<void>)
+      | undefined;
   } = {},
 ) {
   const previews = [...(update.previews ?? [])];
@@ -90,6 +109,10 @@ function executorDefaults(
     getInstance: () => instance,
     startInstance: update.startInstance ?? (() => undefined),
     loadModel: update.loadModel ?? (async () => undefined),
+    unloadModel: update.unloadModel,
+    stopInstance: update.stopInstance,
+    saveSlot: update.saveSlot,
+    restoreSlot: update.restoreSlot,
     getPlanPreview: async () => previews.shift() ?? readyPreview,
     sleep: async () => undefined,
     options: {
@@ -152,7 +175,7 @@ test("executeApiProxyPublicMvpPlan loads model and waits until ready", async () 
   assert.deepEqual(loaded, ["chat"]);
 });
 
-test("executeApiProxyPublicMvpPlan rejects unsupported preemption actions", async () => {
+test("executeApiProxyPublicMvpPlan rejects unload-model without an unload callback", async () => {
   const result = await executeApiProxyPublicMvpPlan(
     executorDefaults({
       initialPreview: preview([
@@ -169,4 +192,99 @@ test("executeApiProxyPublicMvpPlan rejects unsupported preemption actions", asyn
       "llama_manager_proxy_action_unsupported",
     );
   }
+});
+
+test("executeApiProxyPublicMvpPlan unloads a blocker then reaches ready plan", async () => {
+  const unloaded: string[] = [];
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("unload-model"),
+        action("route-request"),
+      ]),
+      previews: [readyPreview],
+      unloadModel: async (_targetInstance, model) => {
+        unloaded.push(model);
+      },
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(unloaded, ["chat"]);
+});
+
+test("executeApiProxyPublicMvpPlan stops a blocker instance then reaches ready plan", async () => {
+  let stops = 0;
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("stop-instance"),
+        action("route-request"),
+      ]),
+      previews: [readyPreview],
+      stopInstance: () => {
+        stops += 1;
+      },
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(stops, 1);
+});
+
+test("executeApiProxyPublicMvpPlan rejects save-slot without a save callback", async () => {
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("save-slot", 0),
+        action("route-request"),
+      ]),
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(
+      result.diagnostic.code,
+      "llama_manager_proxy_action_unsupported",
+    );
+  }
+});
+
+test("executeApiProxyPublicMvpPlan saves a slot before reaching ready plan", async () => {
+  const saved: Array<{ slotId: number; targetId: string }> = [];
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("save-slot", 0),
+        action("route-request"),
+      ]),
+      previews: [readyPreview],
+      saveSlot: async (_targetInstance, slotId, targetId) => {
+        saved.push({ slotId, targetId });
+      },
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(saved, [{ slotId: 0, targetId: target.id }]);
+});
+
+test("executeApiProxyPublicMvpPlan restores a slot before reaching ready plan", async () => {
+  const restored: number[] = [];
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("restore-slot", 2),
+        action("route-request"),
+      ]),
+      previews: [readyPreview],
+      restoreSlot: async (_targetInstance, slotId) => {
+        restored.push(slotId);
+      },
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(restored, [2]);
 });

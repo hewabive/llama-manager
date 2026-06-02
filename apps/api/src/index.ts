@@ -5,7 +5,7 @@ import { initArgumentDefaults } from "./arguments/defaults-repository.js";
 import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
 import { migrate } from "./db/index.js";
-import { app } from "./http.js";
+import { app, startApiProxyIdleMaintenanceLoop } from "./http.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
 import { pruneProcessRunHistory } from "./process/runs-repository.js";
@@ -44,6 +44,11 @@ const server = serve(
     );
   },
 );
+
+const stopApiProxyIdleMaintenance = startApiProxyIdleMaintenanceLoop({
+  onError: (error) =>
+    logger.error({ error }, "api proxy idle maintenance pass failed"),
+});
 
 type ForceClosableServer = typeof server & {
   closeAllConnections?: () => void;
@@ -96,6 +101,7 @@ async function shutdown(signal: NodeJS.Signals) {
   logger.info({ signal }, "llama-manager api shutting down");
 
   try {
+    stopApiProxyIdleMaintenance();
     await closeServer();
     logger.info("http server closed");
 

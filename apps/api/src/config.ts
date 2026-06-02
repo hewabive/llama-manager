@@ -18,7 +18,10 @@ export const config = {
   rootDir,
   dataDir,
   argumentDefaultsFile: resolve(dataDir, "argument-defaults.json"),
-  argumentDefaultsSeedFile: resolve(defaultRootDir, "config/argument-defaults.json"),
+  argumentDefaultsSeedFile: resolve(
+    defaultRootDir,
+    "config/argument-defaults.json",
+  ),
   settingsFile: resolve(dataDir, "settings.json"),
   settingsSeedFile: resolve(defaultRootDir, "config/settings.json"),
   presetsDir: resolve(dataDir, "presets"),
@@ -40,6 +43,11 @@ export const config = {
     stopManagedOnExit:
       process.env.LLAMA_MANAGER_STOP_MANAGED_ON_EXIT !== "false",
     timeoutMs: Number(process.env.LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS ?? 10_000),
+  },
+  proxy: {
+    idleMaintenanceIntervalMs: Number(
+      process.env.LLAMA_MANAGER_PROXY_IDLE_INTERVAL_MS ?? 30_000,
+    ),
   },
   auth: {
     password: process.env.LLAMA_MANAGER_ADMIN_PASSWORD ?? null,

@@ -12,6 +12,10 @@ const supportedActionTypes = new Set<ApiProxySchedulerAction["type"]>([
   "wait-instance-ready",
   "load-model",
   "wait-model-ready",
+  "unload-model",
+  "stop-instance",
+  "save-slot",
+  "restore-slot",
   "route-request",
 ]);
 
@@ -49,6 +53,18 @@ export type ApiProxyPublicExecutorInput = {
   getInstance: (instanceId: string) => Instance | null;
   startInstance: (instance: Instance) => unknown | Promise<unknown>;
   loadModel: (instance: Instance, model: string) => Promise<void>;
+  unloadModel?:
+    | ((instance: Instance, model: string) => Promise<void>)
+    | undefined;
+  stopInstance?:
+    | ((instance: Instance) => unknown | Promise<unknown>)
+    | undefined;
+  saveSlot?:
+    | ((instance: Instance, slotId: number, targetId: string) => Promise<void>)
+    | undefined;
+  restoreSlot?:
+    | ((instance: Instance, slotId: number, targetId: string) => Promise<void>)
+    | undefined;
   getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
   sleep?: ((ms: number) => Promise<void>) | undefined;
   options?: Partial<typeof defaultOptions> | undefined;
@@ -221,6 +237,34 @@ export async function executeApiProxyPublicMvpPlan(
             return { ok: false, diagnostic: unsupportedDiagnostic(action) };
           }
           await input.loadModel(instance, action.model);
+          preview = await input.getPlanPreview(input.target.id);
+          break;
+        case "unload-model":
+          if (!input.unloadModel || !action.model) {
+            return { ok: false, diagnostic: unsupportedDiagnostic(action) };
+          }
+          await input.unloadModel(instance, action.model);
+          preview = await input.getPlanPreview(input.target.id);
+          break;
+        case "stop-instance":
+          if (!input.stopInstance) {
+            return { ok: false, diagnostic: unsupportedDiagnostic(action) };
+          }
+          await input.stopInstance(instance);
+          preview = await input.getPlanPreview(input.target.id);
+          break;
+        case "save-slot":
+          if (!input.saveSlot || action.slotId === null) {
+            return { ok: false, diagnostic: unsupportedDiagnostic(action) };
+          }
+          await input.saveSlot(instance, action.slotId, action.targetId);
+          preview = await input.getPlanPreview(input.target.id);
+          break;
+        case "restore-slot":
+          if (!input.restoreSlot || action.slotId === null) {
+            return { ok: false, diagnostic: unsupportedDiagnostic(action) };
+          }
+          await input.restoreSlot(instance, action.slotId, action.targetId);
           preview = await input.getPlanPreview(input.target.id);
           break;
         case "wait-model-ready": {
