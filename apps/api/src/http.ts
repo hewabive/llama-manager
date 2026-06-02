@@ -66,6 +66,7 @@ import {
 } from "./arguments/defaults-repository.js";
 import { readArgumentEngineeringDoc } from "./arguments/docs.js";
 import { getLlamaArgumentDocsSyncReport } from "./arguments/docs-sync.js";
+import { generatedHelpChangedLines } from "./arguments/docs-source.js";
 import {
   deleteArgumentHelpOverride,
   listArgumentHelpOverrides,
@@ -1237,6 +1238,14 @@ app.get("/api/llama-args/docs-sync", (c) => {
     return c.json({
       data: getLlamaArgumentDocsSyncReport(),
     });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.get("/api/llama-args/docs-sync/diff", (c) => {
+  try {
+    return c.json({ data: { diff: generatedHelpChangedLines() } });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }

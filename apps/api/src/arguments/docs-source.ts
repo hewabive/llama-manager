@@ -298,3 +298,12 @@ export function generatedHelpDiff() {
     body || "No generated help block changes.",
   ].join("\n");
 }
+
+export function generatedHelpChangedLines() {
+  const stored = readStoredGeneratedHelpBlock() ?? "";
+  const current = readCurrentGeneratedHelpBlock();
+  return diffLines(stored.split("\n"), current.split("\n"))
+    .filter((op) => op.kind !== "equal")
+    .map((op) => (op.kind === "add" ? `+${op.line}` : `-${op.line}`))
+    .join("\n");
+}

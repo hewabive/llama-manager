@@ -1172,6 +1172,10 @@ export const LlamaArgumentDocsSyncReportSchema = z.object({
   docsDirectory: z.string(),
 });
 
+export const LlamaArgumentHelpDiffSchema = z.object({
+  diff: z.string(),
+});
+
 export const NetworkInterfaceAddressSchema = z.object({
   name: z.string(),
   address: z.string(),
@@ -1546,6 +1550,7 @@ export type LlamaArgumentHelpSourceSync = z.infer<
 export type LlamaArgumentDocsSyncReport = z.infer<
   typeof LlamaArgumentDocsSyncReportSchema
 >;
+export type LlamaArgumentHelpDiff = z.infer<typeof LlamaArgumentHelpDiffSchema>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;

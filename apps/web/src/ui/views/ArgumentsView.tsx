@@ -36,6 +36,7 @@ import {
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArgumentDocsSyncReport,
+  getLlamaArgumentHelpDiff,
   getLlamaArgumentReference,
   updateLlamaArgumentDefaults,
   updateLlamaArgumentOverride,
@@ -232,6 +233,17 @@ function SourceSyncPanel(props: {
   error: Error | null;
 }) {
   const report = props.report;
+  const helpChanged = report?.helpSource.inSync === false;
+  const diffQuery = useQuery({
+    queryKey: ["llama-arg-help-diff"],
+    queryFn: getLlamaArgumentHelpDiff,
+    enabled: helpChanged,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   if (props.error) {
     return (
       <Alert color="red" icon={<AlertTriangle size={16} />} variant="light">
@@ -253,7 +265,6 @@ function SourceSyncPanel(props: {
     report.helpSource.inSync === null ||
     Boolean(report.helpSource.current.error) ||
     Boolean(report.helpSource.stored.error);
-  const helpChanged = report.helpSource.inSync === false;
   const sourceDirty = report.source.dirty === true;
 
   if (!sourceUnavailable && !helpUnavailable && !helpChanged && !sourceDirty) {
@@ -297,11 +308,19 @@ function SourceSyncPanel(props: {
           icon={<AlertTriangle size={16} />}
           variant="light"
         >
-          Справка по аргументам может не соответствовать текущей версии
-          llama.cpp. Если вы недавно обновляли llama.cpp или llama-manager,
-          дождитесь завершения обновления и перезагрузите страницу. Спорные
-          параметры сверяйте через <Code>llama-server --help</Code> текущего
-          бинарника.
+          <Text size="sm">
+            Справка по аргументам не соответствует текущей версии llama.cpp.
+          </Text>
+          {diffQuery.data?.data.diff && (
+            <ScrollArea.Autosize mah={360} mt="xs">
+              <Code block>{diffQuery.data.data.diff}</Code>
+            </ScrollArea.Autosize>
+          )}
+          {diffQuery.isError && (
+            <Text mt={4} size="sm">
+              Не удалось получить diff: {(diffQuery.error as Error).message}
+            </Text>
+          )}
         </Alert>
       )}
 

@@ -45,6 +45,7 @@ import type {
   LlamaArgumentCatalog,
   LlamaArgumentDefaults,
   LlamaArgumentDocsSyncReport,
+  LlamaArgumentHelpDiff,
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
@@ -317,12 +318,9 @@ export async function updateApiProxyPipeline(
 }
 
 export async function deleteApiProxyPipeline(id: string) {
-  return request<{ data: { deleted: boolean } }>(
-    `/api/proxy/pipelines/${id}`,
-    {
-      method: "DELETE",
-    },
-  );
+  return request<{ data: { deleted: boolean } }>(`/api/proxy/pipelines/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function createApiProxyTarget(input: ApiProxyTargetCreate) {
@@ -410,6 +408,12 @@ export async function getLlamaArgumentDoc(primaryName: string) {
 export async function getLlamaArgumentDocsSyncReport() {
   return request<{ data: LlamaArgumentDocsSyncReport }>(
     "/api/llama-args/docs-sync",
+  );
+}
+
+export async function getLlamaArgumentHelpDiff() {
+  return request<{ data: LlamaArgumentHelpDiff }>(
+    "/api/llama-args/docs-sync/diff",
   );
 }
 
