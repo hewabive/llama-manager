@@ -64,7 +64,25 @@ export function ArgumentValueControl(props: {
   const ariaLabel = props.ariaLabel ?? `${props.option.primaryName} value`;
 
   if (props.option.valueType === "flag") {
-    return null;
+    if (scope !== "preset") {
+      return null;
+    }
+    return (
+      <Select
+        aria-label={ariaLabel}
+        data={[
+          { value: "true", label: "true" },
+          { value: "false", label: "false" },
+        ]}
+        value={props.value || "true"}
+        allowDeselect={false}
+        onChange={(value) => props.onChange(value ?? "true")}
+        disabled={disabled}
+        style={props.style ?? { flex: 1, minWidth: 110 }}
+        w={props.w}
+        size={size}
+      />
+    );
   }
 
   if (props.option.valueType === "boolean") {

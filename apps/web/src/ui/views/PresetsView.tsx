@@ -20,7 +20,6 @@ import {
   Select,
   SimpleGrid,
   Stack,
-  Switch,
   Text,
   TextInput,
   Title,
@@ -41,10 +40,10 @@ import {
   savePreset,
   scanModels,
 } from "../../api/client";
+import { ArgumentPicker } from "../components/ArgumentPicker";
+import { ArgumentRow } from "../components/ArgumentRow";
 import { PathPickerInput } from "../components/PathPickerInput";
 import {
-  PresetArgInfo,
-  PresetArgValueControl,
   buildPresetArgOptionMap,
   isSelectablePresetArgument,
   presetKeyFromArgument,
@@ -116,8 +115,6 @@ function PresetArgsEditor(props: {
   onChange: (next: Record<string, string>) => void;
 }) {
   const catalog = useArgsCatalog();
-  const [selected, setSelected] = useState<string | null>(null);
-  const [pickerKey, setPickerKey] = useState(0);
   const presetDefaults = props.presetDefaults ?? noPresetDefaults;
 
   const overlay = useMemo(() => {
@@ -191,32 +188,10 @@ function PresetArgsEditor(props: {
           </ActionIcon>
         </Tooltip>
       </Group>
-      <Select
-        key={pickerKey}
-        label="Add argument"
-        placeholder={
-          catalog.isError
-            ? "Unable to read --help from llama-server binary"
-            : "Search llama-server args"
-        }
-        searchable
-        clearable
-        value={selected}
-        onChange={(value) => {
-          if (!value) {
-            setSelected(null);
-            return;
-          }
-          const option = catalog.knownArgByPresetKey.get(value);
-          if (option) {
-            setValue(
-              presetKeyFromArgument(option),
-              defaultArgumentValue(option, "preset"),
-            );
-          }
-          setSelected(null);
-          setPickerKey((key) => key + 1);
-        }}
+      <ArgumentPicker
+        isError={catalog.isError}
+        isFetching={catalog.isFetching}
+        errorPlaceholder="Unable to read --help from llama-server binary"
         data={catalog.selectablePresetArgs.map((option) => {
           const key = presetKeyFromArgument(option);
           return {
@@ -226,68 +201,36 @@ function PresetArgsEditor(props: {
               presentKeys.has(key) || !option.compatibility.presentInBinary,
           };
         })}
-        nothingFoundMessage={
-          catalog.isFetching ? "Loading..." : "No arguments found"
-        }
-        disabled={catalog.isError}
+        onPick={(value) => {
+          const option = catalog.knownArgByPresetKey.get(value);
+          if (option) {
+            setValue(
+              presetKeyFromArgument(option),
+              defaultArgumentValue(option, "preset"),
+            );
+          }
+        }}
       />
       {slots.length === 0 && (
         <Text c="dimmed" size="xs">
           {props.emptyHint ?? "No arguments yet."}
         </Text>
       )}
-      {slots.map((slot) => {
-        const option = catalog.knownArgByPresetKey.get(slot.key) ?? null;
-        return (
-          <Group key={slot.key} gap="xs" wrap="nowrap" align="center">
-            {slot.isDefault ? (
-              <Tooltip
-                label={
-                  slot.active ? "Written to file" : "Default — off, not written"
-                }
-              >
-                <Switch
-                  aria-label={`${slot.key} enabled`}
-                  checked={slot.active}
-                  onChange={(event) =>
-                    setActive(slot.key, slot.value, event.currentTarget.checked)
-                  }
-                />
-              </Tooltip>
-            ) : (
-              <Tooltip label="Remove">
-                <ActionIcon
-                  aria-label={`Remove ${slot.key}`}
-                  variant="subtle"
-                  color="red"
-                  onClick={() => remove(slot.key)}
-                >
-                  <Trash2 size={16} />
-                </ActionIcon>
-              </Tooltip>
-            )}
-            <Text
-              size="sm"
-              ff="monospace"
-              w={200}
-              style={{ flexShrink: 0 }}
-              {...(slot.active ? {} : { c: "dimmed" })}
-              truncate
-            >
-              {slot.key}
-              {slot.isDefault ? " · default" : ""}
-            </Text>
-            <PresetArgValueControl
-              name={slot.key}
-              option={option}
-              value={slot.value}
-              disabled={slot.isDefault && !slot.active}
-              onChange={(value) => setValue(slot.key, value)}
-            />
-            {option && <PresetArgInfo option={option} />}
-          </Group>
-        );
-      })}
+      {slots.map((slot) => (
+        <ArgumentRow
+          key={slot.key}
+          keyLabel={slot.key}
+          option={catalog.knownArgByPresetKey.get(slot.key) ?? null}
+          value={slot.value}
+          scope="preset"
+          isDefault={slot.isDefault}
+          active={slot.active}
+          presetKey={slot.key}
+          onToggle={(active) => setActive(slot.key, slot.value, active)}
+          onRemove={() => remove(slot.key)}
+          onValueChange={(value) => setValue(slot.key, value)}
+        />
+      ))}
     </Stack>
   );
 }
@@ -442,7 +385,9 @@ function PresetModelCard(props: {
                   <Badge variant="outline">
                     {model.metadata.quantization ?? "unknown quant"}
                   </Badge>
-                  <Badge variant="outline">{formatBytes(model.sizeBytes)}</Badge>
+                  <Badge variant="outline">
+                    {formatBytes(model.sizeBytes)}
+                  </Badge>
                 </>
               ) : (
                 <Badge variant="outline" color="yellow">
@@ -450,7 +395,9 @@ function PresetModelCard(props: {
                 </Badge>
               )}
               {entry && (
-                <Badge variant="outline">{presetArgumentCount(entry)} args</Badge>
+                <Badge variant="outline">
+                  {presetArgumentCount(entry)} args
+                </Badge>
               )}
             </Group>
           </Box>
@@ -528,9 +475,7 @@ type SaveState = "idle" | "saving" | "saved" | "error" | "conflict";
 
 export function PresetsView() {
   const queryClient = useQueryClient();
-  const [selectedName, setSelectedName] = useState<string | null>(
-    null,
-  );
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const [presetModelSearch, setPresetModelSearch] = useState("");
   const [selectedPresetEntryId, setSelectedPresetEntryId] = useState<
     string | null
@@ -866,9 +811,7 @@ export function PresetsView() {
           <Select
             label="Preset"
             placeholder={
-              presetsQuery.isFetching
-                ? "Loading presets..."
-                : "Select a preset"
+              presetsQuery.isFetching ? "Loading presets..." : "Select a preset"
             }
             searchable
             value={selectedName}

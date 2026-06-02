@@ -3,28 +3,14 @@ import type {
   LlamaArgumentDefault,
   LlamaArgumentOption,
 } from "@llama-manager/core";
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Button,
-  Group,
-  Popover,
-  Select,
-  Switch,
-  Text,
-  TextInput,
-  Tooltip,
-} from "@mantine/core";
-import { ExternalLink, Info, Trash2 } from "lucide-react";
+import { ActionIcon, Group, Select, TextInput, Tooltip } from "@mantine/core";
+import { Trash2 } from "lucide-react";
 
 import { createUiId } from "../utils/id";
 import {
   argumentAcceptsAutoAll,
   defaultArgumentValue,
 } from "../utils/argument-defaults";
-import { argumentHelpHref } from "../utils/argument-links";
-import { ArgumentValueControl } from "./ArgumentValueControl";
 
 export type ArgRow = {
   id: string;
@@ -276,153 +262,6 @@ export function replaceCanonicalRow(
     ),
     rowFromArgument(option),
   ];
-}
-
-export function SmartArgRow(props: {
-  row: ArgRow;
-  index: number;
-  option: LlamaArgumentOption;
-  canRemove: boolean;
-  onChange: (row: ArgRow) => void;
-  onRemove: () => void;
-}) {
-  const enabled = props.row.valueType !== "null";
-  const rowValueType = valueTypeFromArgument(props.option);
-  const canOpenEngineeringHelp = Boolean(props.option.doc.path);
-
-  function updateValue(value: string) {
-    props.onChange({
-      ...props.row,
-      key: props.option.primaryName,
-      value,
-      valueType: enabled ? rowValueType : "null",
-    });
-  }
-
-  function setEnabled(nextEnabled: boolean) {
-    props.onChange({
-      ...props.row,
-      key: props.option.primaryName,
-      value: nextEnabled
-        ? props.row.value || defaultValueForArgument(props.option)
-        : props.row.value,
-      valueType: nextEnabled ? rowValueType : "null",
-    });
-  }
-
-  function valueControl() {
-    if (!enabled || props.option.valueType === "flag") {
-      return null;
-    }
-
-    return (
-      <ArgumentValueControl
-        option={props.option}
-        ariaLabel={`${props.option.primaryName} value`}
-        value={props.row.value}
-        onChange={updateValue}
-        style={{ flex: 1, minWidth: 150 }}
-        size="xs"
-      />
-    );
-  }
-
-  return (
-    <Box py={6}>
-      <Group gap="xs" align="center" wrap="wrap">
-        <Box style={{ minWidth: 150, flex: "1 1 180px" }}>
-          <Group gap={6} wrap="nowrap">
-            <Text fw={600} size="sm" lineClamp={1}>
-              {props.option.primaryName}
-            </Text>
-            {props.option.deprecated && (
-              <Badge color="red" variant="outline" size="xs">
-                deprecated
-              </Badge>
-            )}
-          </Group>
-        </Box>
-
-        {enabled && props.option.valueType !== "flag" && valueControl()}
-
-        <Group gap={4} wrap="nowrap" ml="auto">
-          <Tooltip label={enabled ? "Argument enabled" : "Argument disabled"}>
-            <Switch
-              aria-label={`${props.option.primaryName} enabled`}
-              size="sm"
-              checked={enabled}
-              onChange={(event) => setEnabled(event.currentTarget.checked)}
-            />
-          </Tooltip>
-          <Popover width={340} position="bottom-end" withArrow shadow="md">
-            <Popover.Target>
-              <ActionIcon
-                aria-label={`${props.option.primaryName} help`}
-                variant="subtle"
-                color="gray"
-              >
-                <Info size={15} />
-              </ActionIcon>
-            </Popover.Target>
-            <Popover.Dropdown>
-              <Group gap="xs" mb={4}>
-                <Badge variant="light" size="xs">
-                  {props.option.category}
-                </Badge>
-                <Badge variant="outline" size="xs">
-                  {props.option.valueType}
-                </Badge>
-                {!props.option.compatibility.presentInBinary && (
-                  <Badge color="red" variant="light" size="xs">
-                    not in binary
-                  </Badge>
-                )}
-              </Group>
-              <Text size="sm">{props.option.helpRu}</Text>
-              {props.option.allowedValues.length > 0 && (
-                <Text c="dimmed" size="xs" mt={6}>
-                  Values: {props.option.allowedValues.join(", ")}
-                </Text>
-              )}
-              {props.option.notes && (
-                <Text c="dimmed" size="xs" mt={6}>
-                  Notes: {props.option.notes}
-                </Text>
-              )}
-              <Text c="dimmed" size="xs" mt={6}>
-                {props.option.names.join(", ")}
-              </Text>
-              {canOpenEngineeringHelp && (
-                <Button
-                  component="a"
-                  href={argumentHelpHref(props.option.primaryName)}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="light"
-                  size="xs"
-                  mt="xs"
-                  leftSection={<ExternalLink size={14} />}
-                >
-                  Engineering help
-                </Button>
-              )}
-            </Popover.Dropdown>
-          </Popover>
-          <Tooltip label="Remove">
-            <ActionIcon
-              aria-label="Remove argument"
-              variant="subtle"
-              color="red"
-              disabled={!props.canRemove}
-              onClick={props.onRemove}
-            >
-              <Trash2 size={15} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </Group>
-    </Box>
-  );
 }
 
 export function RawArgRow(props: {

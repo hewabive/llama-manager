@@ -1,0 +1,102 @@
+import type { LlamaArgumentOption } from "@llama-manager/core";
+import {
+  ActionIcon,
+  Badge,
+  Group,
+  Switch,
+  Text,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
+import { Trash2 } from "lucide-react";
+
+import { ArgumentInfo } from "./ArgumentInfo";
+import { ArgumentValueControl } from "./ArgumentValueControl";
+
+type ArgumentScope = "instance" | "preset";
+
+export function ArgumentRow(props: {
+  keyLabel: string;
+  option: LlamaArgumentOption | null;
+  value: string;
+  scope: ArgumentScope;
+  isDefault: boolean;
+  active: boolean;
+  presetKey?: string;
+  onToggle: (active: boolean) => void;
+  onRemove: () => void;
+  onValueChange: (value: string) => void;
+}) {
+  const disabled = props.isDefault && !props.active;
+
+  return (
+    <Group gap="xs" wrap="nowrap" align="center">
+      {props.isDefault ? (
+        <Tooltip
+          label={props.active ? "Enabled" : "Default — off, not applied"}
+        >
+          <Switch
+            aria-label={`${props.keyLabel} enabled`}
+            checked={props.active}
+            onChange={(event) => props.onToggle(event.currentTarget.checked)}
+          />
+        </Tooltip>
+      ) : (
+        <Tooltip label="Remove">
+          <ActionIcon
+            aria-label={`Remove ${props.keyLabel}`}
+            variant="subtle"
+            color="red"
+            onClick={props.onRemove}
+          >
+            <Trash2 size={16} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+      <Group gap={6} wrap="nowrap" w={210} style={{ flexShrink: 0 }}>
+        <Text
+          size="sm"
+          ff="monospace"
+          truncate
+          {...(disabled ? { c: "dimmed" } : {})}
+        >
+          {props.keyLabel}
+          {props.isDefault ? " · default" : ""}
+        </Text>
+        {props.option?.deprecated && (
+          <Badge color="red" variant="outline" size="xs">
+            deprecated
+          </Badge>
+        )}
+      </Group>
+      {props.option ? (
+        <ArgumentValueControl
+          option={props.option}
+          scope={props.scope}
+          value={props.value}
+          disabled={disabled}
+          onChange={props.onValueChange}
+          style={{ flex: 1, minWidth: 150 }}
+        />
+      ) : (
+        <TextInput
+          aria-label={`${props.keyLabel} value`}
+          value={props.value}
+          disabled={disabled}
+          onChange={(event) => props.onValueChange(event.currentTarget.value)}
+          style={{ flex: 1, minWidth: 150 }}
+          size="xs"
+        />
+      )}
+      {props.option && (
+        <ArgumentInfo
+          option={props.option}
+          scope={props.scope}
+          {...(props.presetKey !== undefined
+            ? { presetKey: props.presetKey }
+            : {})}
+        />
+      )}
+    </Group>
+  );
+}

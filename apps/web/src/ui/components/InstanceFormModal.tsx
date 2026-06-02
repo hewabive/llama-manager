@@ -56,20 +56,23 @@ import {
   modelTitle,
   pathBaseName,
 } from "../utils/models";
+import { ArgumentPicker } from "./ArgumentPicker";
+import { ArgumentRow } from "./ArgumentRow";
 import { HostPicker } from "./HostPicker";
 import {
   type ArgRow,
   RawArgRow,
-  SmartArgRow,
   argsToRows,
   createArgRow,
   defaultRows,
+  defaultValueForArgument,
   removeArgRow,
   removeArgRows,
   replaceCanonicalRow,
   rowValue,
   rowsToArgsWithCatalog,
   upsertArgRow,
+  valueTypeFromArgument,
   canonicalOptionForRow,
 } from "./InstanceArgumentRows";
 import { PathPickerInput } from "./PathPickerInput";
@@ -192,8 +195,6 @@ export function InstanceFormModal(props: {
   const [initializedFormKey, setInitializedFormKey] = useState<string | null>(
     null,
   );
-  const [selectedKnownArg, setSelectedKnownArg] = useState<string | null>(null);
-  const [argumentPickerKey, setArgumentPickerKey] = useState(0);
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
   const [showRawArgs, setShowRawArgs] = useState(false);
   const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
@@ -290,6 +291,14 @@ export function InstanceFormModal(props: {
     }
     return map;
   }, [knownArgs]);
+  const instanceDefaultKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of instanceDefaultArgs) {
+      const option = knownArgByName.get(item.key);
+      set.add(option ? option.primaryName : item.key);
+    }
+    return set;
+  }, [instanceDefaultArgs, knownArgByName]);
   const visibleKnownArgs = knownArgs.filter(
     (option) =>
       isSelectableInstanceArgument(option) &&
@@ -450,8 +459,6 @@ export function InstanceFormModal(props: {
         defaultRows(modelPath ?? undefined, port, instanceDefaultArgs),
       );
     }
-    setSelectedKnownArg(null);
-    setArgumentPickerKey((key) => key + 1);
   }, [
     argumentDefaultsQuery.isLoading,
     instanceDefaultArgs,
@@ -493,8 +500,7 @@ export function InstanceFormModal(props: {
         ...(props.instance?.id ? { id: props.instance.id } : {}),
         name: form.values.name,
         binaryPathRefId: selectedBinaryPathRefId,
-        modelsPresetName:
-          launchMode === "router" ? selectedPresetName : null,
+        modelsPresetName: launchMode === "router" ? selectedPresetName : null,
         args,
         env,
       };
@@ -836,12 +842,13 @@ export function InstanceFormModal(props: {
             data={binaryCatalogOptions}
             nothingFoundMessage="No binaries in catalog"
           />
-          {!pathCatalogQuery.isFetching && binaryCatalogOptions.length === 0 && (
-            <Text c="yellow" size="xs">
-              No binaries in the catalog yet. Add one on the Path catalog page or
-              build llama.cpp first.
-            </Text>
-          )}
+          {!pathCatalogQuery.isFetching &&
+            binaryCatalogOptions.length === 0 && (
+              <Text c="yellow" size="xs">
+                No binaries in the catalog yet. Add one on the Path catalog page
+                or build llama.cpp first.
+              </Text>
+            )}
           <Paper withBorder p="sm" radius="sm">
             <Stack gap="xs">
               <SegmentedControl
@@ -989,42 +996,24 @@ export function InstanceFormModal(props: {
               </Group>
             </Group>
             <Group align="flex-end" gap="xs" wrap="nowrap">
-              <Select
-                key={argumentPickerKey}
-                label="Add argument"
-                placeholder={
-                  argsCatalogQuery.isError
-                    ? "Unable to read --help from this binary"
-                    : "Search llama-server args"
-                }
-                searchable
-                clearable
-                value={selectedKnownArg}
-                onChange={(value) => {
-                  if (!value) {
-                    setSelectedKnownArg(null);
-                    return;
-                  }
-                  const option = knownArgByName.get(value);
-                  if (option) {
-                    setArgRows((rows) => replaceCanonicalRow(rows, option));
-                  }
-                  setSelectedKnownArg(null);
-                  setArgumentPickerKey((key) => key + 1);
-                }}
-                data={visibleKnownArgs.map((option) => ({
-                  value: option.primaryName,
-                  label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
-                  disabled: !option.compatibility.presentInBinary,
-                }))}
-                nothingFoundMessage={
-                  argsCatalogQuery.isFetching
-                    ? "Loading..."
-                    : "No arguments found"
-                }
-                disabled={argsCatalogQuery.isError}
-                style={{ flex: 1 }}
-              />
+              <Box style={{ flex: 1 }}>
+                <ArgumentPicker
+                  isError={argsCatalogQuery.isError}
+                  isFetching={argsCatalogQuery.isFetching}
+                  errorPlaceholder="Unable to read --help from this binary"
+                  data={visibleKnownArgs.map((option) => ({
+                    value: option.primaryName,
+                    label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
+                    disabled: !option.compatibility.presentInBinary,
+                  }))}
+                  onPick={(value) => {
+                    const option = knownArgByName.get(value);
+                    if (option) {
+                      setArgRows((rows) => replaceCanonicalRow(rows, option));
+                    }
+                  }}
+                />
+              </Box>
               <Tooltip label={argsCatalogTooltip}>
                 <ActionIcon
                   aria-label="Reload arguments from binary help"
@@ -1059,15 +1048,38 @@ export function InstanceFormModal(props: {
                 setArgRows((rows) => rows.filter((item) => item.id !== row.id));
 
               if (option && !showRawArgs) {
+                const isDefault = instanceDefaultKeys.has(option.primaryName);
                 return (
-                  <SmartArgRow
+                  <ArgumentRow
                     key={row.id}
-                    row={row}
-                    index={index}
+                    keyLabel={option.primaryName}
                     option={option}
-                    canRemove
-                    onChange={onChange}
+                    value={row.value}
+                    scope="instance"
+                    isDefault={isDefault}
+                    active={row.valueType !== "null"}
+                    onToggle={(nextActive) =>
+                      onChange({
+                        ...row,
+                        key: option.primaryName,
+                        value:
+                          nextActive && !row.value
+                            ? defaultValueForArgument(option)
+                            : row.value,
+                        valueType: nextActive
+                          ? valueTypeFromArgument(option)
+                          : "null",
+                      })
+                    }
                     onRemove={onRemove}
+                    onValueChange={(value) =>
+                      onChange({
+                        ...row,
+                        key: option.primaryName,
+                        value,
+                        valueType: valueTypeFromArgument(option),
+                      })
+                    }
                   />
                 );
               }
