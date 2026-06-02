@@ -105,6 +105,7 @@ import {
 import {
   getLlamaSourceSettings,
   getLlamaSourceStatus,
+  pullLlamaSource,
   saveLlamaSourceSettings,
 } from "./llama/source-repository.js";
 import {
@@ -1282,6 +1283,10 @@ app.put("/api/llama-source/settings", async (c) => {
 
 app.get("/api/llama-source/status", (c) => {
   return c.json({ data: getLlamaSourceStatus() });
+});
+
+app.post("/api/llama-source/pull", (c) => {
+  return c.json({ data: pullLlamaSource() });
 });
 
 app.get("/api/build/settings", (c) => {

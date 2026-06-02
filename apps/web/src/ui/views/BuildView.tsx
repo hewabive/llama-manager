@@ -22,12 +22,11 @@ import {
   Text,
   Textarea,
   TextInput,
-  Title,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Hammer, Save, X } from "lucide-react";
+import { AlertTriangle, DownloadCloud, Hammer, Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -36,6 +35,7 @@ import {
   getBuildSettings,
   getLlamaSourceStatus,
   listBuildJobs,
+  pullLlamaSource,
   startBuildJob,
   updateBuildSettings,
 } from "../../api/client";
@@ -195,6 +195,10 @@ export function BuildView() {
   const [runConfigure, setRunConfigure] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
   const [startConfirmOpened, setStartConfirmOpened] = useState(false);
+  const [pullLog, setPullLog] = useState<{
+    status: "running" | "succeeded" | "failed";
+    lines: string[];
+  } | null>(null);
 
   const settingsQuery = useQuery({
     queryKey: ["build-settings"],
@@ -321,6 +325,7 @@ export function BuildView() {
       }),
     onSuccess: async (result) => {
       setStartConfirmOpened(false);
+      setPullLog(null);
       await queryClient.invalidateQueries({ queryKey: ["build-settings"] });
       await queryClient.invalidateQueries({
         queryKey: ["llama-source-status"],
@@ -336,6 +341,29 @@ export function BuildView() {
         color: "red",
         title: "Build start failed",
         message: (error as Error).message,
+      });
+    },
+  });
+
+  const pullMutation = useMutation({
+    mutationFn: () => pullLlamaSource(),
+    onMutate: () => {
+      setPullLog({ status: "running", lines: ["$ git pull --ff-only"] });
+    },
+    onSuccess: async (result) => {
+      const output = result.data.output.split(/\r?\n/);
+      setPullLog({
+        status: result.data.ok ? "succeeded" : "failed",
+        lines: ["$ git pull --ff-only", ...output],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["llama-source-status"],
+      });
+    },
+    onError: (error) => {
+      setPullLog({
+        status: "failed",
+        lines: ["$ git pull --ff-only", (error as Error).message],
       });
     },
   });
@@ -361,14 +389,18 @@ export function BuildView() {
   return (
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <div className="section-heading">
-            <Title order={3}>Build</Title>
-            <Text c="dimmed" size="sm">
-              Update llama.cpp and build llama-server with CMake
-            </Text>
-          </div>
+        <Group justify="flex-end" align="flex-start" wrap="wrap">
           <Group gap="xs" wrap="wrap">
+            <Button
+              aria-label="Pull llama.cpp repository"
+              variant="default"
+              leftSection={<DownloadCloud size={16} />}
+              loading={pullMutation.isPending}
+              disabled={!settingsReady || Boolean(runningJob)}
+              onClick={() => pullMutation.mutate()}
+            >
+              Pull
+            </Button>
             <Button
               aria-label="Save build settings"
               variant="light"
@@ -441,6 +473,16 @@ export function BuildView() {
                 )}
                 {sourceStatus.currentCommit && (
                   <Code>{sourceStatus.currentCommit.slice(0, 12)}</Code>
+                )}
+                {sourceStatus.latestTag && (
+                  <Tooltip
+                    label="Tag used to name the built binary in the Path Catalog"
+                    withArrow
+                  >
+                    <Badge color="blue" variant="light">
+                      tag {sourceStatus.latestTag}
+                    </Badge>
+                  </Tooltip>
                 )}
                 {sourceStatus.dirty && (
                   <Badge color="yellow" variant="outline">
@@ -538,7 +580,7 @@ export function BuildView() {
             />
             <BuildSwitch
               label="Rebuild UI"
-              tooltip="Removes tools/ui/dist, then runs npm install and npm run build in tools/ui."
+              tooltip="Removes tools/ui/dist, then runs npm ci and npm run build in tools/ui."
               checked={runUiRebuild}
               onChange={setRunUiRebuild}
             />
@@ -812,35 +854,48 @@ export function BuildView() {
           <Box>
             <Group justify="space-between" mb="xs">
               <Text fw={600} size="sm">
-                Build log
+                {pullLog ? "Pull log" : "Build log"}
               </Text>
               <Badge
                 color={
-                  selectedJob ? buildStatusColor(selectedJob.status) : "gray"
+                  pullLog
+                    ? buildStatusColor(pullLog.status)
+                    : selectedJob
+                      ? buildStatusColor(selectedJob.status)
+                      : "gray"
                 }
                 variant="light"
               >
-                {selectedJob?.status ?? "idle"}
+                {pullLog?.status ?? selectedJob?.status ?? "idle"}
               </Badge>
             </Group>
             <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
-              {logsQuery.data?.data.logPath ??
-                selectedJob?.logPath ??
-                "No log file yet"}
+              {pullLog
+                ? "git pull --ff-only (not written to a log file)"
+                : (logsQuery.data?.data.logPath ??
+                  selectedJob?.logPath ??
+                  "No log file yet")}
             </Text>
             <ScrollArea h={300} type="auto" offsetScrollbars>
               <Stack gap={4}>
-                {logsQuery.data?.data.lines.map((line, index) => (
-                  <Code key={`${selectedJob?.id}-${index}`} block>
-                    {line}
-                  </Code>
-                ))}
-                {(!logsQuery.data ||
-                  logsQuery.data.data.lines.length === 0) && (
-                  <Text c="dimmed" size="sm" ta="center" py="lg">
-                    No build log yet
-                  </Text>
-                )}
+                {pullLog
+                  ? pullLog.lines.map((line, index) => (
+                      <Code key={`pull-${index}`} block>
+                        {line}
+                      </Code>
+                    ))
+                  : logsQuery.data?.data.lines.map((line, index) => (
+                      <Code key={`${selectedJob?.id}-${index}`} block>
+                        {line}
+                      </Code>
+                    ))}
+                {!pullLog &&
+                  (!logsQuery.data ||
+                    logsQuery.data.data.lines.length === 0) && (
+                    <Text c="dimmed" size="sm" ta="center" py="lg">
+                      No build log yet
+                    </Text>
+                  )}
               </Stack>
             </ScrollArea>
           </Box>

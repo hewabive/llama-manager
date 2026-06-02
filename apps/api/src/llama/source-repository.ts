@@ -2,6 +2,7 @@ import {
   LlamaSourceSettingsSchema,
   LlamaSourceSettingsUpdateSchema,
   LlamaSourceStatusSchema,
+  type LlamaSourcePullResult,
   type LlamaSourceSettings,
   type LlamaSourceSettingsUpdate,
   type LlamaSourceStatus,
@@ -82,6 +83,28 @@ export function getLlamaSourceVersionLabel(
   }
 }
 
+export function pullLlamaSource(): LlamaSourcePullResult {
+  const settings = getLlamaSourceSettings();
+  if (!existsSync(settings.repoPath)) {
+    return {
+      ok: false,
+      output: `Repository path does not exist: ${settings.repoPath}`,
+    };
+  }
+
+  try {
+    const output = runGit(settings.repoPath, ["pull", "--ff-only"]);
+    return { ok: true, output: output || "Already up to date." };
+  } catch (error) {
+    const err = error as { stdout?: string; stderr?: string; message: string };
+    const output = [err.stdout, err.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    return { ok: false, output: output || err.message };
+  }
+}
+
 export function getLlamaSourceStatus(): LlamaSourceStatus {
   const settings = getLlamaSourceSettings();
   const checkedAt = nowIso();
@@ -119,6 +142,7 @@ export function getLlamaSourceStatus(): LlamaSourceStatus {
       exists: true,
       isGitRepo: Boolean(gitDir),
       currentCommit,
+      latestTag: getLlamaSourceVersionLabel(repoPath),
       branch,
       remoteUrl,
       dirty: status.length > 0,

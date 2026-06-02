@@ -128,7 +128,7 @@ export function buildSteps(
 
   if (input.installUiDeps) {
     steps.push(
-      step("ui-install", ["npm", "install", "&&", "npm", "run", "build"]),
+      step("ui-install", ["npm", "ci", "&&", "npm", "run", "build"]),
     );
   }
 
@@ -552,7 +552,7 @@ export class LlamaBuildRunner {
 
     const uiEnv = { ...env, LLAMA_UI_OUT_DIR: distDir };
     for (const command of [
-      ["npm", "install"],
+      ["npm", "ci"],
       ["npm", "run", "build"],
     ]) {
       logStream.write(`$ ${command.join(" ")}\n`);

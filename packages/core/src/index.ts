@@ -894,11 +894,17 @@ export const LlamaSourceStatusSchema = z.object({
   exists: z.boolean(),
   isGitRepo: z.boolean(),
   currentCommit: z.string().nullable(),
+  latestTag: z.string().nullable().default(null),
   branch: z.string().nullable(),
   remoteUrl: z.string().nullable(),
   dirty: z.boolean().nullable(),
   checkedAt: z.string(),
   error: z.string().nullable(),
+});
+
+export const LlamaSourcePullResultSchema = z.object({
+  ok: z.boolean(),
+  output: z.string(),
 });
 
 export const BuildSettingsSchema = z.object({
@@ -1530,6 +1536,9 @@ export type LlamaSourceSettingsUpdate = z.infer<
   typeof LlamaSourceSettingsUpdateSchema
 >;
 export type LlamaSourceStatus = z.infer<typeof LlamaSourceStatusSchema>;
+export type LlamaSourcePullResult = z.infer<
+  typeof LlamaSourcePullResultSchema
+>;
 export type LlamaArgumentHelpSourceSnapshot = z.infer<
   typeof LlamaArgumentHelpSourceSnapshotSchema
 >;

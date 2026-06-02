@@ -48,6 +48,7 @@ import type {
   LlamaArgumentEngineeringDoc,
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
+  LlamaSourcePullResult,
   LlamaSourceSettings,
   LlamaSourceSettingsUpdate,
   LlamaSourceStatus,
@@ -472,6 +473,12 @@ export async function updateLlamaSourceSettings(
 
 export async function getLlamaSourceStatus() {
   return request<{ data: LlamaSourceStatus }>("/api/llama-source/status");
+}
+
+export async function pullLlamaSource() {
+  return request<{ data: LlamaSourcePullResult }>("/api/llama-source/pull", {
+    method: "POST",
+  });
 }
 
 export async function updateBuildSettings(input: BuildSettings) {
