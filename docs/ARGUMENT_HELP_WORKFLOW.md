@@ -38,10 +38,12 @@ gets a new commit.
 
 ## Agent Workflow
 
-Use the repo-local Codex skill:
+This document is the source of truth. The repo-local skills are thin wrappers
+that point here:
 
 ```text
-.codex/skills/llama-arg-help-sync/SKILL.md
+.claude/skills/llama-arg-help-sync/SKILL.md   # Claude Code
+.codex/skills/llama-arg-help-sync/SKILL.md    # Codex
 ```
 
 Useful commands:
@@ -53,9 +55,23 @@ pnpm --filter @llama-manager/api args:docs:source-sync -- --write
 pnpm --filter @llama-manager/api args:docs:quality
 ```
 
-The agent reviews the generated help diff, edits only affected Engineering help
-files, deletes docs for removed arguments after checking they were not renamed,
-then writes the new snapshot/hash with `--write`.
+Steps:
+
+1. Review the generated help diff (`--diff`). Identify only the arguments whose
+   table rows were added, removed, or changed — do not review every argument
+   just because the llama.cpp commit changed.
+2. For each affected argument, edit the matching file in
+   `content/llama-args/llama-server/*.md`.
+3. For a new argument, create a focused Russian Engineering help file using
+   nearby argument docs as the style reference: practical behavior, safe
+   defaults, interactions, diagnostics, and relevant source/issue links.
+4. For a removed argument, delete the matching doc only after confirming it was
+   not renamed or moved.
+5. Once the docs match the new generated help, write the snapshot/hash with
+   `--write`.
+
+Do not add `docStatus`, `reviewedLlamaCppCommit`, or `reviewedHelpHash` to docs.
+The stored source snapshot hash is the only synchronization signal.
 
 ## Hygiene Rules
 

@@ -59,7 +59,7 @@ JSON files seed from git-tracked `config/*.json` and fail loud on malformed JSON
 
 ### Argument documentation
 
-Russian "Engineering help" for each `llama-server` argument lives in `content/llama-args/llama-server/*.md`. The sync source of truth is the `HELP_START`/`HELP_END` block in the configured llama.cpp checkout's `tools/server/README.md`, snapshotted into `content/llama-args/source/`. Only the stored snapshot hash is an automatic stale signal — individual doc files are not marked stale per-commit. The repo-local Codex skill `.codex/skills/llama-arg-help-sync` drives agent updates; see `docs/ARGUMENT_HELP_WORKFLOW.md`.
+Russian "Engineering help" for each `llama-server` argument lives in `content/llama-args/llama-server/*.md`. The sync source of truth is the `HELP_START`/`HELP_END` block in the configured llama.cpp checkout's `tools/server/README.md`, snapshotted into `content/llama-args/source/`. Only the stored snapshot hash is an automatic stale signal — individual doc files are not marked stale per-commit. Repo-local skills `.claude/skills/llama-arg-help-sync` (Claude) and `.codex/skills/llama-arg-help-sync` (Codex) are thin wrappers over `docs/ARGUMENT_HELP_WORKFLOW.md`, the single source of truth for the update procedure.
 
 ## Conventions
 

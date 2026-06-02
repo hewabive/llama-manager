@@ -1,8 +1,6 @@
 ---
 name: llama-arg-help-sync
 description: Use when llama-manager reports that the stored llama-server generated help snapshot differs from the configured llama.cpp tools/server/README.md help block, and Engineering help in content/llama-args/llama-server needs to be refreshed.
-metadata:
-  short-description: Sync llama-server argument Engineering help
 ---
 
 # llama-server Argument Help Sync
