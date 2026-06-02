@@ -13,9 +13,11 @@
     "build": "pnpm -r build",
     "check": "pnpm check:events && pnpm --filter @llama-manager/core build && pnpm -r check",
     "check:events": "node scripts/check-react-event-captures.mjs",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "browse": "node --experimental-strip-types --no-warnings scripts/browse.ts"
   },
   "devDependencies": {
+    "playwright": "^1.58.2",
     "prettier": "^3.5.3",
     "typescript": "^5.9.3"
   }

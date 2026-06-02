@@ -31,6 +31,9 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
+# Browse tool (Playwright daemon state + screenshots)
+tmp/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

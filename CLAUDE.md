@@ -20,6 +20,7 @@ pnpm format         # prettier --write .
 - `pnpm dev` always builds `@llama-manager/core` first — the api and web packages import the built output, so after changing `packages/core` you must rebuild it (`pnpm --filter @llama-manager/core build`) before downstream typechecks see the change.
 - Tests live next to sources as `*.test.ts` in `apps/api` and use the Node test runner. Run all api tests: `pnpm --filter @llama-manager/api test`. Run one file: `pnpm --filter @llama-manager/api exec tsx --import ./src/test/setup-env.ts --test src/proxy/scheduler.test.ts`. Filter by name: add `--test-name-pattern "<regex>"`. `src/test/setup-env.ts` points the DB and runtime dirs at temp locations.
 - Argument-docs maintenance CLIs (api package): `args:docs:source-sync` (compare/`--diff`/`--write` the generated help snapshot) and `args:docs:quality`.
+- `pnpm browse <cmd>` (`scripts/browse.ts`, `.claude/skills/browse`) — drive the running web UI via headless Playwright to visually verify changes (`open`/`goto /#/route`/`act --click`/`screenshot`). Invoke as `pnpm browse …` not `node --run browse` (the latter mangles `()` in selectors).
 
 ## Architecture
 
