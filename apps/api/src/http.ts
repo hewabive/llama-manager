@@ -636,7 +636,16 @@ async function proxyProtocolEndpoint(
           throw new Error(llamaEndpointErrorMessage(result.response));
         }
       },
-      stopInstance: (instance) => supervisor.stop(instance.id),
+      stopInstance: async (instance) => {
+        try {
+          await stopManagedInstance(instance.id);
+        } catch (error) {
+          if (error instanceof ProcessActionHttpError && error.status === 404) {
+            return;
+          }
+          throw new Error(actionErrorProxyMessage(error));
+        }
+      },
       saveSlot: async (instance, slotId, targetId) => {
         const result = await requestLlamaSlotAction(instance, "save", slotId, {
           filename: apiProxySlotFilename(targetId, slotId),

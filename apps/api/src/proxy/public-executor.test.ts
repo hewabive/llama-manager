@@ -232,6 +232,37 @@ test("executeApiProxyPublicMvpPlan stops a blocker instance then reaches ready p
   assert.equal(stops, 1);
 });
 
+test("executeApiProxyPublicMvpPlan surfaces not-ready when stop-instance never frees the blocker", async () => {
+  let stops = 0;
+  const base = executorDefaults({
+    initialPreview: preview([
+      action("stop-instance"),
+      action("route-request"),
+    ]),
+    stopInstance: () => {
+      stops += 1;
+    },
+  });
+  const stuckStopPlan = preview([
+    action("stop-instance"),
+    action("route-request"),
+  ]);
+  const result = await executeApiProxyPublicMvpPlan({
+    ...base,
+    getPlanPreview: async () => stuckStopPlan,
+    options: { ...base.options, maxPasses: 4 },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(
+      result.diagnostic.code,
+      "llama_manager_proxy_target_not_ready",
+    );
+  }
+  assert.equal(stops, 4);
+});
+
 test("executeApiProxyPublicMvpPlan rejects save-slot without a save callback", async () => {
   const result = await executeApiProxyPublicMvpPlan(
     executorDefaults({
