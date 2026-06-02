@@ -9,11 +9,18 @@ import {
 test("InstanceCreateSchema defaults missing args and env", () => {
   const parsed = InstanceCreateSchema.parse({
     name: "test",
-    binaryPath: "/tmp/llama-server",
+    binaryPathRefId: "bin-1",
   });
 
   assert.deepEqual(parsed.args, {});
   assert.deepEqual(parsed.env, {});
+});
+
+test("InstanceCreateSchema requires a binary catalog reference", () => {
+  assert.equal(
+    InstanceCreateSchema.safeParse({ name: "test" }).success,
+    false,
+  );
 });
 
 test("InstanceUpdateSchema keeps omitted args and env undefined", () => {

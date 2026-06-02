@@ -137,6 +137,17 @@ function configuredGpuLayerArg(instance: Instance) {
 }
 
 function validateBinary(instance: Instance, issues: ProcessPreflightIssue[]) {
+  if (!instance.binaryPath) {
+    issues.push({
+      level: "error",
+      field: "binaryPathRefId",
+      message: instance.binaryPathRefId
+        ? "Binary catalog entry is missing; select a binary from the catalog."
+        : "No binary is selected.",
+    });
+    return;
+  }
+
   if (!existsSync(instance.binaryPath)) {
     issues.push({
       level: "error",

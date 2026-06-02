@@ -48,7 +48,6 @@ import {
   scanModels,
   updateInstance,
 } from "../../api/client";
-import { defaultBinaryPath } from "../constants";
 import {
   compareModelTitles,
   formatBytes,
@@ -212,8 +211,6 @@ export function InstanceFormModal(props: {
   const form = useForm({
     initialValues: {
       name: "local-router",
-      binaryPath: defaultBinaryPath,
-      cwd: "/home/maxim/llama",
       envJson: JSON.stringify({}, null, 2),
     },
   });
@@ -233,10 +230,22 @@ export function InstanceFormModal(props: {
     retry: false,
     staleTime: 60_000,
   });
+  const pathCatalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog(),
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const selectedBinaryPath = useMemo(() => {
+    const entry = (pathCatalogQuery.data?.data ?? []).find(
+      (item) => item.id === selectedBinaryPathRefId && item.kind === "binary",
+    );
+    return entry?.path ?? "";
+  }, [pathCatalogQuery.data?.data, selectedBinaryPathRefId]);
   const argsCatalogQuery = useQuery({
-    queryKey: ["llama-args", form.values.binaryPath],
-    queryFn: () => getLlamaArguments(form.values.binaryPath),
-    enabled: props.opened && Boolean(form.values.binaryPath),
+    queryKey: ["llama-args", selectedBinaryPath],
+    queryFn: () => getLlamaArguments(selectedBinaryPath),
+    enabled: props.opened && Boolean(selectedBinaryPath),
     staleTime: 60_000,
     retry: false,
   });
@@ -249,12 +258,6 @@ export function InstanceFormModal(props: {
   const argumentDefaultsQuery = useQuery({
     queryKey: ["llama-arg-defaults"],
     queryFn: getLlamaArgumentDefaults,
-    enabled: props.opened,
-    staleTime: 60_000,
-  });
-  const pathCatalogQuery = useQuery({
-    queryKey: ["path-catalog"],
-    queryFn: () => listPathCatalog(),
     enabled: props.opened,
     staleTime: 60_000,
   });
@@ -423,11 +426,9 @@ export function InstanceFormModal(props: {
       const presetName = props.instance.modelsPresetName ?? null;
       form.setValues({
         name: props.instance.name,
-        binaryPath: props.instance.binaryPath,
-        cwd: props.instance.cwd ?? "",
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
-      setSelectedBinaryPathRefId(props.instance.binaryPathRefId ?? null);
+      setSelectedBinaryPathRefId(props.instance.binaryPathRefId);
       setSelectedModelPath(modelPath);
       setSelectedPresetName(presetName);
       setLaunchMode(presetName && !modelPath ? "router" : "model");
@@ -438,8 +439,6 @@ export function InstanceFormModal(props: {
       const port = nextAvailablePort(props.instances);
       form.setValues({
         name: modelPath ? instanceNameFromModelPath(modelPath) : "local-server",
-        binaryPath: defaultBinaryPath,
-        cwd: "/home/maxim/llama",
         envJson: JSON.stringify({}, null, 2),
       });
       setSelectedBinaryPathRefId(null);
@@ -461,20 +460,41 @@ export function InstanceFormModal(props: {
     props.initialModelPath,
   ]);
 
+  useEffect(() => {
+    if (
+      !props.opened ||
+      props.instance ||
+      selectedBinaryPathRefId ||
+      binaryCatalogEntries.length === 0
+    ) {
+      return;
+    }
+    const first = binaryCatalogEntries[0];
+    if (first) {
+      setSelectedBinaryPathRefId(first.id);
+    }
+  }, [
+    props.opened,
+    props.instance,
+    selectedBinaryPathRefId,
+    binaryCatalogEntries,
+  ]);
+
   const draftPreview = useMemo(() => {
     try {
       const args = InstanceArgsSchema.parse(
         rowsToArgsWithCatalog(argRows, knownArgByName),
       );
       const env = parseEnvJson(form.values.envJson);
+      if (!selectedBinaryPathRefId) {
+        return { input: null, error: "Select a binary from the catalog" };
+      }
       const input: InstancePreflightPreview = {
         ...(props.instance?.id ? { id: props.instance.id } : {}),
         name: form.values.name,
-        binaryPath: form.values.binaryPath,
         binaryPathRefId: selectedBinaryPathRefId,
         modelsPresetName:
           launchMode === "router" ? selectedPresetName : null,
-        ...(form.values.cwd ? { cwd: form.values.cwd } : {}),
         args,
         env,
       };
@@ -484,8 +504,6 @@ export function InstanceFormModal(props: {
     }
   }, [
     argRows,
-    form.values.binaryPath,
-    form.values.cwd,
     form.values.envJson,
     form.values.name,
     knownArgByName,
@@ -523,11 +541,6 @@ export function InstanceFormModal(props: {
 
   function applyBinaryPathRef(refId: string | null) {
     setSelectedBinaryPathRefId(refId);
-    const entry =
-      binaryCatalogEntries.find((item) => item.id === refId) ?? null;
-    if (entry) {
-      form.setFieldValue("binaryPath", entry.path);
-    }
   }
 
   function applyPresetSelection(presetName: string | null) {
@@ -664,9 +677,9 @@ export function InstanceFormModal(props: {
   });
 
   const refreshArgsMutation = useMutation({
-    mutationFn: () => getLlamaArguments(form.values.binaryPath, true),
+    mutationFn: () => getLlamaArguments(selectedBinaryPath, true),
     onSuccess: (result) => {
-      queryClient.setQueryData(["llama-args", form.values.binaryPath], result);
+      queryClient.setQueryData(["llama-args", selectedBinaryPath], result);
       notifications.show({
         title: "Argument catalog refreshed",
         message: `${result.data.options.length} options`,
@@ -732,6 +745,9 @@ export function InstanceFormModal(props: {
 
   function submit(values: typeof form.values) {
     try {
+      if (!selectedBinaryPathRefId) {
+        throw new Error("Select a binary from the catalog");
+      }
       if (launchMode === "router" && !selectedPresetName) {
         throw new Error("Router preset is not selected");
       }
@@ -754,12 +770,10 @@ export function InstanceFormModal(props: {
       }
       const input: InstanceCreate = {
         name: values.name,
-        binaryPath: values.binaryPath,
         binaryPathRefId: selectedBinaryPathRefId,
         modelsPresetName: launchMode === "router" ? selectedPresetName : null,
         args,
         env: parseEnvJson(values.envJson),
-        ...(values.cwd ? { cwd: values.cwd } : {}),
       };
       mutation.mutate(input);
     } catch (error) {
@@ -808,36 +822,26 @@ export function InstanceFormModal(props: {
         <Stack gap="sm">
           <TextInput label="Name" required {...form.getInputProps("name")} />
           <Select
-            label="Binary catalog"
+            label="Binary"
+            required
+            description="Managed in the Path catalog page; the working directory defaults to the binary's folder."
             placeholder={
               pathCatalogQuery.isFetching
                 ? "Loading catalog..."
-                : "Select managed binary path"
+                : "Select a binary from the catalog"
             }
             searchable
-            clearable
             value={selectedBinaryPathRefId}
             onChange={applyBinaryPathRef}
             data={binaryCatalogOptions}
-            nothingFoundMessage="No binary paths in catalog"
+            nothingFoundMessage="No binaries in catalog"
           />
-          <PathPickerInput
-            label="Binary path"
-            required
-            mode="file"
-            filter="binary"
-            value={form.values.binaryPath}
-            onChange={(value) => {
-              setSelectedBinaryPathRefId(null);
-              form.setFieldValue("binaryPath", value);
-            }}
-          />
-          <PathPickerInput
-            label="Working directory"
-            mode="directory"
-            value={form.values.cwd}
-            onChange={(value) => form.setFieldValue("cwd", value)}
-          />
+          {!pathCatalogQuery.isFetching && binaryCatalogOptions.length === 0 && (
+            <Text c="yellow" size="xs">
+              No binaries in the catalog yet. Add one on the Path catalog page or
+              build llama.cpp first.
+            </Text>
+          )}
           <Paper withBorder p="sm" radius="sm">
             <Stack gap="xs">
               <SegmentedControl

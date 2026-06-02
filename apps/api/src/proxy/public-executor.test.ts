@@ -32,7 +32,7 @@ const instance: Instance = {
   id: "instance-a",
   name: "Instance A",
   binaryPath: "/tmp/llama-server",
-  binaryPathRefId: null,
+  binaryPathRefId: "bin-a",
   modelsPresetName: null,
   args: {},
   env: {},

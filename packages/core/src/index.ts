@@ -45,8 +45,7 @@ export const PathCatalogUpdateSchema = z.object({
 
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
-  binaryPath: InstancePathSchema,
-  binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
+  binaryPathRefId: PathCatalogIdSchema,
   modelsPresetName: PresetNameSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.default({}),
@@ -59,8 +58,7 @@ export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
 
 export const InstanceUpdateSchema = z.object({
   name: InstanceNameSchema.optional(),
-  binaryPath: InstancePathSchema.optional(),
-  binaryPathRefId: PathCatalogIdSchema.nullable().optional(),
+  binaryPathRefId: PathCatalogIdSchema.optional(),
   modelsPresetName: PresetNameSchema.nullable().optional(),
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.optional(),
@@ -69,6 +67,7 @@ export const InstanceUpdateSchema = z.object({
 
 export const InstanceSchema = InstanceCreateSchema.extend({
   id: z.string(),
+  binaryPath: z.string(),
   status: z.enum([
     "stopped",
     "starting",

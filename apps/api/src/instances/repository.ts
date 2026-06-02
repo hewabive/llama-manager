@@ -55,8 +55,8 @@ function toInstance(row: InstanceRow): Instance {
   return {
     id: row.id,
     name: row.name,
-    binaryPath: binaryRef?.path ?? row.binaryPath,
-    binaryPathRefId: row.binaryPathRefId ?? null,
+    binaryPath: binaryRef?.path ?? "",
+    binaryPathRefId: row.binaryPathRefId ?? "",
     modelsPresetName: row.modelsPresetName ?? null,
     cwd: row.cwd ?? undefined,
     args,
@@ -80,13 +80,14 @@ export function getInstance(id: string): Instance | null {
 export function createInstance(input: InstanceCreate): Instance {
   const timestamp = nowIso();
   const id = newId();
+  const binaryRef = getPathCatalogEntry(input.binaryPathRefId);
 
   db.insert(instances)
     .values({
       id,
       name: input.name,
-      binaryPath: input.binaryPath,
-      binaryPathRefId: input.binaryPathRefId ?? null,
+      binaryPath: binaryRef?.path ?? "",
+      binaryPathRefId: input.binaryPathRefId,
       modelsPresetName: input.modelsPresetName ?? null,
       cwd: input.cwd ?? null,
       argsJson: JSON.stringify(input.args),
@@ -112,14 +113,14 @@ export function updateInstance(
     return null;
   }
 
+  const nextRefId = input.binaryPathRefId ?? current.binaryPathRefId;
+  const binaryRef = getPathCatalogEntry(nextRefId);
+
   db.update(instances)
     .set({
       name: input.name ?? current.name,
-      binaryPath: input.binaryPath ?? current.binaryPath,
-      binaryPathRefId:
-        input.binaryPathRefId === undefined
-          ? current.binaryPathRefId
-          : input.binaryPathRefId,
+      binaryPath: binaryRef?.path ?? "",
+      binaryPathRefId: nextRefId,
       modelsPresetName:
         input.modelsPresetName === undefined
           ? current.modelsPresetName

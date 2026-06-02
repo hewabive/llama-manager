@@ -218,7 +218,7 @@ function resolveInstancePathRefs(instance: Instance): Instance {
 
   return {
     ...instance,
-    binaryPath: binaryRef?.path ?? instance.binaryPath,
+    binaryPath: binaryRef?.path ?? "",
     args,
   };
 }
@@ -1441,8 +1441,8 @@ app.post("/api/instances/preflight", async (c) => {
   const instance = resolveInstancePathRefs({
     id: preview.id ?? "preview",
     name: preview.name,
-    binaryPath: preview.binaryPath,
-    binaryPathRefId: preview.binaryPathRefId ?? null,
+    binaryPath: "",
+    binaryPathRefId: preview.binaryPathRefId,
     modelsPresetName: preview.modelsPresetName ?? null,
     cwd: preview.cwd,
     args: preview.args,

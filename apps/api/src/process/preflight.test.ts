@@ -17,6 +17,7 @@ function instance(input: Partial<Instance>): Instance {
     id: "test-instance",
     name: "test-instance",
     binaryPath: input.binaryPath ?? "/bin/sh",
+    binaryPathRefId: input.binaryPathRefId ?? "test-binary",
     cwd: input.cwd ?? tmpdir(),
     args: input.args ?? {},
     env: {},
