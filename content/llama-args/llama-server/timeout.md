@@ -28,7 +28,7 @@ related:
 ## Оригинальная справка llama.cpp
 
 ```text
-server read/write timeout in seconds (default: 600)
+server read/write timeout in seconds (default: 3600)
 ```
 
 ## Паспорт аргумента
@@ -38,7 +38,7 @@ server read/write timeout in seconds (default: 600)
 - Значение: целое число секунд
 - Переменная окружения: `LLAMA_ARG_TIMEOUT`
 - Поля в `common_params`: `timeout_read`, `timeout_write`
-- Значение по умолчанию: `600`
+- Значение по умолчанию: `3600`
 - Этап применения: инициализация HTTP-сервера и proxy в router-режиме
 
 ## Что меняет в llama-server
