@@ -20,8 +20,6 @@ import type {
   ModelEditor,
   PipelineDraft,
   PipelineEditor,
-  RouteDraft,
-  RouteEditor,
   TargetDraft,
   TargetEditor,
 } from "./forms";
@@ -416,91 +414,3 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
   );
 }
 
-type RouteEditorModalProps = {
-  editor: RouteEditor | null;
-  draft: RouteDraft;
-  targetOptions: SelectOption[];
-  busy: boolean;
-  onClose: () => void;
-  onSave: () => void;
-  onDraftChange: (draft: RouteDraft) => void;
-};
-
-export function RouteEditorModal(props: RouteEditorModalProps) {
-  return (
-    <Modal
-      opened={Boolean(props.editor)}
-      onClose={props.onClose}
-      title={
-        props.editor?.mode === "edit"
-          ? `Edit ${props.editor.route.name}`
-          : "Add proxy route"
-      }
-      size="lg"
-    >
-      <Stack gap="sm">
-        <Switch
-          label="Enabled"
-          checked={props.draft.enabled}
-          onChange={(event) => {
-            const enabled = event.currentTarget.checked;
-            props.onDraftChange({ ...props.draft, enabled });
-          }}
-        />
-        <TextInput
-          label="Name"
-          value={props.draft.name}
-          onChange={(event) => {
-            const name = event.currentTarget.value;
-            props.onDraftChange({ ...props.draft, name });
-          }}
-        />
-        <TextInput
-          label="Path prefix"
-          value={props.draft.pathPrefix}
-          onChange={(event) => {
-            const pathPrefix = event.currentTarget.value;
-            props.onDraftChange({ ...props.draft, pathPrefix });
-          }}
-        />
-        <Select
-          label="Target"
-          data={props.targetOptions}
-          value={props.draft.targetId}
-          searchable
-          onChange={(value) =>
-            props.onDraftChange({ ...props.draft, targetId: value })
-          }
-        />
-        <Select
-          label="Transform"
-          data={[
-            { value: "none", label: "None" },
-            { value: "openai-compatible", label: "OpenAI-compatible" },
-          ]}
-          value={props.draft.transform}
-          allowDeselect={false}
-          onChange={(value) =>
-            props.onDraftChange({
-              ...props.draft,
-              transform: (value ?? "none") as RouteDraft["transform"],
-            })
-          }
-        />
-        <Group justify="flex-end" gap="xs">
-          <Button variant="subtle" onClick={props.onClose}>
-            Cancel
-          </Button>
-          <Button
-            leftSection={<Save size={16} />}
-            loading={props.busy}
-            disabled={!props.draft.name.trim() || !props.draft.targetId}
-            onClick={props.onSave}
-          >
-            Save
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}

@@ -129,19 +129,6 @@ export function migrate() {
   `);
 
   db.run(sql`
-    CREATE TABLE IF NOT EXISTS api_proxy_routes (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      enabled TEXT NOT NULL,
-      path_prefix TEXT NOT NULL,
-      target_id TEXT NOT NULL REFERENCES api_proxy_targets(id) ON DELETE CASCADE,
-      transform TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
     CREATE TABLE IF NOT EXISTS api_proxy_models (
       id TEXT PRIMARY KEY NOT NULL,
       model_id TEXT NOT NULL UNIQUE,
@@ -185,11 +172,6 @@ export function migrate() {
   db.run(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS api_endpoints_name_idx
     ON api_endpoints (name)
-  `);
-
-  db.run(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS api_proxy_routes_name_idx
-    ON api_proxy_routes (name)
   `);
 
   db.run(sql`

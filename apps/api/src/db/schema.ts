@@ -99,19 +99,6 @@ export const apiProxyTargets = sqliteTable("api_proxy_targets", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const apiProxyRoutes = sqliteTable("api_proxy_routes", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  enabled: text("enabled").notNull(),
-  pathPrefix: text("path_prefix").notNull(),
-  targetId: text("target_id")
-    .notNull()
-    .references(() => apiProxyTargets.id, { onDelete: "cascade" }),
-  transform: text("transform").notNull(),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const apiProxyModels = sqliteTable("api_proxy_models", {
   id: text("id").primaryKey(),
   modelId: text("model_id").notNull().unique(),

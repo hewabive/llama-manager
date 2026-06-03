@@ -13,9 +13,6 @@ import type {
   ApiProxyPipelineRecord,
   ApiProxyPipelineUpdate,
   ApiProxyRequestLogRecord,
-  ApiProxyRouteCreate,
-  ApiProxyRouteRecord,
-  ApiProxyRouteUpdate,
   ApiProxyRuntimeSnapshot,
   ApiProxyTargetModelCatalog,
   ApiProxyTargetCreate,
@@ -349,29 +346,6 @@ export async function updateApiProxyTarget(
 
 export async function deleteApiProxyTarget(id: string) {
   return request<{ data: { deleted: boolean } }>(`/api/proxy/targets/${id}`, {
-    method: "DELETE",
-  });
-}
-
-export async function createApiProxyRoute(input: ApiProxyRouteCreate) {
-  return request<{ data: ApiProxyRouteRecord }>("/api/proxy/routes", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function updateApiProxyRoute(
-  id: string,
-  input: ApiProxyRouteUpdate,
-) {
-  return request<{ data: ApiProxyRouteRecord }>(`/api/proxy/routes/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function deleteApiProxyRoute(id: string) {
-  return request<{ data: { deleted: boolean } }>(`/api/proxy/routes/${id}`, {
     method: "DELETE",
   });
 }

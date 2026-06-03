@@ -5,8 +5,6 @@ import type {
   ApiProxyPipelineNodeType,
   ApiProxyPipelineRecord,
   ApiProxyRouteTo,
-  ApiProxyRouteCreate,
-  ApiProxyRouteRecord,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
 } from "@llama-manager/core";
@@ -14,10 +12,6 @@ import type {
 export type TargetEditor =
   | { mode: "create"; target: null }
   | { mode: "edit"; target: ApiProxyTargetRecord };
-
-export type RouteEditor =
-  | { mode: "create"; route: null }
-  | { mode: "edit"; route: ApiProxyRouteRecord };
 
 export type ModelEditor =
   | { mode: "create"; model: null }
@@ -39,14 +33,6 @@ export type TargetDraft = {
   saveSlotsBeforeUnload: boolean;
   slotIds: string;
   idleUnloadMs: number | "";
-};
-
-export type RouteDraft = {
-  name: string;
-  enabled: boolean;
-  pathPrefix: string;
-  targetId: string | null;
-  transform: "none" | "openai-compatible";
 };
 
 export type ModelDraft = {
@@ -98,14 +84,6 @@ export const emptyTargetDraft: TargetDraft = {
   saveSlotsBeforeUnload: false,
   slotIds: "",
   idleUnloadMs: "",
-};
-
-export const emptyRouteDraft: RouteDraft = {
-  name: "",
-  enabled: false,
-  pathPrefix: "/v1",
-  targetId: null,
-  transform: "none",
 };
 
 export const emptyModelDraft: ModelDraft = {
@@ -205,16 +183,6 @@ export function targetDraftFromRecord(
   };
 }
 
-export function routeDraftFromRecord(route: ApiProxyRouteRecord): RouteDraft {
-  return {
-    name: route.name,
-    enabled: route.enabled,
-    pathPrefix: route.pathPrefix,
-    targetId: route.targetId,
-    transform: route.transform,
-  };
-}
-
 export function modelDraftFromRecord(model: ApiProxyModelRecord): ModelDraft {
   return {
     modelId: model.modelId,
@@ -296,15 +264,5 @@ export function pipelinePayload(draft: PipelineDraft): ApiProxyPipelineCreate {
       draft.nodeType === "save-request"
         ? [captureStep]
         : [replaceStep],
-  };
-}
-
-export function routePayload(draft: RouteDraft): ApiProxyRouteCreate {
-  return {
-    name: draft.name.trim(),
-    enabled: draft.enabled,
-    pathPrefix: draft.pathPrefix.trim() || "/v1",
-    targetId: draft.targetId ?? "",
-    transform: draft.transform,
   };
 }

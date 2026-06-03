@@ -4,8 +4,6 @@ import type {
   ApiProxyPipelineCreate,
   ApiProxyPipelineRecord,
   ApiProxyPlanPreviewRequest,
-  ApiProxyRouteCreate,
-  ApiProxyRouteRecord,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
 } from "@llama-manager/core";
@@ -17,11 +15,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   createApiProxyModel,
   createApiProxyPipeline,
-  createApiProxyRoute,
   createApiProxyTarget,
   deleteApiProxyModel,
   deleteApiProxyPipeline,
-  deleteApiProxyRoute,
   deleteApiProxyTarget,
   getApiProxyConfig,
   getApiProxyRuntime,
@@ -30,20 +26,16 @@ import {
   previewApiProxyPlan,
   updateApiProxyModel,
   updateApiProxyPipeline,
-  updateApiProxyRoute,
   updateApiProxyTarget,
 } from "../../api/client";
 import {
   emptyModelDraft,
   emptyPipelineDraft,
-  emptyRouteDraft,
   emptyTargetDraft,
   modelDraftFromRecord,
   modelPayload,
   pipelineDraftFromRecord,
   pipelinePayload,
-  routeDraftFromRecord,
-  routePayload,
   targetDraftFromRecord,
   targetPayload,
   unboundTargetValue,
@@ -51,22 +43,18 @@ import {
   type ModelEditor,
   type PipelineDraft,
   type PipelineEditor,
-  type RouteDraft,
-  type RouteEditor,
   type TargetDraft,
   type TargetEditor,
 } from "../proxy/forms";
 import {
   ModelEditorModal,
   PipelineEditorModal,
-  RouteEditorModal,
   TargetEditorModal,
 } from "../proxy/editors";
 import {
   ExternalModelsSection,
   PipelinesSection,
   ProxyHeader,
-  ProxyRoutesSection,
   ProxyTargetsSection,
   SchedulerSection,
 } from "../proxy/sections";
@@ -83,9 +71,6 @@ export function ProxyView() {
     useState<PipelineEditor | null>(null);
   const [pipelineDraftState, setPipelineDraftState] =
     useState<PipelineDraft>(emptyPipelineDraft);
-  const [routeEditor, setRouteEditor] = useState<RouteEditor | null>(null);
-  const [routeDraftState, setRouteDraftState] =
-    useState<RouteDraft>(emptyRouteDraft);
   const [requestTargetId, setRequestTargetId] = useState<string | null>(null);
 
   const proxyQuery = useQuery({
@@ -113,7 +98,6 @@ export function ProxyView() {
   const models = config?.models ?? [];
   const pipelines = config?.pipelines ?? [];
   const targets = config?.targets ?? [];
-  const routes = config?.routes ?? [];
   const endpoints = config?.endpoints ?? [];
   const endpointById = useMemo(
     () => new Map(endpoints.map((endpoint) => [endpoint.id, endpoint])),
@@ -127,13 +111,6 @@ export function ProxyView() {
     () => new Map(pipelines.map((pipeline) => [pipeline.id, pipeline])),
     [pipelines],
   );
-  const routeCountByTargetId = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const route of routes) {
-      counts.set(route.targetId, (counts.get(route.targetId) ?? 0) + 1);
-    }
-    return counts;
-  }, [routes]);
   const instanceOptions = useMemo(
     () =>
       (instancesQuery.data?.data ?? []).map((instance) => ({
@@ -372,58 +349,6 @@ export function ProxyView() {
       }),
   });
 
-  const createRouteMutation = useMutation({
-    mutationFn: createApiProxyRoute,
-    onSuccess: async () => {
-      await invalidateProxy();
-      closeRouteEditor();
-      notifications.show({
-        title: "Proxy route saved",
-        message: "Route is disabled until explicitly enabled.",
-      });
-    },
-    onError: (error) =>
-      notifications.show({
-        color: "red",
-        title: "Proxy route save failed",
-        message: (error as Error).message,
-      }),
-  });
-  const updateRouteMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: ApiProxyRouteCreate }) =>
-      updateApiProxyRoute(id, input),
-    onSuccess: async () => {
-      await invalidateProxy();
-      closeRouteEditor();
-      notifications.show({
-        title: "Proxy route updated",
-        message: "Configuration was saved.",
-      });
-    },
-    onError: (error) =>
-      notifications.show({
-        color: "red",
-        title: "Proxy route update failed",
-        message: (error as Error).message,
-      }),
-  });
-  const deleteRouteMutation = useMutation({
-    mutationFn: deleteApiProxyRoute,
-    onSuccess: async () => {
-      await invalidateProxy();
-      notifications.show({
-        title: "Proxy route deleted",
-        message: "Configuration was removed.",
-      });
-    },
-    onError: (error) =>
-      notifications.show({
-        color: "red",
-        title: "Proxy route delete failed",
-        message: (error as Error).message,
-      }),
-  });
-
   function openCreateTarget() {
     setTargetEditor({ mode: "create", target: null });
     setTargetDraftState({
@@ -475,24 +400,6 @@ export function ProxyView() {
     setPipelineDraftState(emptyPipelineDraft);
   }
 
-  function openCreateRoute() {
-    setRouteEditor({ mode: "create", route: null });
-    setRouteDraftState({
-      ...emptyRouteDraft,
-      targetId: targets[0]?.id ?? null,
-    });
-  }
-
-  function openEditRoute(route: ApiProxyRouteRecord) {
-    setRouteEditor({ mode: "edit", route });
-    setRouteDraftState(routeDraftFromRecord(route));
-  }
-
-  function closeRouteEditor() {
-    setRouteEditor(null);
-    setRouteDraftState(emptyRouteDraft);
-  }
-
   function saveTarget() {
     const input = targetPayload(targetDraftState);
     if (targetEditor?.mode === "edit") {
@@ -523,15 +430,6 @@ export function ProxyView() {
     createPipelineMutation.mutate(input);
   }
 
-  function saveRoute() {
-    const input = routePayload(routeDraftState);
-    if (routeEditor?.mode === "edit") {
-      updateRouteMutation.mutate({ id: routeEditor.route.id, input });
-      return;
-    }
-    createRouteMutation.mutate(input);
-  }
-
   function previewSchedulerPlan(mode: ApiProxyPlanPreviewRequest["mode"]) {
     const input: ApiProxyPlanPreviewRequest = { mode };
     if (mode === "request" && requestTargetId) {
@@ -546,8 +444,6 @@ export function ProxyView() {
     createModelMutation.isPending || updateModelMutation.isPending;
   const pipelineBusy =
     createPipelineMutation.isPending || updatePipelineMutation.isPending;
-  const routeBusy =
-    createRouteMutation.isPending || updateRouteMutation.isPending;
 
   return (
     <Stack gap="md">
@@ -555,11 +451,9 @@ export function ProxyView() {
         modelsCount={models.length}
         pipelinesCount={pipelines.length}
         targetsCount={targets.length}
-        routesCount={routes.length}
         onAddModel={openCreateModel}
         onAddPipeline={openCreatePipeline}
         onAddTarget={openCreateTarget}
-        onAddRoute={openCreateRoute}
       />
 
       <ExternalModelsSection
@@ -585,7 +479,6 @@ export function ProxyView() {
         endpointById={endpointById}
         instanceOptions={instanceOptions}
         runtimeByTargetId={runtimeByTargetId}
-        routeCountByTargetId={routeCountByTargetId}
         runtimeRefreshing={runtimeQuery.isFetching}
         deletePending={deleteTargetMutation.isPending}
         onEdit={openEditTarget}
@@ -600,14 +493,6 @@ export function ProxyView() {
         previewPending={planPreviewMutation.isPending}
         onRequestTargetChange={setRequestTargetId}
         onPreviewRequest={() => previewSchedulerPlan("request")}
-      />
-
-      <ProxyRoutesSection
-        routes={routes}
-        targetById={targetById}
-        deletePending={deleteRouteMutation.isPending}
-        onEdit={openEditRoute}
-        onDelete={(id) => deleteRouteMutation.mutate(id)}
       />
 
       <ModelEditorModal
@@ -638,16 +523,6 @@ export function ProxyView() {
         onClose={closeTargetEditor}
         onSave={saveTarget}
         onDraftChange={setTargetDraftState}
-      />
-
-      <RouteEditorModal
-        editor={routeEditor}
-        draft={routeDraftState}
-        targetOptions={targetOptions}
-        busy={routeBusy}
-        onClose={closeRouteEditor}
-        onSave={saveRoute}
-        onDraftChange={setRouteDraftState}
       />
     </Stack>
   );

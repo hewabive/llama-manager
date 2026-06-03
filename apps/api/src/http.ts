@@ -6,8 +6,6 @@ import {
   ApiProxyModelUpdateSchema,
   ApiProxyPipelineCreateSchema,
   ApiProxyPipelineUpdateSchema,
-  ApiProxyRouteCreateSchema,
-  ApiProxyRouteUpdateSchema,
   ApiProxyPlanPreviewRequestSchema,
   ApiProxyPlanPreviewSchema,
   ApiProxyTargetCreateSchema,
@@ -131,11 +129,9 @@ import {
 import {
   createApiProxyModel,
   createApiProxyPipeline,
-  createApiProxyRoute,
   createApiProxyTarget,
   deleteApiProxyModel,
   deleteApiProxyPipeline,
-  deleteApiProxyRoute,
   deleteApiProxyTarget,
   addApiProxySavedSlotId,
   apiProxySlotFilename,
@@ -143,19 +139,16 @@ import {
   getApiProxyModel,
   getApiProxyModelByModelId,
   getApiProxyPipeline,
-  getApiProxyRoute,
   getApiProxyTarget,
   listApiProxyModels,
   listApiProxyPipelines,
   listApiProxyRequestLogs,
-  listApiProxyRoutes,
   listApiProxyRuntimeMetadata,
   listApiProxyTargets,
   removeApiProxySavedSlotId,
   saveApiProxyRequestLog,
   updateApiProxyModel,
   updateApiProxyPipeline,
-  updateApiProxyRoute,
   updateApiProxyTarget,
 } from "./proxy/repository.js";
 import {
@@ -294,13 +287,6 @@ function validateApiProxyTargetModel(input: {
   const instance = getInstance(endpoint.instanceId);
   if (instance && !isRouterInstance(instance)) {
     return `target ${endpoint.name} is a single-model instance: leave the model empty (it is implied by the instance). A model is only set for router (--models-preset) instances.`;
-  }
-  return null;
-}
-
-function validateApiProxyRouteRefs(input: { targetId?: string | undefined }) {
-  if (input.targetId && !getApiProxyTarget(input.targetId)) {
-    return "proxy route target not found";
   }
   return null;
 }
@@ -1437,7 +1423,6 @@ app.patch("/api/proxy/targets/:id", async (c) => {
 
 app.delete("/api/proxy/targets/:id", (c) => {
   const id = c.req.param("id");
-  const usedBy = listApiProxyRoutes().filter((route) => route.targetId === id);
   const usedByModels = listApiProxyModels().filter(
     (model) =>
       model.targetId === id ||
@@ -1447,8 +1432,7 @@ app.delete("/api/proxy/targets/:id", (c) => {
     (pipeline) =>
       pipeline.routeTo?.type === "target" && pipeline.routeTo.id === id,
   );
-  const usedCount =
-    usedBy.length + usedByModels.length + usedByPipelines.length;
+  const usedCount = usedByModels.length + usedByPipelines.length;
   if (usedCount > 0) {
     return c.json(
       { error: `proxy target is used by ${usedCount} route(s)` },
@@ -1456,53 +1440,6 @@ app.delete("/api/proxy/targets/:id", (c) => {
     );
   }
   const deleted = deleteApiProxyTarget(id);
-  return c.json({ data: { deleted } }, deleted ? 200 : 404);
-});
-
-app.post("/api/proxy/routes", async (c) => {
-  const parsed = ApiProxyRouteCreateSchema.safeParse(await c.req.json());
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-  const refError = validateApiProxyRouteRefs(parsed.data);
-  if (refError) {
-    return c.json({ error: refError }, 400);
-  }
-
-  try {
-    return c.json({ data: createApiProxyRoute(parsed.data) }, 201);
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-});
-
-app.patch("/api/proxy/routes/:id", async (c) => {
-  const parsed = ApiProxyRouteUpdateSchema.safeParse(await c.req.json());
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-  const refError = validateApiProxyRouteRefs(parsed.data);
-  if (refError) {
-    return c.json({ error: refError }, 400);
-  }
-
-  try {
-    const route = updateApiProxyRoute(c.req.param("id"), parsed.data);
-    if (!route) {
-      return c.json({ error: "proxy route not found" }, 404);
-    }
-    return c.json({ data: route });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
-  }
-});
-
-app.delete("/api/proxy/routes/:id", (c) => {
-  const route = getApiProxyRoute(c.req.param("id"));
-  if (!route) {
-    return c.json({ data: { deleted: false } }, 404);
-  }
-  const deleted = deleteApiProxyRoute(route.id);
   return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 

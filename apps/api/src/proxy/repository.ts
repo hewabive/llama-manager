@@ -12,10 +12,6 @@ import {
   ApiProxyRouteToSchema,
   ApiProxyRequestLogRecordSchema,
   ApiProxyRuntimeMetadataRecordSchema,
-  ApiProxyRouteConfigSchema,
-  ApiProxyRouteCreateSchema,
-  ApiProxyRouteRecordSchema,
-  ApiProxyRouteUpdateSchema,
   ApiProxyTargetConfigSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetRecordSchema,
@@ -30,9 +26,6 @@ import {
   type ApiProxyRouteTo,
   type ApiProxyRequestLogRecord,
   type ApiProxyRuntimeMetadataRecord,
-  type ApiProxyRouteCreate,
-  type ApiProxyRouteRecord,
-  type ApiProxyRouteUpdate,
   type ApiProxyTargetCreate,
   type ApiProxyTargetRecord,
   type ApiProxyTargetUpdate,
@@ -53,13 +46,11 @@ import { db } from "../db/index.js";
 import {
   apiProxyModels,
   apiProxyPipelines,
-  apiProxyRoutes,
   apiProxyRuntimeMetadata,
   apiProxyTargets,
 } from "../db/schema.js";
 
 type TargetRow = typeof apiProxyTargets.$inferSelect;
-type RouteRow = typeof apiProxyRoutes.$inferSelect;
 type ModelRow = typeof apiProxyModels.$inferSelect;
 type PipelineRow = typeof apiProxyPipelines.$inferSelect;
 type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
@@ -184,19 +175,6 @@ function toTarget(row: TargetRow): ApiProxyTargetRecord {
   });
 }
 
-function toRoute(row: RouteRow): ApiProxyRouteRecord {
-  return ApiProxyRouteRecordSchema.parse({
-    id: row.id,
-    name: row.name,
-    enabled: parseBool(row.enabled),
-    pathPrefix: row.pathPrefix,
-    targetId: row.targetId,
-    transform: row.transform,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  });
-}
-
 function toModel(row: ModelRow): ApiProxyModelRecord {
   return ApiProxyModelRecordSchema.parse({
     id: row.id,
@@ -251,16 +229,6 @@ function targetValues(input: ApiProxyTargetCreate | ApiProxyTargetRecord) {
   };
 }
 
-function routeValues(input: ApiProxyRouteCreate | ApiProxyRouteRecord) {
-  return {
-    name: input.name,
-    enabled: boolText(input.enabled),
-    pathPrefix: input.pathPrefix,
-    targetId: input.targetId,
-    transform: input.transform,
-  };
-}
-
 function modelValues(input: ApiProxyModelCreate | ApiProxyModelRecord) {
   return {
     modelId: input.modelId,
@@ -294,15 +262,6 @@ export function listApiProxyTargets(): ApiProxyTargetRecord[] {
       (left, right) =>
         right.priority - left.priority || left.name.localeCompare(right.name),
     );
-}
-
-export function listApiProxyRoutes(): ApiProxyRouteRecord[] {
-  return db
-    .select()
-    .from(apiProxyRoutes)
-    .all()
-    .map(toRoute)
-    .sort((left, right) => left.pathPrefix.localeCompare(right.pathPrefix));
 }
 
 export function listApiProxyModels(): ApiProxyModelRecord[] {
@@ -339,15 +298,6 @@ export function getApiProxyTarget(id: string): ApiProxyTargetRecord | null {
   return row ? toTarget(row) : null;
 }
 
-export function getApiProxyRoute(id: string): ApiProxyRouteRecord | null {
-  const row = db
-    .select()
-    .from(apiProxyRoutes)
-    .where(eq(apiProxyRoutes.id, id))
-    .get();
-  return row ? toRoute(row) : null;
-}
-
 export function getApiProxyModel(id: string): ApiProxyModelRecord | null {
   const row = db
     .select()
@@ -382,7 +332,6 @@ export function getApiProxyConfig(): ApiProxyConfig {
     models: listApiProxyModels(),
     pipelines: listApiProxyPipelines(),
     targets: listApiProxyTargets(),
-    routes: listApiProxyRoutes(),
   });
 }
 
@@ -685,59 +634,3 @@ export function deleteApiProxyTarget(id: string): boolean {
   return result.changes > 0;
 }
 
-export function createApiProxyRoute(
-  input: ApiProxyRouteCreate,
-): ApiProxyRouteRecord {
-  const parsed = ApiProxyRouteCreateSchema.parse(input);
-  const id = newId();
-  const timestamp = nowIso();
-
-  db.insert(apiProxyRoutes)
-    .values({
-      id,
-      ...routeValues(parsed),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    .run();
-
-  const created = getApiProxyRoute(id);
-  if (!created) {
-    throw new Error("failed to create API proxy route");
-  }
-  return created;
-}
-
-export function updateApiProxyRoute(
-  id: string,
-  input: ApiProxyRouteUpdate,
-): ApiProxyRouteRecord | null {
-  const current = getApiProxyRoute(id);
-  if (!current) {
-    return null;
-  }
-  const parsed = ApiProxyRouteUpdateSchema.parse(input);
-  const next = ApiProxyRouteConfigSchema.parse({
-    ...current,
-    ...parsed,
-    id: current.id,
-  });
-
-  db.update(apiProxyRoutes)
-    .set({
-      ...routeValues(next),
-      updatedAt: nowIso(),
-    })
-    .where(eq(apiProxyRoutes.id, id))
-    .run();
-
-  return getApiProxyRoute(id);
-}
-
-export function deleteApiProxyRoute(id: string): boolean {
-  const result = db
-    .delete(apiProxyRoutes)
-    .where(eq(apiProxyRoutes.id, id))
-    .run();
-  return result.changes > 0;
-}

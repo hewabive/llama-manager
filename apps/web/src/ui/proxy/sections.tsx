@@ -3,7 +3,6 @@ import type {
   ApiProxyModelRecord,
   ApiProxyPipelineRecord,
   ApiProxyPlanPreview,
-  ApiProxyRouteRecord,
   ApiProxyTargetRecord,
   ApiProxyTargetRuntime,
 } from "@llama-manager/core";
@@ -41,11 +40,9 @@ type ProxyHeaderProps = {
   modelsCount: number;
   pipelinesCount: number;
   targetsCount: number;
-  routesCount: number;
   onAddModel: () => void;
   onAddPipeline: () => void;
   onAddTarget: () => void;
-  onAddRoute: () => void;
 };
 
 export function ProxyHeader(props: ProxyHeaderProps) {
@@ -56,7 +53,6 @@ export function ProxyHeader(props: ProxyHeaderProps) {
           <Badge variant="light">{props.modelsCount} models</Badge>
           <Badge variant="light">{props.pipelinesCount} nodes</Badge>
           <Badge variant="light">{props.targetsCount} targets</Badge>
-          <Badge variant="light">{props.routesCount} routes</Badge>
           <Badge color="gray" variant="outline">
             guarded forwarding
           </Badge>
@@ -82,14 +78,6 @@ export function ProxyHeader(props: ProxyHeaderProps) {
             onClick={props.onAddTarget}
           >
             Add target
-          </Button>
-          <Button
-            variant="light"
-            leftSection={<Plus size={16} />}
-            disabled={props.targetsCount === 0}
-            onClick={props.onAddRoute}
-          >
-            Add route
           </Button>
         </Group>
       </Group>
@@ -361,7 +349,6 @@ type ProxyTargetsSectionProps = {
   endpointById: Map<string, ApiEndpointRecord>;
   instanceOptions: SelectOption[];
   runtimeByTargetId: Map<string, ApiProxyTargetRuntime>;
-  routeCountByTargetId: Map<string, number>;
   runtimeRefreshing: boolean;
   deletePending: boolean;
   onEdit: (target: ApiProxyTargetRecord) => void;
@@ -467,15 +454,9 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                       </Stack>
                     </Table.Td>
                     <Table.Td>
-                      <Stack gap={2}>
-                        <Text size="sm">
-                          {target.preemptible ? "preemptible" : "protected"}
-                        </Text>
-                        <Text c="dimmed" size="xs">
-                          {props.routeCountByTargetId.get(target.id) ?? 0}{" "}
-                          route(s)
-                        </Text>
-                      </Stack>
+                      <Text size="sm">
+                        {target.preemptible ? "preemptible" : "protected"}
+                      </Text>
                     </Table.Td>
                     <Table.Td>
                       <Stack gap={2}>
@@ -512,10 +493,6 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                             variant="subtle"
                             color="red"
                             loading={props.deletePending}
-                            disabled={
-                              (props.routeCountByTargetId.get(target.id) ?? 0) >
-                              0
-                            }
                             onClick={() => props.onDelete(target.id)}
                           >
                             <Trash2 size={16} />
@@ -702,98 +679,3 @@ export function SchedulerSection(props: SchedulerSectionProps) {
   );
 }
 
-type ProxyRoutesSectionProps = {
-  routes: ApiProxyRouteRecord[];
-  targetById: Map<string, ApiProxyTargetRecord>;
-  deletePending: boolean;
-  onEdit: (route: ApiProxyRouteRecord) => void;
-  onDelete: (id: string) => void;
-};
-
-export function ProxyRoutesSection(props: ProxyRoutesSectionProps) {
-  return (
-    <Paper withBorder p="md" radius="sm">
-      <Stack gap="sm">
-        <Group justify="space-between" align="center" wrap="wrap">
-          <Text fw={600}>Proxy routes</Text>
-          <Text c="dimmed" size="sm">
-            Routes are stored for later custom path routing and transforms.
-          </Text>
-        </Group>
-        <Table.ScrollContainer minWidth={760}>
-          <Table striped highlightOnHover verticalSpacing="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Prefix</Table.Th>
-                <Table.Th>Target</Table.Th>
-                <Table.Th>Transform</Table.Th>
-                <Table.Th>Updated</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {props.routes.map((route) => (
-                <Table.Tr key={route.id}>
-                  <Table.Td>
-                    <Group gap={6} wrap="wrap">
-                      <Text fw={600}>{route.name}</Text>
-                      <Badge
-                        color={targetStatusColor(route.enabled)}
-                        variant="light"
-                      >
-                        {route.enabled ? "enabled" : "disabled"}
-                      </Badge>
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Code>{route.pathPrefix}</Code>
-                  </Table.Td>
-                  <Table.Td>
-                    {props.targetById.get(route.targetId)?.name ??
-                      route.targetId}
-                  </Table.Td>
-                  <Table.Td>{route.transform}</Table.Td>
-                  <Table.Td>{formatLocalDateTime(route.updatedAt)}</Table.Td>
-                  <Table.Td>
-                    <Group gap={4} justify="flex-end" wrap="nowrap">
-                      <Tooltip label="Edit route">
-                        <ActionIcon
-                          aria-label="Edit proxy route"
-                          variant="subtle"
-                          onClick={() => props.onEdit(route)}
-                        >
-                          <Pencil size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Delete route">
-                        <ActionIcon
-                          aria-label="Delete proxy route"
-                          variant="subtle"
-                          color="red"
-                          loading={props.deletePending}
-                          onClick={() => props.onDelete(route.id)}
-                        >
-                          <Trash2 size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {props.routes.length === 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={6}>
-                    <Text c="dimmed" ta="center" py="lg">
-                      No proxy routes configured
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Stack>
-    </Paper>
-  );
-}
