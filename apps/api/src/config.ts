@@ -11,20 +11,27 @@ const runtimeDir = process.env.LLAMA_MANAGER_RUNTIME_DIR
 const dataDir = process.env.LLAMA_MANAGER_DATA_DIR
   ? resolve(process.env.LLAMA_MANAGER_DATA_DIR)
   : resolve(rootDir, "data");
+const configDir = process.env.LLAMA_MANAGER_CONFIG_DIR
+  ? resolve(process.env.LLAMA_MANAGER_CONFIG_DIR)
+  : resolve(dataDir, "config");
 
 export const config = {
   host: process.env.LLAMA_MANAGER_HOST ?? "127.0.0.1",
   port: Number(process.env.LLAMA_MANAGER_PORT ?? "8787"),
   rootDir,
   dataDir,
-  argumentDefaultsFile: resolve(dataDir, "argument-defaults.json"),
+  configDir,
+  argumentDefaultsFile: resolve(configDir, "argument-defaults.json"),
   argumentDefaultsSeedFile: resolve(
     defaultRootDir,
     "config/argument-defaults.json",
   ),
-  settingsFile: resolve(dataDir, "settings.json"),
+  settingsFile: resolve(configDir, "settings.json"),
   settingsSeedFile: resolve(defaultRootDir, "config/settings.json"),
-  presetsDir: resolve(dataDir, "presets"),
+  presetsDir: resolve(configDir, "presets"),
+  proxyConfigDir: resolve(configDir, "proxy"),
+  secretsFile: resolve(configDir, ".secrets.json"),
+  configGitignoreFile: resolve(configDir, ".gitignore"),
   runtimeDir,
   logsDir: process.env.LLAMA_MANAGER_LOGS_DIR
     ? resolve(process.env.LLAMA_MANAGER_LOGS_DIR)
@@ -65,6 +72,8 @@ export const config = {
 };
 
 mkdirSync(config.dataDir, { recursive: true });
+mkdirSync(config.configDir, { recursive: true });
 mkdirSync(config.presetsDir, { recursive: true });
+mkdirSync(config.proxyConfigDir, { recursive: true });
 mkdirSync(config.logsDir, { recursive: true });
 mkdirSync(config.modelsDir, { recursive: true });

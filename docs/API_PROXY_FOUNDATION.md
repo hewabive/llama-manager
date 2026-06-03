@@ -65,11 +65,14 @@ The second expected case is API adaptation: accepting one API shape and forwardi
   - can load the target model when the scheduler asks for `load-model`
   - waits for instance/model readiness before forwarding
   - rejects preemption, slot save/restore and unload actions for now
-- Durable configuration in SQLite:
-  - `api_endpoints`
-  - `api_proxy_models`
-  - `api_proxy_targets`
-  - `api_proxy_runtime_metadata`
+- Durable configuration in files under `data/config/proxy/` (`proxy/config-files.ts` store; `proxy/repository.ts` + `proxy/endpoints.ts` CRUD):
+  - `endpoints.json` (external-API definitions; API keys in `data/config/.secrets.json`, gitignored)
+  - `api_proxy_models` → `models.json`
+  - `api_proxy_targets` → `targets.json`
+  - pipelines → `pipelines.json`
+- Runtime state stays in SQLite:
+  - `api_proxy_runtime_metadata` (saved slots, last-request; no longer FK-bound to a targets table)
+- One-time upgrade: `proxy/legacy-migration.ts` exports the former `api_endpoints` / `api_proxy_{targets,models,pipelines}` tables to the JSON files, then drops them.
 - Admin UI pages:
   - separate API endpoint catalog page
   - external proxy models

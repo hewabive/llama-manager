@@ -52,11 +52,12 @@ Schema is declared two places: `db/schema.ts` (Drizzle table defs for typed quer
 
 ### File-backed config
 
-Portable/hand-editable config lives in files, not the DB — loaded at startup (restart to apply):
-- `data/presets/<name>.ini` — `--models-preset` files; the `presets` domain reads/parses/validates and writes atomically with an mtime conflict check (the only file `llama-server` also edits). Identity = filename; instances link a preset via `modelsPresetName`, resolved to `--models-preset` at launch. `path_catalog` is binary-only.
-- `data/settings.json` — `modelScan` / `llamaSource` / `build` sections (`settings/store.ts`); build `repoPath` is canonical in `llamaSource`.
-- `data/argument-defaults.json` — default instance/preset args.
-JSON files seed from git-tracked `config/*.json` and fail loud on malformed JSON; runtime-computed defaults fill absent sections.
+Portable/hand-editable config lives in files, not the DB, under one configurable root `data/config/` (`LLAMA_MANAGER_CONFIG_DIR`) — loaded at startup (restart to apply). The root is meant to be a standalone git repo; the app is **git-unaware** (never runs git) but seeds `data/config/.gitignore` excluding `.secrets.json` and `*.tmp`.
+- `config/presets/<name>.ini` — `--models-preset` files; the `presets` domain reads/parses/validates and writes atomically with an mtime conflict check (the only file `llama-server` also edits). Identity = filename; instances link a preset via `modelsPresetName`, resolved to `--models-preset` at launch. `path_catalog` is binary-only.
+- `config/settings.json` — `modelScan` / `llamaSource` / `build` sections (`settings/store.ts`); build `repoPath` is canonical in `llamaSource`.
+- `config/argument-defaults.json` — default instance/preset args.
+- `config/proxy/{targets,models,pipelines,endpoints}.json` — API-proxy config (`proxy/config-files.ts` low-level store; `proxy/repository.ts` + `proxy/endpoints.ts` CRUD, signatures unchanged). Aggregate-per-type arrays; in-memory cache + write-through, external edits apply on restart. External-endpoint API keys live in `config/.secrets.json` (gitignored), never in `endpoints.json`; env-var auth stays preferred.
+JSON files seed from git-tracked repo-root `config/*.json` (not `data/config/`) and fail loud on malformed JSON; runtime-computed defaults fill absent sections. On first run after upgrade, `config-relocation.ts` moves legacy `data/{settings.json,argument-defaults.json,presets/}` into `data/config/`, and `proxy/legacy-migration.ts` exports the old SQLite proxy tables to files then drops them (`api_proxy_runtime_metadata` stays in the DB, rebuilt without its target FK).
 
 ### Argument documentation
 
@@ -74,11 +75,12 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 ## Runtime layout & key env vars
 
-- `data/llama-manager.db` (WAL): instance definitions, binary `path_catalog`, process-run metadata, proxy config, and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs`, help overrides). Portable config is file-backed — see **File-backed config**.
-- `data/presets/`, `data/settings.json`, `data/argument-defaults.json`: file-backed config (seeded from `config/*.json`).
+- `data/llama-manager.db` (WAL): instance definitions, binary `path_catalog`, process-run metadata, proxy **runtime metadata** (`api_proxy_runtime_metadata` — saved slots, last-request), and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs`, help overrides). Portable config is file-backed — see **File-backed config**.
+- `data/config/` (= `LLAMA_MANAGER_CONFIG_DIR`): file-backed portable config — `presets/`, `settings.json`, `argument-defaults.json`, `proxy/*.json`, `.secrets.json` (seeded from repo-root `config/*.json`).
+- `data/proxy-requests/`: per-request capture logs (opt-in via a pipeline `capture-request` step), day-bucketed JSON.
 - `runtime/logs/`: managed-process stdout/stderr.
 - `runtime/models/`: default GGUF scan root (`config.modelsDir`, used when `settings.json` has no `modelScan.directory`). Created on startup; overridable via `LLAMA_MANAGER_MODELS_DIR`.
 - `runtime/builds/`: llama.cpp CMake build trees (default `runtime/builds/build`). Build output lives here — **outside the llama.cpp checkout** — so source builds never touch the source tree; the build runner reads/writes binaries relative to this `buildDir`. The default `cuda` flag in `defaultSettings()` is auto-detected via `isCudaToolkitAvailable()` (`build/cuda.ts`, which locates `nvcc`) — off when no CUDA toolkit is present. On a successful build the produced binary is auto-registered into the path catalog (kind `binary`) named `<binary> (<latest reachable tag>)`, deduped by path (`registerBuiltBinaryInCatalog`).
-- Paths overridable via `LLAMA_MANAGER_HOME`, `LLAMA_MANAGER_DATA_DIR`, `LLAMA_MANAGER_RUNTIME_DIR`, `LLAMA_MANAGER_LOGS_DIR`, `LLAMA_MANAGER_BUILDS_DIR`, `LLAMA_MANAGER_MODELS_DIR`; host/port via `LLAMA_MANAGER_HOST`/`LLAMA_MANAGER_PORT`.
+- Paths overridable via `LLAMA_MANAGER_HOME`, `LLAMA_MANAGER_DATA_DIR`, `LLAMA_MANAGER_CONFIG_DIR`, `LLAMA_MANAGER_RUNTIME_DIR`, `LLAMA_MANAGER_LOGS_DIR`, `LLAMA_MANAGER_BUILDS_DIR`, `LLAMA_MANAGER_MODELS_DIR`; host/port via `LLAMA_MANAGER_HOST`/`LLAMA_MANAGER_PORT`.
 - Admin auth is **off by default** (admin routes open for local dev). Enable with `LLAMA_MANAGER_ADMIN_PASSWORD` or `..._ADMIN_PASSWORD_HASH` (`scrypt$...`); related: `..._AUTH_SECRET`, `..._SECURE_COOKIE`, `..._SESSION_TTL_SECONDS`. The default `/#/status` route is a public, redacted diagnostics page.
 - Shutdown: `LLAMA_MANAGER_STOP_MANAGED_ON_EXIT=false` leaves children running (reconciled as stale next start); `LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS` (default 10000).

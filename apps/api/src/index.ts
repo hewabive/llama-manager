@@ -4,8 +4,11 @@ import pino from "pino";
 import { initArgumentDefaults } from "./arguments/defaults-repository.js";
 import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
+import { relocateLegacyConfigFiles } from "./config-relocation.js";
 import { migrate } from "./db/index.js";
 import { app, startApiProxyIdleMaintenanceLoop } from "./http.js";
+import { ensureConfigScaffold } from "./proxy/config-files.js";
+import { migrateProxyConfigToFiles } from "./proxy/legacy-migration.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
 import { pruneProcessRunHistory } from "./process/runs-repository.js";
@@ -17,6 +20,9 @@ const logger = pino({
 });
 
 migrate();
+relocateLegacyConfigFiles();
+ensureConfigScaffold();
+migrateProxyConfigToFiles();
 initAppSettings();
 initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();

@@ -7,16 +7,35 @@ import {
   type ApiEndpointUpdate,
   type Instance,
 } from "@llama-manager/core";
-import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { newId } from "../utils/id.js";
 
 import { config } from "../config.js";
-import { db } from "../db/index.js";
-import { apiEndpoints } from "../db/schema.js";
 import { llamaBaseUrl } from "../llama/probe.js";
+import {
+  readCollection,
+  readSecret,
+  setSecret,
+  writeCollection,
+} from "./config-files.js";
 import { apiVersionBaseUrl } from "./targets.js";
 
-type EndpointRow = typeof apiEndpoints.$inferSelect;
+export const ENDPOINTS_FILE = "endpoints.json";
+
+export const StoredEndpointSchema = ApiEndpointRecordSchema.pick({
+  id: true,
+  name: true,
+  enabled: true,
+  baseUrl: true,
+  profile: true,
+  authType: true,
+  authHeaderName: true,
+  authEnvVar: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type StoredEndpoint = z.infer<typeof StoredEndpointSchema>;
 
 export const managerProxyEndpointId = "manager-proxy";
 
@@ -28,51 +47,43 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function boolText(value: boolean) {
-  return value ? "true" : "false";
-}
-
-function parseBool(value: string) {
-  return value === "true";
-}
-
-function externalEndpointValues(
-  input: ApiEndpointCreate | ApiEndpointRecord,
-  apiKey: string | null | undefined,
-) {
-  return {
-    name: input.name,
-    enabled: boolText(input.enabled),
-    baseUrl: input.baseUrl,
-    profile: input.profile,
-    authType: input.authType,
-    authHeaderName: input.authHeaderName,
-    authEnvVar: input.authEnvVar,
-    apiKey,
-  };
-}
-
 function authTypeUsesStoredKey(authType: ApiEndpointRecord["authType"]) {
   return authType === "bearer" || authType === "api-key-header";
 }
 
-function toExternalEndpoint(row: EndpointRow): ApiEndpointRecord {
+function readStoredEndpoints(): StoredEndpoint[] {
+  return readCollection(ENDPOINTS_FILE, StoredEndpointSchema);
+}
+
+function assertUniqueName(
+  records: StoredEndpoint[],
+  name: string,
+  exceptId: string | null,
+) {
+  if (records.some((item) => item.name === name && item.id !== exceptId)) {
+    throw new Error(`API endpoint name already exists: ${name}`);
+  }
+}
+
+function toExternalEndpoint(stored: StoredEndpoint): ApiEndpointRecord {
   return ApiEndpointRecordSchema.parse({
-    id: row.id,
-    name: row.name,
-    enabled: parseBool(row.enabled),
+    id: stored.id,
+    name: stored.name,
+    enabled: stored.enabled,
     kind: "external-api",
-    baseUrl: row.baseUrl,
-    profile: row.profile,
-    authType: row.authType,
-    authHeaderName: row.authHeaderName,
-    authEnvVar: row.authEnvVar,
+    baseUrl: stored.baseUrl,
+    profile: stored.profile,
+    authType: stored.authType,
+    authHeaderName: stored.authHeaderName,
+    authEnvVar: stored.authEnvVar,
     instanceId: null,
     editable: true,
     authConfigured:
-      row.authType === "none" || Boolean(row.apiKey) || Boolean(row.authEnvVar),
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+      stored.authType === "none" ||
+      Boolean(readSecret(stored.id)) ||
+      Boolean(stored.authEnvVar),
+    createdAt: stored.createdAt,
+    updatedAt: stored.updatedAt,
   });
 }
 
@@ -130,27 +141,18 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
 }
 
 export function listExternalApiEndpoints(): ApiEndpointRecord[] {
-  return db
-    .select()
-    .from(apiEndpoints)
-    .all()
+  return readStoredEndpoints()
     .map(toExternalEndpoint)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function getExternalApiEndpoint(id: string): ApiEndpointRecord | null {
-  const row = db
-    .select()
-    .from(apiEndpoints)
-    .where(eq(apiEndpoints.id, id))
-    .get();
-  return row ? toExternalEndpoint(row) : null;
+export function getStoredExternalApiEndpoint(id: string): StoredEndpoint | null {
+  return readStoredEndpoints().find((item) => item.id === id) ?? null;
 }
 
-export function getStoredExternalApiEndpoint(id: string): EndpointRow | null {
-  return (
-    db.select().from(apiEndpoints).where(eq(apiEndpoints.id, id)).get() ?? null
-  );
+export function getExternalApiEndpoint(id: string): ApiEndpointRecord | null {
+  const stored = getStoredExternalApiEndpoint(id);
+  return stored ? toExternalEndpoint(stored) : null;
 }
 
 export function listApiEndpointCatalog(
@@ -178,20 +180,27 @@ export function getApiEndpointFromCatalog(
 
 export function createApiEndpoint(input: ApiEndpointCreate): ApiEndpointRecord {
   const parsed = ApiEndpointCreateSchema.parse(input);
+  const records = readStoredEndpoints();
+  assertUniqueName(records, parsed.name, null);
   const id = newId();
   const timestamp = nowIso();
+  const stored = StoredEndpointSchema.parse({
+    id,
+    name: parsed.name,
+    enabled: parsed.enabled,
+    baseUrl: parsed.baseUrl,
+    profile: parsed.profile,
+    authType: parsed.authType,
+    authHeaderName: parsed.authHeaderName,
+    authEnvVar: parsed.authEnvVar,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  writeCollection(ENDPOINTS_FILE, [...records, stored]);
 
-  db.insert(apiEndpoints)
-    .values({
-      id,
-      ...externalEndpointValues(
-        parsed,
-        authTypeUsesStoredKey(parsed.authType) ? (parsed.apiKey ?? null) : null,
-      ),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    .run();
+  if (authTypeUsesStoredKey(parsed.authType)) {
+    setSecret(id, parsed.apiKey ?? null);
+  }
 
   const created = getExternalApiEndpoint(id);
   if (!created) {
@@ -204,44 +213,56 @@ export function updateApiEndpoint(
   id: string,
   input: ApiEndpointUpdate,
 ): ApiEndpointRecord | null {
-  const currentRow = getStoredExternalApiEndpoint(id);
-  if (!currentRow) {
+  const records = readStoredEndpoints();
+  const current = records.find((item) => item.id === id);
+  if (!current) {
     return null;
   }
-  const current = toExternalEndpoint(currentRow);
   const parsed = ApiEndpointUpdateSchema.parse(input);
-  const next = ApiEndpointRecordSchema.parse({
-    ...current,
-    ...parsed,
-    kind: "external-api",
-    instanceId: null,
-    editable: true,
-    authConfigured: current.authConfigured,
+  const next = StoredEndpointSchema.parse({
+    id: current.id,
+    name: parsed.name ?? current.name,
+    enabled: parsed.enabled ?? current.enabled,
+    baseUrl: parsed.baseUrl ?? current.baseUrl,
+    profile: parsed.profile ?? current.profile,
+    authType: parsed.authType ?? current.authType,
+    authHeaderName:
+      parsed.authHeaderName !== undefined
+        ? parsed.authHeaderName
+        : current.authHeaderName,
+    authEnvVar:
+      parsed.authEnvVar !== undefined ? parsed.authEnvVar : current.authEnvVar,
     createdAt: current.createdAt,
-    updatedAt: current.updatedAt,
+    updatedAt: nowIso(),
   });
+  assertUniqueName(records, next.name, id);
+  writeCollection(
+    ENDPOINTS_FILE,
+    records.map((item) => (item.id === id ? next : item)),
+  );
 
-  db.update(apiEndpoints)
-    .set({
-      ...externalEndpointValues(
-        next,
-        authTypeUsesStoredKey(next.authType)
-          ? parsed.apiKey === undefined
-            ? currentRow.apiKey
-            : parsed.apiKey || null
-          : null,
-      ),
-      updatedAt: nowIso(),
-    })
-    .where(eq(apiEndpoints.id, id))
-    .run();
+  if (authTypeUsesStoredKey(next.authType)) {
+    if (parsed.apiKey !== undefined) {
+      setSecret(id, parsed.apiKey || null);
+    }
+  } else {
+    setSecret(id, null);
+  }
 
   return getExternalApiEndpoint(id);
 }
 
 export function deleteApiEndpoint(id: string): boolean {
-  const result = db.delete(apiEndpoints).where(eq(apiEndpoints.id, id)).run();
-  return result.changes > 0;
+  const records = readStoredEndpoints();
+  if (!records.some((item) => item.id === id)) {
+    return false;
+  }
+  writeCollection(
+    ENDPOINTS_FILE,
+    records.filter((item) => item.id !== id),
+  );
+  setSecret(id, null);
+  return true;
 }
 
 export function apiEndpointAuthHeaders(
@@ -249,35 +270,36 @@ export function apiEndpointAuthHeaders(
 ):
   | { ok: true; headers: Record<string, string> }
   | { ok: false; error: string } {
-  const row = getStoredExternalApiEndpoint(endpointId);
-  if (!row || row.authType === "none") {
+  const stored = getStoredExternalApiEndpoint(endpointId);
+  if (!stored || stored.authType === "none") {
     return { ok: true, headers: {} };
   }
 
   const key =
-    row.authType === "env-bearer" || row.authType === "env-api-key-header"
-      ? row.authEnvVar
-        ? process.env[row.authEnvVar]
+    stored.authType === "env-bearer" || stored.authType === "env-api-key-header"
+      ? stored.authEnvVar
+        ? process.env[stored.authEnvVar]
         : null
-      : row.apiKey;
+      : readSecret(stored.id);
   if (!key) {
     return {
       ok: false,
       error:
-        row.authType === "env-bearer" || row.authType === "env-api-key-header"
-          ? `API endpoint ${row.name} has no value in env var ${row.authEnvVar ?? "(unset)"}`
-          : `API endpoint ${row.name} has no stored API key`,
+        stored.authType === "env-bearer" ||
+        stored.authType === "env-api-key-header"
+          ? `API endpoint ${stored.name} has no value in env var ${stored.authEnvVar ?? "(unset)"}`
+          : `API endpoint ${stored.name} has no stored API key`,
     };
   }
 
-  if (row.authType === "bearer" || row.authType === "env-bearer") {
+  if (stored.authType === "bearer" || stored.authType === "env-bearer") {
     return { ok: true, headers: { authorization: `Bearer ${key}` } };
   }
 
   return {
     ok: true,
     headers: {
-      [row.authHeaderName || "x-api-key"]: key,
+      [stored.authHeaderName || "x-api-key"]: key,
     },
   };
 }

@@ -68,68 +68,10 @@ export const llamaArgumentHelpOverrides = sqliteTable(
   },
 );
 
-export const apiEndpoints = sqliteTable("api_endpoints", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  enabled: text("enabled").notNull(),
-  baseUrl: text("base_url").notNull(),
-  profile: text("profile").notNull(),
-  authType: text("auth_type").notNull(),
-  authHeaderName: text("auth_header_name"),
-  authEnvVar: text("auth_env_var"),
-  apiKey: text("api_key"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-export const apiProxyTargets = sqliteTable("api_proxy_targets", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  enabled: text("enabled").notNull(),
-  endpointId: text("endpoint_id").notNull(),
-  model: text("model"),
-  role: text("role").notNull(),
-  priority: text("priority").notNull(),
-  resourceGroupId: text("resource_group_id"),
-  preemptible: text("preemptible").notNull(),
-  saveSlotsBeforeUnload: text("save_slots_before_unload").notNull(),
-  slotIdsJson: text("slot_ids_json").notNull(),
-  idleUnloadMs: text("idle_unload_ms"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-export const apiProxyModels = sqliteTable("api_proxy_models", {
-  id: text("id").primaryKey(),
-  modelId: text("model_id").notNull().unique(),
-  enabled: text("enabled").notNull(),
-  ownedBy: text("owned_by").notNull(),
-  targetId: text("target_id").references(() => apiProxyTargets.id, {
-    onDelete: "set null",
-  }),
-  routeToJson: text("route_to_json"),
-  description: text("description"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-export const apiProxyPipelines = sqliteTable("api_proxy_pipelines", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  enabled: text("enabled").notNull(),
-  nodeType: text("node_type").notNull().default("replace-text"),
-  stepsJson: text("steps_json").notNull(),
-  routeToJson: text("route_to_json"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const apiProxyRuntimeMetadata = sqliteTable(
   "api_proxy_runtime_metadata",
   {
-    targetId: text("target_id")
-      .primaryKey()
-      .references(() => apiProxyTargets.id, { onDelete: "cascade" }),
+    targetId: text("target_id").primaryKey(),
     savedSlotIdsJson: text("saved_slot_ids_json").notNull(),
     lastRequestAt: text("last_request_at"),
     updatedAt: text("updated_at").notNull(),
