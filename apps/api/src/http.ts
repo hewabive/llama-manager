@@ -569,6 +569,8 @@ function protocolOperation(input: {
   };
 }
 
+const resumableEndpoints = new Set(["chat.completions", "messages"]);
+
 async function proxyProtocolEndpoint(
   c: Context,
   adapter: ApiProxyProtocolAdapter,
@@ -889,7 +891,7 @@ async function proxyProtocolEndpoint(
   if (
     decision.target.preemptible &&
     adapter.resumable &&
-    operation.endpoint === "chat.completions" &&
+    resumableEndpoints.has(operation.endpoint) &&
     resumableUpstreamPath
   ) {
     const codec = adapter.resumable;

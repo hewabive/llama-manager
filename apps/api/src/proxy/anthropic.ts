@@ -1,6 +1,7 @@
 import type {
   ApiProxyProtocolAdapter,
   ApiProxyProtocolOperation,
+  ApiProxyResumableCodec,
 } from "./protocol.js";
 
 export type AnthropicErrorType =
@@ -38,9 +39,159 @@ const upstreamPaths: Record<string, string> = {
   "messages.count_tokens": "/v1/messages/count_tokens",
 };
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export const anthropicResumableCodec: ApiProxyResumableCodec = {
+  upstreamBody(originalBody, tail) {
+    const base = asObject(originalBody) ?? {};
+    const messages = Array.isArray(base.messages) ? [...base.messages] : [];
+    const next =
+      tail !== null
+        ? [...messages, { role: "assistant", content: tail }]
+        : messages;
+    return { ...base, messages: next, stream: true };
+  },
+  parseChunk(data) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return null;
+    }
+    const event = asObject(parsed);
+    if (!event) {
+      return null;
+    }
+
+    if (event.type === "message_stop") {
+      return "done";
+    }
+    if (event.type === "content_block_delta") {
+      const delta = asObject(event.delta);
+      const text =
+        delta?.type === "text_delta" && typeof delta.text === "string"
+          ? delta.text
+          : "";
+      return { text, finishReason: null, id: null, model: null };
+    }
+    if (event.type === "message_start") {
+      const message = asObject(event.message);
+      const usage = asObject(message?.usage);
+      return {
+        text: "",
+        finishReason: null,
+        id: typeof message?.id === "string" ? message.id : null,
+        model: typeof message?.model === "string" ? message.model : null,
+        usage: {
+          promptTokens:
+            typeof usage?.input_tokens === "number" ? usage.input_tokens : null,
+          completionTokens: null,
+        },
+      };
+    }
+    if (event.type === "message_delta") {
+      const delta = asObject(event.delta);
+      const usage = asObject(event.usage);
+      return {
+        text: "",
+        finishReason:
+          typeof delta?.stop_reason === "string" ? delta.stop_reason : null,
+        id: null,
+        model: null,
+        usage: {
+          promptTokens: null,
+          completionTokens:
+            typeof usage?.output_tokens === "number"
+              ? usage.output_tokens
+              : null,
+        },
+      };
+    }
+    return null;
+  },
+  finalResponse({
+    text,
+    id,
+    model,
+    finishReason,
+    wantsStream,
+    completionTokens,
+    promptTokens,
+  }) {
+    const resolvedId = id ?? "msg_llama_manager";
+    const resolvedModel = model ?? "unknown";
+    const stopReason = finishReason ?? "end_turn";
+    const inputTokens = promptTokens ?? 0;
+    const outputTokens = completionTokens ?? 0;
+
+    if (wantsStream) {
+      const event = (type: string, payload: unknown) =>
+        `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
+      return {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body:
+          event("message_start", {
+            type: "message_start",
+            message: {
+              id: resolvedId,
+              type: "message",
+              role: "assistant",
+              model: resolvedModel,
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: inputTokens, output_tokens: 0 },
+            },
+          }) +
+          event("content_block_start", {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          }) +
+          event("content_block_delta", {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text },
+          }) +
+          event("content_block_stop", {
+            type: "content_block_stop",
+            index: 0,
+          }) +
+          event("message_delta", {
+            type: "message_delta",
+            delta: { stop_reason: stopReason, stop_sequence: null },
+            usage: { output_tokens: outputTokens },
+          }) +
+          event("message_stop", { type: "message_stop" }),
+      };
+    }
+
+    return {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: resolvedId,
+        type: "message",
+        role: "assistant",
+        model: resolvedModel,
+        content: [{ type: "text", text }],
+        stop_reason: stopReason,
+        stop_sequence: null,
+        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      }),
+    };
+  },
+};
+
 export const anthropicProtocolAdapter: ApiProxyProtocolAdapter = {
   id: "anthropic",
   displayName: "Anthropic Messages",
+  resumable: anthropicResumableCodec,
   modelIdFromBody: anthropicModelIdFromBody,
   missingModel: () => ({
     status: 400,

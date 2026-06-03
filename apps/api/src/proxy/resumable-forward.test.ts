@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { anthropicResumableCodec } from "./anthropic.js";
 import { openAiResumableCodec } from "./openai.js";
 import {
   createResumableBufferState,
@@ -9,6 +10,10 @@ import {
 } from "./resumable-forward.js";
 
 const codec = openAiResumableCodec;
+
+function anthropicEvent(type: string, payload: unknown) {
+  return `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
+}
 
 function chunkFrame(input: {
   content?: string;
@@ -236,6 +241,45 @@ test("runResumableUpstreamAttempt accumulates a completed stream", async () => {
   assert.equal(outcome.type, "completed");
   assert.equal(state.text, "Hello");
   assert.equal(state.finishReason, "stop");
+});
+
+test("runResumableUpstreamAttempt accumulates an Anthropic stream with usage", async () => {
+  const state = createResumableBufferState();
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec: anthropicResumableCodec,
+    state,
+    preemptSignal: new AbortController().signal,
+    fetchImpl: makeFetch([
+      anthropicEvent("message_start", {
+        type: "message_start",
+        message: { id: "msg_1", model: "m", usage: { input_tokens: 5 } },
+      }),
+      anthropicEvent("content_block_delta", {
+        type: "content_block_delta",
+        delta: { type: "text_delta", text: "Hel" },
+      }),
+      anthropicEvent("content_block_delta", {
+        type: "content_block_delta",
+        delta: { type: "text_delta", text: "lo" },
+      }),
+      anthropicEvent("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: 7 },
+      }),
+      anthropicEvent("message_stop", { type: "message_stop" }),
+    ]),
+  });
+
+  assert.equal(outcome.type, "completed");
+  assert.equal(state.text, "Hello");
+  assert.equal(state.finishReason, "end_turn");
+  assert.equal(state.completionTokens, 7);
+  assert.equal(state.promptTokens, 5);
 });
 
 test("runResumableUpstreamAttempt returns preempted before fetching", async () => {

@@ -5,6 +5,7 @@ import {
   anthropicError,
   anthropicModelIdFromBody,
   anthropicProtocolAdapter,
+  anthropicResumableCodec,
 } from "./anthropic.js";
 
 const operation = {
@@ -67,6 +68,118 @@ test("anthropicProtocolAdapter returns not implemented response", () => {
         "Model claude-local is published by llama-manager, but /v1/messages forwarding is not implemented yet.",
     },
   });
+});
+
+test("anthropicResumableCodec.upstreamBody forces stream and appends prefill", () => {
+  const first = anthropicResumableCodec.upstreamBody(
+    { model: "m", max_tokens: 64, messages: [{ role: "user", content: "hi" }] },
+    null,
+  ) as Record<string, unknown>;
+  assert.equal(first.stream, true);
+  assert.equal(first.max_tokens, 64);
+  assert.equal((first.messages as unknown[]).length, 1);
+
+  const resumed = anthropicResumableCodec.upstreamBody(
+    { messages: [{ role: "user", content: "hi" }] },
+    "so far",
+  ) as Record<string, unknown>;
+  const messages = resumed.messages as Array<Record<string, unknown>>;
+  assert.deepEqual(messages[messages.length - 1], {
+    role: "assistant",
+    content: "so far",
+  });
+});
+
+test("anthropicResumableCodec.parseChunk reads Anthropic SSE events", () => {
+  assert.equal(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({ type: "message_stop" }),
+    ),
+    "done",
+  );
+  assert.equal(anthropicResumableCodec.parseChunk("not json"), null);
+  assert.equal(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({ type: "content_block_start", index: 0 }),
+    ),
+    null,
+  );
+
+  assert.deepEqual(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "Hi" },
+      }),
+    ),
+    { text: "Hi", finishReason: null, id: null, model: null },
+  );
+
+  assert.deepEqual(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({
+        type: "message_start",
+        message: { id: "msg_1", model: "m", usage: { input_tokens: 5 } },
+      }),
+    ),
+    {
+      text: "",
+      finishReason: null,
+      id: "msg_1",
+      model: "m",
+      usage: { promptTokens: 5, completionTokens: null },
+    },
+  );
+
+  assert.deepEqual(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: 7 },
+      }),
+    ),
+    {
+      text: "",
+      finishReason: "end_turn",
+      id: null,
+      model: null,
+      usage: { promptTokens: null, completionTokens: 7 },
+    },
+  );
+});
+
+test("anthropicResumableCodec.finalResponse synthesizes a message", () => {
+  const json = anthropicResumableCodec.finalResponse({
+    text: "hello",
+    id: "msg_1",
+    model: "m",
+    finishReason: "end_turn",
+    wantsStream: false,
+    completionTokens: 7,
+    promptTokens: 5,
+  });
+  assert.equal(json.headers["content-type"], "application/json");
+  const parsed = JSON.parse(json.body);
+  assert.equal(parsed.type, "message");
+  assert.deepEqual(parsed.content, [{ type: "text", text: "hello" }]);
+  assert.equal(parsed.stop_reason, "end_turn");
+  assert.deepEqual(parsed.usage, { input_tokens: 5, output_tokens: 7 });
+
+  const sse = anthropicResumableCodec.finalResponse({
+    text: "hello",
+    id: "msg_1",
+    model: "m",
+    finishReason: "end_turn",
+    wantsStream: true,
+    completionTokens: 7,
+    promptTokens: 5,
+  });
+  assert.equal(sse.headers["content-type"], "text/event-stream");
+  assert.match(sse.body, /event: message_start/);
+  assert.match(sse.body, /"type":"text_delta","text":"hello"/);
+  assert.match(sse.body, /event: message_stop/);
 });
 
 test("anthropicProtocolAdapter forwards messages to llama-server upstream", () => {
