@@ -3,10 +3,13 @@ import type {
   InstanceMemoryPlacement,
   RuntimeState,
 } from "@llama-manager/core";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
+import { promisify } from "node:util";
 
 import { isPidAlive } from "./pid.js";
+
+const execFileAsync = promisify(execFile);
 
 const KIB = 1024;
 const MIB = 1024 * 1024;
@@ -27,18 +30,18 @@ export type NvidiaComputeApp = {
 
 export type ProcMemoryUsage = {
   pid: number;
-  bytes: number;
-  source: "pss" | "rss";
+  anonBytes: number;
+  fileBytes: number;
 };
 
 let processTableCache: {
   expiresAt: number;
-  processes: ProcessInfo[];
+  processes: Promise<ProcessInfo[]>;
 } | null = null;
 
 let nvidiaComputeAppsCache: {
   expiresAt: number;
-  apps: NvidiaComputeApp[];
+  apps: Promise<NvidiaComputeApp[]>;
 } | null = null;
 
 function mibToBytes(value: string) {
@@ -102,19 +105,23 @@ export function parsePsOutput(stdout: string): ProcessInfo[] {
     });
 }
 
-function readProcessTable(): ProcessInfo[] {
+async function readProcessTable(): Promise<ProcessInfo[]> {
   try {
-    const output = execFileSync("ps", ["-eo", "pid=,ppid=,comm=,args="], {
-      encoding: "utf8",
-      timeout: 1_000,
-    });
-    return parsePsOutput(output);
+    const { stdout } = await execFileAsync(
+      "ps",
+      ["-eo", "pid=,ppid=,comm=,args="],
+      {
+        encoding: "utf8",
+        timeout: 1_000,
+      },
+    );
+    return parsePsOutput(stdout);
   } catch {
     return [];
   }
 }
 
-function cachedProcessTable() {
+function cachedProcessTable(): Promise<ProcessInfo[]> {
   const now = Date.now();
   if (processTableCache && processTableCache.expiresAt > now) {
     return processTableCache.processes;
@@ -154,9 +161,9 @@ export function parseNvidiaComputeAppsCsv(
     });
 }
 
-function readNvidiaComputeApps(): NvidiaComputeApp[] {
+async function readNvidiaComputeApps(): Promise<NvidiaComputeApp[]> {
   try {
-    const output = execFileSync(
+    const { stdout } = await execFileAsync(
       "nvidia-smi",
       [
         "--query-compute-apps=pid,process_name,used_memory",
@@ -167,13 +174,13 @@ function readNvidiaComputeApps(): NvidiaComputeApp[] {
         timeout: 2_000,
       },
     );
-    return parseNvidiaComputeAppsCsv(output);
+    return parseNvidiaComputeAppsCsv(stdout);
   } catch {
     return [];
   }
 }
 
-function cachedNvidiaComputeApps() {
+function cachedNvidiaComputeApps(): Promise<NvidiaComputeApp[]> {
   const now = Date.now();
   if (nvidiaComputeAppsCache && nvidiaComputeAppsCache.expiresAt > now) {
     return nvidiaComputeAppsCache.apps;
@@ -187,12 +194,12 @@ function cachedNvidiaComputeApps() {
   return apps;
 }
 
-export function parseProcSmapsRollup(
+export function parseProcStatusRss(
   contents: string,
 ): Omit<ProcMemoryUsage, "pid"> | null {
   const values = new Map<string, number>();
   for (const line of contents.split(/\r?\n/)) {
-    const match = /^(Pss|Rss):\s+(\d+)\s+kB$/i.exec(line.trim());
+    const match = /^(RssAnon|RssFile|RssShmem):\s+(\d+)\s+kB$/i.exec(line.trim());
     if (!match) {
       continue;
     }
@@ -202,13 +209,15 @@ export function parseProcSmapsRollup(
     }
   }
 
-  const pss = values.get("pss");
-  if (pss !== undefined) {
-    return { bytes: pss, source: "pss" };
+  const anon = values.get("rssanon");
+  const file = values.get("rssfile");
+  if (anon === undefined && file === undefined) {
+    return null;
   }
-
-  const rss = values.get("rss");
-  return rss === undefined ? null : { bytes: rss, source: "rss" };
+  return {
+    anonBytes: (anon ?? 0) + (values.get("rssshmem") ?? 0),
+    fileBytes: file ?? 0,
+  };
 }
 
 function readProcMemory(pid: number): ProcMemoryUsage | null {
@@ -217,8 +226,8 @@ function readProcMemory(pid: number): ProcMemoryUsage | null {
   }
 
   try {
-    const usage = parseProcSmapsRollup(
-      readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"),
+    const usage = parseProcStatusRss(
+      readFileSync(`/proc/${pid}/status`, "utf8"),
     );
     return usage ? { pid, ...usage } : null;
   } catch {
@@ -285,10 +294,10 @@ function descendantPids(processes: ProcessInfo[], rootPids: Set<number>) {
   return descendants;
 }
 
-function candidatePids(input: {
+async function candidatePids(input: {
   runtime: RuntimeState | undefined;
   lines: string[];
-}) {
+}): Promise<number[]> {
   const runtimeMayBeActive = [
     "starting",
     "running",
@@ -307,7 +316,7 @@ function candidatePids(input: {
   }
 
   const ports = runtimeMayBeActive ? extractRouterChildPorts(input.lines) : [];
-  const processes = cachedProcessTable();
+  const processes = await cachedProcessTable();
   if (processes.length === 0) {
     return [...candidates];
   }
@@ -370,7 +379,7 @@ function layoutFromEntries(input: {
   return {
     source: "process-telemetry",
     sourceDetail:
-      "Process-level runtime memory from nvidia-smi and /proc; llama.cpp buffer categories are not available from this source.",
+      "Process-level runtime memory from nvidia-smi and /proc/<pid>/status: anon = committed RAM (KV cache, compute buffers), mmap file = reclaimable file-backed pages (mmapped model weights). llama.cpp buffer categories are not available from this source.",
     processIds: input.processIds,
     entries,
     deviceBytes: entries
@@ -388,12 +397,12 @@ function layoutFromEntries(input: {
   };
 }
 
-export function getRuntimeMemoryLayout(input: {
+export async function getRuntimeMemoryLayout(input: {
   runtime: RuntimeState | undefined;
   lines: string[];
   baseLayout: InstanceMemoryLayout;
-}): InstanceMemoryLayout | null {
-  const pids = candidatePids(input);
+}): Promise<InstanceMemoryLayout | null> {
+  const pids = await candidatePids(input);
   if (pids.length === 0) {
     return null;
   }
@@ -403,7 +412,7 @@ export function getRuntimeMemoryLayout(input: {
     number,
     { bytes: number; processNames: Set<string> }
   >();
-  for (const app of cachedNvidiaComputeApps()) {
+  for (const app of await cachedNvidiaComputeApps()) {
     if (!pidSet.has(app.pid)) {
       continue;
     }
@@ -433,17 +442,27 @@ export function getRuntimeMemoryLayout(input: {
 
   for (const pid of pids) {
     const usage = readProcMemory(pid);
-    if (!usage || usage.bytes <= 0) {
+    if (!usage) {
       continue;
     }
-    const sourceLabel = usage.source === "pss" ? "PSS" : "RSS";
-    const placement = emptyMemoryPlacement(
-      `Process RAM pid ${pid} (${sourceLabel})`,
-      "host",
-    );
-    placement.otherBytes = usage.bytes;
-    placement.totalBytes = usage.bytes;
-    entries.push(placement);
+    if (usage.anonBytes > 0) {
+      const placement = emptyMemoryPlacement(
+        `Process RAM pid ${pid} (anon)`,
+        "host",
+      );
+      placement.otherBytes = usage.anonBytes;
+      placement.totalBytes = usage.anonBytes;
+      entries.push(placement);
+    }
+    if (usage.fileBytes > 0) {
+      const placement = emptyMemoryPlacement(
+        `Process RAM pid ${pid} (mmap file)`,
+        "host",
+      );
+      placement.otherBytes = usage.fileBytes;
+      placement.totalBytes = usage.fileBytes;
+      entries.push(placement);
+    }
   }
 
   if (entries.length === 0) {

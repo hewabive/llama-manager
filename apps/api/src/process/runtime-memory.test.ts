@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   extractRouterChildPorts,
   parseNvidiaComputeAppsCsv,
-  parseProcSmapsRollup,
+  parseProcStatusRss,
   parsePsOutput,
 } from "./runtime-memory.js";
 
@@ -30,16 +30,23 @@ test("parseNvidiaComputeAppsCsv parses per-process VRAM usage", () => {
   ]);
 });
 
-test("parseProcSmapsRollup prefers PSS over RSS", () => {
-  const usage = parseProcSmapsRollup(`
-    Rss:              2000 kB
-    Pss:              1500 kB
+test("parseProcStatusRss splits anonymous and file-backed resident memory", () => {
+  const usage = parseProcStatusRss(`
+    Name:   llama-server
+    VmRSS:     12288 kB
+    RssAnon:    2048 kB
+    RssFile:    8192 kB
+    RssShmem:   2048 kB
   `);
 
   assert.deepEqual(usage, {
-    bytes: 1500 * 1024,
-    source: "pss",
+    anonBytes: (2048 + 2048) * 1024,
+    fileBytes: 8192 * 1024,
   });
+});
+
+test("parseProcStatusRss returns null without resident fields", () => {
+  assert.equal(parseProcStatusRss("Name: llama-server\nVmRSS: 100 kB\n"), null);
 });
 
 test("parsePsOutput handles llama-server command lines", () => {

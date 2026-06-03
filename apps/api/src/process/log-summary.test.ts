@@ -21,7 +21,7 @@ function runtime(logPath: string): RuntimeState {
   };
 }
 
-test("summarizeInstanceLog ignores /slots request IPs when parsing slot count", () => {
+test("summarizeInstanceLog ignores /slots request IPs when parsing slot count", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -37,7 +37,7 @@ test("summarizeInstanceLog ignores /slots request IPs when parsing slot count", 
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -52,7 +52,7 @@ test("summarizeInstanceLog ignores /slots request IPs when parsing slot count", 
   }
 });
 
-test("summarizeInstanceLog estimates tensor loading progress from loader dots", () => {
+test("summarizeInstanceLog estimates tensor loading progress from loader dots", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -68,7 +68,7 @@ test("summarizeInstanceLog estimates tensor loading progress from loader dots", 
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -83,7 +83,7 @@ test("summarizeInstanceLog estimates tensor loading progress from loader dots", 
   }
 });
 
-test("summarizeInstanceLog reports staged loading when tensor dots are absent", () => {
+test("summarizeInstanceLog reports staged loading when tensor dots are absent", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -96,7 +96,7 @@ test("summarizeInstanceLog reports staged loading when tensor dots are absent", 
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -109,7 +109,7 @@ test("summarizeInstanceLog reports staged loading when tensor dots are absent", 
   }
 });
 
-test("summarizeInstanceLog handles load_tensors without progress dots", () => {
+test("summarizeInstanceLog handles load_tensors without progress dots", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -121,7 +121,7 @@ test("summarizeInstanceLog handles load_tensors without progress dots", () => {
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -134,7 +134,7 @@ test("summarizeInstanceLog handles load_tensors without progress dots", () => {
   }
 });
 
-test("summarizeInstanceLog parses per-device memory layout from buffer lines", () => {
+test("summarizeInstanceLog parses per-device memory layout from buffer lines", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -151,7 +151,7 @@ test("summarizeInstanceLog parses per-device memory layout from buffer lines", (
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -185,7 +185,7 @@ test("summarizeInstanceLog parses per-device memory layout from buffer lines", (
   }
 });
 
-test("summarizeInstanceLog parses projected host memory when exact buffers are absent", () => {
+test("summarizeInstanceLog parses projected host memory when exact buffers are absent", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -197,7 +197,7 @@ test("summarizeInstanceLog parses projected host memory when exact buffers are a
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -213,7 +213,7 @@ test("summarizeInstanceLog parses projected host memory when exact buffers are a
   }
 });
 
-test("summarizeInstanceLog reports warmup as late loading stage", () => {
+test("summarizeInstanceLog reports warmup as late loading stage", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -227,7 +227,7 @@ test("summarizeInstanceLog reports warmup as late loading stage", () => {
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -239,7 +239,7 @@ test("summarizeInstanceLog reports warmup as late loading stage", () => {
   }
 });
 
-test("summarizeInstanceLog ignores transient router connection errors before child readiness", () => {
+test("summarizeInstanceLog ignores transient router connection errors before child readiness", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -256,7 +256,7 @@ test("summarizeInstanceLog ignores transient router connection errors before chi
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });
@@ -269,7 +269,7 @@ test("summarizeInstanceLog ignores transient router connection errors before chi
   }
 });
 
-test("summarizeInstanceLog keeps router connection errors after readiness", () => {
+test("summarizeInstanceLog keeps router connection errors after readiness", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");
   try {
@@ -282,7 +282,7 @@ test("summarizeInstanceLog keeps router connection errors after readiness", () =
       ].join("\n"),
     );
 
-    const summary = summarizeInstanceLog({
+    const summary = await summarizeInstanceLog({
       instanceId: "test-instance",
       runtime: runtime(logPath),
     });

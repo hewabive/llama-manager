@@ -377,20 +377,20 @@ function parseMemoryLayout(lines: string[]): InstanceMemoryLayout {
   };
 }
 
-function resolveMemoryLayout(input: {
+async function resolveMemoryLayout(input: {
   lines: string[];
   runtime: RuntimeState | undefined;
-}) {
+}): Promise<InstanceMemoryLayout> {
   const logLayout = parseMemoryLayout(input.lines);
   if (logLayout.totalBytes > 0) {
     return logLayout;
   }
   return (
-    getRuntimeMemoryLayout({
+    (await getRuntimeMemoryLayout({
       runtime: input.runtime,
       lines: input.lines,
       baseLayout: logLayout,
-    }) ?? logLayout
+    })) ?? logLayout
   );
 }
 
@@ -514,10 +514,10 @@ function parseLoadProgress(lines: string[]): InstanceLoadProgress {
   );
 }
 
-export function summarizeInstanceLog(input: {
+export async function summarizeInstanceLog(input: {
   instanceId: string;
   runtime: RuntimeState | undefined;
-}): InstanceLogSummary {
+}): Promise<InstanceLogSummary> {
   const latestRun = latestProcessRun(input.instanceId);
   const runtime =
     input.runtime ?? runtimeFromLatestRun(input.instanceId, latestRun);
@@ -545,7 +545,7 @@ export function summarizeInstanceLog(input: {
 
   try {
     const { lines } = readTailLines(logPath, MAX_SUMMARY_LINES);
-    const memoryLayout = resolveMemoryLayout({
+    const memoryLayout = await resolveMemoryLayout({
       lines,
       runtime,
     });

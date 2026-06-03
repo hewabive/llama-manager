@@ -265,7 +265,7 @@ export async function getInstanceHealthSummary(
     shouldProbe
       ? probeLlamaServer(instance)
       : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
-    Promise.resolve(summarizeInstanceLog({ instanceId: instance.id, runtime })),
+    summarizeInstanceLog({ instanceId: instance.id, runtime }),
   ]);
   const preflightErrors = preflight.issues.filter(
     (issue) => issue.level === "error",

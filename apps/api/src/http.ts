@@ -1846,14 +1846,14 @@ app.get("/api/instances/:id/logs", (c) => {
   });
 });
 
-app.get("/api/instances/:id/status-summary", (c) => {
+app.get("/api/instances/:id/status-summary", async (c) => {
   const instance = getInstance(c.req.param("id"));
   if (!instance) {
     return c.json({ error: "instance not found" }, 404);
   }
 
   return c.json({
-    data: summarizeInstanceLog({
+    data: await summarizeInstanceLog({
       instanceId: instance.id,
       runtime: supervisor.getState(instance.id),
     }),
