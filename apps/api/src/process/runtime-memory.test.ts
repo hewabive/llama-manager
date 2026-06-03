@@ -5,7 +5,6 @@ import {
   extractRouterChildPorts,
   parseNvidiaComputeAppsCsv,
   parseProcSmapsRollup,
-  parseProcStatusMemory,
   parsePsOutput,
 } from "./runtime-memory.js";
 
@@ -40,18 +39,6 @@ test("parseProcSmapsRollup prefers PSS over RSS", () => {
   assert.deepEqual(usage, {
     bytes: 1500 * 1024,
     source: "pss",
-  });
-});
-
-test("parseProcStatusMemory reads VmRSS fallback", () => {
-  const usage = parseProcStatusMemory(`
-    Name:   llama-server
-    VmRSS:     8192 kB
-  `);
-
-  assert.deepEqual(usage, {
-    bytes: 8192 * 1024,
-    source: "vmrss",
   });
 });
 

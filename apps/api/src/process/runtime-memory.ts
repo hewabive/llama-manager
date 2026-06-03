@@ -4,7 +4,7 @@ import type {
   RuntimeState,
 } from "@llama-manager/core";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 import { isPidAlive } from "./pid.js";
 
@@ -28,7 +28,7 @@ export type NvidiaComputeApp = {
 export type ProcMemoryUsage = {
   pid: number;
   bytes: number;
-  source: "pss" | "rss" | "vmrss";
+  source: "pss" | "rss";
 };
 
 let processTableCache: {
@@ -211,20 +211,6 @@ export function parseProcSmapsRollup(
   return rss === undefined ? null : { bytes: rss, source: "rss" };
 }
 
-export function parseProcStatusMemory(
-  contents: string,
-): Omit<ProcMemoryUsage, "pid"> | null {
-  for (const line of contents.split(/\r?\n/)) {
-    const match = /^VmRSS:\s+(\d+)\s+kB$/i.exec(line.trim());
-    if (!match) {
-      continue;
-    }
-    const bytes = kibToBytes(match[1] ?? "");
-    return bytes === null ? null : { bytes, source: "vmrss" };
-  }
-  return null;
-}
-
 function readProcMemory(pid: number): ProcMemoryUsage | null {
   if (process.platform !== "linux") {
     return null;
@@ -234,20 +220,20 @@ function readProcMemory(pid: number): ProcMemoryUsage | null {
     const usage = parseProcSmapsRollup(
       readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"),
     );
-    if (usage) {
-      return { pid, ...usage };
-    }
-  } catch {
-    // Fall back to /proc/<pid>/status below.
-  }
-
-  try {
-    const usage = parseProcStatusMemory(
-      readFileSync(`/proc/${pid}/status`, "utf8"),
-    );
     return usage ? { pid, ...usage } : null;
   } catch {
     return null;
+  }
+}
+
+function isOwnedByCurrentUser(pid: number): boolean {
+  if (process.platform !== "linux" || typeof process.getuid !== "function") {
+    return true;
+  }
+  try {
+    return statSync(`/proc/${pid}`).uid === process.getuid();
+  } catch {
+    return false;
   }
 }
 
@@ -343,7 +329,9 @@ function candidatePids(input: {
     }
   }
 
-  return [...candidates].sort((left, right) => left - right);
+  return [...candidates]
+    .filter(isOwnedByCurrentUser)
+    .sort((left, right) => left - right);
 }
 
 function emptyMemoryPlacement(
@@ -448,8 +436,7 @@ export function getRuntimeMemoryLayout(input: {
     if (!usage || usage.bytes <= 0) {
       continue;
     }
-    const sourceLabel =
-      usage.source === "pss" ? "PSS" : usage.source === "rss" ? "RSS" : "VmRSS";
+    const sourceLabel = usage.source === "pss" ? "PSS" : "RSS";
     const placement = emptyMemoryPlacement(
       `Process RAM pid ${pid} (${sourceLabel})`,
       "host",
