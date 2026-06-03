@@ -67,6 +67,7 @@ const upstreamPaths: Record<string, string> = {
   "chat.completions": "/v1/chat/completions",
   completions: "/v1/completions",
   embeddings: "/v1/embeddings",
+  responses: "/v1/responses",
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {

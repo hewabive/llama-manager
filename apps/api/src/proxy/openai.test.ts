@@ -83,6 +83,15 @@ test("openAiProtocolAdapter forwards only upstream-compatible endpoints", () => 
       routePath: "/v1/responses",
       transport: "http-json",
     }),
+    "/v1/responses",
+  );
+  assert.equal(
+    openAiProtocolAdapter.upstreamPath({
+      protocol: "openai",
+      endpoint: "unknown",
+      routePath: "/v1/unknown",
+      transport: "http-json",
+    }),
     null,
   );
 });

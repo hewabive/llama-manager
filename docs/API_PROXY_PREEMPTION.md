@@ -15,7 +15,7 @@ A swap is a context switch: save A's slot, swap weights, load and serve B, swap 
 3. Preemptible targets pin a single slot (`--parallel 1`) so the slot to save is deterministic.
 4. For resumable targets the proxy requests `stream:true` upstream and buffers, regardless of the consumer's streaming preference, so an interrupted generation has a captured tail.
 5. Best-effort, no auto-rollback: if the preemptor fails to load after preempting, the error surfaces to the triggering consumer; the suspended target is never lost and returns via idle maintenance or its next admission.
-6. Resume scope is chat completions first (OpenAI + Anthropic); `/responses` stays 501 until request/response transforms exist.
+6. Resume scope is chat completions first (OpenAI `chat.completions` + Anthropic `messages`). `/v1/responses` forwards as a plain pass-through (no mid-request resume) — llama-server implements it natively (`post_responses_oai` converts Responses↔Chat Completions internally), so the proxy needs no transforms; it only maps the endpoint to `/v1/responses` in `openAiProtocolAdapter.upstreamPath`. A preemptible target on `/v1/responses` gets request-boundary preemption only; a `responsesResumableCodec` for the distinct Responses stream events (`response.output_text.delta`, …) is deferred.
 
 llama.cpp support verified against the local checkout (2026-06): assistant-prefill is on by default (`prefill_assistant = true`) — a trailing `{role:"assistant"}` message is continued automatically — and slot save/restore is available with `--slot-save-path`.
 
