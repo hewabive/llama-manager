@@ -387,30 +387,17 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             props.onDraftChange({ ...props.draft, slotIds });
           }}
         />
-        <Group grow>
-          <NumberInput
-            label="Idle unload ms"
-            min={0}
-            value={props.draft.idleUnloadMs}
-            onChange={(value) =>
-              props.onDraftChange({
-                ...props.draft,
-                idleUnloadMs: typeof value === "number" ? value : "",
-              })
-            }
-          />
-          <NumberInput
-            label="Resume after idle ms"
-            min={0}
-            value={props.draft.resumeAfterIdleMs}
-            onChange={(value) =>
-              props.onDraftChange({
-                ...props.draft,
-                resumeAfterIdleMs: typeof value === "number" ? value : "",
-              })
-            }
-          />
-        </Group>
+        <NumberInput
+          label="Idle unload ms"
+          min={0}
+          value={props.draft.idleUnloadMs}
+          onChange={(value) =>
+            props.onDraftChange({
+              ...props.draft,
+              idleUnloadMs: typeof value === "number" ? value : "",
+            })
+          }
+        />
         <Group justify="flex-end" gap="xs">
           <Button variant="subtle" onClick={props.onClose}>
             Cancel

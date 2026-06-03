@@ -123,7 +123,6 @@ export function migrate() {
       save_slots_before_unload TEXT NOT NULL,
       slot_ids_json TEXT NOT NULL,
       idle_unload_ms TEXT,
-      resume_after_idle_ms TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )

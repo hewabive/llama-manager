@@ -26,7 +26,6 @@ function seedTarget(name: string) {
     saveSlotsBeforeUnload: true,
     slotIds: [0],
     idleUnloadMs: null,
-    resumeAfterIdleMs: null,
   });
 }
 

@@ -95,7 +95,6 @@ export const apiProxyTargets = sqliteTable("api_proxy_targets", {
   saveSlotsBeforeUnload: text("save_slots_before_unload").notNull(),
   slotIdsJson: text("slot_ids_json").notNull(),
   idleUnloadMs: text("idle_unload_ms"),
-  resumeAfterIdleMs: text("resume_after_idle_ms"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

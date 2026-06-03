@@ -41,7 +41,6 @@ function target(input: {
     saveSlotsBeforeUnload: input.saveSlotsBeforeUnload ?? false,
     slotIds: input.slotIds ?? [],
     idleUnloadMs: input.idleUnloadMs ?? null,
-    resumeAfterIdleMs: null,
     runtime: {
       targetId: input.id,
       kind: "managed-instance",

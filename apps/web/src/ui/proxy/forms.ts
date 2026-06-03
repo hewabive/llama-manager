@@ -39,7 +39,6 @@ export type TargetDraft = {
   saveSlotsBeforeUnload: boolean;
   slotIds: string;
   idleUnloadMs: number | "";
-  resumeAfterIdleMs: number | "";
 };
 
 export type RouteDraft = {
@@ -99,7 +98,6 @@ export const emptyTargetDraft: TargetDraft = {
   saveSlotsBeforeUnload: false,
   slotIds: "",
   idleUnloadMs: "",
-  resumeAfterIdleMs: "",
 };
 
 export const emptyRouteDraft: RouteDraft = {
@@ -204,7 +202,6 @@ export function targetDraftFromRecord(
     saveSlotsBeforeUnload: target.saveSlotsBeforeUnload,
     slotIds: slotIdsText(target.slotIds),
     idleUnloadMs: target.idleUnloadMs ?? "",
-    resumeAfterIdleMs: target.resumeAfterIdleMs ?? "",
   };
 }
 
@@ -259,7 +256,6 @@ export function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
     saveSlotsBeforeUnload: draft.saveSlotsBeforeUnload,
     slotIds: slotIdsFromText(draft.slotIds),
     idleUnloadMs: numberOrNull(draft.idleUnloadMs),
-    resumeAfterIdleMs: numberOrNull(draft.resumeAfterIdleMs),
   };
 }
 

@@ -179,7 +179,6 @@ function toTarget(row: TargetRow): ApiProxyTargetRecord {
     saveSlotsBeforeUnload: parseBool(row.saveSlotsBeforeUnload),
     slotIds: parseSlotIds(row.slotIdsJson),
     idleUnloadMs: nullableNumber(row.idleUnloadMs),
-    resumeAfterIdleMs: nullableNumber(row.resumeAfterIdleMs),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -249,7 +248,6 @@ function targetValues(input: ApiProxyTargetCreate | ApiProxyTargetRecord) {
     saveSlotsBeforeUnload: boolText(input.saveSlotsBeforeUnload),
     slotIdsJson: JSON.stringify(input.slotIds),
     idleUnloadMs: nullableNumberText(input.idleUnloadMs),
-    resumeAfterIdleMs: nullableNumberText(input.resumeAfterIdleMs),
   };
 }
 

@@ -498,7 +498,6 @@ export const ApiProxyTargetConfigSchema = z.object({
   saveSlotsBeforeUnload: z.boolean().default(false),
   slotIds: ApiProxyTargetSlotIdsSchema.default([]),
   idleUnloadMs: ApiProxyTargetIdleMsSchema.default(null),
-  resumeAfterIdleMs: ApiProxyTargetIdleMsSchema.default(null),
 });
 
 export const ApiProxyRouteConfigSchema = z.object({
@@ -545,7 +544,6 @@ export const ApiProxyTargetUpdateSchema = z.object({
   saveSlotsBeforeUnload: z.boolean().optional(),
   slotIds: ApiProxyTargetSlotIdsSchema.optional(),
   idleUnloadMs: ApiProxyTargetIdleMsSchema.optional(),
-  resumeAfterIdleMs: ApiProxyTargetIdleMsSchema.optional(),
 });
 
 export const ApiProxyRouteCreateSchema = ApiProxyRouteConfigSchema.omit({
