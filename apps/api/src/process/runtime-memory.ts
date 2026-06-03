@@ -457,7 +457,7 @@ export async function getRuntimeMemoryLayout(input: {
     if (usage.fileBytes > 0) {
       const placement = emptyMemoryPlacement(
         `Process RAM pid ${pid} (mmap file)`,
-        "host",
+        "other",
       );
       placement.otherBytes = usage.fileBytes;
       placement.totalBytes = usage.fileBytes;

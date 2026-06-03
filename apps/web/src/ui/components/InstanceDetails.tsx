@@ -1496,10 +1496,13 @@ function MemoryLayoutPanel(props: {
               value={hasRuntimeEntries.deviceBytes}
             />
             <MemoryMetric
-              label={processTelemetry ? "Process RAM" : "RAM total"}
+              label={processTelemetry ? "Committed RAM" : "RAM total"}
               value={hasRuntimeEntries.hostBytes}
             />
-            <MemoryMetric label="Other" value={hasRuntimeEntries.otherBytes} />
+            <MemoryMetric
+              label={processTelemetry ? "Reclaimable (mmap)" : "Other"}
+              value={hasRuntimeEntries.otherBytes}
+            />
           </SimpleGrid>
           {processTelemetry && layout.processIds.length > 0 && (
             <Text c="dimmed" size="xs">
@@ -1528,18 +1531,7 @@ function MemoryLayoutPanel(props: {
                       </Badge>
                     </Group>
                   </Group>
-                  {processTelemetry ? (
-                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={4}>
-                      <MemoryMetric
-                        label="Process memory"
-                        value={entry.totalBytes}
-                      />
-                      <MemoryMetric
-                        label="Unclassified"
-                        value={entry.otherBytes}
-                      />
-                    </SimpleGrid>
-                  ) : (
+                  {processTelemetry ? null : (
                     <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={4}>
                       <MemoryMetric label="Model" value={entry.modelBytes} />
                       <MemoryMetric
