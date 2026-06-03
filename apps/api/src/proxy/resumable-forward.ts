@@ -1,6 +1,7 @@
 import type {
   ApiProxyResumableCodec,
   ApiProxyResumableFinalResponse,
+  ApiProxyResumableToolCall,
 } from "./protocol.js";
 
 export type ResumableBufferState = {
@@ -11,6 +12,8 @@ export type ResumableBufferState = {
   completionTokens: number;
   promptTokens: number | null;
   genMs: number;
+  toolCalls: ApiProxyResumableToolCall[];
+  inToolPhase: boolean;
 };
 
 export type ResumableUpstreamOutcome =
@@ -28,6 +31,8 @@ export function createResumableBufferState(): ResumableBufferState {
     completionTokens: 0,
     promptTokens: null,
     genMs: 0,
+    toolCalls: [],
+    inToolPhase: false,
   };
 }
 
@@ -61,6 +66,22 @@ function applyFrame(
     }
     if (chunk.finishReason) {
       state.finishReason = chunk.finishReason;
+    }
+    if (chunk.phase === "tool") {
+      state.inToolPhase = true;
+    }
+    if (chunk.toolCall) {
+      const { index } = chunk.toolCall;
+      const existing = state.toolCalls[index] ?? {
+        id: null,
+        name: null,
+        arguments: "",
+      };
+      state.toolCalls[index] = {
+        id: chunk.toolCall.id ?? existing.id,
+        name: chunk.toolCall.name ?? existing.name,
+        arguments: existing.arguments + (chunk.toolCall.arguments ?? ""),
+      };
     }
     if (chunk.usage) {
       if (typeof chunk.usage.completionTokens === "number") {
@@ -99,15 +120,20 @@ export async function runResumableUpstreamAttempt(input: {
   let firstTokenAt: number | null = null;
   let lastTokenAt = 0;
   const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  preemptSignal.addEventListener("abort", onAbort, { once: true });
-  consumerSignal?.addEventListener("abort", onAbort, { once: true });
+  const onPreempt = () => {
+    if (!input.state.inToolPhase) {
+      controller.abort();
+    }
+  };
+  const onConsumerGone = () => controller.abort();
+  preemptSignal.addEventListener("abort", onPreempt, { once: true });
+  consumerSignal?.addEventListener("abort", onConsumerGone, { once: true });
 
   const settle = (
     outcome: ResumableUpstreamOutcome,
   ): ResumableUpstreamOutcome => {
-    preemptSignal.removeEventListener("abort", onAbort);
-    consumerSignal?.removeEventListener("abort", onAbort);
+    preemptSignal.removeEventListener("abort", onPreempt);
+    consumerSignal?.removeEventListener("abort", onConsumerGone);
     if (firstTokenAt !== null) {
       input.state.genMs += Math.max(0, lastTokenAt - firstTokenAt);
     }
@@ -115,11 +141,11 @@ export async function runResumableUpstreamAttempt(input: {
   };
 
   const classifyAbort = (error: unknown): ResumableUpstreamOutcome => {
-    if (preemptSignal.aborted) {
-      return { type: "preempted" };
-    }
     if (consumerSignal?.aborted) {
       return { type: "consumer-gone" };
+    }
+    if (preemptSignal.aborted) {
+      return { type: "preempted" };
     }
     return { type: "error", message: (error as Error).message };
   };
@@ -194,6 +220,9 @@ function finalFromState(
     completionTokens: state.completionTokens,
     promptTokens: state.promptTokens,
     genMs: state.genMs,
+    toolCalls: state.toolCalls.filter(
+      (call): call is ApiProxyResumableToolCall => Boolean(call),
+    ),
   });
 }
 
@@ -218,7 +247,10 @@ export async function runResumableForward(input: {
       return ready.final;
     }
 
-    const tail = preemptions === 0 ? null : input.state.text;
+    const tail =
+      preemptions === 0 || input.state.text.length === 0
+        ? null
+        : input.state.text;
     const outcome = await input.attempt(tail);
 
     if (outcome.type === "completed") {

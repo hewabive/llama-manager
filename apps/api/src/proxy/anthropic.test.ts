@@ -113,7 +113,43 @@ test("anthropicResumableCodec.parseChunk reads Anthropic SSE events", () => {
         delta: { type: "text_delta", text: "Hi" },
       }),
     ),
-    { text: "Hi", finishReason: null, id: null, model: null },
+    { text: "Hi", finishReason: null, id: null, model: null, phase: "text" },
+  );
+
+  assert.deepEqual(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "tool_use", id: "toolu_1", name: "get_weather" },
+      }),
+    ),
+    {
+      text: "",
+      finishReason: null,
+      id: null,
+      model: null,
+      phase: "tool",
+      toolCall: { index: 1, id: "toolu_1", name: "get_weather" },
+    },
+  );
+
+  assert.deepEqual(
+    anthropicResumableCodec.parseChunk(
+      JSON.stringify({
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: '{"city":' },
+      }),
+    ),
+    {
+      text: "",
+      finishReason: null,
+      id: null,
+      model: null,
+      phase: "tool",
+      toolCall: { index: 1, arguments: '{"city":' },
+    },
   );
 
   assert.deepEqual(
@@ -180,6 +216,45 @@ test("anthropicResumableCodec.finalResponse synthesizes a message", () => {
   assert.match(sse.body, /event: message_start/);
   assert.match(sse.body, /"type":"text_delta","text":"hello"/);
   assert.match(sse.body, /event: message_stop/);
+});
+
+test("anthropicResumableCodec.finalResponse emits tool_use blocks", () => {
+  const json = anthropicResumableCodec.finalResponse({
+    text: "Let me check",
+    id: "msg_1",
+    model: "m",
+    finishReason: null,
+    wantsStream: false,
+    completionTokens: 4,
+    promptTokens: 5,
+    toolCalls: [
+      { id: "toolu_1", name: "get_weather", arguments: '{"city":"Moscow"}' },
+    ],
+  });
+  const parsed = JSON.parse(json.body);
+  assert.equal(parsed.stop_reason, "tool_use");
+  assert.deepEqual(parsed.content, [
+    { type: "text", text: "Let me check" },
+    {
+      type: "tool_use",
+      id: "toolu_1",
+      name: "get_weather",
+      input: { city: "Moscow" },
+    },
+  ]);
+
+  const sse = anthropicResumableCodec.finalResponse({
+    text: "",
+    id: "msg_1",
+    model: "m",
+    finishReason: null,
+    wantsStream: true,
+    completionTokens: 4,
+    promptTokens: 5,
+    toolCalls: [{ id: "toolu_1", name: "get_weather", arguments: "{}" }],
+  });
+  assert.match(sse.body, /"type":"tool_use","id":"toolu_1","name":"get_weather"/);
+  assert.match(sse.body, /"stop_reason":"tool_use"/);
 });
 
 test("anthropicProtocolAdapter forwards messages to llama-server upstream", () => {

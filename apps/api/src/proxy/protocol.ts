@@ -62,12 +62,29 @@ export type ApiProxyResumableUsage = {
   completionTokens: number | null;
 };
 
+export type ApiProxyResumablePhase = "text" | "thinking" | "tool";
+
+export type ApiProxyResumableToolCallDelta = {
+  index: number;
+  id?: string | undefined;
+  name?: string | undefined;
+  arguments?: string | undefined;
+};
+
+export type ApiProxyResumableToolCall = {
+  id: string | null;
+  name: string | null;
+  arguments: string;
+};
+
 export type ApiProxyResumableStreamChunk = {
   text: string;
   finishReason: string | null;
   id: string | null;
   model: string | null;
   usage?: ApiProxyResumableUsage | undefined;
+  phase?: ApiProxyResumablePhase | undefined;
+  toolCall?: ApiProxyResumableToolCallDelta | undefined;
 };
 
 export type ApiProxyResumableFinalResponse = {
@@ -88,6 +105,7 @@ export type ApiProxyResumableCodec = {
     completionTokens?: number | undefined;
     promptTokens?: number | null | undefined;
     genMs?: number | undefined;
+    toolCalls?: ApiProxyResumableToolCall[] | undefined;
   }) => ApiProxyResumableFinalResponse;
 };
 

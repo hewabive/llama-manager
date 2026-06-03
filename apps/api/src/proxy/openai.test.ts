@@ -6,6 +6,7 @@ import {
   notImplementedResponse,
   openAiProtocolAdapter,
   openAiModelsList,
+  openAiResumableCodec,
 } from "./openai.js";
 
 test("openAiModelsList exposes only enabled proxy models", () => {
@@ -84,4 +85,72 @@ test("openAiProtocolAdapter forwards only upstream-compatible endpoints", () => 
     }),
     null,
   );
+});
+
+test("openAiResumableCodec.parseChunk classifies phases", () => {
+  const textChunk = openAiResumableCodec.parseChunk(
+    JSON.stringify({ choices: [{ delta: { content: "Hi" } }] }),
+  );
+  assert.equal((textChunk as { phase?: string }).phase, "text");
+
+  const tool = openAiResumableCodec.parseChunk(
+    JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_1",
+                function: { name: "get_weather", arguments: '{"city":' },
+              },
+            ],
+          },
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(tool, {
+    text: "",
+    finishReason: null,
+    id: null,
+    model: null,
+    phase: "tool",
+    toolCall: {
+      index: 0,
+      id: "call_1",
+      name: "get_weather",
+      arguments: '{"city":',
+    },
+  });
+
+  const reasoning = openAiResumableCodec.parseChunk(
+    JSON.stringify({ choices: [{ delta: { reasoning_content: "hmm" } }] }),
+  );
+  assert.equal((reasoning as { phase?: string }).phase, "thinking");
+});
+
+test("openAiResumableCodec.finalResponse emits tool_calls", () => {
+  const json = openAiResumableCodec.finalResponse({
+    text: "",
+    id: "chatcmpl-1",
+    model: "m",
+    finishReason: null,
+    wantsStream: false,
+    completionTokens: 3,
+    promptTokens: 5,
+    toolCalls: [
+      { id: "call_1", name: "get_weather", arguments: '{"city":"Moscow"}' },
+    ],
+  });
+  const parsed = JSON.parse(json.body);
+  assert.equal(parsed.choices[0].finish_reason, "tool_calls");
+  assert.equal(parsed.choices[0].message.content, null);
+  assert.deepEqual(parsed.choices[0].message.tool_calls, [
+    {
+      id: "call_1",
+      type: "function",
+      function: { name: "get_weather", arguments: '{"city":"Moscow"}' },
+    },
+  ]);
 });

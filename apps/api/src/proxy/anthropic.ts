@@ -2,6 +2,7 @@ import type {
   ApiProxyProtocolAdapter,
   ApiProxyProtocolOperation,
   ApiProxyResumableCodec,
+  ApiProxyResumableToolCall,
 } from "./protocol.js";
 
 export type AnthropicErrorType =
@@ -45,6 +46,28 @@ function asObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function parseToolInput(args: string): unknown {
+  if (!args.trim()) {
+    return {};
+  }
+  try {
+    return JSON.parse(args);
+  } catch {
+    return {};
+  }
+}
+
+function anthropicToolBlocks(toolCalls: ApiProxyResumableToolCall[] | undefined) {
+  return (toolCalls ?? [])
+    .filter((call) => call.name)
+    .map((call, index) => ({
+      type: "tool_use",
+      id: call.id ?? `toolu_llama_manager_${index}`,
+      name: call.name ?? "",
+      input: parseToolInput(call.arguments),
+    }));
+}
+
 export const anthropicResumableCodec: ApiProxyResumableCodec = {
   upstreamBody(originalBody, tail) {
     const base = asObject(originalBody) ?? {};
@@ -70,13 +93,52 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
     if (event.type === "message_stop") {
       return "done";
     }
+    if (event.type === "content_block_start") {
+      const block = asObject(event.content_block);
+      if (block?.type === "tool_use") {
+        return {
+          text: "",
+          finishReason: null,
+          id: null,
+          model: null,
+          phase: "tool",
+          toolCall: {
+            index: typeof event.index === "number" ? event.index : 0,
+            ...(typeof block.id === "string" ? { id: block.id } : {}),
+            ...(typeof block.name === "string" ? { name: block.name } : {}),
+          },
+        };
+      }
+      return null;
+    }
     if (event.type === "content_block_delta") {
       const delta = asObject(event.delta);
+      if (delta?.type === "input_json_delta") {
+        return {
+          text: "",
+          finishReason: null,
+          id: null,
+          model: null,
+          phase: "tool",
+          toolCall: {
+            index: typeof event.index === "number" ? event.index : 0,
+            ...(typeof delta.partial_json === "string"
+              ? { arguments: delta.partial_json }
+              : {}),
+          },
+        };
+      }
       const text =
         delta?.type === "text_delta" && typeof delta.text === "string"
           ? delta.text
           : "";
-      return { text, finishReason: null, id: null, model: null };
+      return {
+        text,
+        finishReason: null,
+        id: null,
+        model: null,
+        ...(text ? { phase: "text" as const } : {}),
+      };
     }
     if (event.type === "message_start") {
       const message = asObject(event.message);
@@ -121,53 +183,94 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
     wantsStream,
     completionTokens,
     promptTokens,
+    toolCalls,
   }) {
     const resolvedId = id ?? "msg_llama_manager";
     const resolvedModel = model ?? "unknown";
-    const stopReason = finishReason ?? "end_turn";
     const inputTokens = promptTokens ?? 0;
     const outputTokens = completionTokens ?? 0;
+
+    const toolBlocks = anthropicToolBlocks(toolCalls);
+    const hasTools = toolBlocks.length > 0;
+    const stopReason = finishReason ?? (hasTools ? "tool_use" : "end_turn");
+    const textBlocks = text.length > 0 ? [{ type: "text", text }] : [];
+    const contentBlocks =
+      textBlocks.length > 0 || hasTools
+        ? [...textBlocks, ...toolBlocks]
+        : [{ type: "text", text: "" }];
 
     if (wantsStream) {
       const event = (type: string, payload: unknown) =>
         `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
-      return {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-        body:
-          event("message_start", {
-            type: "message_start",
-            message: {
-              id: resolvedId,
-              type: "message",
-              role: "assistant",
-              model: resolvedModel,
-              content: [],
-              stop_reason: null,
-              stop_sequence: null,
-              usage: { input_tokens: inputTokens, output_tokens: 0 },
-            },
-          }) +
+      let body = event("message_start", {
+        type: "message_start",
+        message: {
+          id: resolvedId,
+          type: "message",
+          role: "assistant",
+          model: resolvedModel,
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: inputTokens, output_tokens: 0 },
+        },
+      });
+      contentBlocks.forEach((block, index) => {
+        if (block.type === "tool_use") {
+          const tool = block as { id: string; name: string; input: unknown };
+          body +=
+            event("content_block_start", {
+              type: "content_block_start",
+              index,
+              content_block: {
+                type: "tool_use",
+                id: tool.id,
+                name: tool.name,
+                input: {},
+              },
+            }) +
+            event("content_block_delta", {
+              type: "content_block_delta",
+              index,
+              delta: {
+                type: "input_json_delta",
+                partial_json: JSON.stringify(tool.input),
+              },
+            }) +
+            event("content_block_stop", {
+              type: "content_block_stop",
+              index,
+            });
+          return;
+        }
+        const textBlock = block as { text: string };
+        body +=
           event("content_block_start", {
             type: "content_block_start",
-            index: 0,
+            index,
             content_block: { type: "text", text: "" },
           }) +
           event("content_block_delta", {
             type: "content_block_delta",
-            index: 0,
-            delta: { type: "text_delta", text },
+            index,
+            delta: { type: "text_delta", text: textBlock.text },
           }) +
           event("content_block_stop", {
             type: "content_block_stop",
-            index: 0,
-          }) +
-          event("message_delta", {
-            type: "message_delta",
-            delta: { stop_reason: stopReason, stop_sequence: null },
-            usage: { output_tokens: outputTokens },
-          }) +
-          event("message_stop", { type: "message_stop" }),
+            index,
+          });
+      });
+      body +=
+        event("message_delta", {
+          type: "message_delta",
+          delta: { stop_reason: stopReason, stop_sequence: null },
+          usage: { output_tokens: outputTokens },
+        }) +
+        event("message_stop", { type: "message_stop" });
+      return {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body,
       };
     }
 
@@ -179,7 +282,7 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
         type: "message",
         role: "assistant",
         model: resolvedModel,
-        content: [{ type: "text", text }],
+        content: contentBlocks,
         stop_reason: stopReason,
         stop_sequence: null,
         usage: { input_tokens: inputTokens, output_tokens: outputTokens },

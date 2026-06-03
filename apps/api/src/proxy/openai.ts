@@ -3,6 +3,8 @@ import type {
   ApiProxyProtocolAdapter,
   ApiProxyProtocolOperation,
   ApiProxyResumableCodec,
+  ApiProxyResumablePhase,
+  ApiProxyResumableToolCallDelta,
 } from "./protocol.js";
 
 export type OpenAiErrorType =
@@ -107,12 +109,42 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
     const delta = asObject(choice?.delta);
     const content = typeof delta?.content === "string" ? delta.content : "";
     const usage = asObject(event.usage);
+
+    const deltaToolCalls = Array.isArray(delta?.tool_calls)
+      ? delta.tool_calls
+      : null;
+    const reasoning =
+      typeof delta?.reasoning_content === "string"
+        ? delta.reasoning_content
+        : "";
+    let toolCall: ApiProxyResumableToolCallDelta | undefined;
+    let phase: ApiProxyResumablePhase | undefined;
+    if (deltaToolCalls && deltaToolCalls.length > 0) {
+      const entry = asObject(deltaToolCalls[0]);
+      const fn = asObject(entry?.function);
+      toolCall = {
+        index: typeof entry?.index === "number" ? entry.index : 0,
+        ...(typeof entry?.id === "string" ? { id: entry.id } : {}),
+        ...(typeof fn?.name === "string" ? { name: fn.name } : {}),
+        ...(typeof fn?.arguments === "string"
+          ? { arguments: fn.arguments }
+          : {}),
+      };
+      phase = "tool";
+    } else if (reasoning) {
+      phase = "thinking";
+    } else if (content) {
+      phase = "text";
+    }
+
     return {
       text: content,
       finishReason:
         typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
       id: typeof event.id === "string" ? event.id : null,
       model: typeof event.model === "string" ? event.model : null,
+      ...(phase ? { phase } : {}),
+      ...(toolCall ? { toolCall } : {}),
       ...(usage
         ? {
             usage: {
@@ -138,11 +170,22 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
     completionTokens,
     promptTokens,
     genMs,
+    toolCalls,
   }) {
     const created = Math.floor(Date.now() / 1000);
     const resolvedId = id ?? "chatcmpl-llama-manager";
     const resolvedModel = model ?? "unknown";
-    const finish = finishReason ?? "stop";
+
+    const resolvedToolCalls = (toolCalls ?? [])
+      .filter((call) => call.name)
+      .map((call, index) => ({
+        id: call.id ?? `call_${index}`,
+        type: "function",
+        function: { name: call.name ?? "", arguments: call.arguments },
+      }));
+    const hasToolCalls = resolvedToolCalls.length > 0;
+    const finish = finishReason ?? (hasToolCalls ? "tool_calls" : "stop");
+    const messageContent = text.length > 0 ? text : hasToolCalls ? null : "";
 
     const completion = completionTokens ?? 0;
     const prompt = promptTokens ?? null;
@@ -180,7 +223,11 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
             choices: [
               {
                 index: 0,
-                delta: { role: "assistant", content: text },
+                delta: {
+                  role: "assistant",
+                  content: messageContent,
+                  ...(hasToolCalls ? { tool_calls: resolvedToolCalls } : {}),
+                },
                 finish_reason: null,
               },
             ],
@@ -204,7 +251,11 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
         choices: [
           {
             index: 0,
-            message: { role: "assistant", content: text },
+            message: {
+              role: "assistant",
+              content: messageContent,
+              ...(hasToolCalls ? { tool_calls: resolvedToolCalls } : {}),
+            },
             finish_reason: finish,
           },
         ],

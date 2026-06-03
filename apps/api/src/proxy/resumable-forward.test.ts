@@ -106,7 +106,7 @@ test("openAiResumableCodec.parseChunk reads deltas, done and junk", () => {
         choices: [{ delta: { content: "hey" }, finish_reason: "stop" }],
       }),
     ),
-    { text: "hey", finishReason: "stop", id: "x", model: "m" },
+    { text: "hey", finishReason: "stop", id: "x", model: "m", phase: "text" },
   );
 });
 
@@ -373,6 +373,108 @@ test("runResumableForward resumes with the accumulated tail after preemption", a
   assert.deepEqual(tails, [null, "AB"]);
   assert.equal(yields, 1);
   assert.equal(JSON.parse(final.body).choices[0].message.content, "ABCD");
+});
+
+function toolFrame(tool: { id?: string; name?: string; arguments?: string }) {
+  const fn: Record<string, string> = {};
+  if (tool.name !== undefined) {
+    fn.name = tool.name;
+  }
+  if (tool.arguments !== undefined) {
+    fn.arguments = tool.arguments;
+  }
+  return `data: ${JSON.stringify({
+    id: "cmpl",
+    model: "m",
+    choices: [
+      {
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              ...(tool.id !== undefined ? { id: tool.id } : {}),
+              function: fn,
+            },
+          ],
+        },
+        finish_reason: null,
+      },
+    ],
+  })}\n\n`;
+}
+
+test("runResumableUpstreamAttempt defers preemption during a tool call", async () => {
+  const state = createResumableBufferState();
+  const preempt = new AbortController();
+  const encoder = new TextEncoder();
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const fetchImpl = (async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+        controller.enqueue(encoder.encode(toolFrame({ id: "call_1", name: "get_weather" })));
+        controller.enqueue(encoder.encode(toolFrame({ arguments: '{"city":"Moscow"}' })));
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  }) as unknown as typeof fetch;
+
+  const pending = runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state,
+    preemptSignal: preempt.signal,
+    fetchImpl,
+  });
+
+  await flush();
+  assert.equal(state.inToolPhase, true);
+  preempt.abort();
+  await flush();
+
+  const controller = streamController as ReadableStreamDefaultController<Uint8Array> | null;
+  assert.notEqual(controller, null);
+  controller!.enqueue(encoder.encode("data: [DONE]\n\n"));
+  controller!.close();
+  const outcome = await pending;
+
+  assert.equal(outcome.type, "completed");
+  assert.deepEqual(
+    state.toolCalls.filter(Boolean),
+    [{ id: "call_1", name: "get_weather", arguments: '{"city":"Moscow"}' }],
+  );
+});
+
+test("runResumableForward regenerates from scratch when preempted before any text", async () => {
+  const state = createResumableBufferState();
+  const tails: Array<string | null> = [];
+  let attempts = 0;
+  await runResumableForward({
+    makeReady: async () => ({ ok: true }),
+    attempt: async (tail) => {
+      tails.push(tail);
+      attempts += 1;
+      if (attempts === 1) {
+        return { type: "preempted" };
+      }
+      state.text = "answer";
+      state.finishReason = "stop";
+      return { type: "completed" };
+    },
+    state,
+    codec,
+    yieldLease: async () => undefined,
+    wantsStream: false,
+    onError: (message) => ({ status: 502, headers: {}, body: message }),
+  });
+
+  assert.deepEqual(tails, [null, null]);
 });
 
 test("runResumableForward returns the readiness failure response", async () => {
