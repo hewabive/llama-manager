@@ -199,6 +199,10 @@ import {
   planApiProxyRequest,
 } from "./proxy/scheduler.js";
 import {
+  buildApiProxyTargetModelCatalog,
+  isRouterInstance,
+} from "./proxy/target-models.js";
+import {
   apiVersionBaseUrl,
   isManagerProxyBaseUrl,
   normalizeHttpBaseUrl,
@@ -267,6 +271,29 @@ function validateApiProxyTargetRefs(input: {
   }
   if (endpoint.kind === "manager-proxy") {
     return "proxy target cannot point to llama-manager proxy itself";
+  }
+  return null;
+}
+
+function validateApiProxyTargetModel(input: {
+  endpointId?: string | undefined;
+  model?: string | null | undefined;
+}) {
+  if (!input.endpointId || !input.model) {
+    return null;
+  }
+  const instances = listInstances();
+  const endpoint = getApiEndpointFromCatalog(input.endpointId, instances);
+  if (
+    !endpoint ||
+    endpoint.kind !== "managed-instance" ||
+    !endpoint.instanceId
+  ) {
+    return null;
+  }
+  const instance = getInstance(endpoint.instanceId);
+  if (instance && !isRouterInstance(instance)) {
+    return `target ${endpoint.name} is a single-model instance: leave the model empty (it is implied by the instance). A model is only set for router (--models-preset) instances.`;
   }
   return null;
 }
@@ -1100,6 +1127,12 @@ app.get("/api/proxy/config", (c) => {
   });
 });
 
+app.get("/api/proxy/target-models", (c) => {
+  return c.json({
+    data: buildApiProxyTargetModelCatalog(listInstances()),
+  });
+});
+
 app.get("/api/proxy/requests", (c) => {
   const limit = Number(c.req.query("limit") ?? 100);
   return c.json({
@@ -1357,6 +1390,10 @@ app.post("/api/proxy/targets", async (c) => {
   if (refError) {
     return c.json({ error: refError }, 400);
   }
+  const modelError = validateApiProxyTargetModel(parsed.data);
+  if (modelError) {
+    return c.json({ error: modelError }, 400);
+  }
 
   try {
     return c.json({ data: createApiProxyTarget(parsed.data) }, 201);
@@ -1373,6 +1410,16 @@ app.patch("/api/proxy/targets/:id", async (c) => {
   const refError = validateApiProxyTargetRefs(parsed.data);
   if (refError) {
     return c.json({ error: refError }, 400);
+  }
+  if ("model" in parsed.data) {
+    const existing = getApiProxyTarget(c.req.param("id"));
+    const modelError = validateApiProxyTargetModel({
+      endpointId: parsed.data.endpointId ?? existing?.endpointId,
+      model: parsed.data.model,
+    });
+    if (modelError) {
+      return c.json({ error: modelError }, 400);
+    }
   }
 
   try {

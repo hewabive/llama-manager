@@ -1,6 +1,5 @@
-import type { ApiEndpointRecord } from "@llama-manager/core";
+import type { ApiProxyTargetModelGroup } from "@llama-manager/core";
 import {
-  Autocomplete,
   Button,
   Group,
   Modal,
@@ -16,8 +15,6 @@ import {
 import { Save } from "lucide-react";
 import { useMemo } from "react";
 
-import { StatusTooltipIcon } from "../components/StatusTooltipIcon";
-import { useApiModelOptions } from "../hooks/use-api-model-options";
 import type {
   ModelDraft,
   ModelEditor,
@@ -28,8 +25,18 @@ import type {
   TargetDraft,
   TargetEditor,
 } from "./forms";
-import { unboundTargetValue } from "./forms";
+import {
+  parseTargetModelValue,
+  targetModelSeparator,
+  unboundTargetValue,
+} from "./forms";
 import type { SelectOption } from "./sections";
+
+function targetModelKindLabel(kind: ApiProxyTargetModelGroup["kind"]) {
+  if (kind === "managed-single") return "single";
+  if (kind === "managed-router") return "router";
+  return "external";
+}
 
 type ModelEditorModalProps = {
   editor: ModelEditor | null;
@@ -210,8 +217,7 @@ export function PipelineEditorModal(props: PipelineEditorModalProps) {
 type TargetEditorModalProps = {
   editor: TargetEditor | null;
   draft: TargetDraft;
-  endpoints: ApiEndpointRecord[];
-  endpointOptions: SelectOption[];
+  targetModelGroups: ApiProxyTargetModelGroup[];
   busy: boolean;
   onClose: () => void;
   onSave: () => void;
@@ -219,25 +225,34 @@ type TargetEditorModalProps = {
 };
 
 export function TargetEditorModal(props: TargetEditorModalProps) {
-  const selectedEndpoint = useMemo(
+  const groups = props.targetModelGroups;
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.endpointId === props.draft.endpointId),
+    [groups, props.draft.endpointId],
+  );
+  const isExternal = selectedGroup?.kind === "external-api";
+  const modelSelectData = useMemo(
     () =>
-      props.endpoints.find((endpoint) => endpoint.id === props.draft.endpointId),
-    [props.draft.endpointId, props.endpoints],
+      groups.map((group) => ({
+        group: `${group.endpointName} · ${targetModelKindLabel(group.kind)}${
+          group.online ? "" : " · offline"
+        }`,
+        items: group.options.map((option) => ({
+          value: option.value,
+          label: option.label,
+        })),
+      })),
+    [groups],
   );
-  const modelDiscovery = useApiModelOptions({
-    profile: "openai",
-    baseUrl: selectedEndpoint?.baseUrl,
-    endpointId: selectedEndpoint?.id ?? null,
-    enabled: Boolean(props.editor && selectedEndpoint),
-    idleLabel: selectedEndpoint
-      ? "Model list was not checked."
-      : "Select an endpoint to load model options.",
-  });
-  const modelOptions = modelDiscovery.modelOptions;
-  const modelOptionsByValue = useMemo(
-    () => new Map(modelOptions.map((option) => [option.value, option])),
-    [modelOptions],
-  );
+  const modelSelectValue = useMemo(() => {
+    if (!props.draft.endpointId || !selectedGroup) {
+      return null;
+    }
+    if (selectedGroup.kind === "external-api") {
+      return selectedGroup.options[0]?.value ?? null;
+    }
+    return `${props.draft.endpointId}${targetModelSeparator}${props.draft.model.trim()}`;
+  }, [props.draft.endpointId, props.draft.model, selectedGroup]);
 
   return (
     <Modal
@@ -268,45 +283,47 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
           }}
         />
         <Select
-          data={props.endpointOptions}
-          label="Endpoint"
+          data={modelSelectData}
+          label="Target model"
+          description="The servable model this target represents. Single-model instances need no model (it is implied); pick a named model only for router instances or external APIs."
           searchable
-          rightSection={<StatusTooltipIcon status={modelDiscovery.status} />}
-          rightSectionPointerEvents="all"
-          value={props.draft.endpointId}
-          onChange={(endpointId) =>
-            props.onDraftChange({ ...props.draft, endpointId })
-          }
-        />
-        <Autocomplete
-          clearable
-          data={modelOptions.map((option) => option.value)}
-          filter={({ options, limit }) => options.slice(0, limit)}
-          label="Upstream model"
-          limit={50}
+          nothingFoundMessage="No models — create an instance or external endpoint first"
+          placeholder="Select a model"
           maxDropdownHeight={360}
-          openOnFocus
-          placeholder={
-            modelOptions.length > 0
-              ? "Select or type upstream model"
-              : "Optional upstream model id"
-          }
-          renderOption={({ option }) => {
-            const modelOption = modelOptionsByValue.get(option.value);
-            return (
-              <Stack gap={2}>
-                <Text size="sm">{option.value}</Text>
-                {modelOption?.status && (
-                  <Text c="dimmed" size="xs">
-                    {modelOption.status}
-                  </Text>
-                )}
-              </Stack>
+          value={modelSelectValue}
+          onChange={(value) => {
+            if (!value) {
+              props.onDraftChange({
+                ...props.draft,
+                endpointId: null,
+                model: "",
+              });
+              return;
+            }
+            const parsed = parseTargetModelValue(value);
+            const group = groups.find(
+              (item) => item.endpointId === parsed.endpointId,
             );
+            const model =
+              group?.kind === "external-api" ? "" : (parsed.storedModel ?? "");
+            props.onDraftChange({
+              ...props.draft,
+              endpointId: parsed.endpointId,
+              model,
+            });
           }}
-          value={props.draft.model}
-          onChange={(model) => props.onDraftChange({ ...props.draft, model })}
         />
+        {isExternal && (
+          <TextInput
+            label="Upstream model"
+            placeholder="model id sent to the external API"
+            value={props.draft.model}
+            onChange={(event) => {
+              const model = event.currentTarget.value;
+              props.onDraftChange({ ...props.draft, model });
+            }}
+          />
+        )}
         <Group grow align="flex-end">
           <SegmentedControl
             value={props.draft.role}

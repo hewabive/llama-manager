@@ -66,6 +66,23 @@ export type PipelineDraft = {
   textReplacements: string;
 };
 
+export const targetModelSeparator = "\u001f";
+
+export function parseTargetModelValue(value: string): {
+  endpointId: string;
+  storedModel: string | null;
+} {
+  const index = value.indexOf(targetModelSeparator);
+  if (index < 0) {
+    return { endpointId: value, storedModel: null };
+  }
+  const rest = value.slice(index + 1);
+  return {
+    endpointId: value.slice(0, index),
+    storedModel: rest ? rest : null,
+  };
+}
+
 export const unboundTargetValue = "__unbound__";
 export const routeToTargetPrefix = "target:";
 export const routeToPipelinePrefix = "pipeline:";

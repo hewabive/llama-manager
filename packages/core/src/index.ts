@@ -615,6 +615,32 @@ export const ApiProxyConfigSchema = z.object({
   endpoints: z.array(ApiEndpointRecordSchema).default([]),
 });
 
+export const ApiProxyTargetModelKindSchema = z.enum([
+  "managed-single",
+  "managed-router",
+  "external-api",
+]);
+
+export const ApiProxyTargetModelOptionSchema = z.object({
+  value: z.string().min(1),
+  endpointId: ApiEndpointIdSchema,
+  storedModel: z.string().min(1).nullable().default(null),
+  label: z.string().min(1),
+  custom: z.boolean().default(false),
+});
+
+export const ApiProxyTargetModelGroupSchema = z.object({
+  endpointId: ApiEndpointIdSchema,
+  endpointName: z.string().min(1),
+  kind: ApiProxyTargetModelKindSchema,
+  online: z.boolean().default(false),
+  options: z.array(ApiProxyTargetModelOptionSchema).default([]),
+});
+
+export const ApiProxyTargetModelCatalogSchema = z.object({
+  groups: z.array(ApiProxyTargetModelGroupSchema).default([]),
+});
+
 export const ApiProxyRequestLogRecordSchema = z.object({
   id: z.string(),
   filePath: z.string().min(1).nullable().default(null),
@@ -1474,6 +1500,15 @@ export type ApiProxyPipelineRecord = z.infer<
 >;
 export type ApiProxyModelRecord = z.infer<typeof ApiProxyModelRecordSchema>;
 export type ApiProxyConfig = z.infer<typeof ApiProxyConfigSchema>;
+export type ApiProxyTargetModelOption = z.infer<
+  typeof ApiProxyTargetModelOptionSchema
+>;
+export type ApiProxyTargetModelGroup = z.infer<
+  typeof ApiProxyTargetModelGroupSchema
+>;
+export type ApiProxyTargetModelCatalog = z.infer<
+  typeof ApiProxyTargetModelCatalogSchema
+>;
 export type ApiProxyRequestLogRecord = z.infer<
   typeof ApiProxyRequestLogRecordSchema
 >;

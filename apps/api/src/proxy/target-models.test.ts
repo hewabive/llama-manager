@@ -1,0 +1,76 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import type { Instance } from "@llama-manager/core";
+
+import {
+  buildApiProxyTargetModelCatalog,
+  isRouterInstance,
+  targetModelValueSeparator,
+} from "./target-models.js";
+
+function instance(id: string, name: string, args: Instance["args"]): Instance {
+  return {
+    id,
+    name,
+    binaryPath: "/tmp/llama-server",
+    binaryPathRefId: "bin",
+    args,
+    env: {},
+    status: "running",
+    pid: 1,
+    createdAt: "2026-06-03T00:00:00.000Z",
+    updatedAt: "2026-06-03T00:00:00.000Z",
+  };
+}
+
+test("single-model instance yields one option with null storedModel", () => {
+  const catalog = buildApiProxyTargetModelCatalog([
+    instance("i1", "single-A", {
+      "--host": "127.0.0.1",
+      "--port": 9001,
+      "--model": "/models/qwen.gguf",
+    }),
+  ]);
+
+  const group = catalog.groups.find((item) => item.endpointName === "single-A");
+  assert.ok(group);
+  assert.equal(group.kind, "managed-single");
+  assert.equal(group.options.length, 1);
+  assert.equal(group.options[0]?.storedModel, null);
+  assert.equal(group.options[0]?.label, "qwen.gguf");
+  assert.equal(
+    group.options[0]?.value,
+    `${group.endpointId}${targetModelValueSeparator}`,
+  );
+});
+
+test("router instance (preset, no --model) is managed-router", () => {
+  const router = instance("i2", "router-B", {
+    "--host": "127.0.0.1",
+    "--port": 9002,
+    "--models-preset": "missing-preset",
+  });
+  assert.equal(isRouterInstance(router), true);
+
+  const catalog = buildApiProxyTargetModelCatalog([router]);
+  const group = catalog.groups.find((item) => item.endpointName === "router-B");
+  assert.ok(group);
+  assert.equal(group.kind, "managed-router");
+  assert.deepEqual(group.options, []);
+});
+
+test("a configured --model wins over --models-preset (single, not router)", () => {
+  const mixed = instance("i3", "mixed", {
+    "--host": "127.0.0.1",
+    "--port": 9003,
+    "--model": "/models/a.gguf",
+    "--models-preset": "ignored",
+  });
+  assert.equal(isRouterInstance(mixed), false);
+
+  const catalog = buildApiProxyTargetModelCatalog([mixed]);
+  const group = catalog.groups.find((item) => item.endpointName === "mixed");
+  assert.equal(group?.kind, "managed-single");
+  assert.equal(group?.options[0]?.storedModel, null);
+});

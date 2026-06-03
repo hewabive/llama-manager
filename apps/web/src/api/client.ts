@@ -17,6 +17,7 @@ import type {
   ApiProxyRouteRecord,
   ApiProxyRouteUpdate,
   ApiProxyRuntimeSnapshot,
+  ApiProxyTargetModelCatalog,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
   ApiProxyTargetUpdate,
@@ -234,6 +235,12 @@ export async function deletePathCatalogEntry(id: string) {
 
 export async function getApiProxyConfig() {
   return request<{ data: ApiProxyConfig }>("/api/proxy/config");
+}
+
+export async function getApiProxyTargetModels() {
+  return request<{ data: ApiProxyTargetModelCatalog }>(
+    "/api/proxy/target-models",
+  );
 }
 
 export async function listApiProxyRequestLogs(limit = 100) {

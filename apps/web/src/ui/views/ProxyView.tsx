@@ -25,6 +25,7 @@ import {
   deleteApiProxyTarget,
   getApiProxyConfig,
   getApiProxyRuntime,
+  getApiProxyTargetModels,
   listInstances,
   previewApiProxyPlan,
   updateApiProxyModel,
@@ -101,8 +102,14 @@ export function ProxyView() {
     queryFn: getApiProxyRuntime,
     refetchInterval: 5_000,
   });
+  const targetModelsQuery = useQuery({
+    queryKey: ["api-proxy-target-models"],
+    queryFn: getApiProxyTargetModels,
+    staleTime: 10_000,
+  });
 
   const config = proxyQuery.data?.data;
+  const targetModelGroups = targetModelsQuery.data?.data.groups ?? [];
   const models = config?.models ?? [];
   const pipelines = config?.pipelines ?? [];
   const targets = config?.targets ?? [];
@@ -200,6 +207,7 @@ export function ProxyView() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["api-proxy-config"] }),
       queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
+      queryClient.invalidateQueries({ queryKey: ["api-proxy-target-models"] }),
     ]);
   };
 
@@ -625,8 +633,7 @@ export function ProxyView() {
       <TargetEditorModal
         editor={targetEditor}
         draft={targetDraftState}
-        endpoints={endpoints}
-        endpointOptions={endpointOptions}
+        targetModelGroups={targetModelGroups}
         busy={targetBusy}
         onClose={closeTargetEditor}
         onSave={saveTarget}
