@@ -85,6 +85,16 @@ export class ProcessSupervisor extends EventEmitter {
     const rawLogPath = resolve(config.logsDir, `${logName}.raw.log`);
     const logStream = createWriteStream(logPath, { flags: "a" });
     const rawLogStream = createWriteStream(rawLogPath, { flags: "a" });
+    logStream.on("error", () => undefined);
+    rawLogStream.on("error", () => undefined);
+    const endLogs = () => {
+      if (!logStream.writableEnded) {
+        logStream.end();
+      }
+      if (!rawLogStream.writableEnded) {
+        rawLogStream.end();
+      }
+    };
     const cliArgs = argsToCli(instance.args);
     const cwd = instance.cwd ?? dirname(instance.binaryPath);
 
@@ -177,8 +187,7 @@ export class ProcessSupervisor extends EventEmitter {
         `${runtime.stoppedAt} ERROR ${error.message}\n`,
       );
       this.emitEvent("error", instance.id, error.message);
-      logStream.end();
-      rawLogStream.end();
+      endLogs();
     });
 
     child.on("exit", (code) => {
@@ -200,8 +209,10 @@ export class ProcessSupervisor extends EventEmitter {
         `${runtime.stoppedAt} EXIT code=${code ?? "signal"}\n`,
       );
       this.emitEvent("exit", instance.id, `exit code=${code ?? "signal"}`);
-      logStream.end();
-      rawLogStream.end();
+    });
+
+    child.on("close", () => {
+      endLogs();
     });
 
     return this.getState(instance.id)!;
@@ -339,20 +350,27 @@ export class ProcessSupervisor extends EventEmitter {
     });
   }
 
+  private writeToLog(stream: RuntimeProcess["logStream"], message: string) {
+    if (stream.writableEnded || stream.destroyed) {
+      return;
+    }
+    stream.write(message);
+  }
+
   private writeProcessOutput(runtime: RuntimeProcess, message: string) {
-    runtime.rawLogStream.write(message);
+    this.writeToLog(runtime.rawLogStream, message);
 
     const filtered = config.logs.filterRoutineProbeRequests
       ? filterManagedLlamaLogChunk(message)
       : message;
     if (filtered) {
-      runtime.logStream.write(filtered);
+      this.writeToLog(runtime.logStream, filtered);
     }
   }
 
   private writeManagerLogLine(runtime: RuntimeProcess, message: string) {
-    runtime.logStream.write(message);
-    runtime.rawLogStream.write(message);
+    this.writeToLog(runtime.logStream, message);
+    this.writeToLog(runtime.rawLogStream, message);
   }
 }
 
