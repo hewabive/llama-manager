@@ -59,6 +59,15 @@ function makeFetch(frames: string[], options: { hang?: boolean } = {}) {
   }) as unknown as typeof fetch;
 }
 
+function usageFrame(input: { prompt: number; completion: number }) {
+  return `data: ${JSON.stringify({
+    id: "cmpl",
+    model: "m",
+    choices: [],
+    usage: { prompt_tokens: input.prompt, completion_tokens: input.completion },
+  })}\n\n`;
+}
+
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 test("openAiResumableCodec.upstreamBody forces stream and appends prefill", () => {
@@ -94,6 +103,117 @@ test("openAiResumableCodec.parseChunk reads deltas, done and junk", () => {
     ),
     { text: "hey", finishReason: "stop", id: "x", model: "m" },
   );
+});
+
+test("parseChunk extracts usage from a usage-only chunk", () => {
+  assert.deepEqual(
+    openAiResumableCodec.parseChunk(
+      JSON.stringify({
+        id: "x",
+        model: "m",
+        choices: [],
+        usage: { prompt_tokens: 12, completion_tokens: 7 },
+      }),
+    ),
+    {
+      text: "",
+      finishReason: null,
+      id: "x",
+      model: "m",
+      usage: { promptTokens: 12, completionTokens: 7 },
+    },
+  );
+});
+
+test("runResumableUpstreamAttempt accumulates usage and active generation time", async () => {
+  const state = createResumableBufferState();
+  const times = [100, 100, 1100];
+  let i = 0;
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state,
+    preemptSignal: new AbortController().signal,
+    now: () => times[i++] ?? 9999,
+    fetchImpl: makeFetch([
+      chunkFrame({ content: "Hel" }),
+      chunkFrame({ content: "lo", finish: "stop" }),
+      usageFrame({ prompt: 10, completion: 5 }),
+      "data: [DONE]\n\n",
+    ]),
+  });
+
+  assert.equal(outcome.type, "completed");
+  assert.equal(state.text, "Hello");
+  assert.equal(state.completionTokens, 5);
+  assert.equal(state.promptTokens, 10);
+  assert.equal(state.genMs, 1000);
+});
+
+test("completion tokens accumulate across resume rounds", async () => {
+  const state = createResumableBufferState();
+  let attempts = 0;
+  await runResumableForward({
+    makeReady: async () => ({ ok: true }),
+    attempt: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        state.text = "AB";
+        state.completionTokens += 2;
+        return { type: "preempted" };
+      }
+      state.text = "ABCD";
+      state.completionTokens += 3;
+      state.promptTokens = 9;
+      state.genMs = 500;
+      state.finishReason = "stop";
+      return { type: "completed" };
+    },
+    state,
+    codec,
+    yieldLease: async () => undefined,
+    wantsStream: false,
+    onError: (message) => ({ status: 502, headers: {}, body: message }),
+  });
+
+  assert.equal(state.completionTokens, 5);
+});
+
+test("finalResponse emits usage and proxy-computed effective tok/s", () => {
+  const final = openAiResumableCodec.finalResponse({
+    text: "hello",
+    id: "x",
+    model: "m",
+    finishReason: "stop",
+    wantsStream: false,
+    completionTokens: 5,
+    promptTokens: 10,
+    genMs: 1000,
+  });
+  const body = JSON.parse(final.body);
+  assert.deepEqual(body.usage, {
+    prompt_tokens: 10,
+    completion_tokens: 5,
+    total_tokens: 15,
+  });
+  assert.equal(body.timings.predicted_n, 5);
+  assert.equal(body.timings.predicted_per_second, 5);
+});
+
+test("finalResponse omits usage/timings when no tokens were counted", () => {
+  const final = openAiResumableCodec.finalResponse({
+    text: "x",
+    id: null,
+    model: null,
+    finishReason: null,
+    wantsStream: false,
+  });
+  const body = JSON.parse(final.body);
+  assert.equal(body.usage, undefined);
+  assert.equal(body.timings, undefined);
 });
 
 test("runResumableUpstreamAttempt accumulates a completed stream", async () => {

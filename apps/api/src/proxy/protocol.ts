@@ -57,11 +57,17 @@ export type ApiProxyProtocolModelResolution =
       response: ApiProxyProtocolResponse;
     };
 
+export type ApiProxyResumableUsage = {
+  promptTokens: number | null;
+  completionTokens: number | null;
+};
+
 export type ApiProxyResumableStreamChunk = {
   text: string;
   finishReason: string | null;
   id: string | null;
   model: string | null;
+  usage?: ApiProxyResumableUsage | undefined;
 };
 
 export type ApiProxyResumableFinalResponse = {
@@ -79,6 +85,9 @@ export type ApiProxyResumableCodec = {
     model: string | null;
     finishReason: string | null;
     wantsStream: boolean;
+    completionTokens?: number | undefined;
+    promptTokens?: number | null | undefined;
+    genMs?: number | undefined;
   }) => ApiProxyResumableFinalResponse;
 };
 

@@ -81,7 +81,12 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
       tail !== null
         ? [...messages, { role: "assistant", content: tail }]
         : messages;
-    return { ...base, messages: next, stream: true };
+    return {
+      ...base,
+      messages: next,
+      stream: true,
+      stream_options: { include_usage: true },
+    };
   },
   parseChunk(data) {
     if (data === "[DONE]") {
@@ -101,35 +106,89 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
     const choice = asObject(choices[0]);
     const delta = asObject(choice?.delta);
     const content = typeof delta?.content === "string" ? delta.content : "";
+    const usage = asObject(event.usage);
     return {
       text: content,
       finishReason:
         typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
       id: typeof event.id === "string" ? event.id : null,
       model: typeof event.model === "string" ? event.model : null,
+      ...(usage
+        ? {
+            usage: {
+              promptTokens:
+                typeof usage.prompt_tokens === "number"
+                  ? usage.prompt_tokens
+                  : null,
+              completionTokens:
+                typeof usage.completion_tokens === "number"
+                  ? usage.completion_tokens
+                  : null,
+            },
+          }
+        : {}),
     };
   },
-  finalResponse({ text, id, model, finishReason, wantsStream }) {
+  finalResponse({
+    text,
+    id,
+    model,
+    finishReason,
+    wantsStream,
+    completionTokens,
+    promptTokens,
+    genMs,
+  }) {
     const created = Math.floor(Date.now() / 1000);
     const resolvedId = id ?? "chatcmpl-llama-manager";
     const resolvedModel = model ?? "unknown";
     const finish = finishReason ?? "stop";
 
+    const completion = completionTokens ?? 0;
+    const prompt = promptTokens ?? null;
+    const usage =
+      completion > 0
+        ? {
+            prompt_tokens: prompt ?? 0,
+            completion_tokens: completion,
+            total_tokens: (prompt ?? 0) + completion,
+          }
+        : null;
+    const timings =
+      completion > 0 && genMs && genMs > 0
+        ? {
+            predicted_n: completion,
+            predicted_ms: genMs,
+            predicted_per_second: completion / (genMs / 1000),
+          }
+        : null;
+
     if (wantsStream) {
-      const chunk = (delta: unknown, reason: string | null) =>
+      const chunk = (extra: Record<string, unknown>) =>
         `data: ${JSON.stringify({
           id: resolvedId,
           object: "chat.completion.chunk",
           created,
           model: resolvedModel,
-          choices: [{ index: 0, delta, finish_reason: reason }],
+          ...extra,
         })}\n\n`;
       return {
         status: 200,
         headers: { "content-type": "text/event-stream" },
         body:
-          chunk({ role: "assistant", content: text }, null) +
-          chunk({}, finish) +
+          chunk({
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: text },
+                finish_reason: null,
+              },
+            ],
+          }) +
+          chunk({ choices: [{ index: 0, delta: {}, finish_reason: finish }] }) +
+          (usage
+            ? chunk({ choices: [], usage, ...(timings ? { timings } : {}) })
+            : "") +
           "data: [DONE]\n\n",
       };
     }
@@ -149,6 +208,8 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
             finish_reason: finish,
           },
         ],
+        ...(usage ? { usage } : {}),
+        ...(timings ? { timings } : {}),
       }),
     };
   },

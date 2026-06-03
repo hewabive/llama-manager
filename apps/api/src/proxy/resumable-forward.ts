@@ -8,6 +8,9 @@ export type ResumableBufferState = {
   id: string | null;
   model: string | null;
   finishReason: string | null;
+  completionTokens: number;
+  promptTokens: number | null;
+  genMs: number;
 };
 
 export type ResumableUpstreamOutcome =
@@ -17,7 +20,15 @@ export type ResumableUpstreamOutcome =
   | { type: "error"; message: string };
 
 export function createResumableBufferState(): ResumableBufferState {
-  return { text: "", id: null, model: null, finishReason: null };
+  return {
+    text: "",
+    id: null,
+    model: null,
+    finishReason: null,
+    completionTokens: 0,
+    promptTokens: null,
+    genMs: 0,
+  };
 }
 
 function applyFrame(
@@ -51,6 +62,14 @@ function applyFrame(
     if (chunk.finishReason) {
       state.finishReason = chunk.finishReason;
     }
+    if (chunk.usage) {
+      if (typeof chunk.usage.completionTokens === "number") {
+        state.completionTokens += chunk.usage.completionTokens;
+      }
+      if (state.promptTokens === null && typeof chunk.usage.promptTokens === "number") {
+        state.promptTokens = chunk.usage.promptTokens;
+      }
+    }
   }
   return null;
 }
@@ -65,6 +84,7 @@ export async function runResumableUpstreamAttempt(input: {
   preemptSignal: AbortSignal;
   consumerSignal?: AbortSignal | undefined;
   fetchImpl?: typeof fetch | undefined;
+  now?: (() => number) | undefined;
 }): Promise<ResumableUpstreamOutcome> {
   const { preemptSignal, consumerSignal } = input;
   if (consumerSignal?.aborted) {
@@ -75,6 +95,9 @@ export async function runResumableUpstreamAttempt(input: {
   }
 
   const fetchImpl = input.fetchImpl ?? fetch;
+  const now = input.now ?? (() => performance.now());
+  let firstTokenAt: number | null = null;
+  let lastTokenAt = 0;
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   preemptSignal.addEventListener("abort", onAbort, { once: true });
@@ -85,6 +108,9 @@ export async function runResumableUpstreamAttempt(input: {
   ): ResumableUpstreamOutcome => {
     preemptSignal.removeEventListener("abort", onAbort);
     consumerSignal?.removeEventListener("abort", onAbort);
+    if (firstTokenAt !== null) {
+      input.state.genMs += Math.max(0, lastTokenAt - firstTokenAt);
+    }
     return outcome;
   };
 
@@ -131,7 +157,15 @@ export async function runResumableUpstreamAttempt(input: {
       while (index !== -1) {
         const frame = pending.slice(0, index);
         pending = pending.slice(index + 2);
-        if (applyFrame(frame, input.codec, input.state) === "done") {
+        const before = input.state.text.length;
+        const result = applyFrame(frame, input.codec, input.state);
+        if (input.state.text.length > before) {
+          if (firstTokenAt === null) {
+            firstTokenAt = now();
+          }
+          lastTokenAt = now();
+        }
+        if (result === "done") {
           return settle({ type: "completed" });
         }
         index = pending.indexOf("\n\n");
@@ -157,6 +191,9 @@ function finalFromState(
     model: state.model,
     finishReason: state.finishReason,
     wantsStream,
+    completionTokens: state.completionTokens,
+    promptTokens: state.promptTokens,
+    genMs: state.genMs,
   });
 }
 
