@@ -11,7 +11,11 @@ export const InstanceArgValueSchema = z.union([
 export const InstanceArgsSchema = z.record(z.string(), InstanceArgValueSchema);
 export const InstanceEnvSchema = z.record(z.string(), z.string());
 
-const InstanceNameSchema = z.string().min(1).max(80);
+const InstanceNameSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[A-Za-z0-9._-]+$/);
 const InstancePathSchema = z.string().min(1);
 const PathCatalogIdSchema = z.string().min(1);
 
@@ -76,6 +80,18 @@ export const InstanceSchema = InstanceCreateSchema.extend({
     "error",
   ]),
   pid: z.number().int().positive().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const InstanceConfigRecordSchema = z.object({
+  id: z.string(),
+  name: InstanceNameSchema,
+  binaryPath: z.string(),
+  binaryPathRefId: PathCatalogIdSchema.optional(),
+  cwd: InstancePathSchema.optional(),
+  args: InstanceArgsSchema.default({}),
+  env: InstanceEnvSchema.default({}),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -1456,6 +1472,7 @@ export type InstancePreflightPreview = z.infer<
 >;
 export type InstanceUpdate = z.infer<typeof InstanceUpdateSchema>;
 export type Instance = z.infer<typeof InstanceSchema>;
+export type InstanceConfigRecord = z.infer<typeof InstanceConfigRecordSchema>;
 export type ProcessEvent = z.infer<typeof ProcessEventSchema>;
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 export type ProcessPreflightIssue = z.infer<typeof ProcessPreflightIssueSchema>;

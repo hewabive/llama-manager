@@ -221,6 +221,12 @@ export function InstanceFormModal(props: {
       name: "local-router",
       envJson: JSON.stringify({}, null, 2),
     },
+    validate: {
+      name: (value) =>
+        /^[A-Za-z0-9._-]+$/.test(value)
+          ? null
+          : "Only letters, digits, dot, underscore and hyphen are allowed",
+    },
   });
   const isEdit = Boolean(props.instance);
   const modelSettingsQuery = useQuery({
@@ -953,7 +959,12 @@ export function InstanceFormModal(props: {
     >
       <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="sm">
-          <TextInput label="Name" required {...form.getInputProps("name")} />
+          <TextInput
+            label="Name"
+            required
+            description="Used as the config file name: letters, digits, dot, underscore, hyphen"
+            {...form.getInputProps("name")}
+          />
           <Select
             label="Binary"
             required

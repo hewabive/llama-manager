@@ -1,17 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const instances = sqliteTable("instances", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  binaryPath: text("binary_path").notNull(),
-  binaryPathRefId: text("binary_path_ref_id"),
-  cwd: text("cwd"),
-  argsJson: text("args_json").notNull(),
-  envJson: text("env_json").notNull(),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const pathCatalog = sqliteTable("path_catalog", {
   id: text("id").primaryKey(),
   kind: text("kind").notNull(),
@@ -23,9 +11,7 @@ export const pathCatalog = sqliteTable("path_catalog", {
 
 export const processRuns = sqliteTable("process_runs", {
   id: text("id").primaryKey(),
-  instanceId: text("instance_id")
-    .notNull()
-    .references(() => instances.id, { onDelete: "cascade" }),
+  instanceId: text("instance_id").notNull(),
   pid: text("pid"),
   status: text("status").notNull(),
   startedAt: text("started_at").notNull(),

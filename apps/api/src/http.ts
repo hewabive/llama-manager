@@ -80,6 +80,7 @@ import {
 } from "./build/repository.js";
 import { buildRunner } from "./build/runner.js";
 import {
+  InstanceNameConflictError,
   createInstance,
   deleteInstance,
   getInstance,
@@ -1843,7 +1844,14 @@ app.post("/api/instances", async (c) => {
   if (refError) {
     return c.json({ error: refError }, 400);
   }
-  return c.json({ data: createInstance(parsed.data) }, 201);
+  try {
+    return c.json({ data: createInstance(parsed.data) }, 201);
+  } catch (error) {
+    if (error instanceof InstanceNameConflictError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
 });
 
 app.post("/api/instances/preflight", async (c) => {
@@ -2418,11 +2426,18 @@ app.patch("/api/instances/:id", async (c) => {
   if (refError) {
     return c.json({ error: refError }, 400);
   }
-  const instance = updateInstance(c.req.param("id"), parsed.data);
-  if (!instance) {
-    return c.json({ error: "instance not found" }, 404);
+  try {
+    const instance = updateInstance(c.req.param("id"), parsed.data);
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+    return c.json({ data: instance });
+  } catch (error) {
+    if (error instanceof InstanceNameConflictError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
   }
-  return c.json({ data: instance });
 });
 
 app.delete("/api/instances/:id", async (c) => {

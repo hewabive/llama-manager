@@ -1,18 +1,31 @@
 import type {
   Instance,
+  InstanceConfigRecord,
   InstanceCreate,
   InstanceUpdate,
 } from "@llama-manager/core";
-import { eq } from "drizzle-orm";
 import { newId } from "../utils/id.js";
 
-import { db } from "../db/index.js";
-import { instances } from "../db/schema.js";
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
-import { latestProcessRun } from "../process/runs-repository.js";
+import {
+  deleteProcessRunsForInstance,
+  latestProcessRun,
+} from "../process/runs-repository.js";
 import { supervisor } from "../process/supervisor.js";
+import {
+  findInstanceRecordByName,
+  getInstanceRecord,
+  listInstanceRecords,
+  removeInstanceRecord,
+  writeInstanceRecord,
+} from "./config-files.js";
 
-type InstanceRow = typeof instances.$inferSelect;
+export class InstanceNameConflictError extends Error {
+  constructor(name: string) {
+    super(`instance name already exists: ${name}`);
+    this.name = "InstanceNameConflictError";
+  }
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -40,93 +53,106 @@ function latestStatus(id: string): Pick<Instance, "status" | "pid"> {
   };
 }
 
-function toInstance(row: InstanceRow): Instance {
-  const processState = supervisor.getState(row.id);
-  const durableState = latestStatus(row.id);
-  const args = JSON.parse(row.argsJson) as Instance["args"];
-  const binaryRef = row.binaryPathRefId
-    ? getPathCatalogEntry(row.binaryPathRefId)
-    : null;
+function resolveBinaryPath(record: InstanceConfigRecord): string {
+  if (record.binaryPathRefId) {
+    const entry = getPathCatalogEntry(record.binaryPathRefId);
+    if (entry) {
+      return entry.path;
+    }
+  }
+  return record.binaryPath;
+}
+
+function toInstance(record: InstanceConfigRecord): Instance {
+  const processState = supervisor.getState(record.id);
+  const durableState = latestStatus(record.id);
 
   return {
-    id: row.id,
-    name: row.name,
-    binaryPath: binaryRef?.path ?? "",
-    binaryPathRefId: row.binaryPathRefId ?? "",
-    cwd: row.cwd ?? undefined,
-    args,
-    env: JSON.parse(row.envJson) as Instance["env"],
+    id: record.id,
+    name: record.name,
+    binaryPath: resolveBinaryPath(record),
+    binaryPathRefId: record.binaryPathRefId ?? "",
+    cwd: record.cwd ?? undefined,
+    args: record.args,
+    env: record.env,
     status: processState?.status ?? durableState.status,
     pid: processState?.pid ?? durableState.pid,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   };
 }
 
 export function listInstances(): Instance[] {
-  return db.select().from(instances).all().map(toInstance);
+  return listInstanceRecords().map(toInstance);
 }
 
 export function getInstance(id: string): Instance | null {
-  const row = db.select().from(instances).where(eq(instances.id, id)).get();
-  return row ? toInstance(row) : null;
+  const record = getInstanceRecord(id);
+  return record ? toInstance(record) : null;
 }
 
 export function createInstance(input: InstanceCreate): Instance {
+  if (findInstanceRecordByName(input.name)) {
+    throw new InstanceNameConflictError(input.name);
+  }
+
   const timestamp = nowIso();
-  const id = newId();
   const binaryRef = getPathCatalogEntry(input.binaryPathRefId);
 
-  db.insert(instances)
-    .values({
-      id,
-      name: input.name,
-      binaryPath: binaryRef?.path ?? "",
-      binaryPathRefId: input.binaryPathRefId,
-      cwd: input.cwd ?? null,
-      argsJson: JSON.stringify(input.args),
-      envJson: JSON.stringify(input.env),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    .run();
+  const record: InstanceConfigRecord = {
+    id: newId(),
+    name: input.name,
+    binaryPath: binaryRef?.path ?? "",
+    binaryPathRefId: input.binaryPathRefId,
+    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+    args: input.args,
+    env: input.env,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
 
-  const created = getInstance(id);
-  if (!created) {
-    throw new Error("failed to create instance");
-  }
-  return created;
+  writeInstanceRecord(record);
+  return toInstance(record);
 }
 
 export function updateInstance(
   id: string,
   input: InstanceUpdate,
 ): Instance | null {
-  const current = getInstance(id);
+  const current = getInstanceRecord(id);
   if (!current) {
     return null;
   }
 
+  const nextName = input.name ?? current.name;
+  if (nextName !== current.name && findInstanceRecordByName(nextName)) {
+    throw new InstanceNameConflictError(nextName);
+  }
+
   const nextRefId = input.binaryPathRefId ?? current.binaryPathRefId;
-  const binaryRef = getPathCatalogEntry(nextRefId);
+  const binaryRef = nextRefId ? getPathCatalogEntry(nextRefId) : null;
+  const nextCwd = input.cwd ?? current.cwd;
 
-  db.update(instances)
-    .set({
-      name: input.name ?? current.name,
-      binaryPath: binaryRef?.path ?? "",
-      binaryPathRefId: nextRefId,
-      cwd: input.cwd ?? current.cwd ?? null,
-      argsJson: JSON.stringify(input.args ?? current.args),
-      envJson: JSON.stringify(input.env ?? current.env),
-      updatedAt: nowIso(),
-    })
-    .where(eq(instances.id, id))
-    .run();
+  const record: InstanceConfigRecord = {
+    id: current.id,
+    name: nextName,
+    binaryPath: binaryRef?.path ?? "",
+    ...(nextRefId !== undefined ? { binaryPathRefId: nextRefId } : {}),
+    ...(nextCwd !== undefined ? { cwd: nextCwd } : {}),
+    args: input.args ?? current.args,
+    env: input.env ?? current.env,
+    createdAt: current.createdAt,
+    updatedAt: nowIso(),
+  };
 
-  return getInstance(id);
+  writeInstanceRecord(record, current.name);
+  return toInstance(record);
 }
 
 export function deleteInstance(id: string): boolean {
-  const result = db.delete(instances).where(eq(instances.id, id)).run();
-  return result.changes > 0;
+  const removed = removeInstanceRecord(id);
+  if (removed) {
+    deleteProcessRunsForInstance(id);
+  }
+  return removed;
 }

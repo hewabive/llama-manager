@@ -29,6 +29,7 @@ export const config = {
   settingsFile: resolve(configDir, "settings.json"),
   settingsSeedFile: resolve(defaultRootDir, "config/settings.json"),
   presetsDir: resolve(configDir, "presets"),
+  instancesDir: resolve(configDir, "instances"),
   proxyConfigDir: resolve(configDir, "proxy"),
   secretsFile: resolve(configDir, ".secrets.json"),
   configGitignoreFile: resolve(configDir, ".gitignore"),
@@ -74,6 +75,7 @@ export const config = {
 mkdirSync(config.dataDir, { recursive: true });
 mkdirSync(config.configDir, { recursive: true });
 mkdirSync(config.presetsDir, { recursive: true });
+mkdirSync(config.instancesDir, { recursive: true });
 mkdirSync(config.proxyConfigDir, { recursive: true });
 mkdirSync(config.logsDir, { recursive: true });
 mkdirSync(config.modelsDir, { recursive: true });

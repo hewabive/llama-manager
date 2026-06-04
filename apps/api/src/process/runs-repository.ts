@@ -36,6 +36,15 @@ export function createProcessRun(input: {
   return id;
 }
 
+export function deleteProcessRunsForInstance(instanceId: string): {
+  deleted: number;
+} {
+  const result = db.run(
+    sql`DELETE FROM ${processRuns} WHERE ${processRuns.instanceId} = ${instanceId}`,
+  );
+  return { deleted: Number(result.changes) };
+}
+
 export function pruneProcessRunHistory(): { deleted: number } {
   const result = db.run(
     sql`DELETE FROM ${processRuns} WHERE NOT (${openRunPredicate}) AND ${processRuns.id} NOT IN (SELECT id FROM ${processRuns} AS latest WHERE latest.instance_id = ${processRuns}.instance_id ORDER BY latest.started_at DESC LIMIT 1)`,
