@@ -16,6 +16,8 @@ related:
   - "--cpu-moe"
   - "--gpu-layers"
   - "--override-tensor"
+  - "--batch-size"
+  - "--ubatch-size"
   - "--fit"
   - "--device"
 ---
@@ -70,6 +72,8 @@ blk.<i>\.ffn_(up|down|gate|gate_up)_(ch|)exps
 Чем больше `N`, тем больше MoE expert tensors уходит в RAM и тем меньше VRAM нужно. Latency обычно растет постепенно вместе с `N`. Подбирайте значение ступенчато и измеряйте не только старт, но и реальную генерацию.
 
 Как и `--cpu-moe`, этот параметр добавляет tensor buffer overrides и может конфликтовать с auto fit: при ошибке `model_params::tensor_buft_overrides already set by user, abort` повторите запуск с `--fit off` для проверки.
+
+Веса experts остаются на CPU, но при batch не меньше `GGML_OP_OFFLOAD_MIN_BATCH` (по умолчанию `32`) ggml копирует их на GPU и считает там. Поэтому prompt processing с offloaded experts сильно зависит от `--batch-size`/`--ubatch-size`: дефолтные значения малы для CPU+GPU MoE, увеличение batch ускоряет prefill ценой большего PCIe-трафика. Порог переопределяется env `GGML_OP_OFFLOAD_MIN_BATCH`.
 
 ## Взаимодействие с другими аргументами
 
