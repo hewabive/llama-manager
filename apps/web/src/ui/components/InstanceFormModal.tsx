@@ -1106,11 +1106,20 @@ export function InstanceFormModal(props: {
                   isError={argsCatalogQuery.isError}
                   isFetching={argsCatalogQuery.isFetching}
                   errorPlaceholder="Unable to read --help from this binary"
-                  data={visibleKnownArgs.map((option) => ({
-                    value: option.primaryName,
-                    label: `${option.primaryName}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
-                    disabled: !option.compatibility.presentInBinary,
-                  }))}
+                  data={visibleKnownArgs.map((option) => {
+                    const aliases = option.names.filter(
+                      (name) => name !== option.primaryName,
+                    );
+                    const nameLabel = aliases.length
+                      ? `${option.primaryName}, ${aliases.join(", ")}`
+                      : option.primaryName;
+                    return {
+                      value: option.primaryName,
+                      label: `${nameLabel}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}${option.compatibility.presentInBinary ? "" : " · not in binary"}`,
+                      disabled: !option.compatibility.presentInBinary,
+                      searchTerms: [option.primaryName, ...option.names],
+                    };
+                  })}
                   onPick={(value) => {
                     const option = knownArgByName.get(value);
                     if (option) {

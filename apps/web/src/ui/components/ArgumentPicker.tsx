@@ -1,10 +1,12 @@
 import { Select } from "@mantine/core";
-import { useState } from "react";
+import type { OptionsFilter } from "@mantine/core";
+import { useMemo, useState } from "react";
 
 export type ArgumentPickerOption = {
   value: string;
   label: string;
   disabled?: boolean;
+  searchTerms?: string[];
 };
 
 export function ArgumentPicker(props: {
@@ -20,9 +22,39 @@ export function ArgumentPicker(props: {
   const [value, setValue] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
 
+  const termsByValue = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const option of props.data) {
+      map.set(
+        option.value,
+        (option.searchTerms ?? []).map((term) => term.toLowerCase()),
+      );
+    }
+    return map;
+  }, [props.data]);
+
+  const filterOptions: OptionsFilter = ({ options, search }) => {
+    const normalized = search.trim().toLowerCase();
+    if (!normalized) {
+      return options;
+    }
+    const exact = options.filter(
+      (item) =>
+        "value" in item &&
+        (termsByValue.get(item.value) ?? []).includes(normalized),
+    );
+    if (exact.length > 0) {
+      return exact;
+    }
+    return options.filter(
+      (item) => "label" in item && item.label.toLowerCase().includes(normalized),
+    );
+  };
+
   return (
     <Select
       key={pickerKey}
+      filter={filterOptions}
       label={props.label ?? "Add argument"}
       placeholder={
         props.isError

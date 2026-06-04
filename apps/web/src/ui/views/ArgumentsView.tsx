@@ -443,7 +443,7 @@ export function ArgumentsView() {
   );
   const filteredOptions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    return options.filter((option) => {
+    const candidates = options.filter((option) => {
       if (!showDeprecated && option.deprecated) {
         return false;
       }
@@ -453,11 +453,22 @@ export function ArgumentsView() {
       if (valueType !== allFilterValue && option.valueType !== valueType) {
         return false;
       }
-      if (!normalizedSearch) {
-        return true;
-      }
-      return optionSearchText(option).includes(normalizedSearch);
+      return true;
     });
+    if (!normalizedSearch) {
+      return candidates;
+    }
+    const exactMatches = candidates.filter((option) =>
+      [option.primaryName, ...option.names].some(
+        (name) => name.toLowerCase() === normalizedSearch,
+      ),
+    );
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+    return candidates.filter((option) =>
+      optionSearchText(option).includes(normalizedSearch),
+    );
   }, [category, options, search, showDeprecated, valueType]);
   const selectedOption =
     options.find((option) => option.primaryName === selectedName) ?? null;

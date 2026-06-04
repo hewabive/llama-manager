@@ -194,11 +194,18 @@ function PresetArgsEditor(props: {
         errorPlaceholder="Unable to read --help from llama-server binary"
         data={catalog.selectablePresetArgs.map((option) => {
           const key = presetKeyFromArgument(option);
+          const aliases = option.names.filter(
+            (name) => name !== option.primaryName,
+          );
+          const nameLabel = aliases.length
+            ? `${key}, ${aliases.join(", ")}`
+            : key;
           return {
             value: key,
-            label: `${key}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
+            label: `${nameLabel}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
             disabled:
               presentKeys.has(key) || !option.compatibility.presentInBinary,
+            searchTerms: [key, option.primaryName, ...option.names],
           };
         })}
         onPick={(value) => {
