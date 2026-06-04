@@ -174,6 +174,13 @@ import {
   apiProxyForwardUrl,
   forwardApiProxyRequest,
 } from "./proxy/forwarder.js";
+import {
+  createUsageMeterStream,
+  includeUsageRequested,
+  ratePerSecondFromUsage,
+  usageFromNonStreamBody,
+  withIncludeUsage,
+} from "./proxy/usage-meter.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./proxy/gateway.js";
 import { resolveApiProxyRouteChain } from "./proxy/pipeline.js";
 import { executeApiProxyPublicMvpPlan } from "./proxy/public-executor.js";
@@ -608,6 +615,11 @@ function createProxyTrace(
   };
 }
 
+type ProxyTraceRecorder = {
+  record: (response: Response | undefined) => void;
+  markDeferred: () => void;
+};
+
 async function proxyProtocolEndpoint(
   c: Context,
   adapter: ApiProxyProtocolAdapter,
@@ -615,15 +627,37 @@ async function proxyProtocolEndpoint(
 ) {
   const trace = createProxyTrace(operation);
   const started = performance.now();
+  let recorded = false;
+  let deferred = false;
+  const recorder: ProxyTraceRecorder = {
+    record(response) {
+      if (recorded) {
+        return;
+      }
+      recorded = true;
+      trace.durationMs = Math.round(performance.now() - started);
+      trace.status = response?.status ?? 0;
+      trace.ok = response ? response.status < 400 : false;
+      apiProxyStats.record(ApiProxyRequestTraceSchema.parse(trace));
+    },
+    markDeferred() {
+      deferred = true;
+    },
+  };
   let response: Response | undefined;
   try {
-    response = await proxyProtocolEndpointInner(c, adapter, operation, trace);
+    response = await proxyProtocolEndpointInner(
+      c,
+      adapter,
+      operation,
+      trace,
+      recorder,
+    );
     return response;
   } finally {
-    trace.durationMs = Math.round(performance.now() - started);
-    trace.status = response?.status ?? 0;
-    trace.ok = response ? response.status < 400 : false;
-    apiProxyStats.record(ApiProxyRequestTraceSchema.parse(trace));
+    if (!deferred) {
+      recorder.record(response);
+    }
   }
 }
 
@@ -632,6 +666,7 @@ async function proxyProtocolEndpointInner(
   adapter: ApiProxyProtocolAdapter,
   operation: ApiProxyProtocolOperation,
   trace: ProxyTraceAccumulator,
+  recorder: ProxyTraceRecorder,
 ): Promise<Response> {
   const body = await safeJsonBody(c);
   if (body && typeof body === "object" && "model" in body) {
@@ -825,18 +860,76 @@ async function proxyProtocolEndpointInner(
       return c.json(response.body, response.status);
     }
 
+    const meterCodec = adapter.resumable;
+    const meterUsage =
+      meterCodec !== undefined && resumableEndpoints.has(operation.endpoint);
+    const injectIncludeUsage =
+      meterUsage && operation.protocol === "openai" && route.request.stream;
+    const forwardBody = injectIncludeUsage
+      ? withIncludeUsage(route.request.body)
+      : route.request.body;
+
     try {
-      return await forwardApiProxyRequest({
+      const upstream = await forwardApiProxyRequest({
         baseUrl: targetResolution.baseUrl,
         method: c.req.method,
         upstreamPath,
         search: new URL(c.req.url).search,
         headers: c.req.raw.headers,
-        body: route.request.body,
+        body: forwardBody,
         upstreamHeaders: auth.headers,
         modelOverride: decision.target.model,
         signal: c.req.raw.signal,
       });
+
+      if (!meterCodec || !meterUsage || !upstream.ok || !upstream.body) {
+        return upstream;
+      }
+
+      if (!route.request.stream) {
+        const text = await upstream.text();
+        const usage = usageFromNonStreamBody(operation.protocol, text);
+        if (usage) {
+          trace.usage = {
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            genMs: usage.genMs,
+            ratePerSecond: ratePerSecondFromUsage(usage),
+          };
+        }
+        return new Response(text, {
+          status: upstream.status,
+          headers: upstream.headers,
+        });
+      }
+
+      let metered: Response | undefined;
+      const stripUsageFrames =
+        operation.protocol === "openai" &&
+        !includeUsageRequested(route.request.body);
+      const meter = createUsageMeterStream({
+        codec: meterCodec,
+        stripUsageFrames,
+        now: () => performance.now(),
+        onComplete: (usage) => {
+          trace.usage = {
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            genMs: usage.genMs,
+            ratePerSecond: ratePerSecondFromUsage(usage),
+          };
+          recorder.record(metered);
+        },
+      });
+      metered = new Response(upstream.body.pipeThrough(meter.transform), {
+        status: upstream.status,
+        headers: upstream.headers,
+      });
+      recorder.markDeferred();
+      c.req.raw.signal.addEventListener("abort", () => meter.finalize(), {
+        once: true,
+      });
+      return metered;
     } catch (error) {
       const response = adapter.diagnosticError(route.request, {
         status: 502,
