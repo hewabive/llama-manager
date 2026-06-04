@@ -43,6 +43,7 @@ import {
   type ProcessEvent,
   type RuntimeState,
 } from "@llama-manager/core";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
@@ -52,9 +53,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import {
+  checkLoginRateLimit,
   clearSessionCookie,
   isAuthEnabled,
   isRequestAuthenticated,
+  recordLoginFailure,
+  recordLoginSuccess,
   requireAdmin,
   setSessionCookie,
   verifyAdminPassword,
@@ -1193,13 +1197,47 @@ app.get("/api/auth/state", (c) => {
 });
 
 app.post("/api/auth/login", async (c) => {
-  const parsed = AdminLoginSchema.safeParse(await c.req.json());
+  const clientKey = getConnInfo(c).remote.address ?? "unknown";
+  const now = Date.now();
+
+  const limit = checkLoginRateLimit(clientKey, now);
+  if (!limit.allowed) {
+    c.header("Retry-After", String(limit.retryAfterSeconds));
+    return c.json(
+      {
+        error: "too many attempts",
+        retryAfterSeconds: limit.retryAfterSeconds,
+      },
+      429,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid json body" }, 400);
+  }
+
+  const parsed = AdminLoginSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
   if (!verifyAdminPassword(parsed.data.password)) {
+    const after = recordLoginFailure(clientKey, now);
+    if (!after.allowed) {
+      c.header("Retry-After", String(after.retryAfterSeconds));
+      return c.json(
+        {
+          error: "too many attempts",
+          retryAfterSeconds: after.retryAfterSeconds,
+        },
+        429,
+      );
+    }
     return c.json({ error: "invalid password" }, 401);
   }
+  recordLoginSuccess(clientKey);
   setSessionCookie(c);
   return c.json({
     data: {

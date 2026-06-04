@@ -133,6 +133,81 @@ export function clearSessionCookie(c: Context) {
   });
 }
 
+type LoginAttempt = {
+  failures: number;
+  lockedUntil: number;
+  updatedAt: number;
+};
+
+const loginAttempts = new Map<string, LoginAttempt>();
+
+const LOGIN_MAX_FAILURES = 5;
+const LOGIN_BASE_LOCK_MS = 60_000;
+const LOGIN_MAX_LOCK_MS = 15 * 60_000;
+const LOGIN_DECAY_MS = 15 * 60_000;
+const LOGIN_TRACKER_LIMIT = 1_024;
+
+function isStaleAttempt(entry: LoginAttempt, now: number) {
+  return entry.lockedUntil <= now && now - entry.updatedAt > LOGIN_DECAY_MS;
+}
+
+function pruneLoginAttempts(now: number) {
+  if (loginAttempts.size <= LOGIN_TRACKER_LIMIT) {
+    return;
+  }
+  for (const [key, entry] of loginAttempts) {
+    if (isStaleAttempt(entry, now)) {
+      loginAttempts.delete(key);
+    }
+  }
+}
+
+export type LoginRateLimitResult = {
+  allowed: boolean;
+  retryAfterSeconds: number;
+};
+
+export function checkLoginRateLimit(
+  key: string,
+  now: number,
+): LoginRateLimitResult {
+  const entry = loginAttempts.get(key);
+  if (entry && entry.lockedUntil > now) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.ceil((entry.lockedUntil - now) / 1000),
+    };
+  }
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+export function recordLoginFailure(
+  key: string,
+  now: number,
+): LoginRateLimitResult {
+  const existing = loginAttempts.get(key);
+  const base =
+    !existing || isStaleAttempt(existing, now) ? 0 : existing.failures;
+  const failures = base + 1;
+  let lockedUntil = 0;
+  if (failures >= LOGIN_MAX_FAILURES) {
+    const over = failures - LOGIN_MAX_FAILURES;
+    lockedUntil =
+      now + Math.min(LOGIN_BASE_LOCK_MS * 2 ** over, LOGIN_MAX_LOCK_MS);
+  }
+  loginAttempts.set(key, { failures, lockedUntil, updatedAt: now });
+  pruneLoginAttempts(now);
+  return checkLoginRateLimit(key, now);
+}
+
+export function recordLoginSuccess(key: string) {
+  loginAttempts.delete(key);
+}
+
+export function resetLoginRateLimit() {
+  loginAttempts.clear();
+}
+
 function isPublicApiPath(path: string) {
   return (
     path === "/api/health" ||
