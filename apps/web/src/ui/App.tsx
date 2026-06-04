@@ -1,4 +1,4 @@
-import { type Instance, type GgufModel } from "@llama-manager/core";
+import { type Instance } from "@llama-manager/core";
 import {
   ActionIcon,
   AppShell,
@@ -22,12 +22,10 @@ import {
   listInstanceHealthSummaries,
   listInstances,
   logoutAdmin,
-  updateInstance,
 } from "../api/client";
 import { InstanceFormModal } from "./components/InstanceFormModal";
 import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
-import { argsWithModel } from "./utils/models";
 import { ApiLabView } from "./views/ApiLabView";
 import { ApiEndpointsView } from "./views/ApiEndpointsView";
 import { ArgumentsView } from "./views/ArgumentsView";
@@ -142,36 +140,6 @@ export function App() {
     );
   }
 
-  const useModelMutation = useMutation({
-    mutationFn: ({
-      instance,
-      model,
-    }: {
-      instance: Instance;
-      model: GgufModel;
-    }) => updateInstance(instance.id, { args: argsWithModel(instance, model) }),
-    onSuccess: async (result) => {
-      setSelectedId(result.data.id);
-      await queryClient.invalidateQueries({ queryKey: ["instances"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["instances-health-summary"],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["instance-health-summary", result.data.id],
-      });
-      notifications.show({
-        title: "Model applied",
-        message: `Updated ${result.data.name}`,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Model update failed",
-        message: (error as Error).message,
-      });
-    },
-  });
 
   const logoutMutation = useMutation({
     mutationFn: logoutAdmin,
@@ -339,18 +307,9 @@ export function App() {
 
           {canUseAdmin && route === "models" && (
             <ModelsView
-              selectedInstance={selectedInstance}
               onUseModel={(model) => {
                 setInitialModelPath(model.path);
                 setCreateOpened(true);
-              }}
-              onUseInSelected={(model) => {
-                if (selectedInstance) {
-                  useModelMutation.mutate({
-                    instance: selectedInstance,
-                    model,
-                  });
-                }
               }}
             />
           )}

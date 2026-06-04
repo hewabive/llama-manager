@@ -1,6 +1,5 @@
 import type {
   GgufModel,
-  Instance,
   LlamaArgumentDefault,
   ModelPresetEntry,
 } from "@llama-manager/core";
@@ -122,16 +121,6 @@ export function modelMatchesSearch(model: GgufModel, query: string) {
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalized));
-}
-
-export function argsWithModel(instance: Instance, model: GgufModel) {
-  const args = { ...instance.args };
-  delete args["--models-preset"];
-  delete args["--models-max"];
-  delete args["--models-autoload"];
-  delete args["--no-models-autoload"];
-  args["--model"] = model.path;
-  return args;
 }
 
 function presetEntryNameFromModel(model: GgufModel) {

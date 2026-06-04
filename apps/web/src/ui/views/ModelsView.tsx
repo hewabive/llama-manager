@@ -1,4 +1,4 @@
-import type { GgufModel, Instance } from "@llama-manager/core";
+import type { GgufModel } from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
@@ -191,9 +191,7 @@ function ModelDetailPanel(props: { model: GgufModel }) {
 }
 
 export function ModelsView(props: {
-  selectedInstance: Instance | null;
   onUseModel: (model: GgufModel) => void;
-  onUseInSelected: (model: GgufModel) => void;
 }) {
   const queryClient = useQueryClient();
   const [directory, setDirectory] = useState("");
@@ -470,14 +468,6 @@ export function ModelsView(props: {
                     >
                       Use in new
                     </Button>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      disabled={model.isMmproj || !props.selectedInstance}
-                      onClick={() => props.onUseInSelected(model)}
-                    >
-                      Use selected
-                    </Button>
                   </Group>
                 </Stack>
               </Paper>
@@ -567,14 +557,6 @@ export function ModelsView(props: {
                             onClick={() => props.onUseModel(model)}
                           >
                             Use in new
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="subtle"
-                            disabled={model.isMmproj || !props.selectedInstance}
-                            onClick={() => props.onUseInSelected(model)}
-                          >
-                            Use selected
                           </Button>
                         </Group>
                       </Table.Td>
