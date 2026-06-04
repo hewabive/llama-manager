@@ -47,10 +47,11 @@ export function usageFromNonStreamBody(
     return null;
   }
   const timings = asObject(obj?.timings);
+  const predictedMs = timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0;
   return {
     promptTokens: numberOrNull(usage.prompt_tokens),
     completionTokens,
-    genMs: timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0,
+    genMs: Math.round(predictedMs),
   };
 }
 
@@ -150,7 +151,10 @@ export function createUsageMeterStream(input: {
     onComplete({
       promptTokens,
       completionTokens,
-      genMs: firstTokenAt !== null ? Math.max(0, lastTokenAt - firstTokenAt) : 0,
+      genMs:
+        firstTokenAt !== null
+          ? Math.round(Math.max(0, lastTokenAt - firstTokenAt))
+          : 0,
     });
   };
 

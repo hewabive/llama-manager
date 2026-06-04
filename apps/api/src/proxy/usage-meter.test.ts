@@ -26,6 +26,18 @@ test("usageFromNonStreamBody reads OpenAI usage and timings", () => {
   });
 });
 
+test("usageFromNonStreamBody rounds fractional genMs to integer", () => {
+  const usage = usageFromNonStreamBody(
+    "openai",
+    JSON.stringify({
+      usage: { prompt_tokens: 1, completion_tokens: 2 },
+      timings: { predicted_ms: 26.481 },
+    }),
+  );
+  assert.equal(usage?.genMs, 26);
+  assert.equal(Number.isInteger(usage?.genMs), true);
+});
+
 test("usageFromNonStreamBody reads Anthropic usage", () => {
   const usage = usageFromNonStreamBody(
     "anthropic",
@@ -109,6 +121,7 @@ test("createUsageMeterStream strips synthetic usage frame and meters tokens", as
     completionTokens: 4,
     genMs: 10,
   });
+  assert.equal(Number.isInteger(counted?.genMs), true);
 });
 
 test("createUsageMeterStream passthrough keeps usage frame when not stripping", async () => {

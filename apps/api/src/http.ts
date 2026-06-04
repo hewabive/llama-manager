@@ -893,7 +893,7 @@ async function proxyProtocolEndpointInner(
           trace.usage = {
             promptTokens: usage.promptTokens,
             completionTokens: usage.completionTokens,
-            genMs: usage.genMs,
+            genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
           };
         }
@@ -915,7 +915,7 @@ async function proxyProtocolEndpointInner(
           trace.usage = {
             promptTokens: usage.promptTokens,
             completionTokens: usage.completionTokens,
-            genMs: usage.genMs,
+            genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
           };
           recorder.record(metered);
@@ -1044,7 +1044,7 @@ async function proxyProtocolEndpointInner(
     trace.usage = {
       promptTokens: state.promptTokens,
       completionTokens: state.completionTokens,
-      genMs: state.genMs,
+      genMs: Math.round(state.genMs),
       ratePerSecond:
         state.completionTokens > 0 && state.genMs > 0
           ? state.completionTokens / (state.genMs / 1000)
@@ -2218,38 +2218,42 @@ async function writeUpstreamStreamEvents(props: {
     return false;
   };
 
-  let done = false;
-  while (!done) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    buffer += decoder.decode(chunk.value, { stream: true });
+  try {
+    let done = false;
+    while (!done) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
 
-    let separator = buffer.match(/\r?\n\r?\n/);
-    while (separator && separator.index !== undefined) {
-      const separatorIndex = separator.index;
-      const block = buffer.slice(0, separatorIndex);
-      buffer = buffer.slice(separatorIndex + separator[0].length);
-      done = await consumeBlock(block);
-      if (done) break;
-      separator = buffer.match(/\r?\n\r?\n/);
+      let separator = buffer.match(/\r?\n\r?\n/);
+      while (separator && separator.index !== undefined) {
+        const separatorIndex = separator.index;
+        const block = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + separator[0].length);
+        done = await consumeBlock(block);
+        if (done) break;
+        separator = buffer.match(/\r?\n\r?\n/);
+      }
     }
-  }
 
-  if (buffer.trim()) {
-    await consumeBlock(buffer);
-  }
+    if (buffer.trim()) {
+      await consumeBlock(buffer);
+    }
 
-  const finalRecord = recordValue(finalBody);
-  const latencyMs = Math.round(performance.now() - props.started);
-  await props.stream.writeSSE({
-    event: "done",
-    data: JSON.stringify({
-      latencyMs,
-      finishReason,
-      usage: finalRecord?.usage ?? null,
-      timings: finalRecord?.timings ?? null,
-    }),
-  });
+    const finalRecord = recordValue(finalBody);
+    const latencyMs = Math.round(performance.now() - props.started);
+    await props.stream.writeSSE({
+      event: "done",
+      data: JSON.stringify({
+        latencyMs,
+        finishReason,
+        usage: finalRecord?.usage ?? null,
+        timings: finalRecord?.timings ?? null,
+      }),
+    });
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
 }
 
 function streamApiProbeTarget(
