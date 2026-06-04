@@ -1,9 +1,15 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const defaultRootDir = resolve(moduleDir, "../../..");
+
+const envFile = resolve(defaultRootDir, ".env");
+if (existsSync(envFile)) {
+  process.loadEnvFile(envFile);
+}
+
 const rootDir = resolve(process.env.LLAMA_MANAGER_HOME ?? defaultRootDir);
 const runtimeDir = process.env.LLAMA_MANAGER_RUNTIME_DIR
   ? resolve(process.env.LLAMA_MANAGER_RUNTIME_DIR)

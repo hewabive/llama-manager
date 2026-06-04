@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pnpm dev            # build core, then run api (tsx watch) + web (vite) in parallel
 pnpm build          # build all workspaces (pnpm -r build)
+pnpm serve          # build, then run api alone (pnpm start) serving the built web UI — single process, one port
 pnpm check          # check:events, build core, then tsc --noEmit in every workspace
 pnpm check:events   # run scripts/check-react-event-captures.mjs only
 pnpm format         # prettier --write .
@@ -83,5 +84,6 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 - `runtime/models/`: default GGUF scan root (`config.modelsDir`, used when `settings.json` has no `modelScan.directory`). Created on startup; overridable via `LLAMA_MANAGER_MODELS_DIR`.
 - `runtime/builds/`: llama.cpp CMake build trees (default `runtime/builds/build`). Build output lives here — **outside the llama.cpp checkout** — so source builds never touch the source tree; the build runner reads/writes binaries relative to this `buildDir`. The default `cuda` flag in `defaultSettings()` is auto-detected via `isCudaToolkitAvailable()` (`build/cuda.ts`, which locates `nvcc`) — off when no CUDA toolkit is present. On a successful build the produced binary is auto-registered into the path catalog (kind `binary`) named `<binary> (<latest reachable tag>)`, deduped by path (`registerBuiltBinaryInCatalog`).
 - Paths overridable via `LLAMA_MANAGER_HOME`, `LLAMA_MANAGER_DATA_DIR`, `LLAMA_MANAGER_CONFIG_DIR`, `LLAMA_MANAGER_RUNTIME_DIR`, `LLAMA_MANAGER_LOGS_DIR`, `LLAMA_MANAGER_BUILDS_DIR`, `LLAMA_MANAGER_MODELS_DIR`; host/port via `LLAMA_MANAGER_HOST`/`LLAMA_MANAGER_PORT`.
-- Admin auth is **off by default** (admin routes open for local dev). Enable with `LLAMA_MANAGER_ADMIN_PASSWORD` or `..._ADMIN_PASSWORD_HASH` (`scrypt$...`); related: `..._AUTH_SECRET`, `..._SECURE_COOKIE`, `..._SESSION_TTL_SECONDS`. The default `/#/status` route is a public, redacted diagnostics page.
+- Admin auth is **off by default** (admin routes open for local dev). Enable with `LLAMA_MANAGER_ADMIN_PASSWORD` or `..._ADMIN_PASSWORD_HASH` (`scrypt$...`; generate via `pnpm auth:hash <pw>`); related: `..._AUTH_SECRET`, `..._SECURE_COOKIE` (leave false without TLS), `..._SESSION_TTL_SECONDS`. The default `/#/status` route is a public, redacted diagnostics page.
+- All env vars seed from a gitignored repo-root `.env` (loaded in `config.ts` via `process.loadEnvFile`, before any var is read; real launch env wins over it). `.env.example` is the tracked template. In prod (`pnpm serve`/`pnpm start`) the api serves the built `apps/web/dist` as static (`http.ts`, mounted only if `dist` exists) — UI + API + proxy on the one `LLAMA_MANAGER_PORT`; Vite (5173) is dev-only.
 - Shutdown: `LLAMA_MANAGER_STOP_MANAGED_ON_EXIT=false` leaves children running (reconciled as stale next start); `LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS` (default 10000).

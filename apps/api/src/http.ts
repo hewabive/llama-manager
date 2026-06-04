@@ -43,9 +43,13 @@ import {
   type ProcessEvent,
   type RuntimeState,
 } from "@llama-manager/core";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 import {
   clearSessionCookie,
@@ -2871,3 +2875,25 @@ app.get("/api/instances/:id/events", (c) => {
     }
   });
 });
+
+const webDistDir = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../web/dist",
+);
+
+if (existsSync(webDistDir)) {
+  app.use("/*", serveStatic({ root: webDistDir }));
+
+  const serveWebIndex = serveStatic({ root: webDistDir, path: "index.html" });
+  app.notFound((c) => {
+    const path = c.req.path;
+    const isApiNamespace =
+      path.startsWith("/api/") ||
+      path.startsWith("/v1") ||
+      path.startsWith("/proxy/");
+    if (c.req.method === "GET" && !isApiNamespace) {
+      return serveWebIndex(c, async () => undefined) as Promise<Response>;
+    }
+    return c.json({ error: "not found" }, 404);
+  });
+}
