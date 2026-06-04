@@ -272,9 +272,10 @@ export class ProcessSupervisor extends EventEmitter {
   }
 
   async restart(instance: Instance): Promise<ProcessState> {
-    const stopped = this.stop(instance.id, 5_000);
-    if (stopped) {
-      await new Promise((resolveDone) => setTimeout(resolveDone, 800));
+    const runtime = this.processes.get(instance.id);
+    if (runtime && !this.isTerminal(runtime)) {
+      this.requestStop(runtime, 5_000);
+      await this.waitForExit(runtime, 7_000);
     }
     return this.start(instance);
   }
