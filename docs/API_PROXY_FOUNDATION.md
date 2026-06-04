@@ -107,8 +107,10 @@ The admin API exposes diagnostics for the next implementation step:
 
 - `GET /api/proxy/runtime` returns a runtime snapshot for configured proxy targets.
 - `POST /api/proxy/plan` returns the scheduler plan for either an incoming request or an idle-maintenance pass.
+- `GET /api/proxy/stats?hours=` returns hourly request counters (requests/errors/tokens/genMs/rate, per-model breakdown + totals) from the in-memory Observer `proxy/stats.ts`. Token/rate coverage is resumable-path only; `requestsWithTokens` exposes the gap. Counters are in-memory and reset on restart.
+- `GET /api/proxy/traces?limit=` returns the last N per-request `ApiProxyRequestTrace` records (model → route → target → scheduler actions → usage → outcome) for decision transparency.
 
-These admin endpoints are read-only with respect to llama-server. They do not start or stop instances, load or unload models, save slots, restore slots or forward user traffic.
+These admin endpoints are read-only with respect to llama-server. They do not start or stop instances, load or unload models, save slots, restore slots or forward user traffic. The stats/traces views are populated as a side-effect of served public traffic; the endpoints themselves only read the in-memory Observer.
 
 ## Scheduler Model
 
