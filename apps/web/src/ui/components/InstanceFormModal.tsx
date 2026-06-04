@@ -198,6 +198,7 @@ export function InstanceFormModal(props: {
   const queryClient = useQueryClient();
   const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
   const initializedFormKeyRef = useRef<string | null>(null);
+  const catalogNormalizedFormKeyRef = useRef<string | null>(null);
   const [initializedFormKey, setInitializedFormKey] = useState<string | null>(
     null,
   );
@@ -449,6 +450,7 @@ export function InstanceFormModal(props: {
   useEffect(() => {
     if (!props.opened) {
       initializedFormKeyRef.current = null;
+      catalogNormalizedFormKeyRef.current = null;
       setInitializedFormKey(null);
       return;
     }
@@ -479,7 +481,7 @@ export function InstanceFormModal(props: {
       setSelectedPresetName(presetName);
       setLaunchMode(presetName && !modelPath ? "router" : "model");
       setStartAfterCreate(false);
-      setArgRows(argsToRows(props.instance.args));
+      setArgRows(argsToRows(props.instance.args, knownArgByName));
     } else {
       const modelPath = props.initialModelPath ?? null;
       const port = nextAvailablePort(props.instances);
@@ -499,6 +501,26 @@ export function InstanceFormModal(props: {
     props.opened,
     props.instance?.id,
     props.initialModelPath,
+  ]);
+
+  useEffect(() => {
+    if (!props.opened || !props.instance || knownArgByName.size === 0) {
+      return;
+    }
+    const formKey = `${props.instance.id}:${props.initialModelPath ?? ""}`;
+    if (
+      initializedFormKeyRef.current !== formKey ||
+      catalogNormalizedFormKeyRef.current === formKey
+    ) {
+      return;
+    }
+    catalogNormalizedFormKeyRef.current = formKey;
+    setArgRows(argsToRows(props.instance.args, knownArgByName));
+  }, [
+    props.opened,
+    props.instance,
+    props.initialModelPath,
+    knownArgByName,
   ]);
 
   useEffect(() => {

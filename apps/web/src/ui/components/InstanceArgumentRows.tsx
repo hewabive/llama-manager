@@ -79,6 +79,14 @@ function negativeArgumentName(option: LlamaArgumentOption) {
   );
 }
 
+function isPlainBoolean(option: LlamaArgumentOption) {
+  return (
+    option.valueType === "boolean" &&
+    !option.valueHint &&
+    option.allowedValues.length === 0
+  );
+}
+
 export function rowsToArgsWithCatalog(
   rows: ArgRow[],
   knownArgByName: Map<string, LlamaArgumentOption>,
@@ -331,9 +339,23 @@ export function RawArgRow(props: {
   );
 }
 
-export function argsToRows(args: Instance["args"]): ArgRow[] {
+export function argsToRows(
+  args: Instance["args"],
+  knownArgByName?: Map<string, LlamaArgumentOption>,
+): ArgRow[] {
   const rows = Object.entries(args).map(([key, value]) => {
     const id = createUiId();
+    const option = knownArgByName?.get(key.trim());
+    if (option && isPlainBoolean(option) && typeof value === "boolean") {
+      const isNegative = negativeArgumentName(option) === key.trim();
+      const enabled = isNegative ? !value : value;
+      return {
+        id,
+        key: cliNameForArgument(option),
+        value: enabled ? "true" : "false",
+        valueType: "boolean" as const,
+      };
+    }
     if (value === true) {
       return { id, key, value: "", valueType: "flag" as const };
     }
