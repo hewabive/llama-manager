@@ -52,11 +52,13 @@ test("createInstance writes a file and resolves the binary path", () => {
   const filePath = resolve(config.instancesDir, `${name}.json`);
   assert.ok(existsSync(filePath));
   const stored = JSON.parse(readFileSync(filePath, "utf8")) as {
-    id: string;
+    id?: unknown;
+    name: string;
     status?: unknown;
     pid?: unknown;
   };
-  assert.equal(stored.id, created.id);
+  assert.equal(stored.name, created.name);
+  assert.equal("id" in stored, false);
   assert.equal("status" in stored, false);
   assert.equal("pid" in stored, false);
 });
@@ -71,8 +73,8 @@ test("getInstance/listInstances read back from files", () => {
   });
 
   resetInstancesCache();
-  assert.equal(getInstance(created.id)?.name, name);
-  assert.ok(listInstances().some((item) => item.id === created.id));
+  assert.equal(getInstance(created.name)?.name, name);
+  assert.ok(listInstances().some((item) => item.name === created.name));
 });
 
 test("createInstance rejects duplicate names", () => {
@@ -85,7 +87,7 @@ test("createInstance rejects duplicate names", () => {
   );
 });
 
-test("updateInstance renaming moves the file and keeps the id", () => {
+test("updateInstance renaming moves the file", () => {
   const name = uniqueName("old");
   const created = createInstance({
     name,
@@ -95,12 +97,13 @@ test("updateInstance renaming moves the file and keeps the id", () => {
   });
 
   const newName = uniqueName("new");
-  const updated = updateInstance(created.id, { name: newName });
+  const updated = updateInstance(created.name, { name: newName });
 
-  assert.equal(updated?.id, created.id);
   assert.equal(updated?.name, newName);
   assert.equal(existsSync(resolve(config.instancesDir, `${name}.json`)), false);
   assert.ok(existsSync(resolve(config.instancesDir, `${newName}.json`)));
+  assert.equal(getInstance(name), null);
+  assert.equal(getInstance(newName)?.name, newName);
 });
 
 test("updateInstance rejects renaming onto an existing name", () => {
@@ -118,7 +121,7 @@ test("updateInstance rejects renaming onto an existing name", () => {
   });
 
   assert.throws(
-    () => updateInstance(b.id, { name: a.name }),
+    () => updateInstance(b.name, { name: a.name }),
     InstanceNameConflictError,
   );
 });
@@ -132,24 +135,28 @@ test("deleteInstance removes the file and prunes process_runs", () => {
     env: {},
   });
   createProcessRun({
-    instanceId: created.id,
+    instanceId: created.name,
     pid: 1234,
     status: "running",
     startedAt: "2026-01-01T00:00:00.000Z",
     logPath: "/tmp/x.log",
     rawLogPath: null,
   });
-  assert.ok(latestProcessRun(created.id));
+  assert.ok(latestProcessRun(created.name));
 
-  assert.equal(deleteInstance(created.id), true);
+  assert.equal(deleteInstance(created.name), true);
   assert.equal(existsSync(resolve(config.instancesDir, `${name}.json`)), false);
-  assert.equal(latestProcessRun(created.id), null);
-  assert.equal(getInstance(created.id), null);
+  assert.equal(latestProcessRun(created.name), null);
+  assert.equal(getInstance(created.name), null);
 });
 
 test("reading a malformed instance file fails loud", () => {
   const name = uniqueName("bad");
-  writeFileSync(resolve(config.instancesDir, `${name}.json`), "{ not json", "utf8");
+  writeFileSync(
+    resolve(config.instancesDir, `${name}.json`),
+    "{ not json",
+    "utf8",
+  );
   resetInstancesCache();
   assert.throws(() => listInstances(), /Invalid JSON/);
 });

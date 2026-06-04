@@ -282,7 +282,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
   metadataByTargetId?: Map<string, ApiProxyRuntimeMetadataRecord> | undefined;
 }): ApiProxyRuntimeSnapshot {
   const instanceById = new Map(
-    input.instances.map((instance) => [instance.id, instance]),
+    input.instances.map((instance) => [instance.name, instance]),
   );
   const resolutionByTargetId = new Map(
     input.targets.map((target) => [

@@ -86,14 +86,14 @@ export function App() {
     [healthSummariesQuery.data?.data],
   );
   const selectedInstance =
-    instances.find((instance) => instance.id === selectedId) ??
+    instances.find((instance) => instance.name === selectedId) ??
     instances[0] ??
     null;
   const selectedHealth = selectedInstance
-    ? healthByInstanceId.get(selectedInstance.id)
+    ? healthByInstanceId.get(selectedInstance.name)
     : null;
   const selectedLaunchMonitor =
-    selectedInstance?.id === launchMonitor?.instanceId ? launchMonitor : null;
+    selectedInstance?.name === launchMonitor?.instanceId ? launchMonitor : null;
   const currentRoute =
     appRoutes.find((item) => item.id === route) ?? appRoutes[0]!;
 
@@ -126,9 +126,9 @@ export function App() {
     instance: Instance,
     source: LaunchMonitor["source"],
   ) {
-    setSelectedId(instance.id);
+    setSelectedId(instance.name);
     setLaunchMonitor({
-      instanceId: instance.id,
+      instanceId: instance.name,
       source,
       startedAt: new Date().toISOString(),
     });
@@ -136,7 +136,7 @@ export function App() {
 
   function clearLaunchMonitor(instance: Instance) {
     setLaunchMonitor((monitor) =>
-      monitor?.instanceId === instance.id ? null : monitor,
+      monitor?.instanceId === instance.name ? null : monitor,
     );
   }
 
@@ -262,11 +262,11 @@ export function App() {
               instances={instances}
               selectedInstance={selectedInstance}
               healthByInstanceId={healthByInstanceId}
-              onSelect={(instance) => setSelectedId(instance.id)}
+              onSelect={(instance) => setSelectedId(instance.name)}
               onCreate={() => setCreateOpened(true)}
               onEdit={setEditingInstance}
               onOpenDiagnostics={(instance) => {
-                setSelectedId(instance.id);
+                setSelectedId(instance.name);
                 setRoute("diagnostics");
               }}
               onLaunchStarted={startLaunchMonitor}
@@ -324,7 +324,7 @@ export function App() {
         opened={canUseAdmin && createOpened}
         instances={instances}
         initialModelPath={initialModelPath}
-        onSaved={(instance) => setSelectedId(instance.id)}
+        onSaved={(instance) => setSelectedId(instance.name)}
         onLaunchStarted={startLaunchMonitor}
         onClose={() => {
           setCreateOpened(false);
@@ -335,7 +335,7 @@ export function App() {
         opened={canUseAdmin && Boolean(editingInstance)}
         instances={instances}
         instance={editingInstance}
-        onSaved={(instance) => setSelectedId(instance.id)}
+        onSaved={(instance) => setSelectedId(instance.name)}
         onLaunchStarted={startLaunchMonitor}
         onClose={() => setEditingInstance(null)}
       />

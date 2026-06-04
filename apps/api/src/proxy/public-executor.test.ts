@@ -28,7 +28,6 @@ const target: ApiProxyTargetRecord = {
 };
 
 const instance: Instance = {
-  id: "instance-a",
   name: "Instance A",
   binaryPath: "/tmp/llama-server",
   binaryPathRefId: "bin-a",
@@ -47,7 +46,7 @@ function action(
   return {
     type,
     targetId: target.id,
-    instanceId: instance.id,
+    instanceId: instance.name,
     model: target.model,
     slotId,
     reason: "test",
@@ -234,10 +233,7 @@ test("executeApiProxyPublicMvpPlan stops a blocker instance then reaches ready p
 test("executeApiProxyPublicMvpPlan surfaces not-ready when stop-instance never frees the blocker", async () => {
   let stops = 0;
   const base = executorDefaults({
-    initialPreview: preview([
-      action("stop-instance"),
-      action("route-request"),
-    ]),
+    initialPreview: preview([action("stop-instance"), action("route-request")]),
     stopInstance: () => {
       stops += 1;
     },

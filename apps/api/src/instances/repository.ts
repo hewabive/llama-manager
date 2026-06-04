@@ -4,8 +4,6 @@ import type {
   InstanceCreate,
   InstanceUpdate,
 } from "@llama-manager/core";
-import { newId } from "../utils/id.js";
-
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
 import {
   deleteProcessRunsForInstance,
@@ -64,11 +62,10 @@ function resolveBinaryPath(record: InstanceConfigRecord): string {
 }
 
 function toInstance(record: InstanceConfigRecord): Instance {
-  const processState = supervisor.getState(record.id);
-  const durableState = latestStatus(record.id);
+  const processState = supervisor.getState(record.name);
+  const durableState = latestStatus(record.name);
 
   return {
-    id: record.id,
     name: record.name,
     binaryPath: resolveBinaryPath(record),
     binaryPathRefId: record.binaryPathRefId ?? "",
@@ -86,8 +83,8 @@ export function listInstances(): Instance[] {
   return listInstanceRecords().map(toInstance);
 }
 
-export function getInstance(id: string): Instance | null {
-  const record = getInstanceRecord(id);
+export function getInstance(name: string): Instance | null {
+  const record = getInstanceRecord(name);
   return record ? toInstance(record) : null;
 }
 
@@ -100,7 +97,6 @@ export function createInstance(input: InstanceCreate): Instance {
   const binaryRef = getPathCatalogEntry(input.binaryPathRefId);
 
   const record: InstanceConfigRecord = {
-    id: newId(),
     name: input.name,
     binaryPath: binaryRef?.path ?? "",
     binaryPathRefId: input.binaryPathRefId,
@@ -116,10 +112,10 @@ export function createInstance(input: InstanceCreate): Instance {
 }
 
 export function updateInstance(
-  id: string,
+  name: string,
   input: InstanceUpdate,
 ): Instance | null {
-  const current = getInstanceRecord(id);
+  const current = getInstanceRecord(name);
   if (!current) {
     return null;
   }
@@ -134,7 +130,6 @@ export function updateInstance(
   const nextCwd = input.cwd ?? current.cwd;
 
   const record: InstanceConfigRecord = {
-    id: current.id,
     name: nextName,
     binaryPath: binaryRef?.path ?? "",
     ...(nextRefId !== undefined ? { binaryPathRefId: nextRefId } : {}),
@@ -149,10 +144,10 @@ export function updateInstance(
   return toInstance(record);
 }
 
-export function deleteInstance(id: string): boolean {
-  const removed = removeInstanceRecord(id);
+export function deleteInstance(name: string): boolean {
+  const removed = removeInstanceRecord(name);
   if (removed) {
-    deleteProcessRunsForInstance(id);
+    deleteProcessRunsForInstance(name);
   }
   return removed;
 }

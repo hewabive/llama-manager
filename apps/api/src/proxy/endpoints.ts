@@ -123,7 +123,7 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
   }
 
   return ApiEndpointRecordSchema.parse({
-    id: instanceEndpointId(instance.id),
+    id: instanceEndpointId(instance.name),
     name: instance.name,
     enabled: true,
     kind: "managed-instance",
@@ -132,7 +132,7 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
     authType: "none",
     authHeaderName: null,
     authEnvVar: null,
-    instanceId: instance.id,
+    instanceId: instance.name,
     editable: false,
     authConfigured: true,
     createdAt: instance.createdAt,

@@ -351,11 +351,11 @@ async function getApiProxyRuntimeSnapshot() {
   );
   const healthEntries = await Promise.all(
     instances
-      .filter((instance) => targetInstanceIds.has(instance.id))
+      .filter((instance) => targetInstanceIds.has(instance.name))
       .map(
         async (instance) =>
           [
-            instance.id,
+            instance.name,
             await getInstanceHealthSummary(instance, { peers }),
           ] as const,
       ),
@@ -459,7 +459,7 @@ async function runApiProxyIdleMaintenancePass() {
         } else if (action.type === "unload-model" && action.model) {
           await requestLlamaModelAction(instance, "unload", action.model);
         } else if (action.type === "stop-instance") {
-          supervisor.stop(instance.id);
+          supervisor.stop(instance.name);
         }
       }
     } finally {
@@ -774,7 +774,7 @@ async function proxyProtocolEndpointInner(
       },
       stopInstance: async (instance) => {
         try {
-          await stopManagedInstance(instance.id);
+          await stopManagedInstance(instance.name);
         } catch (error) {
           if (error instanceof ProcessActionHttpError && error.status === 404) {
             return;
@@ -1960,8 +1960,7 @@ app.post("/api/instances/preflight", async (c) => {
   const timestamp = new Date().toISOString();
   const preview = parsed.data;
   const instance = resolveInstancePathRefs({
-    id: preview.id ?? "preview",
-    name: preview.name,
+    name: preview.name ?? "preview",
     binaryPath: "",
     binaryPathRefId: preview.binaryPathRefId,
     cwd: preview.cwd,
@@ -1975,7 +1974,7 @@ app.post("/api/instances/preflight", async (c) => {
   return c.json({
     data: await validateInstanceStartPreflight(instance, {
       peers: listInstances(),
-      allowActiveSelfPort: Boolean(preview.id),
+      allowActiveSelfPort: Boolean(preview.name),
     }),
   });
 });
@@ -1994,11 +1993,11 @@ app.get("/api/instances/:id/runtime", (c) => {
     return c.json({ error: "instance not found" }, 404);
   }
 
-  const latestRun = latestProcessRun(instance.id);
+  const latestRun = latestProcessRun(instance.name);
   const fallbackPid = latestRun?.pid ? Number(latestRun.pid) : null;
   return c.json({
-    data: supervisor.getState(instance.id) ?? {
-      instanceId: instance.id,
+    data: supervisor.getState(instance.name) ?? {
+      instanceId: instance.name,
       pid: fallbackPid && Number.isFinite(fallbackPid) ? fallbackPid : null,
       status: latestRun?.status ?? instance.status,
       startedAt: latestRun?.startedAt ?? null,
@@ -2048,8 +2047,8 @@ app.get("/api/instances/:id/logs", (c) => {
   const source = c.req.query("source") === "raw" ? "raw" : "filtered";
   return c.json({
     data: tailInstanceLog({
-      instanceId: instance.id,
-      runtime: supervisor.getState(instance.id),
+      instanceId: instance.name,
+      runtime: supervisor.getState(instance.name),
       lines: Number.isFinite(lines) ? lines : 200,
       source,
     }),
@@ -2064,8 +2063,8 @@ app.get("/api/instances/:id/status-summary", async (c) => {
 
   return c.json({
     data: await summarizeInstanceLog({
-      instanceId: instance.id,
-      runtime: supervisor.getState(instance.id),
+      instanceId: instance.name,
+      runtime: supervisor.getState(instance.name),
     }),
   });
 });
@@ -2636,7 +2635,7 @@ function actionErrorProxyMessage(error: unknown) {
 }
 
 async function startManagedInstance(instance: Instance): Promise<RuntimeState> {
-  const staleConflict = staleProcessConflict(instance.id);
+  const staleConflict = staleProcessConflict(instance.name);
   if (staleConflict) {
     throw new ProcessActionHttpError(staleConflict, 409);
   }
@@ -2652,7 +2651,7 @@ async function startManagedInstance(instance: Instance): Promise<RuntimeState> {
 async function startOrRecoverManagedInstance(
   instance: Instance,
 ): Promise<RuntimeState> {
-  if (liveStaleProcessRun(instance.id)) {
+  if (liveStaleProcessRun(instance.name)) {
     return restartManagedInstance(instance);
   }
   return startManagedInstance(instance);
@@ -2682,7 +2681,7 @@ async function restartManagedInstance(
     throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
   }
 
-  const staleState = await stopStaleProcess(instance.id);
+  const staleState = await stopStaleProcess(instance.name);
   if (staleState) {
     const startPreflight = await validateInstanceStartPreflight(instance, {
       peers: listInstances(),
@@ -2705,7 +2704,7 @@ async function runInstanceAction(
   action: InstanceBulkActionName,
 ) {
   if (action === "start") return startManagedInstance(instance);
-  if (action === "stop") return stopManagedInstance(instance.id);
+  if (action === "stop") return stopManagedInstance(instance.name);
   return restartManagedInstance(instance);
 }
 
@@ -2718,10 +2717,10 @@ app.post("/api/instances/actions", async (c) => {
   const { action, instanceIds } = parsed.data;
   const allInstances = listInstances();
   const instancesById = new Map(
-    allInstances.map((instance) => [instance.id, instance]),
+    allInstances.map((instance) => [instance.name, instance]),
   );
   const targetIds = [
-    ...new Set(instanceIds ?? allInstances.map((instance) => instance.id)),
+    ...new Set(instanceIds ?? allInstances.map((instance) => instance.name)),
   ];
   const items: InstanceBulkActionItem[] = [];
 
@@ -2746,7 +2745,7 @@ app.post("/api/instances/actions", async (c) => {
     });
     if (!actionAllowed(action, health)) {
       items.push({
-        instanceId: instance.id,
+        instanceId: instance.name,
         name: instance.name,
         action,
         ok: false,
@@ -2760,7 +2759,7 @@ app.post("/api/instances/actions", async (c) => {
 
     try {
       items.push({
-        instanceId: instance.id,
+        instanceId: instance.name,
         name: instance.name,
         action,
         ok: true,
@@ -2772,7 +2771,7 @@ app.post("/api/instances/actions", async (c) => {
     } catch (error) {
       const payload = actionErrorPayload(error);
       items.push({
-        instanceId: instance.id,
+        instanceId: instance.name,
         name: instance.name,
         action,
         ok: false,

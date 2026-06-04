@@ -18,10 +18,10 @@ export function DiagnosticsView(props: {
       <Select
         label="Instance"
         data={props.instances.map((instance) => ({
-          value: instance.id,
+          value: instance.name,
           label: instance.name,
         }))}
-        value={props.selectedInstance?.id ?? null}
+        value={props.selectedInstance?.name ?? null}
         searchable
         disabled={props.instances.length === 0}
         onChange={(value) => {

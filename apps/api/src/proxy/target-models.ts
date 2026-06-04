@@ -104,7 +104,7 @@ export function buildApiProxyTargetModelCatalog(
   instances: Instance[],
 ): ApiProxyTargetModelCatalog {
   const instanceById = new Map(
-    instances.map((instance) => [instance.id, instance]),
+    instances.map((instance) => [instance.name, instance]),
   );
   const groups: ApiProxyTargetModelGroup[] = [];
 

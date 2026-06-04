@@ -67,7 +67,7 @@ export function resolveApiProxyTarget(
   }
 
   const instance = endpoint.instanceId
-    ? (instances.find((item) => item.id === endpoint.instanceId) ?? null)
+    ? (instances.find((item) => item.name === endpoint.instanceId) ?? null)
     : null;
 
   return {
@@ -81,7 +81,7 @@ export function resolveApiProxyTarget(
       endpoint.enabled &&
       (endpoint.kind !== "managed-instance" || Boolean(instance)),
     instance,
-    instanceId: instance?.id ?? null,
+    instanceId: instance?.name ?? null,
     error:
       endpoint.enabled && (endpoint.kind !== "managed-instance" || instance)
         ? null

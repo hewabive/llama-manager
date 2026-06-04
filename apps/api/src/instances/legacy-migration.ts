@@ -18,6 +18,7 @@ type LegacyInstanceRow = {
 export type InstanceMigrationResult = {
   migrated: number;
   renamed: Array<{ from: string; to: string }>;
+  idToName: Record<string, string>;
 };
 
 function tableExists(name: string): boolean {
@@ -96,14 +97,17 @@ export function migrateInstancesToFiles(): InstanceMigrationResult | null {
 
   const used = new Set<string>();
   const renamed: Array<{ from: string; to: string }> = [];
+  const idToName: Record<string, string> = {};
 
   for (const row of rows) {
     const safeName = sanitizeName(row.name, used);
     if (safeName !== row.name) {
       renamed.push({ from: row.name, to: safeName });
     }
+    if (row.id !== safeName) {
+      idToName[row.id] = safeName;
+    }
     const record = InstanceConfigRecordSchema.parse({
-      id: row.id,
       name: safeName,
       binaryPath: row.binary_path ?? "",
       ...(row.binary_path_ref_id
@@ -119,5 +123,5 @@ export function migrateInstancesToFiles(): InstanceMigrationResult | null {
   }
 
   rebuildSchema();
-  return { migrated: rows.length, renamed };
+  return { migrated: rows.length, renamed, idToName };
 }

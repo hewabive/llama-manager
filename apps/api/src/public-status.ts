@@ -57,7 +57,7 @@ export async function getPublicStatus(): Promise<PublicStatus> {
   );
   const items = health.map((item) => {
     const instance = instances.find(
-      (candidate) => candidate.id === item.instanceId,
+      (candidate) => candidate.name === item.instanceId,
     );
     return {
       ...toPublicInstance(item),

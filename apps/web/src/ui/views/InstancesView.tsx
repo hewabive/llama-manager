@@ -153,7 +153,7 @@ function BulkActionsToolbar(props: {
     mutationFn: (action: InstanceBulkActionName) =>
       bulkInstanceAction({
         action,
-        instanceIds: props.instances.map((instance) => instance.id),
+        instanceIds: props.instances.map((instance) => instance.name),
       }),
     onSuccess: async (result) => {
       setPendingAction(null);
@@ -202,13 +202,13 @@ function BulkActionsToolbar(props: {
 
   const counts = {
     start: props.instances.filter((instance) =>
-      bulkActionAllowed("start", props.healthByInstanceId.get(instance.id)),
+      bulkActionAllowed("start", props.healthByInstanceId.get(instance.name)),
     ).length,
     stop: props.instances.filter((instance) =>
-      bulkActionAllowed("stop", props.healthByInstanceId.get(instance.id)),
+      bulkActionAllowed("stop", props.healthByInstanceId.get(instance.name)),
     ).length,
     restart: props.instances.filter((instance) =>
-      bulkActionAllowed("restart", props.healthByInstanceId.get(instance.id)),
+      bulkActionAllowed("restart", props.healthByInstanceId.get(instance.name)),
     ).length,
   } satisfies Record<InstanceBulkActionName, number>;
   const targetCount = pendingAction ? counts[pendingAction] : 0;
@@ -326,12 +326,12 @@ export function InstancesView(props: {
       <Stack className="instances-mobile-list" gap="xs">
         {props.instances.map((instance) => (
           <Paper
-            key={instance.id}
+            key={instance.name}
             withBorder
             p="sm"
             radius="sm"
             className={
-              props.selectedInstance?.id === instance.id
+              props.selectedInstance?.name === instance.name
                 ? "instance-card instance-card--selected"
                 : "instance-card"
             }
@@ -342,12 +342,12 @@ export function InstancesView(props: {
                 <div className="instance-card__title">
                   <Text fw={600}>{instance.name}</Text>
                   <Text c="dimmed" size="xs" className="text-wrap">
-                    {instance.id}
+                    {instance.name}
                   </Text>
                 </div>
                 <InstanceActions
                   instance={instance}
-                  health={props.healthByInstanceId.get(instance.id)}
+                  health={props.healthByInstanceId.get(instance.name)}
                   onEdit={() => props.onEdit(instance)}
                   onOpenDiagnostics={() => props.onOpenDiagnostics(instance)}
                   onLaunchStarted={props.onLaunchStarted}
@@ -357,7 +357,7 @@ export function InstancesView(props: {
               <Group justify="space-between" gap="xs">
                 <InstanceHealthBadge
                   instance={instance}
-                  health={props.healthByInstanceId.get(instance.id)}
+                  health={props.healthByInstanceId.get(instance.name)}
                 />
                 <Text c="dimmed" size="sm">
                   PID {instance.pid ?? "-"}
@@ -402,9 +402,9 @@ export function InstancesView(props: {
           <Table.Tbody>
             {props.instances.map((instance) => (
               <Table.Tr
-                key={instance.id}
+                key={instance.name}
                 onClick={() => props.onSelect(instance)}
-                {...(props.selectedInstance?.id === instance.id
+                {...(props.selectedInstance?.name === instance.name
                   ? { className: "selected-row" }
                   : {})}
                 style={{ cursor: "pointer" }}
@@ -412,13 +412,13 @@ export function InstancesView(props: {
                 <Table.Td>
                   <Text fw={600}>{instance.name}</Text>
                   <Text c="dimmed" size="xs">
-                    {instance.id}
+                    {instance.name}
                   </Text>
                 </Table.Td>
                 <Table.Td>
                   <InstanceHealthBadge
                     instance={instance}
-                    health={props.healthByInstanceId.get(instance.id)}
+                    health={props.healthByInstanceId.get(instance.name)}
                   />
                 </Table.Td>
                 <Table.Td>{instance.pid ?? "-"}</Table.Td>
@@ -431,7 +431,7 @@ export function InstancesView(props: {
                 <Table.Td>
                   <InstanceActions
                     instance={instance}
-                    health={props.healthByInstanceId.get(instance.id)}
+                    health={props.healthByInstanceId.get(instance.name)}
                     onEdit={() => props.onEdit(instance)}
                     onOpenDiagnostics={() => props.onOpenDiagnostics(instance)}
                     onLaunchStarted={props.onLaunchStarted}

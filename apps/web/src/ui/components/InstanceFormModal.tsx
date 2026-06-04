@@ -155,10 +155,10 @@ function instancePort(instance: Instance) {
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
 }
 
-function nextAvailablePort(instances: Instance[], currentId?: string) {
+function nextAvailablePort(instances: Instance[], currentName?: string) {
   const used = new Set(
     instances
-      .filter((instance) => instance.id !== currentId)
+      .filter((instance) => instance.name !== currentName)
       .map((instance) => instancePort(instance))
       .filter((port): port is number => port !== null),
   );
@@ -461,7 +461,7 @@ export function InstanceFormModal(props: {
       return;
     }
 
-    const formKey = `${props.instance?.id ?? "new"}:${props.initialModelPath ?? ""}`;
+    const formKey = `${props.instance?.name ?? "new"}:${props.initialModelPath ?? ""}`;
     if (initializedFormKeyRef.current === formKey) {
       return;
     }
@@ -505,7 +505,7 @@ export function InstanceFormModal(props: {
   }, [
     argumentDefaultsQuery.isLoading,
     props.opened,
-    props.instance?.id,
+    props.instance?.name,
     props.initialModelPath,
   ]);
 
@@ -513,7 +513,7 @@ export function InstanceFormModal(props: {
     if (!props.opened || !props.instance || knownArgByName.size === 0) {
       return;
     }
-    const formKey = `${props.instance.id}:${props.initialModelPath ?? ""}`;
+    const formKey = `${props.instance.name}:${props.initialModelPath ?? ""}`;
     if (
       initializedFormKeyRef.current !== formKey ||
       catalogNormalizedFormKeyRef.current === formKey
@@ -522,12 +522,7 @@ export function InstanceFormModal(props: {
     }
     catalogNormalizedFormKeyRef.current = formKey;
     setArgRows(argsToRows(props.instance.args, knownArgByName));
-  }, [
-    props.opened,
-    props.instance,
-    props.initialModelPath,
-    knownArgByName,
-  ]);
+  }, [props.opened, props.instance, props.initialModelPath, knownArgByName]);
 
   useEffect(() => {
     if (
@@ -559,7 +554,6 @@ export function InstanceFormModal(props: {
         return { input: null, error: "Select a binary from the catalog" };
       }
       const input: InstancePreflightPreview = {
-        ...(props.instance?.id ? { id: props.instance.id } : {}),
         name: form.values.name,
         binaryPathRefId: selectedBinaryPathRefId,
         args,
@@ -574,7 +568,7 @@ export function InstanceFormModal(props: {
     form.values.envJson,
     form.values.name,
     knownArgByName,
-    props.instance?.id,
+    props.instance?.name,
     selectedBinaryPathRefId,
   ]);
 
@@ -758,7 +752,7 @@ export function InstanceFormModal(props: {
   const mutation = useMutation({
     mutationFn: async (input: InstanceCreate | InstanceUpdate) => {
       if (props.instance) {
-        return updateInstance(props.instance.id, input);
+        return updateInstance(props.instance.name, input);
       }
       return createInstance(input as InstanceCreate);
     },
@@ -784,7 +778,7 @@ export function InstanceFormModal(props: {
           };
         } else {
           try {
-            await instanceAction(created.id, "start");
+            await instanceAction(created.name, "start");
             props.onLaunchStarted?.(created, "create");
             notification = {
               title: "Instance created and started",
@@ -800,7 +794,7 @@ export function InstanceFormModal(props: {
         }
       }
 
-      await invalidateSavedInstance(created.id);
+      await invalidateSavedInstance(created.name);
       props.onClose();
       form.reset();
       setArgRows(defaultRows());

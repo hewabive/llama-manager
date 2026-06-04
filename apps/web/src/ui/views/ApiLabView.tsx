@@ -6,12 +6,7 @@ import type {
   InstanceHealthSummary,
 } from "@llama-manager/core";
 import { ApiLabProbeKindsByProfile } from "@llama-manager/core";
-import {
-  Autocomplete,
-  Group,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { Autocomplete, Group, Stack, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -182,11 +177,11 @@ export function ApiLabView(props: {
           const targetBaseUrl = apiVersionBaseUrl(url);
           return [
             {
-              value: `instance:${instance.id}`,
+              value: `instance:${instance.name}`,
               label: `${instance.name} (${targetBaseUrl})`,
               baseUrl: targetBaseUrl,
-              endpointId: `instance:${instance.id}`,
-              instanceId: instance.id,
+              endpointId: `instance:${instance.name}`,
+              instanceId: instance.name,
               kind: "managed-instance",
             },
           ];
@@ -231,7 +226,7 @@ export function ApiLabView(props: {
       return;
     }
     const selectedEndpoint = targetOptions.find(
-      (target) => target.instanceId === props.selectedInstance?.id,
+      (target) => target.instanceId === props.selectedInstance?.name,
     );
     const url =
       selectedEndpoint?.baseUrl ??
@@ -241,7 +236,7 @@ export function ApiLabView(props: {
     if (url) {
       setBaseUrl(apiVersionBaseUrl(url));
       setQuickTarget(
-        selectedEndpoint?.value ?? `instance:${props.selectedInstance.id}`,
+        selectedEndpoint?.value ?? `instance:${props.selectedInstance.name}`,
       );
     }
   }, [
@@ -280,7 +275,7 @@ export function ApiLabView(props: {
         ? proxyModelOptions
         : matchedQuickTarget?.instanceId
           ? modelOptionsFromProbe(
-              matchedQuickTarget.instanceId === props.selectedInstance?.id
+              matchedQuickTarget.instanceId === props.selectedInstance?.name
                 ? props.selectedHealth?.llama.models
                 : undefined,
             )
@@ -400,7 +395,10 @@ export function ApiLabView(props: {
           });
           if (props.selectedInstance) {
             void queryClient.invalidateQueries({
-              queryKey: ["instance-health-summary", props.selectedInstance.id],
+              queryKey: [
+                "instance-health-summary",
+                props.selectedInstance.name,
+              ],
             });
           }
         }}

@@ -56,7 +56,7 @@ export const InstanceCreateSchema = z.object({
 });
 
 export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
-  id: z.string().optional(),
+  name: InstanceNameSchema.optional(),
 });
 
 export const InstanceUpdateSchema = z.object({
@@ -68,7 +68,6 @@ export const InstanceUpdateSchema = z.object({
 });
 
 export const InstanceSchema = InstanceCreateSchema.extend({
-  id: z.string(),
   binaryPath: z.string(),
   status: z.enum([
     "stopped",
@@ -85,7 +84,6 @@ export const InstanceSchema = InstanceCreateSchema.extend({
 });
 
 export const InstanceConfigRecordSchema = z.object({
-  id: z.string(),
   name: InstanceNameSchema,
   binaryPath: z.string(),
   binaryPathRefId: PathCatalogIdSchema.optional(),

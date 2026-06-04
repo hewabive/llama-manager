@@ -57,7 +57,7 @@ function load(): Map<string, InstanceConfigRecord> {
           `Invalid instance config in ${path}: ${parsed.error.message}`,
         );
       }
-      next.set(parsed.data.id, parsed.data);
+      next.set(parsed.data.name, parsed.data);
     }
   }
   cache = next;
@@ -68,19 +68,14 @@ export function listInstanceRecords(): InstanceConfigRecord[] {
   return [...load().values()];
 }
 
-export function getInstanceRecord(id: string): InstanceConfigRecord | null {
-  return load().get(id) ?? null;
+export function getInstanceRecord(name: string): InstanceConfigRecord | null {
+  return load().get(name) ?? null;
 }
 
 export function findInstanceRecordByName(
   name: string,
 ): InstanceConfigRecord | null {
-  for (const record of load().values()) {
-    if (record.name === name) {
-      return record;
-    }
-  }
-  return null;
+  return load().get(name) ?? null;
 }
 
 export function writeInstanceRecord(
@@ -94,13 +89,14 @@ export function writeInstanceRecord(
     if (existsSync(previousPath)) {
       unlinkSync(previousPath);
     }
+    map.delete(previousName);
   }
-  map.set(record.id, record);
+  map.set(record.name, record);
 }
 
-export function removeInstanceRecord(id: string): boolean {
+export function removeInstanceRecord(name: string): boolean {
   const map = load();
-  const record = map.get(id);
+  const record = map.get(name);
   if (!record) {
     return false;
   }
@@ -108,7 +104,7 @@ export function removeInstanceRecord(id: string): boolean {
   if (existsSync(path)) {
     unlinkSync(path);
   }
-  map.delete(id);
+  map.delete(name);
   return true;
 }
 

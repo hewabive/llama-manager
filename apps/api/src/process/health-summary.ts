@@ -47,7 +47,7 @@ function isRuntimeStatus(
 }
 
 function durableRuntime(instance: Instance): RuntimeState {
-  const latestRun = latestProcessRun(instance.id);
+  const latestRun = latestProcessRun(instance.name);
   const pid = latestRun?.pid ? Number(latestRun.pid) : null;
   const exitCode =
     latestRun?.exitCode === null || latestRun?.exitCode === undefined
@@ -55,7 +55,7 @@ function durableRuntime(instance: Instance): RuntimeState {
       : Number(latestRun.exitCode);
 
   return {
-    instanceId: instance.id,
+    instanceId: instance.name,
     pid: pid && Number.isFinite(pid) ? pid : null,
     status: isRuntimeStatus(latestRun?.status)
       ? latestRun.status
@@ -249,7 +249,7 @@ export async function getInstanceHealthSummary(
   instance: Instance,
   options: HealthSummaryOptions = {},
 ): Promise<InstanceHealthSummary> {
-  const runtime = supervisor.getState(instance.id) ?? durableRuntime(instance);
+  const runtime = supervisor.getState(instance.name) ?? durableRuntime(instance);
   const shouldCheckStartAvailability = ["stopped", "exited", "error"].includes(
     runtime.status,
   );
@@ -265,7 +265,7 @@ export async function getInstanceHealthSummary(
     shouldProbe
       ? probeLlamaServer(instance)
       : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
-    summarizeInstanceLog({ instanceId: instance.id, runtime }),
+    summarizeInstanceLog({ instanceId: instance.name, runtime }),
   ]);
   const preflightErrors = preflight.issues.filter(
     (issue) => issue.level === "error",
@@ -284,7 +284,7 @@ export async function getInstanceHealthSummary(
   });
 
   return {
-    instanceId: instance.id,
+    instanceId: instance.name,
     status: derived.status,
     reason: derived.reason,
     actions: actionsFor(runtime, preflight.ok),

@@ -84,7 +84,7 @@ export function InstanceActions(props: {
 
   const actionMutation = useMutation({
     mutationFn: (action: InstanceActionName) =>
-      instanceAction(props.instance.id, action),
+      instanceAction(props.instance.name, action),
     onSuccess: async (_result, action) => {
       if (action === "start" || action === "restart") {
         props.onLaunchStarted(props.instance, action);
@@ -97,19 +97,19 @@ export function InstanceActions(props: {
           queryKey: ["instances-health-summary"],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["instance-health-summary", props.instance.id],
+          queryKey: ["instance-health-summary", props.instance.name],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["instance-runtime", props.instance.id],
+          queryKey: ["instance-runtime", props.instance.name],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["instance-llama", props.instance.id],
+          queryKey: ["instance-llama", props.instance.name],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["instance-status-summary", props.instance.id],
+          queryKey: ["instance-status-summary", props.instance.name],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["instance-logs", props.instance.id],
+          queryKey: ["instance-logs", props.instance.name],
         }),
       ]);
     },
@@ -123,7 +123,7 @@ export function InstanceActions(props: {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteInstance(props.instance.id),
+    mutationFn: () => deleteInstance(props.instance.name),
     onSuccess: async () => {
       setDeleteConfirmOpened(false);
       await Promise.all([
@@ -132,7 +132,7 @@ export function InstanceActions(props: {
           queryKey: ["instances-health-summary"],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["instance-health-summary", props.instance.id],
+          queryKey: ["instance-health-summary", props.instance.name],
         }),
       ]);
     },

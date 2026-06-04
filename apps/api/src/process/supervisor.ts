@@ -66,12 +66,12 @@ export class ProcessSupervisor extends EventEmitter {
   }
 
   start(instance: Instance): ProcessState {
-    const current = this.processes.get(instance.id);
+    const current = this.processes.get(instance.name);
     if (
       current &&
       ["starting", "running", "stopping"].includes(current.status)
     ) {
-      return this.getState(instance.id)!;
+      return this.getState(instance.name)!;
     }
 
     const preflight = validateInstancePreflight(instance);
@@ -104,7 +104,7 @@ export class ProcessSupervisor extends EventEmitter {
       stdio: ["ignore", "pipe", "pipe"],
     });
     const runId = createProcessRun({
-      instanceId: instance.id,
+      instanceId: instance.name,
       pid: child.pid ?? null,
       status: "starting",
       startedAt,
@@ -117,7 +117,7 @@ export class ProcessSupervisor extends EventEmitter {
       child,
       logStream,
       rawLogStream,
-      instanceId: instance.id,
+      instanceId: instance.name,
       pid: child.pid ?? null,
       status: "starting",
       startedAt,
@@ -127,7 +127,7 @@ export class ProcessSupervisor extends EventEmitter {
       rawLogPath,
     };
 
-    this.processes.set(instance.id, runtime);
+    this.processes.set(instance.name, runtime);
     runtime.logStream.write(
       [
         `# llama-manager filtered log for ${instance.name}`,
@@ -147,7 +147,7 @@ export class ProcessSupervisor extends EventEmitter {
     );
     this.emitEvent(
       "status",
-      instance.id,
+      instance.name,
       `starting pid=${runtime.pid ?? "unknown"}`,
     );
 
@@ -156,7 +156,7 @@ export class ProcessSupervisor extends EventEmitter {
       updateProcessRun(runtime.runId, { pid: runtime.pid, status: "running" });
       this.emitEvent(
         "status",
-        instance.id,
+        instance.name,
         `running pid=${runtime.pid ?? "unknown"}`,
       );
     });
@@ -164,13 +164,13 @@ export class ProcessSupervisor extends EventEmitter {
     child.stdout.on("data", (chunk: Buffer) => {
       const message = chunk.toString();
       this.writeProcessOutput(runtime, message);
-      this.emitEvent("stdout", instance.id, message);
+      this.emitEvent("stdout", instance.name, message);
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
       const message = chunk.toString();
       this.writeProcessOutput(runtime, message);
-      this.emitEvent("stderr", instance.id, message);
+      this.emitEvent("stderr", instance.name, message);
     });
 
     child.on("error", (error) => {
@@ -186,7 +186,7 @@ export class ProcessSupervisor extends EventEmitter {
         runtime,
         `${runtime.stoppedAt} ERROR ${error.message}\n`,
       );
-      this.emitEvent("error", instance.id, error.message);
+      this.emitEvent("error", instance.name, error.message);
       endLogs();
     });
 
@@ -208,14 +208,14 @@ export class ProcessSupervisor extends EventEmitter {
         runtime,
         `${runtime.stoppedAt} EXIT code=${code ?? "signal"}\n`,
       );
-      this.emitEvent("exit", instance.id, `exit code=${code ?? "signal"}`);
+      this.emitEvent("exit", instance.name, `exit code=${code ?? "signal"}`);
     });
 
     child.on("close", () => {
       endLogs();
     });
 
-    return this.getState(instance.id)!;
+    return this.getState(instance.name)!;
   }
 
   stop(instanceId: string, timeoutMs = 10_000): ProcessState | null {
@@ -272,7 +272,7 @@ export class ProcessSupervisor extends EventEmitter {
   }
 
   async restart(instance: Instance): Promise<ProcessState> {
-    const runtime = this.processes.get(instance.id);
+    const runtime = this.processes.get(instance.name);
     if (runtime && !this.isTerminal(runtime)) {
       this.requestStop(runtime, 5_000);
       await this.waitForExit(runtime, 7_000);

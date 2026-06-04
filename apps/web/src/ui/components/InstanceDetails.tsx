@@ -1733,7 +1733,7 @@ export function InstanceDetails(props: {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
   const [logSource, setLogSource] = useState<"filtered" | "raw">("filtered");
   const queryClient = useQueryClient();
-  const id = props.instance?.id;
+  const id = props.instance?.name;
 
   const healthQuery = useQuery({
     queryKey: ["instance-health-summary", id],

@@ -321,7 +321,7 @@ function validatePortConflicts(
 
   const host = normalizedHost(instance);
   for (const peer of peers) {
-    if (peer.id === instance.id) {
+    if (peer.name === instance.name) {
       continue;
     }
     const peerPort = parsedPort(peer);
@@ -346,7 +346,7 @@ function hasActiveSelfPort(instance: Instance, peers: Instance[]) {
   const host = normalizedHost(instance);
   return peers.some(
     (peer) =>
-      peer.id === instance.id &&
+      peer.name === instance.name &&
       isActivePortOwner(peer) &&
       parsedPort(peer) === port &&
       hostsOverlap(host, normalizedHost(peer)),
@@ -681,7 +681,7 @@ export function validateInstancePreflight(
   validateGpuLayerRequests(instance, issues, options);
 
   return {
-    instanceId: instance.id,
+    instanceId: instance.name,
     ok: !issues.some((issue) => issue.level === "error"),
     issues,
     checkedAt: nowIso(),

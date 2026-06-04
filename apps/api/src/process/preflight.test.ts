@@ -14,7 +14,6 @@ import {
 
 function instance(input: Partial<Instance>): Instance {
   return {
-    id: "test-instance",
     name: "test-instance",
     binaryPath: input.binaryPath ?? "/bin/sh",
     binaryPathRefId: input.binaryPathRefId ?? "test-binary",

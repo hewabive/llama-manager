@@ -322,7 +322,7 @@ export function PathCatalogView() {
                     Instances
                   </Text>
                   {usage.map((instance) => (
-                    <Badge key={instance.id} variant="outline" color="gray">
+                    <Badge key={instance.name} variant="outline" color="gray">
                       {instance.name}
                     </Badge>
                   ))}

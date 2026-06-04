@@ -9,9 +9,8 @@ import {
   targetModelValueSeparator,
 } from "./target-models.js";
 
-function instance(id: string, name: string, args: Instance["args"]): Instance {
+function instance(name: string, args: Instance["args"]): Instance {
   return {
-    id,
     name,
     binaryPath: "/tmp/llama-server",
     binaryPathRefId: "bin",
@@ -26,7 +25,7 @@ function instance(id: string, name: string, args: Instance["args"]): Instance {
 
 test("single-model instance yields one option with null storedModel", () => {
   const catalog = buildApiProxyTargetModelCatalog([
-    instance("i1", "single-A", {
+    instance("single-A", {
       "--host": "127.0.0.1",
       "--port": 9001,
       "--model": "/models/qwen.gguf",
@@ -46,7 +45,7 @@ test("single-model instance yields one option with null storedModel", () => {
 });
 
 test("router instance (preset, no --model) is managed-router", () => {
-  const router = instance("i2", "router-B", {
+  const router = instance("router-B", {
     "--host": "127.0.0.1",
     "--port": 9002,
     "--models-preset": "missing-preset",
@@ -61,7 +60,7 @@ test("router instance (preset, no --model) is managed-router", () => {
 });
 
 test("a configured --model wins over --models-preset (single, not router)", () => {
-  const mixed = instance("i3", "mixed", {
+  const mixed = instance("mixed", {
     "--host": "127.0.0.1",
     "--port": 9003,
     "--model": "/models/a.gguf",

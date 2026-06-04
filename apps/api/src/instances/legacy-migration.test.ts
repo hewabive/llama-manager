@@ -54,11 +54,15 @@ test("migrateInstancesToFiles exports rows, sanitizes names, drops the table", (
 
   const first = JSON.parse(
     readFileSync(resolve(config.instancesDir, "My-Model.json"), "utf8"),
-  ) as { id: string; binaryPathRefId?: string; cwd?: string; args: unknown };
-  assert.equal(first.id, "id-1");
+  ) as { id?: string; binaryPathRefId?: string; cwd?: string; args: unknown };
+  assert.equal("id" in first, false);
   assert.equal(first.binaryPathRefId, "ref-1");
   assert.equal(first.cwd, "/srv");
   assert.deepEqual(first.args, { "--ctx-size": 4096 });
+  assert.deepEqual(result.idToName, {
+    "id-1": "My-Model",
+    "id-2": "My-Model-2",
+  });
 
   assert.equal(tableExists("instances"), false);
   const preservedRun = sqlite

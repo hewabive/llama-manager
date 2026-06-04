@@ -70,8 +70,9 @@ export function ProxyView() {
   const [modelEditor, setModelEditor] = useState<ModelEditor | null>(null);
   const [modelDraftState, setModelDraftState] =
     useState<ModelDraft>(emptyModelDraft);
-  const [pipelineEditor, setPipelineEditor] =
-    useState<PipelineEditor | null>(null);
+  const [pipelineEditor, setPipelineEditor] = useState<PipelineEditor | null>(
+    null,
+  );
   const [pipelineDraftState, setPipelineDraftState] =
     useState<PipelineDraft>(emptyPipelineDraft);
   const [requestTargetId, setRequestTargetId] = useState<string | null>(null);
@@ -127,7 +128,7 @@ export function ProxyView() {
   const instanceOptions = useMemo(
     () =>
       (instancesQuery.data?.data ?? []).map((instance) => ({
-        value: instance.id,
+        value: instance.name,
         label: instance.name,
       })),
     [instancesQuery.data?.data],

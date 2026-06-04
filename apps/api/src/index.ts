@@ -9,6 +9,7 @@ import { migrate } from "./db/index.js";
 import { app, startApiProxyIdleMaintenanceLoop } from "./http.js";
 import { ensureConfigScaffold } from "./proxy/config-files.js";
 import { migrateInstancesToFiles } from "./instances/legacy-migration.js";
+import { migrateInstanceIdentifiersToNames } from "./instances/identity-migration.js";
 import { migrateProxyConfigToFiles } from "./proxy/legacy-migration.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
@@ -25,6 +26,9 @@ relocateLegacyConfigFiles();
 ensureConfigScaffold();
 migrateProxyConfigToFiles();
 const instanceMigration = migrateInstancesToFiles();
+const instanceIdentityMigration = migrateInstanceIdentifiersToNames(
+  instanceMigration?.idToName ?? {},
+);
 initAppSettings();
 initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
@@ -44,6 +48,7 @@ const server = serve(
         address: info.address,
         port: info.port,
         instanceMigration,
+        instanceIdentityMigration,
         reconciliation,
         prunedProcessRuns,
         prunedArgumentCatalogs,
