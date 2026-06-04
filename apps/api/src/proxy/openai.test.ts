@@ -137,6 +137,38 @@ test("openAiResumableCodec.parseChunk classifies phases", () => {
     JSON.stringify({ choices: [{ delta: { reasoning_content: "hmm" } }] }),
   );
   assert.equal((reasoning as { phase?: string }).phase, "thinking");
+  assert.equal((reasoning as { reasoning?: string }).reasoning, "hmm");
+});
+
+test("openAiResumableCodec.finalResponse preserves reasoning_content", () => {
+  const json = openAiResumableCodec.finalResponse({
+    text: "Answer.",
+    reasoningText: "Thinking Process: step 1",
+    id: "chatcmpl-1",
+    model: "m",
+    finishReason: "stop",
+    wantsStream: false,
+    completionTokens: 9,
+    promptTokens: 5,
+  });
+  const parsed = JSON.parse(json.body);
+  assert.equal(parsed.choices[0].message.content, "Answer.");
+  assert.equal(
+    parsed.choices[0].message.reasoning_content,
+    "Thinking Process: step 1",
+  );
+
+  const stream = openAiResumableCodec.finalResponse({
+    text: "Answer.",
+    reasoningText: "thinking",
+    id: "chatcmpl-1",
+    model: "m",
+    finishReason: "stop",
+    wantsStream: true,
+    completionTokens: 9,
+    promptTokens: 5,
+  });
+  assert.equal(stream.body.includes('"reasoning_content":"thinking"'), true);
 });
 
 test("openAiResumableCodec.finalResponse emits tool_calls", () => {

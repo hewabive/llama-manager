@@ -6,6 +6,7 @@ import type {
 
 export type ResumableBufferState = {
   text: string;
+  reasoningText: string;
   id: string | null;
   model: string | null;
   finishReason: string | null;
@@ -25,6 +26,7 @@ export type ResumableUpstreamOutcome =
 export function createResumableBufferState(): ResumableBufferState {
   return {
     text: "",
+    reasoningText: "",
     id: null,
     model: null,
     finishReason: null,
@@ -58,6 +60,9 @@ function applyFrame(
       continue;
     }
     state.text += chunk.text;
+    if (chunk.reasoning) {
+      state.reasoningText += chunk.reasoning;
+    }
     if (chunk.id) {
       state.id = chunk.id;
     }
@@ -183,9 +188,10 @@ export async function runResumableUpstreamAttempt(input: {
       while (index !== -1) {
         const frame = pending.slice(0, index);
         pending = pending.slice(index + 2);
-        const before = input.state.text.length;
+        const before =
+          input.state.text.length + input.state.reasoningText.length;
         const result = applyFrame(frame, input.codec, input.state);
-        if (input.state.text.length > before) {
+        if (input.state.text.length + input.state.reasoningText.length > before) {
           if (firstTokenAt === null) {
             firstTokenAt = now();
           }
@@ -213,6 +219,7 @@ function finalFromState(
 ): ApiProxyResumableFinalResponse {
   return codec.finalResponse({
     text: state.text,
+    reasoningText: state.reasoningText,
     id: state.id,
     model: state.model,
     finishReason: state.finishReason,
@@ -251,6 +258,9 @@ export async function runResumableForward(input: {
       preemptions === 0 || input.state.text.length === 0
         ? null
         : input.state.text;
+    if (tail === null) {
+      input.state.reasoningText = "";
+    }
     const outcome = await input.attempt(tail);
 
     if (outcome.type === "completed") {

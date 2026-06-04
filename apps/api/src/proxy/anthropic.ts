@@ -113,6 +113,18 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
     }
     if (event.type === "content_block_delta") {
       const delta = asObject(event.delta);
+      if (delta?.type === "thinking_delta") {
+        return {
+          text: "",
+          finishReason: null,
+          id: null,
+          model: null,
+          phase: "thinking",
+          ...(typeof delta.thinking === "string"
+            ? { reasoning: delta.thinking }
+            : {}),
+        };
+      }
       if (delta?.type === "input_json_delta") {
         return {
           text: "",
@@ -177,6 +189,7 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
   },
   finalResponse({
     text,
+    reasoningText,
     id,
     model,
     finishReason,
@@ -193,10 +206,14 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
     const toolBlocks = anthropicToolBlocks(toolCalls);
     const hasTools = toolBlocks.length > 0;
     const stopReason = finishReason ?? (hasTools ? "tool_use" : "end_turn");
+    const thinkingBlocks =
+      reasoningText && reasoningText.length > 0
+        ? [{ type: "thinking", thinking: reasoningText, signature: "" }]
+        : [];
     const textBlocks = text.length > 0 ? [{ type: "text", text }] : [];
     const contentBlocks =
-      textBlocks.length > 0 || hasTools
-        ? [...textBlocks, ...toolBlocks]
+      thinkingBlocks.length > 0 || textBlocks.length > 0 || hasTools
+        ? [...thinkingBlocks, ...textBlocks, ...toolBlocks]
         : [{ type: "text", text: "" }];
 
     if (wantsStream) {
@@ -216,6 +233,30 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
         },
       });
       contentBlocks.forEach((block, index) => {
+        if (block.type === "thinking") {
+          const thinking = block as { thinking: string; signature: string };
+          body +=
+            event("content_block_start", {
+              type: "content_block_start",
+              index,
+              content_block: { type: "thinking", thinking: "" },
+            }) +
+            event("content_block_delta", {
+              type: "content_block_delta",
+              index,
+              delta: { type: "thinking_delta", thinking: thinking.thinking },
+            }) +
+            event("content_block_delta", {
+              type: "content_block_delta",
+              index,
+              delta: { type: "signature_delta", signature: thinking.signature },
+            }) +
+            event("content_block_stop", {
+              type: "content_block_stop",
+              index,
+            });
+          return;
+        }
         if (block.type === "tool_use") {
           const tool = block as { id: string; name: string; input: unknown };
           body +=

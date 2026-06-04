@@ -82,6 +82,7 @@ export type ApiProxyResumableStreamChunk = {
   finishReason: string | null;
   id: string | null;
   model: string | null;
+  reasoning?: string | undefined;
   usage?: ApiProxyResumableUsage | undefined;
   phase?: ApiProxyResumablePhase | undefined;
   toolCall?: ApiProxyResumableToolCallDelta | undefined;
@@ -102,6 +103,7 @@ export type ApiProxyResumableCodec = {
     model: string | null;
     finishReason: string | null;
     wantsStream: boolean;
+    reasoningText?: string | undefined;
     completionTokens?: number | undefined;
     promptTokens?: number | null | undefined;
     genMs?: number | undefined;

@@ -144,6 +144,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
         typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
       id: typeof event.id === "string" ? event.id : null,
       model: typeof event.model === "string" ? event.model : null,
+      ...(reasoning ? { reasoning } : {}),
       ...(phase ? { phase } : {}),
       ...(toolCall ? { toolCall } : {}),
       ...(usage
@@ -164,6 +165,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
   },
   finalResponse({
     text,
+    reasoningText,
     id,
     model,
     finishReason,
@@ -176,6 +178,10 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
     const created = Math.floor(Date.now() / 1000);
     const resolvedId = id ?? "chatcmpl-llama-manager";
     const resolvedModel = model ?? "unknown";
+    const reasoning =
+      reasoningText && reasoningText.length > 0
+        ? { reasoning_content: reasoningText }
+        : {};
 
     const resolvedToolCalls = (toolCalls ?? [])
       .filter((call) => call.name)
@@ -227,6 +233,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
                 delta: {
                   role: "assistant",
                   content: messageContent,
+                  ...reasoning,
                   ...(hasToolCalls ? { tool_calls: resolvedToolCalls } : {}),
                 },
                 finish_reason: null,
@@ -255,6 +262,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
             message: {
               role: "assistant",
               content: messageContent,
+              ...reasoning,
               ...(hasToolCalls ? { tool_calls: resolvedToolCalls } : {}),
             },
             finish_reason: finish,

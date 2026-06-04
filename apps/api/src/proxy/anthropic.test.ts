@@ -218,6 +218,47 @@ test("anthropicResumableCodec.finalResponse synthesizes a message", () => {
   assert.match(sse.body, /event: message_stop/);
 });
 
+test("anthropicResumableCodec preserves thinking content", () => {
+  const chunk = anthropicResumableCodec.parseChunk(
+    JSON.stringify({
+      type: "content_block_delta",
+      delta: { type: "thinking_delta", thinking: "let me think" },
+    }),
+  );
+  assert.equal((chunk as { phase?: string }).phase, "thinking");
+  assert.equal((chunk as { reasoning?: string }).reasoning, "let me think");
+
+  const json = anthropicResumableCodec.finalResponse({
+    text: "answer",
+    reasoningText: "let me think",
+    id: "msg_1",
+    model: "m",
+    finishReason: "end_turn",
+    wantsStream: false,
+    completionTokens: 7,
+    promptTokens: 5,
+  });
+  const parsed = JSON.parse(json.body);
+  assert.deepEqual(parsed.content[0], {
+    type: "thinking",
+    thinking: "let me think",
+    signature: "",
+  });
+  assert.deepEqual(parsed.content[1], { type: "text", text: "answer" });
+
+  const sse = anthropicResumableCodec.finalResponse({
+    text: "answer",
+    reasoningText: "let me think",
+    id: "msg_1",
+    model: "m",
+    finishReason: "end_turn",
+    wantsStream: true,
+    completionTokens: 7,
+    promptTokens: 5,
+  });
+  assert.match(sse.body, /"type":"thinking_delta","thinking":"let me think"/);
+});
+
 test("anthropicResumableCodec.finalResponse emits tool_use blocks", () => {
   const json = anthropicResumableCodec.finalResponse({
     text: "Let me check",
