@@ -33,6 +33,7 @@ export type ApiProxyRouteChainResult =
       ok: true;
       request: ApiProxyProtocolModelRequest;
       targetId: string;
+      textReplacementCount: number;
     }
   | {
       ok: false;
@@ -202,6 +203,7 @@ export async function resolveApiProxyRouteChain(input: {
   const seen = new Set<string>();
   let routeTo = legacyModelRouteTo(input.request);
   let request = input.request;
+  let textReplacementCount = 0;
 
   for (let depth = 0; depth < maxDepth; depth += 1) {
     if (!routeTo) {
@@ -209,7 +211,7 @@ export async function resolveApiProxyRouteChain(input: {
     }
 
     if (routeTo.type === "target") {
-      return { ok: true, request, targetId: routeTo.id };
+      return { ok: true, request, targetId: routeTo.id, textReplacementCount };
     }
 
     const nodeKey = `${routeTo.type}:${routeTo.id}`;
@@ -259,6 +261,7 @@ export async function resolveApiProxyRouteChain(input: {
     }
     const result = await runApiProxyRequestPipeline(pipelineInput);
     request = result.request;
+    textReplacementCount += result.textReplacementCount;
     routeTo = pipeline.routeTo;
   }
 

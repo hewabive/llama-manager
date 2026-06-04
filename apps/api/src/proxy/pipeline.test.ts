@@ -144,6 +144,7 @@ test("resolveApiProxyRouteChain runs pipeline node and resolves final target", a
   assert.equal(result.ok, true);
   if (result.ok) {
     assert.equal(result.targetId, "target-a");
+    assert.equal(result.textReplacementCount, 1);
     assert.deepEqual(result.request.body, {
       model: "public-model",
       messages: [{ role: "user", content: "hello good text" }],

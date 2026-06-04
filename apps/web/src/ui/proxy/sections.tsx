@@ -3,6 +3,8 @@ import type {
   ApiProxyModelRecord,
   ApiProxyPipelineRecord,
   ApiProxyPlanPreview,
+  ApiProxyRequestTrace,
+  ApiProxyStatsSnapshot,
   ApiProxyTargetRecord,
   ApiProxyTargetRuntime,
 } from "@llama-manager/core";
@@ -21,7 +23,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Activity, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Activity, BarChart3, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
 import { formatLocalDateTime } from "../utils/time";
 import {
@@ -672,6 +674,153 @@ export function SchedulerSection(props: SchedulerSectionProps) {
               emptyText="No scheduler action is needed"
               keyPrefix="preview"
             />
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
+type StatsSectionProps = {
+  snapshot: ApiProxyStatsSnapshot | undefined;
+  traces: ApiProxyRequestTrace[];
+  loading: boolean;
+};
+
+function formatRate(rate: number | null): string {
+  return rate === null ? "—" : `${rate.toFixed(1)} t/s`;
+}
+
+function StatBlock(props: { label: string; value: string }) {
+  return (
+    <Stack gap={0} miw={120}>
+      <Text size="xs" c="dimmed">
+        {props.label}
+      </Text>
+      <Text fw={600} size="lg">
+        {props.value}
+      </Text>
+    </Stack>
+  );
+}
+
+export function StatsSection(props: StatsSectionProps) {
+  const snapshot = props.snapshot;
+  const totals = snapshot?.totals;
+  const hasData = Boolean(totals && totals.requests > 0);
+
+  return (
+    <Paper withBorder p="md" radius="sm">
+      <Stack gap="sm">
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Group gap="xs">
+            <BarChart3 size={18} />
+            <Text fw={600}>Statistics</Text>
+          </Group>
+          <Text c="dimmed" size="sm">
+            Last {snapshot?.hours ?? 24}h, in-memory (resets on restart).
+          </Text>
+        </Group>
+
+        {!hasData && (
+          <Text c="dimmed" size="sm">
+            {props.loading ? "Loading…" : "No proxied requests recorded yet."}
+          </Text>
+        )}
+
+        {hasData && totals && (
+          <>
+            <Group gap="xl" wrap="wrap">
+              <StatBlock label="Requests" value={String(totals.requests)} />
+              <StatBlock
+                label="Completion tokens"
+                value={String(totals.completionTokens)}
+              />
+              <StatBlock
+                label="Avg rate"
+                value={formatRate(totals.ratePerSecond)}
+              />
+              <StatBlock
+                label="With tokens"
+                value={`${totals.requestsWithTokens}/${totals.requests}`}
+              />
+              <StatBlock label="Errors" value={String(totals.errors)} />
+            </Group>
+
+            <Table striped withTableBorder fz="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Hour (UTC)</Table.Th>
+                  <Table.Th>Requests</Table.Th>
+                  <Table.Th>Errors</Table.Th>
+                  <Table.Th>Tokens</Table.Th>
+                  <Table.Th>Rate</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {(snapshot?.buckets ?? []).slice(0, 12).map((bucket) => (
+                  <Table.Tr key={bucket.hour}>
+                    <Table.Td>{bucket.hour.replace("T", " ")}</Table.Td>
+                    <Table.Td>{bucket.requests}</Table.Td>
+                    <Table.Td>{bucket.errors}</Table.Td>
+                    <Table.Td>{bucket.completionTokens}</Table.Td>
+                    <Table.Td>{formatRate(bucket.ratePerSecond)}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </>
+        )}
+
+        {props.traces.length > 0 && (
+          <Stack gap="xs">
+            <Text fw={600} size="sm">
+              Recent requests
+            </Text>
+            <Table striped withTableBorder fz="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Time</Table.Th>
+                  <Table.Th>Model</Table.Th>
+                  <Table.Th>Target</Table.Th>
+                  <Table.Th>Actions</Table.Th>
+                  <Table.Th>Tokens</Table.Th>
+                  <Table.Th>Rate</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>ms</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {props.traces.slice(0, 12).map((trace) => (
+                  <Table.Tr key={trace.id}>
+                    <Table.Td>{formatLocalDateTime(trace.at)}</Table.Td>
+                    <Table.Td>{trace.modelId || "—"}</Table.Td>
+                    <Table.Td>{trace.targetName ?? "—"}</Table.Td>
+                    <Table.Td>
+                      {trace.schedulerActions.length > 0 ? (
+                        <Tooltip label={trace.schedulerActions.join(", ")}>
+                          <Text size="xs">{trace.schedulerActions.length}</Text>
+                        </Tooltip>
+                      ) : (
+                        "—"
+                      )}
+                    </Table.Td>
+                    <Table.Td>{trace.usage?.completionTokens ?? "—"}</Table.Td>
+                    <Table.Td>
+                      {trace.usage
+                        ? formatRate(trace.usage.ratePerSecond)
+                        : "—"}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={trace.ok ? "green" : "red"} variant="light">
+                        {trace.status}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>{trace.durationMs}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
           </Stack>
         )}
       </Stack>

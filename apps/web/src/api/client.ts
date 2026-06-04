@@ -13,7 +13,9 @@ import type {
   ApiProxyPipelineRecord,
   ApiProxyPipelineUpdate,
   ApiProxyRequestLogRecord,
+  ApiProxyRequestTrace,
   ApiProxyRuntimeSnapshot,
+  ApiProxyStatsSnapshot,
   ApiProxyTargetModelCatalog,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
@@ -269,6 +271,20 @@ export async function deleteApiEndpoint(id: string) {
 
 export async function getApiProxyRuntime() {
   return request<{ data: ApiProxyRuntimeSnapshot }>("/api/proxy/runtime");
+}
+
+export async function getApiProxyStats(hours = 24) {
+  const params = new URLSearchParams({ hours: String(hours) });
+  return request<{ data: ApiProxyStatsSnapshot }>(
+    `/api/proxy/stats?${params.toString()}`,
+  );
+}
+
+export async function getApiProxyTraces(limit = 50) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<{ data: ApiProxyRequestTrace[] }>(
+    `/api/proxy/traces?${params.toString()}`,
+  );
 }
 
 export async function previewApiProxyPlan(input: ApiProxyPlanPreviewRequest) {

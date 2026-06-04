@@ -8,6 +8,7 @@ import {
   ApiProxyPipelineUpdateSchema,
   ApiProxyPlanPreviewRequestSchema,
   ApiProxyPlanPreviewSchema,
+  ApiProxyRequestTraceSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetUpdateSchema,
   BuildJobStartSchema,
@@ -187,6 +188,8 @@ import {
   type ApiProxyProtocolTransport,
 } from "./proxy/protocol.js";
 import { buildApiProxyRuntimeSnapshot } from "./proxy/runtime.js";
+import { apiProxyStats } from "./proxy/stats.js";
+import { newId } from "./utils/id.js";
 import {
   planApiProxyIdleMaintenance,
   planApiProxyRequest,
@@ -557,12 +560,85 @@ function protocolOperation(input: {
 
 const resumableEndpoints = new Set(["chat.completions", "messages"]);
 
+type ProxyTraceAccumulator = {
+  id: string;
+  at: string;
+  protocol: ApiProxyProtocolOperation["protocol"];
+  endpoint: string;
+  routePath: string;
+  modelId: string;
+  targetId: string | null;
+  targetName: string | null;
+  resourceGroupId: string | null;
+  textReplacementCount: number;
+  schedulerActions: string[];
+  usage: {
+    promptTokens: number | null;
+    completionTokens: number;
+    genMs: number;
+    ratePerSecond: number | null;
+  } | null;
+  status: number;
+  ok: boolean;
+  errorCode: string | null;
+  durationMs: number;
+};
+
+function createProxyTrace(
+  operation: ApiProxyProtocolOperation,
+): ProxyTraceAccumulator {
+  return {
+    id: newId(),
+    at: new Date().toISOString(),
+    protocol: operation.protocol,
+    endpoint: operation.endpoint,
+    routePath: operation.routePath,
+    modelId: "",
+    targetId: null,
+    targetName: null,
+    resourceGroupId: null,
+    textReplacementCount: 0,
+    schedulerActions: [],
+    usage: null,
+    status: 0,
+    ok: false,
+    errorCode: null,
+    durationMs: 0,
+  };
+}
+
 async function proxyProtocolEndpoint(
   c: Context,
   adapter: ApiProxyProtocolAdapter,
   operation: ApiProxyProtocolOperation,
 ) {
+  const trace = createProxyTrace(operation);
+  const started = performance.now();
+  let response: Response | undefined;
+  try {
+    response = await proxyProtocolEndpointInner(c, adapter, operation, trace);
+    return response;
+  } finally {
+    trace.durationMs = Math.round(performance.now() - started);
+    trace.status = response?.status ?? 0;
+    trace.ok = response ? response.status < 400 : false;
+    apiProxyStats.record(ApiProxyRequestTraceSchema.parse(trace));
+  }
+}
+
+async function proxyProtocolEndpointInner(
+  c: Context,
+  adapter: ApiProxyProtocolAdapter,
+  operation: ApiProxyProtocolOperation,
+  trace: ProxyTraceAccumulator,
+): Promise<Response> {
   const body = await safeJsonBody(c);
+  if (body && typeof body === "object" && "model" in body) {
+    const model = (body as { model?: unknown }).model;
+    if (typeof model === "string") {
+      trace.modelId = model;
+    }
+  }
   const resolution = resolveApiProxyProtocolModelRequest({
     adapter,
     operation,
@@ -573,6 +649,7 @@ async function proxyProtocolEndpoint(
   if (!resolution.ok) {
     return c.json(resolution.response.body, resolution.response.status);
   }
+  trace.modelId = resolution.request.modelId;
 
   const route = await resolveApiProxyRouteChain({
     request: resolution.request,
@@ -586,6 +663,8 @@ async function proxyProtocolEndpoint(
     );
     return c.json(response.body, response.status);
   }
+  trace.targetId = route.targetId;
+  trace.textReplacementCount = route.textReplacementCount;
 
   const decision = await prepareApiProxyProtocolGatewayRequest({
     adapter,
@@ -602,6 +681,12 @@ async function proxyProtocolEndpoint(
   if (!decision.ok) {
     return c.json(decision.response.body, decision.response.status);
   }
+  trace.targetId = decision.target.id;
+  trace.targetName = decision.target.name;
+  trace.resourceGroupId = decision.target.resourceGroupId;
+  trace.schedulerActions = decision.preview.plan.actions.map(
+    (action) => action.type,
+  );
 
   const groupKey = decision.target.resourceGroupId;
   let lease: ResourceLease | null = null;
@@ -861,6 +946,16 @@ async function proxyProtocolEndpoint(
         };
       },
     });
+
+    trace.usage = {
+      promptTokens: state.promptTokens,
+      completionTokens: state.completionTokens,
+      genMs: state.genMs,
+      ratePerSecond:
+        state.completionTokens > 0 && state.genMs > 0
+          ? state.completionTokens / (state.genMs / 1000)
+          : null,
+    };
 
     return new Response(final.body, {
       status: final.status,
@@ -1125,6 +1220,20 @@ app.get("/api/proxy/requests", (c) => {
   const limit = Number(c.req.query("limit") ?? 100);
   return c.json({
     data: listApiProxyRequestLogs(Number.isFinite(limit) ? limit : 100),
+  });
+});
+
+app.get("/api/proxy/stats", (c) => {
+  const hours = Number(c.req.query("hours") ?? 24);
+  return c.json({
+    data: apiProxyStats.snapshot(Number.isFinite(hours) ? hours : 24),
+  });
+});
+
+app.get("/api/proxy/traces", (c) => {
+  const limit = Number(c.req.query("limit") ?? 50);
+  return c.json({
+    data: apiProxyStats.recentTraces(Number.isFinite(limit) ? limit : 50),
   });
 });
 

@@ -619,6 +619,65 @@ export const ApiProxyRequestLogRecordSchema = z.object({
   createdAt: z.string(),
 });
 
+export const ApiProxyTraceUsageSchema = z.object({
+  promptTokens: z.number().int().min(0).nullable().default(null),
+  completionTokens: z.number().int().min(0).default(0),
+  genMs: z.number().int().min(0).default(0),
+  ratePerSecond: z.number().min(0).nullable().default(null),
+});
+
+export const ApiProxyRequestTraceSchema = z.object({
+  id: z.string(),
+  at: z.string(),
+  protocol: z.enum(["openai", "anthropic"]),
+  endpoint: z.string().min(1),
+  routePath: z.string().min(1),
+  modelId: z.string(),
+  targetId: ApiProxyIdSchema.nullable().default(null),
+  targetName: z.string().nullable().default(null),
+  resourceGroupId: z.string().nullable().default(null),
+  textReplacementCount: z.number().int().min(0).default(0),
+  schedulerActions: z.array(z.string()).default([]),
+  usage: ApiProxyTraceUsageSchema.nullable().default(null),
+  status: z.number().int().min(0).default(0),
+  ok: z.boolean().default(false),
+  errorCode: z.string().nullable().default(null),
+  durationMs: z.number().int().min(0).default(0),
+});
+
+export const ApiProxyStatsModelEntrySchema = z.object({
+  modelId: z.string(),
+  requests: z.number().int().min(0),
+  errors: z.number().int().min(0),
+  completionTokens: z.number().int().min(0),
+  promptTokens: z.number().int().min(0),
+  genMs: z.number().int().min(0),
+  requestsWithTokens: z.number().int().min(0),
+  ratePerSecond: z.number().min(0).nullable(),
+});
+
+export const ApiProxyStatsTotalsSchema = z.object({
+  requests: z.number().int().min(0),
+  errors: z.number().int().min(0),
+  completionTokens: z.number().int().min(0),
+  promptTokens: z.number().int().min(0),
+  genMs: z.number().int().min(0),
+  requestsWithTokens: z.number().int().min(0),
+  ratePerSecond: z.number().min(0).nullable(),
+});
+
+export const ApiProxyStatsBucketSchema = ApiProxyStatsTotalsSchema.extend({
+  hour: z.string(),
+  byModel: z.array(ApiProxyStatsModelEntrySchema).default([]),
+});
+
+export const ApiProxyStatsSnapshotSchema = z.object({
+  generatedAt: z.string(),
+  hours: z.number().int().min(0),
+  totals: ApiProxyStatsTotalsSchema,
+  buckets: z.array(ApiProxyStatsBucketSchema).default([]),
+});
+
 export const ApiProxyRuntimeMetadataRecordSchema = z.object({
   targetId: ApiProxyIdSchema,
   savedSlotIds: z.array(z.number().int().min(0)).default([]),
@@ -1471,6 +1530,14 @@ export type ApiProxyTargetModelCatalog = z.infer<
 export type ApiProxyRequestLogRecord = z.infer<
   typeof ApiProxyRequestLogRecordSchema
 >;
+export type ApiProxyRequestTrace = z.infer<typeof ApiProxyRequestTraceSchema>;
+export type ApiProxyTraceUsage = z.infer<typeof ApiProxyTraceUsageSchema>;
+export type ApiProxyStatsModelEntry = z.infer<
+  typeof ApiProxyStatsModelEntrySchema
+>;
+export type ApiProxyStatsTotals = z.infer<typeof ApiProxyStatsTotalsSchema>;
+export type ApiProxyStatsBucket = z.infer<typeof ApiProxyStatsBucketSchema>;
+export type ApiProxyStatsSnapshot = z.infer<typeof ApiProxyStatsSnapshotSchema>;
 export type ApiProxyRuntimeMetadataRecord = z.infer<
   typeof ApiProxyRuntimeMetadataRecordSchema
 >;

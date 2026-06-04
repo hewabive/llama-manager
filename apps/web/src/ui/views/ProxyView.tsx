@@ -21,7 +21,9 @@ import {
   deleteApiProxyTarget,
   getApiProxyConfig,
   getApiProxyRuntime,
+  getApiProxyStats,
   getApiProxyTargetModels,
+  getApiProxyTraces,
   listInstances,
   previewApiProxyPlan,
   updateApiProxyModel,
@@ -57,6 +59,7 @@ import {
   ProxyHeader,
   ProxyTargetsSection,
   SchedulerSection,
+  StatsSection,
 } from "../proxy/sections";
 
 export function ProxyView() {
@@ -86,6 +89,16 @@ export function ProxyView() {
     queryKey: ["api-proxy-runtime"],
     queryFn: getApiProxyRuntime,
     refetchInterval: 5_000,
+  });
+  const statsQuery = useQuery({
+    queryKey: ["api-proxy-stats"],
+    queryFn: () => getApiProxyStats(24),
+    refetchInterval: 10_000,
+  });
+  const tracesQuery = useQuery({
+    queryKey: ["api-proxy-traces"],
+    queryFn: () => getApiProxyTraces(50),
+    refetchInterval: 10_000,
   });
   const targetModelsQuery = useQuery({
     queryKey: ["api-proxy-target-models"],
@@ -493,6 +506,12 @@ export function ProxyView() {
         previewPending={planPreviewMutation.isPending}
         onRequestTargetChange={setRequestTargetId}
         onPreviewRequest={() => previewSchedulerPlan("request")}
+      />
+
+      <StatsSection
+        snapshot={statsQuery.data?.data}
+        traces={tracesQuery.data?.data ?? []}
+        loading={statsQuery.isLoading}
       />
 
       <ModelEditorModal
