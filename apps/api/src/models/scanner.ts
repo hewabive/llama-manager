@@ -8,7 +8,7 @@ import { basename, dirname, resolve } from "node:path";
 
 import { config } from "../config.js";
 import { getCachedModel, saveCachedModel } from "./cache-repository.js";
-import { readGgufMetadata } from "./gguf.js";
+import { readGgufMetadata, readGgufParameterCount } from "./gguf.js";
 
 const IGNORED_DIRS = new Set([
   ".git",
@@ -98,10 +98,29 @@ function emptyMetadata(): GgufMetadata {
     name: null,
     architecture: null,
     quantization: null,
+    quantizationVersion: null,
+    sizeLabel: null,
+    basename: null,
+    finetune: null,
+    parameterCount: null,
     contextLength: null,
     embeddingLength: null,
     blockCount: null,
+    leadingDenseBlockCount: null,
+    feedForwardLength: null,
+    expertCount: null,
+    expertUsedCount: null,
+    expertSharedCount: null,
+    expertFeedForwardLength: null,
     headCount: null,
+    headCountKv: null,
+    slidingWindow: null,
+    ropeFreqBase: null,
+    ropeScalingType: null,
+    ropeScalingFactor: null,
+    ropeScalingOrigCtxLen: null,
+    tokenizerModel: null,
+    hasChatTemplate: false,
     vocabularySize: null,
   };
 }
@@ -293,6 +312,17 @@ export async function scanModels(input: {
 
     try {
       metadata = readGgufMetadata(file.path);
+      if (metadata.parameterCount !== null && file.shardPaths.length > 1) {
+        try {
+          let total = metadata.parameterCount;
+          for (const shardPath of file.shardPaths.slice(1)) {
+            total += readGgufParameterCount(shardPath);
+          }
+          metadata = { ...metadata, parameterCount: total };
+        } catch {
+          metadata = { ...metadata, parameterCount: null };
+        }
+      }
     } catch (caught) {
       error = (caught as Error).message;
     }

@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const instances = sqliteTable("instances", {
   id: text("id").primaryKey(),
@@ -44,6 +44,7 @@ export const modelCache = sqliteTable("model_cache", {
   isMmproj: text("is_mmproj").notNull(),
   mmprojPathsJson: text("mmproj_paths_json").notNull(),
   metadataJson: text("metadata_json").notNull(),
+  parserVersion: integer("parser_version").notNull().default(0),
   error: text("error"),
   scannedAt: text("scanned_at").notNull(),
 });

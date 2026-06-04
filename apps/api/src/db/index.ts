@@ -12,6 +12,16 @@ sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle(sqlite, { schema });
 
+function ensureColumn(table: string, column: string, definition: string) {
+  const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  if (columns.some((entry) => entry.name === column)) {
+    return;
+  }
+  sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
 export function migrate() {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS instances (
@@ -67,10 +77,12 @@ export function migrate() {
       is_mmproj TEXT NOT NULL,
       mmproj_paths_json TEXT NOT NULL,
       metadata_json TEXT NOT NULL,
+      parser_version INTEGER NOT NULL DEFAULT 0,
       error TEXT,
       scanned_at TEXT NOT NULL
     )
   `);
+  ensureColumn("model_cache", "parser_version", "INTEGER NOT NULL DEFAULT 0");
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS llama_argument_catalogs (

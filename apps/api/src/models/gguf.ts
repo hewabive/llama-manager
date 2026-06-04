@@ -141,14 +141,19 @@ function readValue(reader: FileReader, type: number): GgufScalar {
     for (let index = 0; index < count; index += 1) {
       reader.skip(reader.u64Number());
     }
-  } else {
-    const size = GGUF_VALUE_SIZE[elementType];
-    if (!size) {
-      throw new Error(`unsupported GGUF array type: ${elementType}`);
-    }
-    reader.skip(count * size);
+    return count;
   }
-  return count;
+
+  const size = GGUF_VALUE_SIZE[elementType];
+  if (!size) {
+    throw new Error(`unsupported GGUF array type: ${elementType}`);
+  }
+  if (count === 0) {
+    return null;
+  }
+  const first = readScalar(reader, elementType);
+  reader.skip((count - 1) * size);
+  return first;
 }
 
 function numberMetadata(metadata: Map<string, GgufScalar>, keys: string[]) {
@@ -180,6 +185,15 @@ function findNumberBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
   return null;
 }
 
+function findStringBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
+  for (const [key, value] of metadata.entries()) {
+    if (key.endsWith(suffix) && typeof value === "string") {
+      return value;
+    }
+  }
+  return null;
+}
+
 export function ggufFileTypeLabel(fileType: number) {
   const guessed = (fileType & LLAMA_FTYPE_GUESSED) === LLAMA_FTYPE_GUESSED;
   const normalized = guessed ? fileType & ~LLAMA_FTYPE_GUESSED : fileType;
@@ -198,43 +212,122 @@ function readQuantization(metadata: Map<string, GgufScalar>) {
   return null;
 }
 
+export const GGUF_PARSER_VERSION = 2;
+
+function readHeader(reader: FileReader) {
+  if (reader.read(4).toString("utf8") !== "GGUF") {
+    throw new Error("not a GGUF file");
+  }
+  reader.u32(); // version
+  const tensorCount = reader.u64Number();
+  const kvCount = reader.u64Number();
+  return { tensorCount, kvCount };
+}
+
+function readKv(reader: FileReader, kvCount: number) {
+  const metadata = new Map<string, GgufScalar>();
+  for (let index = 0; index < kvCount; index += 1) {
+    const key = reader.string();
+    const type = reader.u32();
+    metadata.set(key, readValue(reader, type));
+  }
+  return metadata;
+}
+
+function readTensorParameterCount(reader: FileReader, tensorCount: number) {
+  let total = 0;
+  for (let index = 0; index < tensorCount; index += 1) {
+    reader.string(); // tensor name
+    const dimensions = reader.u32();
+    let elements = 1;
+    for (let dim = 0; dim < dimensions; dim += 1) {
+      elements *= reader.u64Number();
+    }
+    reader.u32(); // ggml type
+    reader.u64Number(); // data offset
+    total += elements;
+  }
+  return total;
+}
+
+function extractMetadata(
+  metadata: Map<string, GgufScalar>,
+  parameterCount: number | null,
+): GgufMetadata {
+  const contextLength =
+    numberMetadata(metadata, [
+      "llama.context_length",
+      "general.context_length",
+      "context_length",
+    ]) ?? findNumberBySuffix(metadata, ".context_length");
+
+  return {
+    name: stringMetadata(metadata, ["general.name"]),
+    architecture: stringMetadata(metadata, ["general.architecture"]),
+    quantization: readQuantization(metadata),
+    quantizationVersion: numberMetadata(metadata, [
+      "general.quantization_version",
+    ]),
+    sizeLabel: stringMetadata(metadata, ["general.size_label"]),
+    basename: stringMetadata(metadata, ["general.basename"]),
+    finetune: stringMetadata(metadata, ["general.finetune"]),
+    parameterCount,
+    contextLength,
+    embeddingLength: findNumberBySuffix(metadata, ".embedding_length"),
+    blockCount: findNumberBySuffix(metadata, ".block_count"),
+    leadingDenseBlockCount: findNumberBySuffix(
+      metadata,
+      ".leading_dense_block_count",
+    ),
+    feedForwardLength: findNumberBySuffix(metadata, ".feed_forward_length"),
+    expertCount: findNumberBySuffix(metadata, ".expert_count"),
+    expertUsedCount: findNumberBySuffix(metadata, ".expert_used_count"),
+    expertSharedCount: findNumberBySuffix(metadata, ".expert_shared_count"),
+    expertFeedForwardLength: findNumberBySuffix(
+      metadata,
+      ".expert_feed_forward_length",
+    ),
+    headCount: findNumberBySuffix(metadata, ".attention.head_count"),
+    headCountKv: findNumberBySuffix(metadata, ".attention.head_count_kv"),
+    slidingWindow: findNumberBySuffix(metadata, ".attention.sliding_window"),
+    ropeFreqBase: findNumberBySuffix(metadata, ".rope.freq_base"),
+    ropeScalingType: findStringBySuffix(metadata, ".rope.scaling.type"),
+    ropeScalingFactor: findNumberBySuffix(metadata, ".rope.scaling.factor"),
+    ropeScalingOrigCtxLen: findNumberBySuffix(
+      metadata,
+      ".rope.scaling.original_context_length",
+    ),
+    tokenizerModel: stringMetadata(metadata, ["tokenizer.ggml.model"]),
+    hasChatTemplate: metadata.has("tokenizer.chat_template"),
+    vocabularySize: numberMetadata(metadata, ["tokenizer.ggml.tokens"]),
+  };
+}
+
 export function readGgufMetadata(path: string): GgufMetadata {
   const fd = openSync(path, "r");
   try {
     const reader = new FileReader(fd);
-    if (reader.read(4).toString("utf8") !== "GGUF") {
-      throw new Error("not a GGUF file");
+    const { tensorCount, kvCount } = readHeader(reader);
+    const metadata = readKv(reader, kvCount);
+    let parameterCount: number | null = null;
+    try {
+      parameterCount = readTensorParameterCount(reader, tensorCount);
+    } catch {
+      parameterCount = null;
     }
+    return extractMetadata(metadata, parameterCount);
+  } finally {
+    closeSync(fd);
+  }
+}
 
-    reader.u32(); // version
-    reader.u64Number(); // tensor count
-    const kvCount = reader.u64Number();
-    const metadata = new Map<string, GgufScalar>();
-
-    for (let index = 0; index < kvCount; index += 1) {
-      const key = reader.string();
-      const type = reader.u32();
-      metadata.set(key, readValue(reader, type));
-    }
-
-    const architecture = stringMetadata(metadata, ["general.architecture"]);
-    const contextLength =
-      numberMetadata(metadata, [
-        "llama.context_length",
-        "general.context_length",
-        "context_length",
-      ]) ?? findNumberBySuffix(metadata, ".context_length");
-
-    return {
-      name: stringMetadata(metadata, ["general.name"]),
-      architecture,
-      quantization: readQuantization(metadata),
-      contextLength,
-      embeddingLength: findNumberBySuffix(metadata, ".embedding_length"),
-      blockCount: findNumberBySuffix(metadata, ".block_count"),
-      headCount: findNumberBySuffix(metadata, ".attention.head_count"),
-      vocabularySize: numberMetadata(metadata, ["tokenizer.ggml.tokens"]),
-    };
+export function readGgufParameterCount(path: string): number {
+  const fd = openSync(path, "r");
+  try {
+    const reader = new FileReader(fd);
+    const { tensorCount, kvCount } = readHeader(reader);
+    readKv(reader, kvCount);
+    return readTensorParameterCount(reader, tensorCount);
   } finally {
     closeSync(fd);
   }

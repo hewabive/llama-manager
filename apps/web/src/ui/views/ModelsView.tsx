@@ -1,20 +1,25 @@
 import type { GgufModel, Instance } from "@llama-manager/core";
 import {
+  ActionIcon,
   Badge,
   Button,
+  Collapse,
   Group,
   NumberInput,
   Paper,
+  SimpleGrid,
   Stack,
   Switch,
   Table,
   Text,
   TextInput,
   Title,
+  Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import {
   getModelScanSettings,
@@ -23,9 +28,12 @@ import {
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
 import {
+  bitsPerWeight,
   compareModelTitles,
   formatBytes,
+  formatParameterCount,
   isVocabModel,
+  modelLayerInfo,
   modelMatchesSearch,
   modelTitle,
 } from "../utils/models";
@@ -34,6 +42,153 @@ type ModelScanParams = {
   directory: string;
   maxDepth: number;
 };
+
+function paramsLabel(model: GgufModel) {
+  return (
+    formatParameterCount(model.metadata.parameterCount) ??
+    model.metadata.sizeLabel ??
+    "-"
+  );
+}
+
+function metaRows(model: GgufModel): Array<[string, string]> {
+  const m = model.metadata;
+  const rows: Array<[string, string]> = [];
+  const push = (label: string, value: string | number | null | undefined) => {
+    if (value !== null && value !== undefined && value !== "") {
+      rows.push([label, String(value)]);
+    }
+  };
+
+  push("Architecture", m.architecture);
+  push("Parameters", formatParameterCount(m.parameterCount));
+  push("Size label", m.sizeLabel);
+  const bpw = bitsPerWeight(model);
+  push("Bits per weight", bpw ? bpw.toFixed(2) : null);
+  push(
+    "Quantization",
+    m.quantization
+      ? `${m.quantization}${m.quantizationVersion ? ` (v${m.quantizationVersion})` : ""}`
+      : null,
+  );
+
+  const layers = modelLayerInfo(model);
+  push("Layers", layers.total);
+  if (layers.isMoe) {
+    push("Dense layers", layers.dense);
+    push("MoE layers", layers.moe);
+    push(
+      "Experts (used/total)",
+      m.expertCount !== null
+        ? `${m.expertUsedCount ?? "?"}/${m.expertCount}`
+        : null,
+    );
+    push("Shared experts", m.expertSharedCount);
+    push("Expert FFN", m.expertFeedForwardLength);
+  }
+  push("FFN length", m.feedForwardLength);
+  push("Embedding length", m.embeddingLength);
+  push("Attention heads", m.headCount);
+  if (m.headCountKv !== null && m.headCount) {
+    push(
+      "KV heads (GQA)",
+      `${m.headCountKv} (${Math.round(m.headCount / m.headCountKv)}:1)`,
+    );
+  } else {
+    push("KV heads", m.headCountKv);
+  }
+  push("Context (train)", m.contextLength);
+  push("Sliding window", m.slidingWindow);
+  push("RoPE freq base", m.ropeFreqBase);
+  if (m.ropeScalingType) {
+    push(
+      "RoPE scaling",
+      `${m.ropeScalingType}${m.ropeScalingFactor ? ` ×${m.ropeScalingFactor}` : ""}`,
+    );
+  }
+  push("RoPE orig ctx", m.ropeScalingOrigCtxLen);
+  push("Vocab size", m.vocabularySize);
+  push("Tokenizer", m.tokenizerModel);
+  push("Chat template", m.hasChatTemplate ? "yes" : null);
+  push("Basename", m.basename);
+  push("Finetune", m.finetune);
+  push("File size", formatBytes(model.sizeBytes));
+  return rows;
+}
+
+function TypeBadge(props: { model: GgufModel }) {
+  const m = props.model.metadata;
+  const layers = modelLayerInfo(props.model);
+  if (!layers.isMoe) {
+    return (
+      <Text c="dimmed" size="sm">
+        dense
+      </Text>
+    );
+  }
+  return (
+    <Tooltip
+      label={`${m.expertUsedCount ?? "?"}/${m.expertCount} experts active`}
+    >
+      <Badge color="grape" variant="light">
+        MoE
+      </Badge>
+    </Tooltip>
+  );
+}
+
+function LayersCell(props: { model: GgufModel }) {
+  const layers = modelLayerInfo(props.model);
+  if (layers.total === null) {
+    return <>-</>;
+  }
+  return (
+    <div>
+      <Text size="sm">{layers.total}</Text>
+      {layers.isMoe && layers.moe !== null && (
+        <Text c="dimmed" size="xs">
+          {layers.dense}D / {layers.moe}E
+        </Text>
+      )}
+    </div>
+  );
+}
+
+function ModelDetailPanel(props: { model: GgufModel }) {
+  const rows = metaRows(props.model);
+  return (
+    <Stack gap="xs">
+      <SimpleGrid
+        cols={{ base: 1, sm: 2, lg: 3 }}
+        spacing="xs"
+        verticalSpacing={4}
+      >
+        {rows.map(([label, value]) => (
+          <Group key={label} gap="xs" wrap="nowrap" justify="space-between">
+            <Text c="dimmed" size="xs">
+              {label}
+            </Text>
+            <Text
+              size="xs"
+              ta="right"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {value}
+            </Text>
+          </Group>
+        ))}
+      </SimpleGrid>
+      <Text c="dimmed" size="xs" className="text-wrap">
+        {props.model.path}
+      </Text>
+      {props.model.mmprojPaths.length > 0 && (
+        <Text c="dimmed" size="xs" className="text-wrap">
+          mmproj: {props.model.mmprojPaths.join(", ")}
+        </Text>
+      )}
+    </Stack>
+  );
+}
 
 export function ModelsView(props: {
   selectedInstance: Instance | null;
@@ -46,6 +201,7 @@ export function ModelsView(props: {
   const [search, setSearch] = useState("");
   const [hideVocab, setHideVocab] = useState(true);
   const [hideMmproj, setHideMmproj] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scanParams, setScanParams] = useState<ModelScanParams | null>(null);
   const settingsQuery = useQuery({
     queryKey: ["model-scan-settings"],
@@ -128,6 +284,18 @@ export function ModelsView(props: {
     setScanParams(params);
   }
 
+  function toggleExpanded(path: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }
+
   const models = useMemo(
     () => [...(modelsQuery.data?.data.models ?? [])].sort(compareModelTitles),
     [modelsQuery.data?.data.models],
@@ -142,6 +310,13 @@ export function ModelsView(props: {
     return modelMatchesSearch(model, search);
   });
 
+  const emptyMessage =
+    modelsQuery.isFetching || settingsQuery.isFetching
+      ? "Scanning models..."
+      : modelsQuery.isFetched
+        ? "No matching GGUF files found"
+        : "Run scan to list models";
+
   return (
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
@@ -149,7 +324,7 @@ export function ModelsView(props: {
           <div className="section-heading">
             <Title order={3}>Models</Title>
             <Text c="dimmed" size="sm">
-              GGUF discovery and basic metadata
+              GGUF discovery, architecture and quantization metadata
             </Text>
           </div>
           <Group className="model-scan-controls" gap="xs" align="flex-end">
@@ -213,7 +388,7 @@ export function ModelsView(props: {
           <TextInput
             aria-label="Search models"
             label="Search"
-            placeholder="name, path, architecture, quant"
+            placeholder="name, path, architecture, quant, size"
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
             className="search-input"
@@ -242,139 +417,183 @@ export function ModelsView(props: {
         </Group>
 
         <Stack className="models-mobile-list" gap="xs">
-          {filteredModels.map((model) => (
-            <Paper key={model.path} withBorder p="sm" radius="sm">
-              <Stack gap="xs">
-                <div>
-                  <Text fw={600} size="sm">
-                    {modelTitle(model)}
-                  </Text>
-                  <Text c="dimmed" size="xs" className="text-wrap">
-                    {model.path}
-                  </Text>
-                  {model.error && (
-                    <Text c="red" size="xs">
-                      {model.error}
+          {filteredModels.map((model) => {
+            const isOpen = expanded.has(model.path);
+            return (
+              <Paper key={model.path} withBorder p="sm" radius="sm">
+                <Stack gap="xs">
+                  <div>
+                    <Text fw={600} size="sm">
+                      {modelTitle(model)}
                     </Text>
-                  )}
-                </div>
-                <Group gap="xs">
-                  <Badge variant="light">
-                    {model.metadata.architecture ?? "unknown arch"}
-                  </Badge>
-                  <Badge variant="outline">
-                    {model.metadata.quantization ?? "unknown quant"}
-                  </Badge>
-                  <Badge variant="outline">
-                    {formatBytes(model.sizeBytes)}
-                  </Badge>
-                  <Badge variant="outline">
-                    ctx {model.metadata.contextLength ?? "-"}
-                  </Badge>
-                </Group>
-                <Group gap="xs">
-                  <Button
-                    size="xs"
-                    variant="light"
-                    disabled={model.isMmproj}
-                    onClick={() => props.onUseModel(model)}
-                  >
-                    Use in new
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    disabled={model.isMmproj || !props.selectedInstance}
-                    onClick={() => props.onUseInSelected(model)}
-                  >
-                    Use selected
-                  </Button>
-                </Group>
-              </Stack>
-            </Paper>
-          ))}
+                    <Text c="dimmed" size="xs" className="text-wrap">
+                      {model.path}
+                    </Text>
+                    {model.error && (
+                      <Text c="red" size="xs">
+                        {model.error}
+                      </Text>
+                    )}
+                  </div>
+                  <Group gap="xs">
+                    <Badge variant="light">
+                      {model.metadata.architecture ?? "unknown arch"}
+                    </Badge>
+                    <TypeBadge model={model} />
+                    <Badge variant="outline">{paramsLabel(model)}</Badge>
+                    <Badge variant="outline">
+                      {model.metadata.quantization ?? "unknown quant"}
+                    </Badge>
+                    <Badge variant="outline">
+                      {formatBytes(model.sizeBytes)}
+                    </Badge>
+                    <Badge variant="outline">
+                      ctx {model.metadata.contextLength ?? "-"}
+                    </Badge>
+                  </Group>
+                  <Collapse in={isOpen}>
+                    <ModelDetailPanel model={model} />
+                  </Collapse>
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => toggleExpanded(model.path)}
+                    >
+                      {isOpen ? "Hide details" : "Details"}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      disabled={model.isMmproj}
+                      onClick={() => props.onUseModel(model)}
+                    >
+                      Use in new
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      disabled={model.isMmproj || !props.selectedInstance}
+                      onClick={() => props.onUseInSelected(model)}
+                    >
+                      Use selected
+                    </Button>
+                  </Group>
+                </Stack>
+              </Paper>
+            );
+          })}
           {filteredModels.length === 0 && (
             <Paper withBorder p="md" radius="sm">
               <Text c="dimmed" ta="center">
-                {modelsQuery.isFetching || settingsQuery.isFetching
-                  ? "Scanning models..."
-                  : modelsQuery.isFetched
-                    ? "No matching GGUF files found"
-                    : "Run scan to list models"}
+                {emptyMessage}
               </Text>
             </Paper>
           )}
         </Stack>
 
-        <Table.ScrollContainer className="models-table" minWidth={980}>
+        <Table.ScrollContainer className="models-table" minWidth={1120}>
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={36} />
                 <Table.Th>Model</Table.Th>
                 <Table.Th>Arch</Table.Th>
-                <Table.Th>Quant</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Params</Table.Th>
+                <Table.Th>Layers</Table.Th>
                 <Table.Th>Ctx</Table.Th>
+                <Table.Th>Quant</Table.Th>
                 <Table.Th>Size</Table.Th>
                 <Table.Th>mmproj</Table.Th>
                 <Table.Th ta="right">Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredModels.map((model) => (
-                <Table.Tr key={model.path}>
-                  <Table.Td>
-                    <Text fw={600} size="sm" lineClamp={1}>
-                      {modelTitle(model)}
-                    </Text>
-                    <Text c="dimmed" size="xs" lineClamp={1}>
-                      {model.path}
-                    </Text>
-                    {model.error && (
-                      <Text c="red" size="xs" lineClamp={1}>
-                        {model.error}
-                      </Text>
+              {filteredModels.map((model) => {
+                const isOpen = expanded.has(model.path);
+                return (
+                  <Fragment key={model.path}>
+                    <Table.Tr>
+                      <Table.Td>
+                        <ActionIcon
+                          aria-label={isOpen ? "Collapse" : "Expand"}
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => toggleExpanded(model.path)}
+                        >
+                          {isOpen ? (
+                            <ChevronDown size={16} />
+                          ) : (
+                            <ChevronRight size={16} />
+                          )}
+                        </ActionIcon>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text fw={600} size="sm" lineClamp={1}>
+                          {modelTitle(model)}
+                        </Text>
+                        <Text c="dimmed" size="xs" lineClamp={1}>
+                          {model.path}
+                        </Text>
+                        {model.error && (
+                          <Text c="red" size="xs" lineClamp={1}>
+                            {model.error}
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>{model.metadata.architecture ?? "-"}</Table.Td>
+                      <Table.Td>
+                        <TypeBadge model={model} />
+                      </Table.Td>
+                      <Table.Td>{paramsLabel(model)}</Table.Td>
+                      <Table.Td>
+                        <LayersCell model={model} />
+                      </Table.Td>
+                      <Table.Td>{model.metadata.contextLength ?? "-"}</Table.Td>
+                      <Table.Td>{model.metadata.quantization ?? "-"}</Table.Td>
+                      <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
+                      <Table.Td>
+                        {model.isMmproj
+                          ? "projector"
+                          : model.mmprojPaths.length || "-"}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group justify="flex-end" gap="xs">
+                          <Button
+                            size="xs"
+                            variant="light"
+                            disabled={model.isMmproj}
+                            onClick={() => props.onUseModel(model)}
+                          >
+                            Use in new
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="subtle"
+                            disabled={model.isMmproj || !props.selectedInstance}
+                            onClick={() => props.onUseInSelected(model)}
+                          >
+                            Use selected
+                          </Button>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                    {isOpen && (
+                      <Table.Tr>
+                        <Table.Td colSpan={11}>
+                          <ModelDetailPanel model={model} />
+                        </Table.Td>
+                      </Table.Tr>
                     )}
-                  </Table.Td>
-                  <Table.Td>{model.metadata.architecture ?? "-"}</Table.Td>
-                  <Table.Td>{model.metadata.quantization ?? "-"}</Table.Td>
-                  <Table.Td>{model.metadata.contextLength ?? "-"}</Table.Td>
-                  <Table.Td>{formatBytes(model.sizeBytes)}</Table.Td>
-                  <Table.Td>
-                    {model.isMmproj
-                      ? "projector"
-                      : model.mmprojPaths.length || "-"}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group justify="flex-end" gap="xs">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        disabled={model.isMmproj}
-                        onClick={() => props.onUseModel(model)}
-                      >
-                        Use in new
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        disabled={model.isMmproj || !props.selectedInstance}
-                        onClick={() => props.onUseInSelected(model)}
-                      >
-                        Use selected
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+                  </Fragment>
+                );
+              })}
               {filteredModels.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
+                  <Table.Td colSpan={11}>
                     <Text c="dimmed" ta="center" py="lg">
-                      {modelsQuery.isFetching || settingsQuery.isFetching
-                        ? "Scanning models..."
-                        : modelsQuery.isFetched
-                          ? "No matching GGUF files found"
-                          : "Run scan to list models"}
+                      {emptyMessage}
                     </Text>
                   </Table.Td>
                 </Table.Tr>

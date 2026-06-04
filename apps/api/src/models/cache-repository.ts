@@ -6,6 +6,7 @@ import { config } from "../config.js";
 import { db } from "../db/index.js";
 import { modelCache } from "../db/schema.js";
 import { readSettings, writeSettings } from "../settings/store.js";
+import { GGUF_PARSER_VERSION } from "./gguf.js";
 
 const defaultModelsDirectory = config.modelsDir;
 
@@ -31,7 +32,10 @@ export function getCachedModel(path: string): GgufModel | null {
     .from(modelCache)
     .where(eq(modelCache.path, path))
     .get();
-  return row ? toModel(row) : null;
+  if (!row || row.parserVersion !== GGUF_PARSER_VERSION) {
+    return null;
+  }
+  return toModel(row);
 }
 
 export function saveCachedModel(model: GgufModel) {
@@ -45,6 +49,7 @@ export function saveCachedModel(model: GgufModel) {
       isMmproj: String(model.isMmproj),
       mmprojPathsJson: JSON.stringify(model.mmprojPaths),
       metadataJson: JSON.stringify(model.metadata),
+      parserVersion: GGUF_PARSER_VERSION,
       error: model.error ?? null,
       scannedAt: new Date().toISOString(),
     })

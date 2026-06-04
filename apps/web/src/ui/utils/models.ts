@@ -22,6 +22,50 @@ export function modelTitle(model: GgufModel) {
   return model.metadata.name || model.name;
 }
 
+export function formatParameterCount(count: number | null) {
+  if (count === null || count <= 0) {
+    return null;
+  }
+  if (count >= 1e12) {
+    return `${(count / 1e12).toFixed(2)}T`;
+  }
+  if (count >= 1e9) {
+    return `${(count / 1e9).toFixed(count >= 1e11 ? 0 : 1)}B`;
+  }
+  if (count >= 1e6) {
+    return `${(count / 1e6).toFixed(0)}M`;
+  }
+  return count.toLocaleString();
+}
+
+export function bitsPerWeight(model: GgufModel) {
+  const params = model.metadata.parameterCount;
+  if (params === null || params <= 0) {
+    return null;
+  }
+  return (model.sizeBytes * 8) / params;
+}
+
+export type ModelLayerInfo = {
+  isMoe: boolean;
+  total: number | null;
+  dense: number | null;
+  moe: number | null;
+};
+
+export function modelLayerInfo(model: GgufModel): ModelLayerInfo {
+  const { blockCount, leadingDenseBlockCount, expertCount } = model.metadata;
+  const isMoe = expertCount !== null && expertCount > 1;
+  if (!isMoe) {
+    return { isMoe: false, total: blockCount, dense: blockCount, moe: 0 };
+  }
+  if (blockCount === null) {
+    return { isMoe: true, total: null, dense: null, moe: null };
+  }
+  const dense = leadingDenseBlockCount ?? 0;
+  return { isMoe: true, total: blockCount, dense, moe: blockCount - dense };
+}
+
 export function compareModelTitles(left: GgufModel, right: GgufModel) {
   return (
     modelTitle(left).localeCompare(modelTitle(right), undefined, {
@@ -73,6 +117,8 @@ export function modelMatchesSearch(model: GgufModel, query: string) {
     model.metadata.name,
     model.metadata.architecture,
     model.metadata.quantization,
+    model.metadata.sizeLabel,
+    model.metadata.basename,
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(normalized));
