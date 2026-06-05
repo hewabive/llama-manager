@@ -1435,7 +1435,6 @@ export const ModelPresetEntrySchema = z.object({
 });
 
 export const ModelPresetFileSchema = z.object({
-  version: z.number().int().nullable().default(1),
   globalArgs: z.record(z.string(), z.string()).default({}),
   rootArgs: z.record(z.string(), z.string()).default({}),
   entries: z.array(ModelPresetEntrySchema).default([]),

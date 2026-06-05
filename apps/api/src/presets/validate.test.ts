@@ -36,7 +36,6 @@ function option(input: Partial<LlamaArgumentOption>): LlamaArgumentOption {
 
 function file(input: Partial<ModelPresetFile>): ModelPresetFile {
   return {
-    version: 1,
     globalArgs: {},
     rootArgs: {},
     entries: [],

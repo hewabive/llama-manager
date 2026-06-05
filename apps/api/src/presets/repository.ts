@@ -44,7 +44,7 @@ function isValidPresetName(name: string): boolean {
 }
 
 function emptyFile(): ModelPresetFile {
-  return { version: 1, globalArgs: {}, rootArgs: {}, entries: [] };
+  return { globalArgs: {}, rootArgs: {}, entries: [] };
 }
 
 type CatalogOptions = {

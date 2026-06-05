@@ -19,8 +19,6 @@ function presetEntry(input: Partial<ModelPresetEntry>): ModelPresetEntry {
 test("parseModelPresetIni maps aliases, globals, inline comments and extras", () => {
   const { file, diagnostics } = parseModelPresetIni(
     [
-      "version = 1",
-      "",
       "; global defaults",
       "[*]",
       "c = 8192",
@@ -37,7 +35,7 @@ test("parseModelPresetIni maps aliases, globals, inline comments and extras", ()
   );
 
   assert.deepEqual(diagnostics, []);
-  assert.equal(file.version, 1);
+  assert.deepEqual(file.rootArgs, {});
   assert.deepEqual(file.globalArgs, { c: "8192", "n-gpu-layers": "8" });
   assert.equal(file.entries.length, 1);
 
@@ -56,7 +54,6 @@ test("parseModelPresetIni maps aliases, globals, inline comments and extras", ()
 
 test("renderModelPresetFile writes enabled args with empty values", () => {
   const rendered = renderModelPresetFile({
-    version: 1,
     globalArgs: {},
     rootArgs: {},
     entries: [
@@ -72,6 +69,16 @@ test("renderModelPresetFile writes enabled args with empty values", () => {
   assert.deepEqual(file.entries[0]!.extraArgs, { "ctx-size": "" });
 });
 
+test("renderModelPresetFile emits no root keys before the first section", () => {
+  const rendered = renderModelPresetFile({
+    globalArgs: {},
+    rootArgs: {},
+    entries: [presetEntry({ name: "alpha", modelPath: "/m.gguf" })],
+  });
+  const beforeSections = rendered.slice(0, rendered.indexOf("["));
+  assert.doesNotMatch(beforeSections, /^\s*[A-Za-z_][\w.-]*\s*=/m);
+});
+
 test("parseModelPresetIni records diagnostics for unparseable lines", () => {
   const { diagnostics } = parseModelPresetIni(
     ["[broken", "model /no/equals.gguf"].join("\n"),
@@ -83,7 +90,6 @@ test("parseModelPresetIni records diagnostics for unparseable lines", () => {
 
 test("renderModelPresetFile round-trips through parseModelPresetIni", () => {
   const file: ModelPresetFile = {
-    version: 1,
     globalArgs: { "ctx-size": "8192", "n-gpu-layers": "8" },
     rootArgs: {},
     entries: [
