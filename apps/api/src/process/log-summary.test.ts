@@ -292,3 +292,27 @@ test("summarizeInstanceLog keeps router connection errors after readiness", asyn
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("summarizeInstanceLog ignores the multimodal capability probe failure", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.00.006.792 E get_hf_plan: no GGUF files found in repository unsloth/Qwen3.5-0.8B-MTP-GGUF",
+        "0.00.006.932 W failed to initialize common_params for multimodal capability detection: failed to download model from Hugging Face",
+        "0.00.009.237 I srv  llama_server: router server is listening on http://127.0.0.1:5181",
+      ].join("\n"),
+    );
+
+    const summary = await summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.errors.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

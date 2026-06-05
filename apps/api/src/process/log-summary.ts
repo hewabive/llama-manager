@@ -125,12 +125,21 @@ function isTransientStartupRouterConnectionError(line: string) {
   );
 }
 
+function isMultimodalCapabilityProbeFailure(line: string) {
+  return /failed to initialize common_params for multimodal capability detection/i.test(
+    line,
+  );
+}
+
 function errorLines(lines: string[], limit: number) {
   const lastReadyIndex = lastIndex(lines, READY_LOG_PATTERN);
   return interestingLinesByPredicate(
     lines,
     (line, index) => {
       if (!ERROR_LOG_PATTERN.test(line)) {
+        return false;
+      }
+      if (isMultimodalCapabilityProbeFailure(line)) {
         return false;
       }
       return !(
