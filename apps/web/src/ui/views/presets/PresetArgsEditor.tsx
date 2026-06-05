@@ -19,6 +19,8 @@ const hiddenArgKeys = new Set([
   "hff",
   "model-url",
   "mu",
+  "mmproj-url",
+  "mmu",
 ]);
 
 const noPresetDefaults: LlamaArgumentDefault[] = [];

@@ -100,8 +100,10 @@ export function PresetEntryDetailModal(props: {
         delete extraArgs["hf-repo"];
         delete extraArgs["hf-file"];
         delete extraArgs["model-url"];
+        delete extraArgs["mmproj-url"];
       } else if (next === "hf") {
         delete extraArgs["model-url"];
+        delete extraArgs["mmproj-url"];
         modelPath = "";
         mmprojPath = null;
       } else {
@@ -223,6 +225,16 @@ export function PresetEntryDetailModal(props: {
                 value={draft.extraArgs["model-url"] ?? ""}
                 onChange={(event) =>
                   setExtra("model-url", event.currentTarget.value)
+                }
+              />
+              <TextInput
+                label="mmproj URL"
+                autoComplete="off"
+                placeholder="https://.../mmproj.gguf"
+                description="Optional — multimodal projector URL for vision/audio models served from a direct URL."
+                value={draft.extraArgs["mmproj-url"] ?? ""}
+                onChange={(event) =>
+                  setExtra("mmproj-url", event.currentTarget.value)
                 }
               />
             </Stack>

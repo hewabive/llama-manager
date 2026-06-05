@@ -198,6 +198,7 @@ const managedArgumentKeys = new Set([
   "--hf-repo",
   "--hf-file",
   "--model-url",
+  "--mmproj-url",
 ]);
 
 function isManagedArgRow(row: ArgRow) {
@@ -438,6 +439,7 @@ export function InstanceFormModal(props: {
   const hfRepoValue = rowValue(argRows, "--hf-repo");
   const hfFileValue = rowValue(argRows, "--hf-file");
   const modelUrlValue = rowValue(argRows, "--model-url");
+  const mmprojUrlValue = rowValue(argRows, "--mmproj-url");
   const remoteDestinationValue = rowValue(argRows, "--model");
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
@@ -639,6 +641,7 @@ export function InstanceFormModal(props: {
           "--hf-repo",
           "--hf-file",
           "--model-url",
+          "--mmproj-url",
         ]),
       );
       return;
@@ -746,6 +749,7 @@ export function InstanceFormModal(props: {
         "--hf-repo",
         "--hf-file",
         "--model-url",
+        "--mmproj-url",
       ]);
       next =
         presetName && presetFilePath
@@ -790,6 +794,7 @@ export function InstanceFormModal(props: {
         "--hf-repo",
         "--hf-file",
         "--model-url",
+        "--mmproj-url",
       ]);
       return next;
     });
@@ -854,11 +859,20 @@ export function InstanceFormModal(props: {
     );
   }
 
+  function applyMmprojUrl(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--mmproj-url", trimmed, "string")
+        : removeArgRow(rows, "--mmproj-url"),
+    );
+  }
+
   function applyRemoteSource(source: RemoteSource) {
     setRemoteSource(source);
     setArgRows((rows) =>
       source === "hf"
-        ? removeArgRows(rows, ["--model-url", "--model"])
+        ? removeArgRows(rows, ["--model-url", "--model", "--mmproj-url"])
         : removeArgRows(rows, ["--hf-repo", "--hf-file"]),
     );
   }
@@ -1033,6 +1047,7 @@ export function InstanceFormModal(props: {
               "--hf-repo",
               "--hf-file",
               "--model-url",
+              "--mmproj-url",
             ])
           : removeArgRows(argRows, [
               "--models-preset",
@@ -1224,6 +1239,16 @@ export function InstanceFormModal(props: {
                         filter="model"
                         value={remoteDestinationValue}
                         onChange={applyRemoteDestination}
+                      />
+                      <TextInput
+                        label="mmproj URL"
+                        autoComplete="off"
+                        placeholder="https://.../mmproj.gguf"
+                        description="Optional — multimodal projector URL for vision/audio models served from a direct URL."
+                        value={mmprojUrlValue}
+                        onChange={(event) =>
+                          applyMmprojUrl(event.currentTarget.value)
+                        }
                       />
                     </>
                   )}
