@@ -6,12 +6,14 @@ import type {
 import {
   Badge,
   Button,
+  Collapse,
   Group,
   Modal,
   ScrollArea,
   SegmentedControl,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -25,6 +27,8 @@ import {
 } from "../../utils/models";
 import { PresetArgsEditor } from "./PresetArgsEditor";
 
+type DraftSource = "local" | "hf";
+
 export function PresetEntryDetailModal(props: {
   opened: boolean;
   entry: ModelPresetEntry | null;
@@ -35,13 +39,20 @@ export function PresetEntryDetailModal(props: {
 }) {
   const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
   const [source, setSource] = useState<PresetEntrySource>("local");
+  const [specEnabled, setSpecEnabled] = useState(false);
+  const [specSource, setSpecSource] = useState<DraftSource>("local");
 
   useEffect(() => {
     if (!props.opened || !props.entry) {
       return;
     }
-    setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
+    const extraArgs = props.entry.extraArgs ?? {};
+    setDraft({ ...props.entry, extraArgs });
     setSource(presetEntrySource(props.entry));
+    setSpecEnabled(
+      Boolean(extraArgs["spec-draft-model"] || extraArgs["spec-draft-hf"]),
+    );
+    setSpecSource(extraArgs["spec-draft-hf"] ? "hf" : "local");
   }, [props.entry, props.opened]);
 
   function updateDraft(update: Partial<ModelPresetEntry>) {
@@ -59,6 +70,33 @@ export function PresetEntryDetailModal(props: {
       } else {
         delete extraArgs[key];
       }
+      return { ...current, extraArgs };
+    });
+  }
+
+  function applySpecEnabled(enabled: boolean) {
+    setSpecEnabled(enabled);
+    if (!enabled) {
+      setDraft((current) => {
+        if (!current) {
+          return current;
+        }
+        const extraArgs = { ...current.extraArgs };
+        delete extraArgs["spec-draft-model"];
+        delete extraArgs["spec-draft-hf"];
+        return { ...current, extraArgs };
+      });
+    }
+  }
+
+  function applySpecSource(next: DraftSource) {
+    setSpecSource(next);
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const extraArgs = { ...current.extraArgs };
+      delete extraArgs[next === "local" ? "spec-draft-hf" : "spec-draft-model"];
       return { ...current, extraArgs };
     });
   }
@@ -253,6 +291,50 @@ export function PresetEntryDetailModal(props: {
               </Badge>
             </Group>
           )}
+
+          <Stack gap="xs">
+            <Switch
+              checked={specEnabled}
+              onChange={(event) =>
+                applySpecEnabled(event.currentTarget.checked)
+              }
+              label="Speculative decoding (draft model)"
+            />
+            <Collapse in={specEnabled}>
+              <Stack gap="xs">
+                <SegmentedControl
+                  value={specSource}
+                  onChange={(value) => applySpecSource(value as DraftSource)}
+                  data={[
+                    { value: "local", label: "Local" },
+                    { value: "hf", label: "HuggingFace" },
+                  ]}
+                  fullWidth
+                  size="xs"
+                />
+                {specSource === "local" ? (
+                  <PathPickerInput
+                    label="Draft model path (--spec-draft-model)"
+                    mode="file"
+                    filter="model"
+                    value={draft.extraArgs["spec-draft-model"] ?? ""}
+                    onChange={(value) => setExtra("spec-draft-model", value)}
+                  />
+                ) : (
+                  <TextInput
+                    label="Draft HF repo (--spec-draft-hf)"
+                    autoComplete="off"
+                    placeholder="user/repo:Q4_K_M"
+                    description="Downloaded lazily. HF token comes from HF_TOKEN in the router instance env."
+                    value={draft.extraArgs["spec-draft-hf"] ?? ""}
+                    onChange={(event) =>
+                      setExtra("spec-draft-hf", event.currentTarget.value)
+                    }
+                  />
+                )}
+              </Stack>
+            </Collapse>
+          </Stack>
 
           <PresetArgsEditor
             extraArgs={draft.extraArgs}

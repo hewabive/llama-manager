@@ -13,6 +13,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Collapse,
   Group,
   JsonInput,
   Modal,
@@ -33,7 +34,13 @@ import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Triangle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+  Triangle,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -83,6 +90,25 @@ import { createUiId } from "../utils/id";
 
 type LaunchMode = "model" | "router" | "remote";
 type RemoteSource = "hf" | "url";
+type DraftSource = "local" | "hf";
+
+const SPEC_DRAFT_MODEL_KEY = "--spec-draft-model";
+const SPEC_DRAFT_HF_KEY = "--spec-draft-hf";
+const SPEC_TYPE_KEY = "--spec-type";
+const SPEC_ADVANCED_KEYS = [
+  "--spec-draft-n-max",
+  "--spec-draft-n-min",
+  "--spec-draft-p-min",
+  "--spec-draft-ngl",
+  "--spec-draft-threads",
+  "--spec-draft-device",
+] as const;
+const SPEC_KEYS = [
+  SPEC_DRAFT_MODEL_KEY,
+  SPEC_DRAFT_HF_KEY,
+  SPEC_TYPE_KEY,
+  ...SPEC_ADVANCED_KEYS,
+];
 
 function parseJsonObject(value: string, field: string) {
   try {
@@ -159,6 +185,10 @@ function hasRemoteModelSource(args: Instance["args"]) {
   );
 }
 
+function hasSpecConfig(args: Instance["args"]) {
+  return SPEC_KEYS.some((key) => hasConfiguredArg(args, key));
+}
+
 function launchModeFromArgs(args: Instance["args"]): LaunchMode {
   if (hasConfiguredArg(args, "--models-preset")) {
     return "router";
@@ -199,6 +229,7 @@ const managedArgumentKeys = new Set([
   "--hf-file",
   "--model-url",
   "--mmproj-url",
+  ...SPEC_KEYS,
 ]);
 
 function isManagedArgRow(row: ArgRow) {
@@ -232,6 +263,9 @@ export function InstanceFormModal(props: {
   );
   const [launchMode, setLaunchMode] = useState<LaunchMode>("model");
   const [remoteSource, setRemoteSource] = useState<RemoteSource>("hf");
+  const [specEnabled, setSpecEnabled] = useState(false);
+  const [specSource, setSpecSource] = useState<DraftSource>("local");
+  const [specAdvancedOpen, setSpecAdvancedOpen] = useState(false);
   const [selectedBinaryPathRefId, setSelectedBinaryPathRefId] = useState<
     string | null
   >(null);
@@ -441,6 +475,47 @@ export function InstanceFormModal(props: {
   const modelUrlValue = rowValue(argRows, "--model-url");
   const mmprojUrlValue = rowValue(argRows, "--mmproj-url");
   const remoteDestinationValue = rowValue(argRows, "--model");
+  const specDraftModelValue = rowValue(argRows, SPEC_DRAFT_MODEL_KEY);
+  const specDraftHfValue = rowValue(argRows, SPEC_DRAFT_HF_KEY);
+  const specTypeValue = rowValue(argRows, SPEC_TYPE_KEY);
+  const specTypeOption = knownArgByName.get(SPEC_TYPE_KEY);
+  const specTypeOptions = (specTypeOption?.allowedValues ?? []).map(
+    (value) => ({
+      value,
+      label: value,
+    }),
+  );
+  const draftModel =
+    selectableModels.find((model) => model.path === specDraftModelValue) ??
+    null;
+  const draftVocabHint =
+    specSource === "local" && selectedModel && draftModel
+      ? {
+          ok:
+            selectedModel.metadata.architecture ===
+              draftModel.metadata.architecture &&
+            selectedModel.metadata.vocabularySize ===
+              draftModel.metadata.vocabularySize,
+          mainArch: selectedModel.metadata.architecture ?? "unknown",
+          draftArch: draftModel.metadata.architecture ?? "unknown",
+        }
+      : null;
+  const draftModelOptions = useMemo(() => {
+    const options = selectableModels.map((model) => ({
+      value: model.path,
+      label: `${modelTitle(model)} · ${pathBaseName(model.path)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+    }));
+    if (
+      specDraftModelValue &&
+      !options.some((option) => option.value === specDraftModelValue)
+    ) {
+      options.push({
+        value: specDraftModelValue,
+        label: `${pathBaseName(specDraftModelValue)} · custom path`,
+      });
+    }
+    return options;
+  }, [selectableModels, specDraftModelValue]);
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
   const envDraft = useMemo(() => {
@@ -527,6 +602,17 @@ export function InstanceFormModal(props: {
           hasConfiguredArg(props.instance.args, "--model-url") ? "url" : "hf",
         );
       }
+      setSpecEnabled(hasSpecConfig(props.instance.args));
+      setSpecSource(
+        hasConfiguredArg(props.instance.args, SPEC_DRAFT_HF_KEY)
+          ? "hf"
+          : "local",
+      );
+      setSpecAdvancedOpen(
+        SPEC_ADVANCED_KEYS.some((key) =>
+          hasConfiguredArg(props.instance!.args, key),
+        ),
+      );
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args, knownArgByName));
     } else {
@@ -541,6 +627,9 @@ export function InstanceFormModal(props: {
       setSelectedPresetName(null);
       setLaunchMode("model");
       setRemoteSource("hf");
+      setSpecEnabled(false);
+      setSpecSource("local");
+      setSpecAdvancedOpen(false);
       setStartAfterCreate(false);
       setArgRows(defaultRows(modelPath ?? undefined, port));
     }
@@ -740,6 +829,8 @@ export function InstanceFormModal(props: {
     setLaunchMode("router");
     setSelectedPresetName(presetName);
     setSelectedModelPath(null);
+    setSpecEnabled(false);
+    setSpecAdvancedOpen(false);
     const presetFilePath = presetName
       ? (presetByName.get(presetName)?.path ?? "")
       : "";
@@ -750,6 +841,7 @@ export function InstanceFormModal(props: {
         "--hf-file",
         "--model-url",
         "--mmproj-url",
+        ...SPEC_KEYS,
       ]);
       next =
         presetName && presetFilePath
@@ -874,6 +966,53 @@ export function InstanceFormModal(props: {
       source === "hf"
         ? removeArgRows(rows, ["--model-url", "--model", "--mmproj-url"])
         : removeArgRows(rows, ["--hf-repo", "--hf-file"]),
+    );
+  }
+
+  function applySpecEnabled(enabled: boolean) {
+    setSpecEnabled(enabled);
+    if (!enabled) {
+      setArgRows((rows) => removeArgRows(rows, SPEC_KEYS));
+      setSpecAdvancedOpen(false);
+    }
+  }
+
+  function applySpecSource(source: DraftSource) {
+    setSpecSource(source);
+    setArgRows((rows) =>
+      source === "local"
+        ? removeArgRow(rows, SPEC_DRAFT_HF_KEY)
+        : removeArgRow(rows, SPEC_DRAFT_MODEL_KEY),
+    );
+  }
+
+  function applySpecDraftModel(value: string | null) {
+    const trimmed = (value ?? "").trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, SPEC_DRAFT_MODEL_KEY, trimmed, "string")
+        : removeArgRow(rows, SPEC_DRAFT_MODEL_KEY),
+    );
+  }
+
+  function applySpecDraftHf(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, SPEC_DRAFT_HF_KEY, trimmed, "string")
+        : removeArgRow(rows, SPEC_DRAFT_HF_KEY),
+    );
+  }
+
+  function applySpecArg(
+    key: string,
+    value: string,
+    valueType: ArgRow["valueType"],
+  ) {
+    setArgRows((rows) =>
+      value.trim()
+        ? upsertArgRow(rows, key, value, valueType)
+        : removeArgRow(rows, key),
     );
   }
 
@@ -1339,6 +1478,231 @@ export function InstanceFormModal(props: {
               )}
             </Stack>
           </Paper>
+          {launchMode !== "router" && (
+            <Paper withBorder p="sm" radius="sm">
+              <Stack gap="xs">
+                <Switch
+                  checked={specEnabled}
+                  onChange={(event) =>
+                    applySpecEnabled(event.currentTarget.checked)
+                  }
+                  label="Speculative decoding (draft model)"
+                />
+                <Collapse in={specEnabled}>
+                  <Stack gap="xs">
+                    {specTypeOptions.length > 0 ? (
+                      <Select
+                        label="Mechanism (--spec-type)"
+                        clearable
+                        searchable={!isMobile}
+                        placeholder="draft-simple (default)"
+                        value={specTypeValue || null}
+                        onChange={(value) =>
+                          applySpecArg(SPEC_TYPE_KEY, value ?? "", "list")
+                        }
+                        data={specTypeOptions}
+                      />
+                    ) : (
+                      <TextInput
+                        label="Mechanism (--spec-type)"
+                        autoComplete="off"
+                        placeholder="draft-simple (default)"
+                        value={specTypeValue}
+                        onChange={(event) =>
+                          applySpecArg(
+                            SPEC_TYPE_KEY,
+                            event.currentTarget.value,
+                            "list",
+                          )
+                        }
+                      />
+                    )}
+                    <SegmentedControl
+                      value={specSource}
+                      onChange={(value) =>
+                        applySpecSource(value as DraftSource)
+                      }
+                      data={[
+                        { value: "local", label: "Local" },
+                        { value: "hf", label: "HuggingFace" },
+                      ]}
+                      fullWidth
+                      size="xs"
+                    />
+                    {specSource === "local" ? (
+                      <>
+                        <Select
+                          label="Draft model"
+                          placeholder={
+                            formModelsQuery.isFetching
+                              ? "Loading models..."
+                              : "Select GGUF model"
+                          }
+                          searchable={!isMobile}
+                          clearable
+                          value={specDraftModelValue || null}
+                          onChange={applySpecDraftModel}
+                          data={draftModelOptions}
+                          nothingFoundMessage="No models found"
+                        />
+                        <PathPickerInput
+                          label="Draft model path"
+                          mode="file"
+                          filter="model"
+                          value={specDraftModelValue}
+                          onChange={(value) => applySpecDraftModel(value)}
+                        />
+                      </>
+                    ) : (
+                      <TextInput
+                        label="Draft HF repo (--spec-draft-hf)"
+                        autoComplete="off"
+                        placeholder="user/repo:Q4_K_M"
+                        description="Downloaded lazily before the speculative context loads. HF token is read from HF_TOKEN in env, same as the main model."
+                        value={specDraftHfValue}
+                        onChange={(event) =>
+                          applySpecDraftHf(event.currentTarget.value)
+                        }
+                      />
+                    )}
+                    {draftVocabHint && (
+                      <Text
+                        size="xs"
+                        c={draftVocabHint.ok ? "green" : "yellow"}
+                      >
+                        {draftVocabHint.ok
+                          ? `✓ vocab matches the main model (${draftVocabHint.mainArch})`
+                          : `⚠ draft arch (${draftVocabHint.draftArch}) ≠ main (${draftVocabHint.mainArch}) — speculative may fail to start`}
+                      </Text>
+                    )}
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      px={0}
+                      justify="flex-start"
+                      leftSection={
+                        specAdvancedOpen ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronRight size={14} />
+                        )
+                      }
+                      onClick={() => setSpecAdvancedOpen((open) => !open)}
+                    >
+                      Advanced
+                    </Button>
+                    <Collapse in={specAdvancedOpen}>
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                        <NumberInput
+                          label="draft-n-max"
+                          description="Max draft sequence length"
+                          min={0}
+                          value={
+                            rowValue(argRows, "--spec-draft-n-max") === ""
+                              ? ""
+                              : Number(rowValue(argRows, "--spec-draft-n-max"))
+                          }
+                          onChange={(value) =>
+                            applySpecArg(
+                              "--spec-draft-n-max",
+                              typeof value === "number" ? String(value) : "",
+                              "number",
+                            )
+                          }
+                        />
+                        <NumberInput
+                          label="draft-n-min"
+                          description="Min length before a draft is accepted"
+                          min={0}
+                          value={
+                            rowValue(argRows, "--spec-draft-n-min") === ""
+                              ? ""
+                              : Number(rowValue(argRows, "--spec-draft-n-min"))
+                          }
+                          onChange={(value) =>
+                            applySpecArg(
+                              "--spec-draft-n-min",
+                              typeof value === "number" ? String(value) : "",
+                              "number",
+                            )
+                          }
+                        />
+                        <NumberInput
+                          label="draft-p-min"
+                          description="Draft candidate probability threshold"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          decimalScale={2}
+                          value={
+                            rowValue(argRows, "--spec-draft-p-min") === ""
+                              ? ""
+                              : Number(rowValue(argRows, "--spec-draft-p-min"))
+                          }
+                          onChange={(value) =>
+                            applySpecArg(
+                              "--spec-draft-p-min",
+                              typeof value === "number" ? String(value) : "",
+                              "number",
+                            )
+                          }
+                        />
+                        <NumberInput
+                          label="draft-ngl"
+                          description="Draft model layers offloaded to GPU"
+                          min={0}
+                          value={
+                            rowValue(argRows, "--spec-draft-ngl") === ""
+                              ? ""
+                              : Number(rowValue(argRows, "--spec-draft-ngl"))
+                          }
+                          onChange={(value) =>
+                            applySpecArg(
+                              "--spec-draft-ngl",
+                              typeof value === "number" ? String(value) : "",
+                              "number",
+                            )
+                          }
+                        />
+                        <NumberInput
+                          label="draft-threads"
+                          description="CPU threads for the draft context"
+                          min={1}
+                          value={
+                            rowValue(argRows, "--spec-draft-threads") === ""
+                              ? ""
+                              : Number(
+                                  rowValue(argRows, "--spec-draft-threads"),
+                                )
+                          }
+                          onChange={(value) =>
+                            applySpecArg(
+                              "--spec-draft-threads",
+                              typeof value === "number" ? String(value) : "",
+                              "number",
+                            )
+                          }
+                        />
+                        <TextInput
+                          label="draft-device"
+                          description="Draft device list (CUDA0,CUDA1)"
+                          autoComplete="off"
+                          value={rowValue(argRows, "--spec-draft-device")}
+                          onChange={(event) =>
+                            applySpecArg(
+                              "--spec-draft-device",
+                              event.currentTarget.value,
+                              "string",
+                            )
+                          }
+                        />
+                      </SimpleGrid>
+                    </Collapse>
+                  </Stack>
+                </Collapse>
+              </Stack>
+            </Paper>
+          )}
           <Stack gap="xs">
             <Group justify="space-between">
               <Text fw={600} size="sm">
