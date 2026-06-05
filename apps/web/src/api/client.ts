@@ -64,6 +64,7 @@ import type {
   ModelPresetCreate,
   ModelPresetDocument,
   ModelPresetSummary,
+  PresetsSettings,
   ModelPresetWrite,
   ModelScanSettings,
   ModelScanResult,
@@ -548,6 +549,17 @@ export async function updateModelScanSettings(input: ModelScanSettings) {
 
 export async function listPresets() {
   return request<{ data: ModelPresetSummary[] }>("/api/presets");
+}
+
+export async function getPresetsSettings() {
+  return request<{ data: PresetsSettings }>("/api/presets/settings");
+}
+
+export async function updatePresetsSettings(input: PresetsSettings) {
+  return request<{ data: PresetsSettings }>("/api/presets/settings", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getPreset(name: string) {

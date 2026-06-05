@@ -36,9 +36,12 @@ import {
   getLlamaArguments,
   getModelScanSettings,
   getPreset,
+  getPresetsSettings,
+  listPathCatalog,
   listPresets,
   savePreset,
   scanModels,
+  updatePresetsSettings,
 } from "../../api/client";
 import { ArgumentPicker } from "../components/ArgumentPicker";
 import { ArgumentRow } from "../components/ArgumentRow";
@@ -63,11 +66,34 @@ function presetArgumentCount(entry: ModelPresetEntry) {
   return Object.keys(entry.extraArgs ?? {}).length;
 }
 
+function usePresetValidationBinaryPath(): string | undefined {
+  const presetsSettingsQuery = useQuery({
+    queryKey: ["presets-settings"],
+    queryFn: getPresetsSettings,
+    staleTime: 60_000,
+  });
+  const pathCatalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog(),
+    staleTime: 60_000,
+  });
+  const refId =
+    presetsSettingsQuery.data?.data.validationBinaryPathRefId ?? null;
+  if (!refId) {
+    return undefined;
+  }
+  return pathCatalogQuery.data?.data.find(
+    (entry) => entry.id === refId && entry.kind === "binary",
+  )?.path;
+}
+
 function useArgsCatalog() {
   const queryClient = useQueryClient();
+  const binaryPath = usePresetValidationBinaryPath();
+  const argsKey = ["llama-args", "preset", binaryPath ?? "default"];
   const argsCatalogQuery = useQuery({
-    queryKey: ["llama-args", "preset-default"],
-    queryFn: () => getLlamaArguments(),
+    queryKey: argsKey,
+    queryFn: () => getLlamaArguments(binaryPath),
     staleTime: 60_000,
     retry: false,
   });
@@ -76,9 +102,9 @@ function useArgsCatalog() {
     [argsCatalogQuery.data],
   );
   const refreshArgsMutation = useMutation({
-    mutationFn: () => getLlamaArguments(undefined, true),
+    mutationFn: () => getLlamaArguments(binaryPath, true),
     onSuccess: (result) => {
-      queryClient.setQueryData(["llama-args", "preset-default"], result);
+      queryClient.setQueryData(argsKey, result);
       notifications.show({
         title: "Argument catalog refreshed",
         message: `${result.data.options.length} options`,
@@ -518,6 +544,36 @@ export function PresetsView() {
     queryFn: getLlamaArgumentDefaults,
     staleTime: 60_000,
   });
+  const presetsSettingsQuery = useQuery({
+    queryKey: ["presets-settings"],
+    queryFn: getPresetsSettings,
+    staleTime: 60_000,
+  });
+  const pathCatalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog(),
+    staleTime: 60_000,
+  });
+  const validationBinaryEntries = (pathCatalogQuery.data?.data ?? []).filter(
+    (entry) => entry.kind === "binary",
+  );
+  const validationBinaryRefId =
+    presetsSettingsQuery.data?.data.validationBinaryPathRefId ?? null;
+  const setValidationBinaryMutation = useMutation({
+    mutationFn: (refId: string | null) =>
+      updatePresetsSettings({ validationBinaryPathRefId: refId }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["presets-settings"] });
+      await queryClient.invalidateQueries({ queryKey: ["presets"] });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Failed to set validation binary",
+        message: (error as Error).message,
+      });
+    },
+  });
 
   const presets = presetsQuery.data?.data ?? [];
   const document = documentQuery.data?.data ?? null;
@@ -828,6 +884,22 @@ export function PresetsView() {
               label: `${item.name}${item.valid ? "" : " · invalid"} · ${item.entryCount} models`,
             }))}
             nothingFoundMessage="No presets in data/presets"
+          />
+
+          <Select
+            label="Validation binary"
+            description="llama-server whose --help validates preset keys (different builds expose different args)."
+            placeholder="Default (master build)"
+            clearable
+            searchable
+            value={validationBinaryRefId}
+            disabled={setValidationBinaryMutation.isPending}
+            onChange={(value) => setValidationBinaryMutation.mutate(value)}
+            data={validationBinaryEntries.map((entry) => ({
+              value: entry.id,
+              label: entry.name,
+            }))}
+            nothingFoundMessage="No binaries in the path catalog"
           />
 
           {!selectedName && (

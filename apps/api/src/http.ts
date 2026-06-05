@@ -23,6 +23,7 @@ import {
   ApiLabProbeTargetRequestSchema,
   LlamaSourceCheckoutSchema,
   LlamaSourceSettingsUpdateSchema,
+  PresetsSettingsSchema,
   LlamaModelActionRequestSchema,
   LlamaSlotActionRequestSchema,
   PathCatalogCreateSchema,
@@ -128,8 +129,10 @@ import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
 import {
   createPreset,
   deletePreset,
+  getPresetsSettings,
   listPresets,
   readPreset,
+  savePresetsSettings,
   writePreset,
 } from "./presets/repository.js";
 import {
@@ -1943,6 +1946,18 @@ app.put("/api/model-scan-settings", async (c) => {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
   return c.json({ data: saveModelScanSettings(parsed.data) });
+});
+
+app.get("/api/presets/settings", (c) => {
+  return c.json({ data: getPresetsSettings() });
+});
+
+app.put("/api/presets/settings", async (c) => {
+  const parsed = PresetsSettingsSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  return c.json({ data: savePresetsSettings(parsed.data) });
 });
 
 app.get("/api/presets", (c) => {

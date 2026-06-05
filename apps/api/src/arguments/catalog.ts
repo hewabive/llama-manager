@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 
 import { config } from "../config.js";
 import { getBuildSettings, listBuildJobs } from "../build/repository.js";
+import { listPathCatalogEntries } from "../path-catalog/repository.js";
 import {
   getCachedArgumentCatalog,
   listArgumentHelpOverrides,
@@ -125,19 +126,29 @@ function nowIso() {
 }
 
 function defaultBinaryPath() {
-  const latestWithBinary = listBuildJobs(20).find((job) => job.binaryPath);
-  if (latestWithBinary?.binaryPath && existsSync(latestWithBinary.binaryPath)) {
-    return latestWithBinary.binaryPath;
-  }
-
   const settings = getBuildSettings();
   const target =
     process.platform === "win32" && !settings.target.endsWith(".exe")
       ? `${settings.target}.exe`
       : settings.target;
-  const buildCandidate = resolve(settings.buildDir, "bin", target);
-  if (existsSync(buildCandidate)) {
-    return buildCandidate;
+
+  const masterCandidate = resolve(settings.buildDir, "master", "bin", target);
+  if (existsSync(masterCandidate)) {
+    return masterCandidate;
+  }
+
+  const catalogBinary = listPathCatalogEntries("binary")
+    .filter((entry) => existsSync(entry.path))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  if (catalogBinary) {
+    return catalogBinary.path;
+  }
+
+  const latestWithBinary = listBuildJobs(20).find(
+    (job) => job.binaryPath && existsSync(job.binaryPath),
+  );
+  if (latestWithBinary?.binaryPath) {
+    return latestWithBinary.binaryPath;
   }
 
   const reffdevCandidate = resolve(
@@ -152,7 +163,7 @@ function defaultBinaryPath() {
     return reffdevCandidate;
   }
 
-  return buildCandidate;
+  return masterCandidate;
 }
 
 function runHelp(binaryPath: string) {

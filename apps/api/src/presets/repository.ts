@@ -5,7 +5,9 @@ import type {
   ModelPresetSummary,
   ModelPresetWrite,
   PresetDiagnostic,
+  PresetsSettings,
 } from "@llama-manager/core";
+import { PresetsSettingsSchema } from "@llama-manager/core";
 import {
   existsSync,
   mkdirSync,
@@ -20,6 +22,8 @@ import { resolve } from "node:path";
 
 import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
 import { config } from "../config.js";
+import { getPathCatalogEntry } from "../path-catalog/repository.js";
+import { readSettings, writeSettings } from "../settings/store.js";
 import { parseModelPresetIni, renderModelPresetFile } from "./ini.js";
 import { presetFileHasErrors, validateModelPresetFile } from "./validate.js";
 
@@ -43,9 +47,31 @@ type CatalogOptions = {
   warning: PresetDiagnostic | null;
 };
 
+export function getPresetsSettings(): PresetsSettings {
+  return PresetsSettingsSchema.parse(readSettings().presets ?? {});
+}
+
+export function savePresetsSettings(input: PresetsSettings): PresetsSettings {
+  const parsed = PresetsSettingsSchema.parse(input);
+  writeSettings({ ...readSettings(), presets: parsed });
+  return getPresetsSettings();
+}
+
+function resolveValidationBinaryPath(): string | undefined {
+  const refId = getPresetsSettings().validationBinaryPathRefId;
+  if (!refId) {
+    return undefined;
+  }
+  return getPathCatalogEntry(refId)?.path ?? undefined;
+}
+
 function loadCatalogOptions(): CatalogOptions {
   try {
-    return { options: getLlamaArgumentCatalog().options, warning: null };
+    const binaryPath = resolveValidationBinaryPath();
+    return {
+      options: getLlamaArgumentCatalog(binaryPath).options,
+      warning: null,
+    };
   } catch (error) {
     return {
       options: [],
@@ -171,7 +197,10 @@ export function createPreset(input: { name: string }): CreatePresetResult {
   }
   mkdirSync(presetsDir, { recursive: true });
   writeFileSync(path, renderModelPresetFile(emptyFile()), "utf8");
-  return { kind: "ok", document: documentFromName(input.name, loadCatalogOptions()) };
+  return {
+    kind: "ok",
+    document: documentFromName(input.name, loadCatalogOptions()),
+  };
 }
 
 export function deletePreset(name: string): boolean {
