@@ -66,6 +66,7 @@ import {
   verifyAdminPassword,
 } from "./auth.js";
 import {
+  defaultBinaryPath,
   getLlamaArgumentCatalog,
   getLlamaArgumentReferenceCatalog,
 } from "./arguments/catalog.js";
@@ -1860,6 +1861,15 @@ app.post("/api/llama-source/checkout", async (c) => {
 
 app.post("/api/llama-source/pull", (c) => {
   return c.json({ data: pullLlamaSource() });
+});
+
+app.get("/api/build/default-binary", (c) => {
+  const path = defaultBinaryPath();
+  const entry =
+    listPathCatalogEntries("binary").find((item) => item.path === path) ?? null;
+  return c.json({
+    data: { path, refId: entry?.id ?? null, exists: existsSync(path) },
+  });
 });
 
 app.get("/api/build/settings", (c) => {

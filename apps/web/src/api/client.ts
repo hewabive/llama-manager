@@ -461,6 +461,12 @@ export async function getBuildSettings() {
   return request<{ data: BuildSettings }>("/api/build/settings");
 }
 
+export async function getDefaultLlamaServerBinary() {
+  return request<{
+    data: { path: string; refId: string | null; exists: boolean };
+  }>("/api/build/default-binary");
+}
+
 export async function getLlamaSourceSettings() {
   return request<{ data: LlamaSourceSettings }>("/api/llama-source/settings");
 }

@@ -37,6 +37,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createInstance,
+  getDefaultLlamaServerBinary,
   getLlamaArgumentDefaults,
   getLlamaArguments,
   getModelScanSettings,
@@ -247,6 +248,12 @@ export function InstanceFormModal(props: {
   const pathCatalogQuery = useQuery({
     queryKey: ["path-catalog"],
     queryFn: () => listPathCatalog(),
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const defaultBinaryQuery = useQuery({
+    queryKey: ["build-default-binary"],
+    queryFn: getDefaultLlamaServerBinary,
     enabled: props.opened,
     staleTime: 60_000,
   });
@@ -529,19 +536,25 @@ export function InstanceFormModal(props: {
       !props.opened ||
       props.instance ||
       selectedBinaryPathRefId ||
-      binaryCatalogEntries.length === 0
+      binaryCatalogEntries.length === 0 ||
+      defaultBinaryQuery.isLoading
     ) {
       return;
     }
-    const first = binaryCatalogEntries[0];
-    if (first) {
-      setSelectedBinaryPathRefId(first.id);
+    const defaultRefId = defaultBinaryQuery.data?.data.refId ?? null;
+    const preferred =
+      binaryCatalogEntries.find((entry) => entry.id === defaultRefId) ??
+      binaryCatalogEntries[0];
+    if (preferred) {
+      setSelectedBinaryPathRefId(preferred.id);
     }
   }, [
     props.opened,
     props.instance,
     selectedBinaryPathRefId,
     binaryCatalogEntries,
+    defaultBinaryQuery.data?.data.refId,
+    defaultBinaryQuery.isLoading,
   ]);
 
   const draftPreview = useMemo(() => {

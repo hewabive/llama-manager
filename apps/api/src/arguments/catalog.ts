@@ -125,7 +125,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function defaultBinaryPath() {
+export function defaultBinaryPath() {
   const settings = getBuildSettings();
   const target =
     process.platform === "win32" && !settings.target.endsWith(".exe")
