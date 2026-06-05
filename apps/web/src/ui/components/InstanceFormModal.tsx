@@ -1186,6 +1186,7 @@ export function InstanceFormModal(props: {
                       <TextInput
                         label="HF repo"
                         required
+                        autoComplete="off"
                         placeholder="user/repo:Q4_K_M"
                         description="Downloaded lazily by llama-server on first launch. Optional :quant tag — without it, auto-selects Q4_K_M → Q8_0 → first GGUF. mmproj is fetched automatically when present."
                         value={hfRepoValue}
@@ -1195,6 +1196,7 @@ export function InstanceFormModal(props: {
                       />
                       <TextInput
                         label="HF file"
+                        autoComplete="off"
                         placeholder="(optional) exact .gguf filename"
                         description="Overrides the quant tag — pick a specific file in the repo."
                         value={hfFileValue}
@@ -1208,6 +1210,7 @@ export function InstanceFormModal(props: {
                       <TextInput
                         label="Model URL"
                         required
+                        autoComplete="off"
                         placeholder="https://.../model.gguf"
                         description="Direct download URL; cached by llama-server on first launch."
                         value={modelUrlValue}
@@ -1228,6 +1231,10 @@ export function InstanceFormModal(props: {
                     label="HF token"
                     placeholder="(optional) for gated/private repos"
                     description="Stored in the instance environment as HF_TOKEN — kept out of the command line."
+                    autoComplete="new-password"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-bwignore
                     value={envDraft?.HF_TOKEN ?? ""}
                     onChange={(event) =>
                       applyHfToken(event.currentTarget.value)
