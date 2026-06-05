@@ -61,6 +61,9 @@ export function PresetsView() {
   const [selectedPresetEntryId, setSelectedPresetEntryId] = useState<
     string | null
   >(null);
+  const [pendingEntry, setPendingEntry] = useState<ModelPresetEntry | null>(
+    null,
+  );
   const [draft, setDraft] = useState<ModelPresetFile | null>(null);
   const [previewContent, setPreviewContent] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -155,6 +158,7 @@ export function PresetsView() {
     setDraft(null);
     setSaveState("idle");
     setSelectedPresetEntryId(null);
+    setPendingEntry(null);
   }, [selectedName]);
 
   useEffect(() => {
@@ -355,7 +359,8 @@ export function PresetsView() {
       );
   }, [entries, scannedPaths, presetModelSearch]);
   const selectedPresetEntry =
-    entries.find((entry) => entry.id === selectedPresetEntryId) ?? null;
+    entries.find((entry) => entry.id === selectedPresetEntryId) ??
+    (pendingEntry?.id === selectedPresetEntryId ? pendingEntry : null);
   const selectedPresetModel = selectedPresetEntry
     ? (modelByPath.get(selectedPresetEntry.modelPath) ?? null)
     : null;
@@ -374,8 +379,18 @@ export function PresetsView() {
     }
   }
 
-  function updateEntry(entry: ModelPresetEntry) {
-    setEntries(entries.map((item) => (item.id === entry.id ? entry : item)));
+  function saveEntry(entry: ModelPresetEntry) {
+    setPendingEntry(null);
+    if (entries.some((item) => item.id === entry.id)) {
+      setEntries(entries.map((item) => (item.id === entry.id ? entry : item)));
+    } else {
+      setEntries([...entries, entry]);
+    }
+  }
+
+  function closeEntryDetail() {
+    setSelectedPresetEntryId(null);
+    setPendingEntry(null);
   }
 
   function addRemoteModel() {
@@ -383,7 +398,7 @@ export function PresetsView() {
       return;
     }
     const entry = remotePresetEntry();
-    setEntries([...entries, entry]);
+    setPendingEntry(entry);
     setSelectedPresetEntryId(entry.id);
   }
 
@@ -682,8 +697,8 @@ export function PresetsView() {
         entry={selectedPresetEntry}
         model={selectedPresetModel}
         presetDefaults={presetDefaultArgs}
-        onClose={() => setSelectedPresetEntryId(null)}
-        onSave={updateEntry}
+        onClose={closeEntryDetail}
+        onSave={saveEntry}
       />
 
       <NewPresetModal
