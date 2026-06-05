@@ -81,6 +81,24 @@ function diagnoseKey(
   }
 }
 
+export function validatePresetStructure(
+  file: ModelPresetFile,
+): PresetDiagnostic[] {
+  const diagnostics: PresetDiagnostic[] = [];
+  for (const entry of file.entries) {
+    if (entry.modelPath.trim() === "") {
+      diagnostics.push({
+        severity: "warning",
+        message: `section '${entry.name}' has no model path; it only loads if the name matches an existing server model`,
+        section: entry.name,
+        key: null,
+        line: null,
+      });
+    }
+  }
+  return diagnostics;
+}
+
 export function validateModelPresetFile(
   file: ModelPresetFile,
   options: LlamaArgumentOption[],

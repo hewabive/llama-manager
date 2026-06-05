@@ -39,6 +39,7 @@ import {
   getPresetsSettings,
   listPathCatalog,
   listPresets,
+  listPresetValidations,
   savePreset,
   scanModels,
   updatePresetsSettings,
@@ -529,6 +530,11 @@ export function PresetsView() {
     queryKey: ["presets"],
     queryFn: listPresets,
   });
+  const validationQuery = useQuery({
+    queryKey: ["presets-validation"],
+    queryFn: listPresetValidations,
+    staleTime: 60_000,
+  });
   const documentQuery = useQuery({
     queryKey: ["preset", selectedName],
     queryFn: () => getPreset(selectedName!),
@@ -565,6 +571,7 @@ export function PresetsView() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["presets-settings"] });
       await queryClient.invalidateQueries({ queryKey: ["presets"] });
+      await queryClient.invalidateQueries({ queryKey: ["presets-validation"] });
     },
     onError: (error) => {
       notifications.show({
@@ -576,6 +583,9 @@ export function PresetsView() {
   });
 
   const presets = presetsQuery.data?.data ?? [];
+  const validationByName = new Map(
+    (validationQuery.data?.data ?? []).map((item) => [item.name, item]),
+  );
   const document = documentQuery.data?.data ?? null;
   const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
   const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
@@ -668,6 +678,7 @@ export function PresetsView() {
         setPreviewContent(result.document.content);
         setSaveState("saved");
         void queryClient.invalidateQueries({ queryKey: ["presets"] });
+        void queryClient.invalidateQueries({ queryKey: ["presets-validation"] });
       }
     } catch (error) {
       setSaveState("error");
@@ -700,6 +711,7 @@ export function PresetsView() {
     mutationFn: createPreset,
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["presets"] });
+      await queryClient.invalidateQueries({ queryKey: ["presets-validation"] });
       setNewOpen(false);
       setSelectedName(result.data.name);
       notifications.show({
@@ -742,6 +754,7 @@ export function PresetsView() {
         setPreviewContent(result.document.content);
         setSaveState("saved");
         void queryClient.invalidateQueries({ queryKey: ["presets"] });
+        void queryClient.invalidateQueries({ queryKey: ["presets-validation"] });
       }
     } catch (error) {
       setSaveState("error");
@@ -879,10 +892,13 @@ export function PresetsView() {
             searchable
             value={selectedName}
             onChange={setSelectedName}
-            data={presets.map((item) => ({
-              value: item.name,
-              label: `${item.name}${item.valid ? "" : " · invalid"} · ${item.entryCount} models`,
-            }))}
+            data={presets.map((item) => {
+              const valid = validationByName.get(item.name)?.valid ?? item.valid;
+              return {
+                value: item.name,
+                label: `${item.name}${valid ? "" : " · invalid"} · ${item.entryCount} models`,
+              };
+            })}
             nothingFoundMessage="No presets in data/presets"
           />
 

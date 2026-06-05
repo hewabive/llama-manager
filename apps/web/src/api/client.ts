@@ -64,6 +64,7 @@ import type {
   ModelPresetCreate,
   ModelPresetDocument,
   ModelPresetSummary,
+  PresetValidation,
   PresetsSettings,
   ModelPresetWrite,
   ModelScanSettings,
@@ -555,6 +556,10 @@ export async function updateModelScanSettings(input: ModelScanSettings) {
 
 export async function listPresets() {
   return request<{ data: ModelPresetSummary[] }>("/api/presets");
+}
+
+export async function listPresetValidations() {
+  return request<{ data: PresetValidation[] }>("/api/presets/validation");
 }
 
 export async function getPresetsSettings() {

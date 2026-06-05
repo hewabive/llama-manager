@@ -1457,6 +1457,12 @@ export const ModelPresetSummarySchema = z.object({
   mtimeMs: z.number().nullable(),
 });
 
+export const PresetValidationSchema = z.object({
+  name: z.string(),
+  valid: z.boolean(),
+  diagnostics: z.array(PresetDiagnosticSchema),
+});
+
 export const ModelPresetDocumentSchema = z.object({
   name: z.string(),
   path: z.string(),
@@ -1738,6 +1744,7 @@ export type ModelPresetEntry = z.infer<typeof ModelPresetEntrySchema>;
 export type ModelPresetFile = z.infer<typeof ModelPresetFileSchema>;
 export type PresetDiagnostic = z.infer<typeof PresetDiagnosticSchema>;
 export type ModelPresetSummary = z.infer<typeof ModelPresetSummarySchema>;
+export type PresetValidation = z.infer<typeof PresetValidationSchema>;
 export type ModelPresetDocument = z.infer<typeof ModelPresetDocumentSchema>;
 export type ModelPresetWrite = z.infer<typeof ModelPresetWriteSchema>;
 export type ModelPresetCreate = z.infer<typeof ModelPresetCreateSchema>;

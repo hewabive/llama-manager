@@ -6,6 +6,7 @@ import type {
   ModelPresetWrite,
   PresetDiagnostic,
   PresetsSettings,
+  PresetValidation,
 } from "@llama-manager/core";
 import { PresetsSettingsSchema } from "@llama-manager/core";
 import {
@@ -25,7 +26,11 @@ import { config } from "../config.js";
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
 import { readSettings, writeSettings } from "../settings/store.js";
 import { parseModelPresetIni, renderModelPresetFile } from "./ini.js";
-import { presetFileHasErrors, validateModelPresetFile } from "./validate.js";
+import {
+  presetFileHasErrors,
+  validateModelPresetFile,
+  validatePresetStructure,
+} from "./validate.js";
 
 const presetsDir = config.presetsDir;
 const presetNamePattern = /^[A-Za-z0-9._-]+$/;
@@ -129,18 +134,31 @@ function listPresetNames(): string[] {
 }
 
 export function listPresets(): ModelPresetSummary[] {
-  const catalog = loadCatalogOptions();
   return listPresetNames().map((name) => {
     const path = presetPath(name);
     const content = readFileSync(path, "utf8");
     const { file, diagnostics } = parseModelPresetIni(content);
-    const all = [...diagnostics, ...diagnoseFile(file, catalog)];
+    const all = [...diagnostics, ...validatePresetStructure(file)];
     return {
       name,
       path,
       valid: !presetFileHasErrors(all),
       entryCount: file.entries.length,
       mtimeMs: statSync(path).mtimeMs,
+    };
+  });
+}
+
+export function listPresetValidations(): PresetValidation[] {
+  const catalog = loadCatalogOptions();
+  return listPresetNames().map((name) => {
+    const content = readFileSync(presetPath(name), "utf8");
+    const { file, diagnostics } = parseModelPresetIni(content);
+    const all = [...diagnostics, ...diagnoseFile(file, catalog)];
+    return {
+      name,
+      valid: !presetFileHasErrors(all),
+      diagnostics: all,
     };
   });
 }

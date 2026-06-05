@@ -132,6 +132,7 @@ import {
   deletePreset,
   getPresetsSettings,
   listPresets,
+  listPresetValidations,
   readPreset,
   savePresetsSettings,
   writePreset,
@@ -1972,6 +1973,10 @@ app.put("/api/presets/settings", async (c) => {
 
 app.get("/api/presets", (c) => {
   return c.json({ data: listPresets() });
+});
+
+app.get("/api/presets/validation", (c) => {
+  return c.json({ data: listPresetValidations() });
 });
 
 app.post("/api/presets", async (c) => {
