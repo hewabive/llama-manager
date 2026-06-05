@@ -18,6 +18,7 @@ import {
   Modal,
   NumberInput,
   Paper,
+  PasswordInput,
   ScrollArea,
   SegmentedControl,
   Select,
@@ -80,7 +81,8 @@ import {
 import { PathPickerInput } from "./PathPickerInput";
 import { createUiId } from "../utils/id";
 
-type LaunchMode = "model" | "router";
+type LaunchMode = "model" | "router" | "remote";
+type RemoteSource = "hf" | "url";
 
 function parseJsonObject(value: string, field: string) {
   try {
@@ -151,6 +153,22 @@ function hasModelSource(args: Instance["args"]) {
   );
 }
 
+function hasRemoteModelSource(args: Instance["args"]) {
+  return (
+    hasConfiguredArg(args, "--hf-repo") || hasConfiguredArg(args, "--model-url")
+  );
+}
+
+function launchModeFromArgs(args: Instance["args"]): LaunchMode {
+  if (hasConfiguredArg(args, "--models-preset")) {
+    return "router";
+  }
+  if (hasRemoteModelSource(args)) {
+    return "remote";
+  }
+  return "model";
+}
+
 function instancePort(instance: Instance) {
   const port = Number(instance.args["--port"] ?? 8080);
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
@@ -177,6 +195,9 @@ const managedArgumentKeys = new Set([
   "--port",
   "--model",
   "--models-preset",
+  "--hf-repo",
+  "--hf-file",
+  "--model-url",
 ]);
 
 function isManagedArgRow(row: ArgRow) {
@@ -209,6 +230,7 @@ export function InstanceFormModal(props: {
     null,
   );
   const [launchMode, setLaunchMode] = useState<LaunchMode>("model");
+  const [remoteSource, setRemoteSource] = useState<RemoteSource>("hf");
   const [selectedBinaryPathRefId, setSelectedBinaryPathRefId] = useState<
     string | null
   >(null);
@@ -413,6 +435,10 @@ export function InstanceFormModal(props: {
     return options;
   }, [presetsQuery.data?.data, selectedPresetName]);
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
+  const hfRepoValue = rowValue(argRows, "--hf-repo");
+  const hfFileValue = rowValue(argRows, "--hf-file");
+  const modelUrlValue = rowValue(argRows, "--model-url");
+  const remoteDestinationValue = rowValue(argRows, "--model");
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
   const envDraft = useMemo(() => {
@@ -492,7 +518,13 @@ export function InstanceFormModal(props: {
       setSelectedBinaryPathRefId(props.instance.binaryPathRefId);
       setSelectedModelPath(modelPath);
       setSelectedPresetName(presetName);
-      setLaunchMode(presetName && !modelPath ? "router" : "model");
+      const mode = launchModeFromArgs(props.instance.args);
+      setLaunchMode(mode);
+      if (mode === "remote") {
+        setRemoteSource(
+          hasConfiguredArg(props.instance.args, "--model-url") ? "url" : "hf",
+        );
+      }
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args, knownArgByName));
     } else {
@@ -506,6 +538,7 @@ export function InstanceFormModal(props: {
       setSelectedModelPath(modelPath);
       setSelectedPresetName(null);
       setLaunchMode("model");
+      setRemoteSource("hf");
       setStartAfterCreate(false);
       setArgRows(defaultRows(modelPath ?? undefined, port));
     }
@@ -603,6 +636,23 @@ export function InstanceFormModal(props: {
           "--models-max",
           "--models-autoload",
           "--no-models-autoload",
+          "--hf-repo",
+          "--hf-file",
+          "--model-url",
+        ]),
+      );
+      return;
+    }
+    if (mode === "remote") {
+      setSelectedPresetName(null);
+      setSelectedModelPath(null);
+      setArgRows((rows) =>
+        removeArgRows(rows, [
+          "--model",
+          "--models-preset",
+          "--models-max",
+          "--models-autoload",
+          "--no-models-autoload",
         ]),
       );
       return;
@@ -691,7 +741,12 @@ export function InstanceFormModal(props: {
       ? (presetByName.get(presetName)?.path ?? "")
       : "";
     setArgRows((rows) => {
-      let next = removeArgRow(rows, "--model");
+      let next = removeArgRows(rows, [
+        "--model",
+        "--hf-repo",
+        "--hf-file",
+        "--model-url",
+      ]);
       next =
         presetName && presetFilePath
           ? upsertArgRow(next, "--models-preset", presetFilePath, "string")
@@ -732,6 +787,9 @@ export function InstanceFormModal(props: {
         "--models-max",
         "--models-autoload",
         "--no-models-autoload",
+        "--hf-repo",
+        "--hf-file",
+        "--model-url",
       ]);
       return next;
     });
@@ -744,6 +802,76 @@ export function InstanceFormModal(props: {
     ) {
       form.setFieldValue("name", instanceNameFromModelPath(modelPath));
     }
+  }
+
+  function applyRemoteRepo(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--hf-repo", trimmed, "string")
+        : removeArgRow(rows, "--hf-repo"),
+    );
+    const base = trimmed.split(":")[0] ?? trimmed;
+    const name = (base.split("/").filter(Boolean).pop() ?? "").replace(
+      /\.gguf$/i,
+      "",
+    );
+    if (
+      !isEdit &&
+      name &&
+      (!form.values.name ||
+        form.values.name === "local-server" ||
+        form.values.name === "local-router")
+    ) {
+      form.setFieldValue("name", name);
+    }
+  }
+
+  function applyRemoteFile(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--hf-file", trimmed, "string")
+        : removeArgRow(rows, "--hf-file"),
+    );
+  }
+
+  function applyRemoteUrl(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--model-url", trimmed, "string")
+        : removeArgRow(rows, "--model-url"),
+    );
+  }
+
+  function applyRemoteDestination(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--model", trimmed, "string")
+        : removeArgRow(rows, "--model"),
+    );
+  }
+
+  function applyRemoteSource(source: RemoteSource) {
+    setRemoteSource(source);
+    setArgRows((rows) =>
+      source === "hf"
+        ? removeArgRows(rows, ["--model-url", "--model"])
+        : removeArgRows(rows, ["--hf-repo", "--hf-file"]),
+    );
+  }
+
+  function applyHfToken(value: string) {
+    updateEnvironment((env) => {
+      if (value) {
+        env.HF_TOKEN = value;
+      } else {
+        delete env.HF_TOKEN;
+      }
+      return env;
+    });
   }
 
   async function invalidateSavedInstance(id: string) {
@@ -900,7 +1028,12 @@ export function InstanceFormModal(props: {
       }
       const rows =
         launchMode === "router"
-          ? removeArgRow(argRows, "--model")
+          ? removeArgRows(argRows, [
+              "--model",
+              "--hf-repo",
+              "--hf-file",
+              "--model-url",
+            ])
           : removeArgRows(argRows, [
               "--models-preset",
               "--models-max",
@@ -910,9 +1043,9 @@ export function InstanceFormModal(props: {
       const args = InstanceArgsSchema.parse(
         rowsToArgsWithCatalog(rows, knownArgByName),
       );
-      if (launchMode === "model" && !hasModelSource(args)) {
+      if (launchMode !== "router" && !hasModelSource(args)) {
         throw new Error(
-          "Select a model or configure --hf-repo/--model-url before creating a single-model instance",
+          "Select a model or configure --hf-repo/--model-url before creating the instance",
         );
       }
       const input: InstanceCreate = {
@@ -1001,6 +1134,7 @@ export function InstanceFormModal(props: {
                 onChange={(value) => applyLaunchMode(value as LaunchMode)}
                 data={[
                   { value: "model", label: "Single model" },
+                  { value: "remote", label: "Remote (HF/URL)" },
                   { value: "router", label: "Router preset" },
                 ]}
                 fullWidth
@@ -1033,6 +1167,73 @@ export function InstanceFormModal(props: {
                     onChange={applyModelSelection}
                   />
                 </>
+              ) : launchMode === "remote" ? (
+                <Stack gap="xs">
+                  <SegmentedControl
+                    value={remoteSource}
+                    onChange={(value) =>
+                      applyRemoteSource(value as RemoteSource)
+                    }
+                    data={[
+                      { value: "hf", label: "HuggingFace" },
+                      { value: "url", label: "Direct URL" },
+                    ]}
+                    fullWidth
+                    size="xs"
+                  />
+                  {remoteSource === "hf" ? (
+                    <>
+                      <TextInput
+                        label="HF repo"
+                        required
+                        placeholder="user/repo:Q4_K_M"
+                        description="Downloaded lazily by llama-server on first launch. Optional :quant tag — without it, auto-selects Q4_K_M → Q8_0 → first GGUF. mmproj is fetched automatically when present."
+                        value={hfRepoValue}
+                        onChange={(event) =>
+                          applyRemoteRepo(event.currentTarget.value)
+                        }
+                      />
+                      <TextInput
+                        label="HF file"
+                        placeholder="(optional) exact .gguf filename"
+                        description="Overrides the quant tag — pick a specific file in the repo."
+                        value={hfFileValue}
+                        onChange={(event) =>
+                          applyRemoteFile(event.currentTarget.value)
+                        }
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <TextInput
+                        label="Model URL"
+                        required
+                        placeholder="https://.../model.gguf"
+                        description="Direct download URL; cached by llama-server on first launch."
+                        value={modelUrlValue}
+                        onChange={(event) =>
+                          applyRemoteUrl(event.currentTarget.value)
+                        }
+                      />
+                      <PathPickerInput
+                        label="Destination path"
+                        mode="file"
+                        filter="model"
+                        value={remoteDestinationValue}
+                        onChange={applyRemoteDestination}
+                      />
+                    </>
+                  )}
+                  <PasswordInput
+                    label="HF token"
+                    placeholder="(optional) for gated/private repos"
+                    description="Stored in the instance environment as HF_TOKEN — kept out of the command line."
+                    value={envDraft?.HF_TOKEN ?? ""}
+                    onChange={(event) =>
+                      applyHfToken(event.currentTarget.value)
+                    }
+                  />
+                </Stack>
               ) : (
                 <Stack gap={6}>
                   <Select
