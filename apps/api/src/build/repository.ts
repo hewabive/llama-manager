@@ -24,12 +24,20 @@ import {
   updatePathCatalogEntry,
 } from "../path-catalog/repository.js";
 
+function normalizeBuildsBaseDir(value: string): string {
+  const resolved = resolve(value);
+  if (resolved === resolve(config.buildsDir, "build")) {
+    return resolve(config.buildsDir);
+  }
+  return resolved;
+}
+
 function defaultSettings(
   repoPath = getLlamaSourceSettings().repoPath,
 ): BuildSettings {
   return {
     repoPath,
-    buildDir: resolve(config.buildsDir, "build"),
+    buildDir: resolve(config.buildsDir),
     buildType: "Release",
     buildProfile: "server",
     cuda: isCudaToolkitAvailable(),
@@ -50,11 +58,15 @@ export function getBuildSettings(): BuildSettings {
   const sourceSettings = getLlamaSourceSettings();
   const stored = readSettings().build;
   const settings = stored
-    ? BuildSettingsSchema.parse({ ...stored, repoPath: sourceSettings.repoPath })
+    ? BuildSettingsSchema.parse({
+        ...stored,
+        repoPath: sourceSettings.repoPath,
+      })
     : defaultSettings(sourceSettings.repoPath);
   return {
     ...settings,
     repoPath: sourceSettings.repoPath,
+    buildDir: normalizeBuildsBaseDir(settings.buildDir),
   };
 }
 
@@ -89,10 +101,12 @@ function uniqueBinaryName(desired: string, excludeId: string | null): string {
 export function registerBuiltBinaryInCatalog(
   binaryPath: string,
   repoPath: string,
+  ref: string | null = null,
 ): PathCatalogEntry {
   const version = getLlamaSourceVersionLabel(repoPath);
   const base = basename(binaryPath);
-  const desired = (version ? `${base} (${version})` : base).slice(0, 80);
+  const detail = [ref, version].filter(Boolean).join(" @ ");
+  const desired = (detail ? `${base} (${detail})` : base).slice(0, 80);
   const existing = listPathCatalogEntries("binary").find(
     (entry) => entry.path === binaryPath,
   );

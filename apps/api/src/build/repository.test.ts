@@ -15,6 +15,16 @@ test("registerBuiltBinaryInCatalog creates a binary catalog entry", () => {
   assert.equal(entry.name, "llama-server");
 });
 
+test("registerBuiltBinaryInCatalog includes the ref in the name", () => {
+  const entry = registerBuiltBinaryInCatalog(
+    "/opt/ref/bin/llama-server",
+    "/path/that/does/not/exist",
+    "feature-foo",
+  );
+
+  assert.equal(entry.name, "llama-server (feature-foo)");
+});
+
 test("registerBuiltBinaryInCatalog deduplicates by path", () => {
   const path = "/opt/idempotent/bin/llama-server";
   const first = registerBuiltBinaryInCatalog(path, "/path/that/does/not/exist");

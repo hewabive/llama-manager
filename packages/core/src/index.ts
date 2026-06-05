@@ -952,6 +952,10 @@ export const LlamaSourceSettingsUpdateSchema = z.object({
   repoPath: z.string().min(1),
 });
 
+export const LlamaSourceCheckoutSchema = z.object({
+  ref: z.string().trim().min(1),
+});
+
 export const LlamaSourceStatusSchema = z.object({
   settings: LlamaSourceSettingsSchema,
   exists: z.boolean(),
@@ -968,6 +972,13 @@ export const LlamaSourceStatusSchema = z.object({
 export const LlamaSourcePullResultSchema = z.object({
   ok: z.boolean(),
   output: z.string(),
+});
+
+export const LlamaSourceRefsSchema = z.object({
+  branches: z.array(z.string()),
+  tags: z.array(z.string()),
+  currentBranch: z.string().nullable(),
+  dirty: z.boolean().nullable(),
 });
 
 export const BuildSettingsSchema = z.object({
@@ -995,6 +1006,7 @@ export const BuildJobStatusSchema = z.enum([
   "canceled",
 ]);
 export const BuildJobStepNameSchema = z.enum([
+  "git-checkout",
   "git-pull",
   "ui-install",
   "clean-build-dir",
@@ -1034,6 +1046,7 @@ export const BuildJobSchema = z.object({
 
 export const BuildJobStartSchema = z.object({
   settings: BuildSettingsSchema.optional(),
+  gitRef: z.string().trim().min(1).nullable().default(null),
   pull: z.boolean().default(true),
   installUiDeps: z.boolean().default(true),
   cleanBuildDir: z.boolean().default(false),
@@ -1636,6 +1649,8 @@ export type LlamaSourceSettingsUpdate = z.infer<
 >;
 export type LlamaSourceStatus = z.infer<typeof LlamaSourceStatusSchema>;
 export type LlamaSourcePullResult = z.infer<typeof LlamaSourcePullResultSchema>;
+export type LlamaSourceRefs = z.infer<typeof LlamaSourceRefsSchema>;
+export type LlamaSourceCheckout = z.infer<typeof LlamaSourceCheckoutSchema>;
 export type LlamaArgumentHelpSourceSnapshot = z.infer<
   typeof LlamaArgumentHelpSourceSnapshotSchema
 >;

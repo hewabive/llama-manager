@@ -18,6 +18,10 @@ import { homedir } from "node:os";
 import type { Readable } from "node:stream";
 
 import { config } from "../config.js";
+import {
+  getLlamaSourceCurrentCommit,
+  listLlamaSourceRefs,
+} from "../llama/source-repository.js";
 import { findNvcc } from "./cuda.js";
 import {
   createBuildJob,
@@ -51,6 +55,25 @@ function step(name: BuildJobStepName, command: string[]): BuildJobStep {
 
 function uiDirectory(settings: BuildSettings) {
   return resolve(settings.repoPath, "tools", "ui");
+}
+
+export function slugifyRef(ref: string): string {
+  const slug = ref
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  return slug || "build";
+}
+
+function resolveBuildRef(gitRef: string | null): string {
+  if (gitRef) {
+    return gitRef;
+  }
+  const currentBranch = listLlamaSourceRefs().currentBranch;
+  if (currentBranch) {
+    return currentBranch;
+  }
+  const commit = getLlamaSourceCurrentCommit();
+  return commit ? `commit-${commit.slice(0, 12)}` : "build";
 }
 
 function prependPathEntry(pathValue: string | undefined, entry: string) {
@@ -122,14 +145,16 @@ export function buildSteps(
 ): BuildJobStep[] {
   const steps: BuildJobStep[] = [];
 
+  if (input.gitRef) {
+    steps.push(step("git-checkout", ["git", "checkout", input.gitRef]));
+  }
+
   if (input.pull) {
     steps.push(step("git-pull", ["git", "pull", "--ff-only"]));
   }
 
   if (input.installUiDeps) {
-    steps.push(
-      step("ui-install", ["npm", "ci", "&&", "npm", "run", "build"]),
-    );
+    steps.push(step("ui-install", ["npm", "ci", "&&", "npm", "run", "build"]));
   }
 
   if (input.cleanBuildDir) {
@@ -225,7 +250,7 @@ export function buildSteps(
 }
 
 function commandCwd(settings: BuildSettings, stepName: BuildJobStepName) {
-  if (stepName === "git-pull") {
+  if (stepName === "git-checkout" || stepName === "git-pull") {
     return settings.repoPath;
   }
   if (stepName === "ui-install") {
@@ -244,6 +269,7 @@ export function validateBuildDirectoryCleanTarget(settings: BuildSettings) {
   const parentOfRepo = dirname(repoPath);
   const root = parse(buildDir).root;
   const home = homedir();
+  const parent = dirname(buildDir);
 
   if (buildDir === root) {
     throw new Error("refusing to clean filesystem root as build directory");
@@ -257,9 +283,9 @@ export function validateBuildDirectoryCleanTarget(settings: BuildSettings) {
   if (buildDir === parentOfRepo || isPathInside(buildDir, repoPath)) {
     throw new Error("refusing to clean a parent directory of llama.cpp");
   }
-  if (!basename(buildDir).toLowerCase().includes("build")) {
+  if (parent === root || parent === home) {
     throw new Error(
-      "refusing to clean build directory because its final path segment does not contain 'build'",
+      "refusing to clean a build directory placed directly under filesystem root or home",
     );
   }
 
@@ -283,7 +309,9 @@ function validateSettings(settings: BuildSettings, steps: BuildJobStep[]) {
   }
 
   if (
-    steps.some((item) => item.name === "git-pull") &&
+    steps.some(
+      (item) => item.name === "git-pull" || item.name === "git-checkout",
+    ) &&
     !existsSync(resolve(settings.repoPath, ".git"))
   ) {
     throw new Error(`Git repository not found in ${settings.repoPath}`);
@@ -347,6 +375,13 @@ function writeHeader(
 export class LlamaBuildRunner {
   private running: RunningBuild | null = null;
 
+  isRunning(): boolean {
+    if (!this.running) {
+      return false;
+    }
+    return getBuildJob(this.running.jobId)?.status === "running";
+  }
+
   start(input: BuildJobStart): BuildJob {
     if (this.running) {
       const current = getBuildJob(this.running.jobId);
@@ -356,11 +391,34 @@ export class LlamaBuildRunner {
       this.running = null;
     }
 
-    const settings = input.settings
+    const baseSettings = input.settings
       ? saveBuildSettings(input.settings)
       : getBuildSettings();
+
+    const refs = listLlamaSourceRefs();
+    if (
+      input.gitRef &&
+      !refs.branches.includes(input.gitRef) &&
+      !refs.tags.includes(input.gitRef)
+    ) {
+      throw new Error(`unknown git ref: ${input.gitRef}`);
+    }
+
+    const isBranch = input.gitRef ? refs.branches.includes(input.gitRef) : true;
+    const effectiveInput: BuildJobStart = {
+      ...input,
+      pull: input.pull && isBranch,
+    };
+
+    const settings: BuildSettings = {
+      ...baseSettings,
+      buildDir: resolve(
+        baseSettings.buildDir,
+        slugifyRef(resolveBuildRef(input.gitRef)),
+      ),
+    };
     const env = buildProcessEnv(settings);
-    const steps = buildSteps(settings, input, env);
+    const steps = buildSteps(settings, effectiveInput, env);
     if (steps.length === 0) {
       throw new Error("at least one build step must be enabled");
     }
@@ -479,6 +537,7 @@ export class LlamaBuildRunner {
           const entry = registerBuiltBinaryInCatalog(
             binaryPath,
             job.settings.repoPath,
+            basename(job.settings.buildDir),
           );
           logStream.write(`\n# registered in path catalog: ${entry.name}\n`);
         } catch (error) {

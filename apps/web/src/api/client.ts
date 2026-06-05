@@ -50,6 +50,7 @@ import type {
   LlamaArgumentHelpOverride,
   LlamaArgumentHelpOverrideUpdate,
   LlamaSourcePullResult,
+  LlamaSourceRefs,
   LlamaSourceSettings,
   LlamaSourceSettingsUpdate,
   LlamaSourceStatus,
@@ -474,6 +475,17 @@ export async function updateLlamaSourceSettings(
 
 export async function getLlamaSourceStatus() {
   return request<{ data: LlamaSourceStatus }>("/api/llama-source/status");
+}
+
+export async function getLlamaSourceRefs() {
+  return request<{ data: LlamaSourceRefs }>("/api/llama-source/refs");
+}
+
+export async function checkoutLlamaSourceRef(ref: string) {
+  return request<{ data: LlamaSourceStatus }>("/api/llama-source/checkout", {
+    method: "POST",
+    body: JSON.stringify({ ref }),
+  });
 }
 
 export async function pullLlamaSource() {

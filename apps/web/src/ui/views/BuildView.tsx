@@ -1,6 +1,7 @@
 import type {
   BuildJob,
   BuildSettings,
+  LlamaSourceRefs,
   LlamaSourceStatus,
 } from "@llama-manager/core";
 import {
@@ -31,8 +32,10 @@ import { useEffect, useState } from "react";
 
 import {
   cancelBuildJob,
+  checkoutLlamaSourceRef,
   getBuildJobLogs,
   getBuildSettings,
+  getLlamaSourceRefs,
   getLlamaSourceStatus,
   listBuildJobs,
   pullLlamaSource,
@@ -59,9 +62,17 @@ function buildStepColor(status: BuildJob["steps"][number]["status"]) {
 
 function buildStepLabel(name: BuildJob["steps"][number]["name"]) {
   if (name === "ui-install") return "ui rebuild";
+  if (name === "git-checkout") return "git checkout";
   if (name === "git-pull") return "git pull";
   if (name === "clean-build-dir") return "clean build dir";
   return name;
+}
+
+function slugifyRef(ref: string): string {
+  const slug = ref
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  return slug || "build";
 }
 
 function sourceStatusColor(status: LlamaSourceStatus) {
@@ -189,6 +200,7 @@ function cudaArchitecturesFromForm(form: BuildFormState) {
 export function BuildView() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<BuildFormState | null>(null);
+  const [gitRef, setGitRef] = useState<string | null>(null);
   const [runPull, setRunPull] = useState(true);
   const [runUiRebuild, setRunUiRebuild] = useState(true);
   const [runCleanBuildDir, setRunCleanBuildDir] = useState(false);
@@ -212,6 +224,11 @@ export function BuildView() {
   const sourceStatusQuery = useQuery({
     queryKey: ["llama-source-status"],
     queryFn: getLlamaSourceStatus,
+    refetchInterval: 30_000,
+  });
+  const refsQuery = useQuery({
+    queryKey: ["llama-source-refs"],
+    queryFn: getLlamaSourceRefs,
     refetchInterval: 30_000,
   });
 
@@ -240,8 +257,20 @@ export function BuildView() {
     sourceStatus !== null &&
     form !== null &&
     sourceStatus.settings.repoPath === repoPath;
+  const refs: LlamaSourceRefs | null = refsQuery.data?.data ?? null;
+  const dirty = refs?.dirty === true;
+  const refIsTag = gitRef !== null && (refs?.tags.includes(gitRef) ?? false);
+  const detachedRef = sourceStatus?.currentCommit
+    ? `commit-${sourceStatus.currentCommit.slice(0, 12)}`
+    : null;
+  const refForDir = gitRef ?? refs?.currentBranch ?? detachedRef ?? "build";
+  const effectiveBuildDir = buildDir
+    ? `${buildDir.replace(/[\\/]+$/, "")}/${slugifyRef(refForDir)}`
+    : "";
+  const willPull = runPull && !refIsTag;
   const selectedSteps = [
-    ...(runPull ? ["git pull --ff-only"] : []),
+    ...(gitRef ? [`git checkout ${gitRef}`] : []),
+    ...(willPull ? ["git pull --ff-only"] : []),
     ...(runUiRebuild ? ["Rebuild embedded UI assets"] : []),
     ...(runCleanBuildDir ? ["Clean build directory"] : []),
     ...(runConfigure ? ["Configure CMake"] : []),
@@ -263,6 +292,11 @@ export function BuildView() {
     }
     setForm(buildFormFromSettings(settings));
   }, [settingsQuery.data?.data]);
+
+  useEffect(() => {
+    const currentBranch = refsQuery.data?.data.currentBranch ?? null;
+    setGitRef((current) => current ?? currentBranch);
+  }, [refsQuery.data?.data]);
 
   function setFormField<K extends keyof BuildFormState>(
     key: K,
@@ -317,6 +351,7 @@ export function BuildView() {
     mutationFn: () =>
       startBuildJob({
         settings: currentSettings(),
+        gitRef,
         pull: runPull,
         installUiDeps: runUiRebuild,
         cleanBuildDir: runCleanBuildDir,
@@ -340,6 +375,30 @@ export function BuildView() {
       notifications.show({
         color: "red",
         title: "Build start failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: (ref: string) => checkoutLlamaSourceRef(ref),
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["llama-source-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["llama-source-refs"] }),
+        queryClient.invalidateQueries({ queryKey: ["llama-arg-docs-sync"] }),
+        queryClient.invalidateQueries({ queryKey: ["llama-arg-help-diff"] }),
+      ]);
+      notifications.show({
+        title: "Checked out",
+        message: result.data.branch ?? result.data.currentCommit ?? "",
+      });
+    },
+    onError: (error) => {
+      setGitRef(refsQuery.data?.data.currentBranch ?? null);
+      notifications.show({
+        color: "red",
+        title: "Checkout failed",
         message: (error as Error).message,
       });
     },
@@ -502,13 +561,64 @@ export function BuildView() {
               </Group>
             )}
           </Stack>
-          <PathPickerInput
-            label="Build directory"
-            mode="directory"
-            value={buildDir}
-            disabled={!settingsReady}
-            onChange={(value) => setFormField("buildDir", value)}
-          />
+          <Stack gap={4}>
+            <Select
+              label="Git ref"
+              placeholder={detachedRef ?? "Detached / unknown"}
+              description="Switches the llama.cpp checkout — affects builds and the Arguments page."
+              data={
+                refs
+                  ? [
+                      ...(refs.branches.length
+                        ? [{ group: "Branches", items: refs.branches }]
+                        : []),
+                      ...(refs.tags.length
+                        ? [{ group: "Tags (recent)", items: refs.tags }]
+                        : []),
+                    ]
+                  : []
+              }
+              value={gitRef}
+              searchable
+              disabled={
+                !settingsReady ||
+                dirty ||
+                Boolean(runningJob) ||
+                checkoutMutation.isPending
+              }
+              nothingFoundMessage="No matching ref"
+              onChange={(value) => {
+                if (!value || value === gitRef) {
+                  return;
+                }
+                setGitRef(value);
+                checkoutMutation.mutate(value);
+              }}
+            />
+            <PathPickerInput
+              label="Builds base directory"
+              mode="directory"
+              value={buildDir}
+              disabled={!settingsReady}
+              onChange={(value) => setFormField("buildDir", value)}
+            />
+            <Box mih={32}>
+              {effectiveBuildDir && (
+                <Text c="dimmed" size="xs" className="text-wrap">
+                  Build dir: <Code>{effectiveBuildDir}</Code>
+                </Text>
+              )}
+              {dirty ? (
+                <Text c="dimmed" size="xs">
+                  Working tree is dirty — commit or stash to switch refs.
+                </Text>
+              ) : refIsTag ? (
+                <Text c="dimmed" size="xs">
+                  Tag checked out — git pull is skipped on build.
+                </Text>
+              ) : null}
+            </Box>
+          </Stack>
           <Select
             label="Build type"
             data={["Release", "Debug", "RelWithDebInfo", "MinSizeRel"]}
@@ -925,7 +1035,7 @@ export function BuildView() {
             ))}
           </Stack>
           <Code className="code-wrap">{repoPath}</Code>
-          {runCleanBuildDir && <Code className="code-wrap">{buildDir}</Code>}
+          <Code className="code-wrap">{effectiveBuildDir}</Code>
           <Group justify="flex-end" gap="xs">
             <Button
               variant="default"

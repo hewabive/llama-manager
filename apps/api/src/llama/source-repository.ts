@@ -1,8 +1,10 @@
 import {
+  LlamaSourceRefsSchema,
   LlamaSourceSettingsSchema,
   LlamaSourceSettingsUpdateSchema,
   LlamaSourceStatusSchema,
   type LlamaSourcePullResult,
+  type LlamaSourceRefs,
   type LlamaSourceSettings,
   type LlamaSourceSettingsUpdate,
   type LlamaSourceStatus,
@@ -97,12 +99,82 @@ export function pullLlamaSource(): LlamaSourcePullResult {
     return { ok: true, output: output || "Already up to date." };
   } catch (error) {
     const err = error as { stdout?: string; stderr?: string; message: string };
-    const output = [err.stdout, err.stderr]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+    const output = [err.stdout, err.stderr].filter(Boolean).join("\n").trim();
     return { ok: false, output: output || err.message };
   }
+}
+
+const RECENT_TAG_LIMIT = 100;
+
+export function listLlamaSourceRefs(): LlamaSourceRefs {
+  const settings = getLlamaSourceSettings();
+  const empty = {
+    branches: [],
+    tags: [],
+    currentBranch: null,
+    dirty: null,
+  };
+  if (!existsSync(settings.repoPath)) {
+    return LlamaSourceRefsSchema.parse(empty);
+  }
+
+  try {
+    const branches = runGit(settings.repoPath, [
+      "for-each-ref",
+      "--format=%(refname:short)",
+      "refs/heads",
+    ])
+      .split("\n")
+      .filter(Boolean);
+    const tags = runGit(settings.repoPath, [
+      "for-each-ref",
+      `--count=${RECENT_TAG_LIMIT}`,
+      "--sort=-creatordate",
+      "--format=%(refname:short)",
+      "refs/tags",
+    ])
+      .split("\n")
+      .filter(Boolean);
+    const currentBranch =
+      runGit(settings.repoPath, ["branch", "--show-current"]) || null;
+    const dirty =
+      runGit(settings.repoPath, ["status", "--porcelain"]).length > 0;
+    return LlamaSourceRefsSchema.parse({
+      branches,
+      tags,
+      currentBranch,
+      dirty,
+    });
+  } catch {
+    return LlamaSourceRefsSchema.parse(empty);
+  }
+}
+
+export function checkoutLlamaSourceRef(ref: string): LlamaSourceStatus {
+  const settings = getLlamaSourceSettings();
+  if (!existsSync(settings.repoPath)) {
+    throw new Error(`Repository path does not exist: ${settings.repoPath}`);
+  }
+
+  const refs = listLlamaSourceRefs();
+  if (!refs.branches.includes(ref) && !refs.tags.includes(ref)) {
+    throw new Error(`unknown git ref: ${ref}`);
+  }
+  if (refs.dirty === true) {
+    throw new Error(
+      `refusing to checkout ${ref}: the llama.cpp working tree has uncommitted changes — commit or stash them first`,
+    );
+  }
+
+  try {
+    runGit(settings.repoPath, ["checkout", ref]);
+  } catch (error) {
+    const err = error as { stdout?: string; stderr?: string; message: string };
+    const output = [err.stderr, err.stdout].filter(Boolean).join("\n").trim();
+    throw new Error(output || err.message);
+  }
+
+  return getLlamaSourceStatus();
 }
 
 export function getLlamaSourceStatus(): LlamaSourceStatus {

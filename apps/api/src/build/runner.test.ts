@@ -4,13 +4,26 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import test from "node:test";
 
-import type { BuildSettings } from "@llama-manager/core";
+import type { BuildJobStart, BuildSettings } from "@llama-manager/core";
 
 import {
   buildSteps,
   buildProcessEnv,
+  slugifyRef,
   validateBuildDirectoryCleanTarget,
 } from "./runner.js";
+
+function jobStart(overrides: Partial<BuildJobStart>): BuildJobStart {
+  return {
+    gitRef: null,
+    pull: false,
+    installUiDeps: false,
+    cleanBuildDir: false,
+    configure: false,
+    build: false,
+    ...overrides,
+  };
+}
 
 function settings(env: Record<string, string>): BuildSettings {
   return {
@@ -81,13 +94,7 @@ test("validateBuildDirectoryCleanTarget rejects repository directory", () => {
 test("buildSteps applies server build profile CMake definitions", () => {
   const [configure] = buildSteps(
     { ...settings({}), cuda: false },
-    {
-      pull: false,
-      installUiDeps: false,
-      cleanBuildDir: false,
-      configure: true,
-      build: false,
-    },
+    jobStart({ configure: true }),
     {},
   );
 
@@ -103,13 +110,7 @@ test("buildSteps applies server build profile CMake definitions", () => {
 test("buildSteps omits --target when target is empty", () => {
   const [build] = buildSteps(
     { ...settings({}), target: "" },
-    {
-      pull: false,
-      installUiDeps: false,
-      cleanBuildDir: false,
-      configure: false,
-      build: true,
-    },
+    jobStart({ build: true }),
     {},
   );
 
@@ -120,13 +121,7 @@ test("buildSteps omits --target when target is empty", () => {
 test("buildSteps passes --target when target is set", () => {
   const [build] = buildSteps(
     { ...settings({}), target: "llama-cli" },
-    {
-      pull: false,
-      installUiDeps: false,
-      cleanBuildDir: false,
-      configure: false,
-      build: true,
-    },
+    jobStart({ build: true }),
     {},
   );
 
@@ -146,13 +141,7 @@ test("buildSteps applies selected CUDA and optional CMake definitions", () => {
       cudaNoVmm: true,
       llguidance: "on",
     },
-    {
-      pull: false,
-      installUiDeps: false,
-      cleanBuildDir: false,
-      configure: true,
-      build: false,
-    },
+    jobStart({ configure: true }),
     {},
   );
 
@@ -176,13 +165,7 @@ test("buildSteps lets explicit extra CMake args override managed definitions", (
         "-DLLAMA_BUILD_TESTS=ON",
       ],
     },
-    {
-      pull: false,
-      installUiDeps: false,
-      cleanBuildDir: false,
-      configure: true,
-      build: false,
-    },
+    jobStart({ configure: true }),
     {},
   );
 
@@ -203,14 +186,54 @@ test("buildSteps lets explicit extra CMake args override managed definitions", (
   );
 });
 
-test("validateBuildDirectoryCleanTarget requires build-like directory name", () => {
+test("validateBuildDirectoryCleanTarget rejects a dir directly under root or home", () => {
   assert.throws(
     () =>
       validateBuildDirectoryCleanTarget({
         ...settings({}),
         repoPath: "/tmp/llama.cpp",
-        buildDir: "/tmp/output",
+        buildDir: "/master",
       }),
-    /does not contain 'build'/,
+    /directly under filesystem root or home/,
   );
+});
+
+test("validateBuildDirectoryCleanTarget accepts a per-branch build directory", () => {
+  assert.equal(
+    validateBuildDirectoryCleanTarget({
+      ...settings({}),
+      repoPath: "/tmp/llama.cpp",
+      buildDir: "/tmp/builds/master",
+    }),
+    "/tmp/builds/master",
+  );
+});
+
+test("buildSteps inserts git-checkout before git-pull when gitRef is set", () => {
+  const steps = buildSteps(
+    { ...settings({}), cuda: false },
+    jobStart({ gitRef: "feature/foo", pull: true }),
+    {},
+  );
+
+  assert.equal(steps[0]?.name, "git-checkout");
+  assert.deepEqual(steps[0]?.command, ["git", "checkout", "feature/foo"]);
+  assert.equal(steps[1]?.name, "git-pull");
+});
+
+test("buildSteps has no git-checkout step without gitRef", () => {
+  const steps = buildSteps(
+    { ...settings({}), cuda: false },
+    jobStart({ pull: true }),
+    {},
+  );
+
+  assert.ok(!steps.some((item) => item.name === "git-checkout"));
+});
+
+test("slugifyRef sanitizes ref names into safe directory segments", () => {
+  assert.equal(slugifyRef("feature/foo"), "feature-foo");
+  assert.equal(slugifyRef("master"), "master");
+  assert.equal(slugifyRef("b1234"), "b1234");
+  assert.equal(slugifyRef("///"), "build");
 });
