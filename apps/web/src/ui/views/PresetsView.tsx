@@ -1,6 +1,5 @@
 import type {
   GgufModel,
-  LlamaArgumentDefault,
   ModelPresetEntry,
   ModelPresetFile,
 } from "@llama-manager/core";
@@ -10,7 +9,6 @@ import {
   Badge,
   Box,
   Button,
-  Checkbox,
   Code,
   Group,
   Loader,
@@ -18,7 +16,6 @@ import {
   Paper,
   ScrollArea,
   Select,
-  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -27,13 +24,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createPreset,
   getLlamaArgumentDefaults,
-  getLlamaArguments,
   getModelScanSettings,
   getPreset,
   getPresetsSettings,
@@ -44,466 +40,16 @@ import {
   scanModels,
   updatePresetsSettings,
 } from "../../api/client";
-import { ArgumentPicker } from "../components/ArgumentPicker";
-import { ArgumentRow } from "../components/ArgumentRow";
-import { PathPickerInput } from "../components/PathPickerInput";
-import {
-  buildPresetArgOptionMap,
-  isSelectablePresetArgument,
-  presetKeyFromArgument,
-} from "../components/PresetArguments";
-import { defaultArgumentValue } from "../utils/argument-defaults";
 import {
   compareModelTitles,
-  formatBytes,
   isVocabModel,
   modelMatchesSearch,
-  modelTitle,
   presetEntryFromModel,
 } from "../utils/models";
-import { normalizePresetArgKey } from "../utils/preset-args";
-
-function presetArgumentCount(entry: ModelPresetEntry) {
-  return Object.keys(entry.extraArgs ?? {}).length;
-}
-
-function usePresetValidationBinaryPath(): string | undefined {
-  const presetsSettingsQuery = useQuery({
-    queryKey: ["presets-settings"],
-    queryFn: getPresetsSettings,
-    staleTime: 60_000,
-  });
-  const pathCatalogQuery = useQuery({
-    queryKey: ["path-catalog"],
-    queryFn: () => listPathCatalog(),
-    staleTime: 60_000,
-  });
-  const refId =
-    presetsSettingsQuery.data?.data.validationBinaryPathRefId ?? null;
-  if (!refId) {
-    return undefined;
-  }
-  return pathCatalogQuery.data?.data.find(
-    (entry) => entry.id === refId && entry.kind === "binary",
-  )?.path;
-}
-
-function useArgsCatalog() {
-  const queryClient = useQueryClient();
-  const binaryPath = usePresetValidationBinaryPath();
-  const argsKey = ["llama-args", "preset", binaryPath ?? "default"];
-  const argsCatalogQuery = useQuery({
-    queryKey: argsKey,
-    queryFn: () => getLlamaArguments(binaryPath),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const knownArgs = useMemo(
-    () => argsCatalogQuery.data?.data.options ?? [],
-    [argsCatalogQuery.data],
-  );
-  const refreshArgsMutation = useMutation({
-    mutationFn: () => getLlamaArguments(binaryPath, true),
-    onSuccess: (result) => {
-      queryClient.setQueryData(argsKey, result);
-      notifications.show({
-        title: "Argument catalog refreshed",
-        message: `${result.data.options.length} options`,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Argument refresh failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-  return {
-    knownArgs,
-    knownArgByPresetKey: buildPresetArgOptionMap(knownArgs),
-    selectablePresetArgs: knownArgs.filter(isSelectablePresetArgument),
-    isError: argsCatalogQuery.isError,
-    isFetching: argsCatalogQuery.isFetching,
-    refresh: () => refreshArgsMutation.mutate(),
-    refreshing: refreshArgsMutation.isPending,
-  };
-}
-
-const structuredArgKeys = new Set(["model", "m", "mmproj", "mm"]);
-
-const noPresetDefaults: LlamaArgumentDefault[] = [];
-
-function PresetArgsEditor(props: {
-  extraArgs: Record<string, string>;
-  presetDefaults?: LlamaArgumentDefault[];
-  label?: string;
-  emptyHint?: string;
-  onChange: (next: Record<string, string>) => void;
-}) {
-  const catalog = useArgsCatalog();
-  const presetDefaults = props.presetDefaults ?? noPresetDefaults;
-
-  const overlay = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { key: string; value: string }[] = [];
-    for (const item of presetDefaults) {
-      const key = normalizePresetArgKey(item.key);
-      if (!key || structuredArgKeys.has(key) || seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      out.push({ key, value: item.value });
-    }
-    return out;
-  }, [presetDefaults]);
-
-  const overlayKeys = new Set(overlay.map((item) => item.key));
-  const slots = [
-    ...overlay.map((item) => {
-      const active = item.key in props.extraArgs;
-      return {
-        key: item.key,
-        isDefault: true,
-        active,
-        value: active ? props.extraArgs[item.key]! : item.value,
-      };
-    }),
-    ...Object.keys(props.extraArgs)
-      .filter((key) => !overlayKeys.has(key))
-      .map((key) => ({
-        key,
-        isDefault: false,
-        active: true,
-        value: props.extraArgs[key]!,
-      })),
-  ];
-  const presentKeys = new Set(slots.map((slot) => slot.key));
-
-  function setValue(key: string, value: string) {
-    props.onChange({ ...props.extraArgs, [key]: value });
-  }
-  function setActive(key: string, value: string, active: boolean) {
-    const next = { ...props.extraArgs };
-    if (active) {
-      next[key] = value;
-    } else {
-      delete next[key];
-    }
-    props.onChange(next);
-  }
-  function remove(key: string) {
-    const next = { ...props.extraArgs };
-    delete next[key];
-    props.onChange(next);
-  }
-
-  return (
-    <Stack gap="xs">
-      <Group justify="space-between">
-        <Text fw={600} size="sm">
-          {props.label ?? "Arguments"}
-        </Text>
-        <Tooltip label="Reload from llama-server --help">
-          <ActionIcon
-            aria-label="Reload args catalog"
-            variant="subtle"
-            loading={Boolean(catalog.isFetching || catalog.refreshing)}
-            onClick={catalog.refresh}
-          >
-            <RefreshCw size={16} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
-      <ArgumentPicker
-        isError={catalog.isError}
-        isFetching={catalog.isFetching}
-        errorPlaceholder="Unable to read --help from llama-server binary"
-        data={catalog.selectablePresetArgs.map((option) => {
-          const key = presetKeyFromArgument(option);
-          const aliases = option.names.filter(
-            (name) => name !== option.primaryName,
-          );
-          const nameLabel = aliases.length
-            ? `${key}, ${aliases.join(", ")}`
-            : key;
-          return {
-            value: key,
-            label: `${nameLabel}${option.valueHint ? ` ${option.valueHint}` : ""} · ${option.category}`,
-            disabled:
-              presentKeys.has(key) || !option.compatibility.presentInBinary,
-            searchTerms: [key, option.primaryName, ...option.names],
-          };
-        })}
-        onPick={(value) => {
-          const option = catalog.knownArgByPresetKey.get(value);
-          if (option) {
-            setValue(
-              presetKeyFromArgument(option),
-              defaultArgumentValue(option, "preset"),
-            );
-          }
-        }}
-      />
-      {slots.length === 0 && (
-        <Text c="dimmed" size="xs">
-          {props.emptyHint ?? "No arguments yet."}
-        </Text>
-      )}
-      {slots.map((slot) => (
-        <ArgumentRow
-          key={slot.key}
-          keyLabel={slot.key}
-          option={catalog.knownArgByPresetKey.get(slot.key) ?? null}
-          value={slot.value}
-          scope="preset"
-          isDefault={slot.isDefault}
-          active={slot.active}
-          presetKey={slot.key}
-          onToggle={(active) => setActive(slot.key, slot.value, active)}
-          onRemove={() => remove(slot.key)}
-          onValueChange={(value) => setValue(slot.key, value)}
-        />
-      ))}
-    </Stack>
-  );
-}
-
-function PresetEntryDetailModal(props: {
-  opened: boolean;
-  entry: ModelPresetEntry | null;
-  model: GgufModel | null;
-  presetDefaults: LlamaArgumentDefault[];
-  onClose: () => void;
-  onSave: (entry: ModelPresetEntry) => void;
-}) {
-  const [draft, setDraft] = useState<ModelPresetEntry | null>(null);
-
-  useEffect(() => {
-    if (!props.opened || !props.entry) {
-      return;
-    }
-    setDraft({ ...props.entry, extraArgs: props.entry.extraArgs ?? {} });
-  }, [props.entry, props.opened]);
-
-  function updateDraft(update: Partial<ModelPresetEntry>) {
-    setDraft((current) => (current ? { ...current, ...update } : current));
-  }
-
-  function save() {
-    if (!draft) {
-      return;
-    }
-    props.onSave({
-      ...draft,
-      name: draft.name.trim() || "model",
-      modelPath: draft.modelPath.trim(),
-      mmprojPath: draft.mmprojPath?.trim() || null,
-    });
-    props.onClose();
-  }
-
-  return (
-    <Modal
-      opened={props.opened}
-      onClose={props.onClose}
-      title="Model preset details"
-      size="xl"
-      scrollAreaComponent={ScrollArea.Autosize}
-    >
-      {draft && (
-        <Stack gap="sm">
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-            <TextInput
-              label="Preset name"
-              value={draft.name}
-              onChange={(event) =>
-                updateDraft({ name: event.currentTarget.value })
-              }
-            />
-            <PathPickerInput
-              label="Model path"
-              mode="file"
-              filter="model"
-              value={draft.modelPath}
-              onChange={(value) => updateDraft({ modelPath: value })}
-            />
-            <PathPickerInput
-              label="mmproj"
-              mode="file"
-              filter="model"
-              value={draft.mmprojPath ?? ""}
-              onChange={(value) => updateDraft({ mmprojPath: value || null })}
-            />
-          </SimpleGrid>
-
-          {props.model && (
-            <Group gap="xs">
-              <Badge variant="light">
-                {props.model.metadata.architecture ?? "unknown arch"}
-              </Badge>
-              <Badge variant="outline">
-                {props.model.metadata.quantization ?? "unknown quant"}
-              </Badge>
-              <Badge variant="outline">
-                {formatBytes(props.model.sizeBytes)}
-              </Badge>
-            </Group>
-          )}
-
-          <PresetArgsEditor
-            extraArgs={draft.extraArgs}
-            presetDefaults={props.presetDefaults}
-            emptyHint="No arguments yet. Preset defaults appear here as toggles."
-            onChange={(extraArgs) => updateDraft({ extraArgs })}
-          />
-
-          <Group justify="flex-end">
-            <Button variant="subtle" onClick={props.onClose}>
-              Cancel
-            </Button>
-            <Button
-              onClick={save}
-              disabled={!draft.name.trim() || !draft.modelPath.trim()}
-            >
-              Save details
-            </Button>
-          </Group>
-        </Stack>
-      )}
-    </Modal>
-  );
-}
-
-function PresetModelCard(props: {
-  model: GgufModel | null;
-  entry: ModelPresetEntry | null;
-  disabled: boolean;
-  onToggle: (checked: boolean) => void;
-  onEdit: () => void;
-}) {
-  const { model, entry } = props;
-  const included = Boolean(entry);
-  const title = model ? modelTitle(model) : (entry?.name ?? "model");
-  const path = model?.path ?? entry?.modelPath ?? "";
-
-  return (
-    <Paper
-      withBorder
-      p="sm"
-      radius="sm"
-      {...(included ? { bg: "var(--mantine-color-default-hover)" } : {})}
-    >
-      <Stack gap="xs">
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Checkbox
-            aria-label={`Use ${title} in preset`}
-            checked={included}
-            disabled={props.disabled}
-            onChange={(event) => props.onToggle(event.currentTarget.checked)}
-            mt={4}
-          />
-          <Box style={{ flex: 1, minWidth: 0 }}>
-            <Text fw={600} size="sm">
-              {title}
-            </Text>
-            <Text c="dimmed" size="xs" className="text-wrap">
-              {path}
-            </Text>
-            <Group gap="xs" mt={6}>
-              {model ? (
-                <>
-                  <Badge variant="light">
-                    {model.metadata.architecture ?? "unknown arch"}
-                  </Badge>
-                  <Badge variant="outline">
-                    {model.metadata.quantization ?? "unknown quant"}
-                  </Badge>
-                  <Badge variant="outline">
-                    {formatBytes(model.sizeBytes)}
-                  </Badge>
-                </>
-              ) : (
-                <Badge variant="outline" color="yellow">
-                  not in scan dir
-                </Badge>
-              )}
-              {entry && (
-                <Badge variant="outline">
-                  {presetArgumentCount(entry)} args
-                </Badge>
-              )}
-            </Group>
-          </Box>
-          {included && (
-            <Tooltip label="Details">
-              <ActionIcon
-                aria-label="Edit preset model details"
-                variant="subtle"
-                onClick={props.onEdit}
-              >
-                <Pencil size={16} />
-              </ActionIcon>
-            </Tooltip>
-          )}
-        </Group>
-      </Stack>
-    </Paper>
-  );
-}
-
-const presetNamePattern = /^[A-Za-z0-9._-]+$/;
-
-function NewPresetModal(props: {
-  opened: boolean;
-  onClose: () => void;
-  onCreate: (input: { name: string }) => void;
-  pending: boolean;
-}) {
-  const [name, setName] = useState("");
-
-  useEffect(() => {
-    if (props.opened) {
-      setName("");
-    }
-  }, [props.opened]);
-
-  const trimmed = name.trim();
-  const valid = presetNamePattern.test(trimmed);
-
-  return (
-    <Modal opened={props.opened} onClose={props.onClose} title="New preset">
-      <Stack gap="sm">
-        <TextInput
-          label="Name"
-          placeholder="my-models"
-          value={name}
-          onChange={(event) => setName(event.currentTarget.value)}
-          error={
-            trimmed && !valid
-              ? "Use letters, digits, dot, dash, underscore only"
-              : undefined
-          }
-        />
-        <Text c="dimmed" size="xs">
-          Creates an empty <Code>data/presets/{trimmed || "name"}.ini</Code>.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="subtle" onClick={props.onClose}>
-            Cancel
-          </Button>
-          <Button
-            loading={props.pending}
-            disabled={!valid}
-            onClick={() => props.onCreate({ name: trimmed })}
-          >
-            Create
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
+import { NewPresetModal } from "./presets/NewPresetModal";
+import { PresetArgsEditor } from "./presets/PresetArgsEditor";
+import { PresetEntryDetailModal } from "./presets/PresetEntryDetailModal";
+import { PresetModelCard } from "./presets/PresetModelCard";
 
 type SaveState = "idle" | "saving" | "saved" | "error" | "conflict";
 
@@ -678,7 +224,9 @@ export function PresetsView() {
         setPreviewContent(result.document.content);
         setSaveState("saved");
         void queryClient.invalidateQueries({ queryKey: ["presets"] });
-        void queryClient.invalidateQueries({ queryKey: ["presets-validation"] });
+        void queryClient.invalidateQueries({
+          queryKey: ["presets-validation"],
+        });
       }
     } catch (error) {
       setSaveState("error");
@@ -754,7 +302,9 @@ export function PresetsView() {
         setPreviewContent(result.document.content);
         setSaveState("saved");
         void queryClient.invalidateQueries({ queryKey: ["presets"] });
-        void queryClient.invalidateQueries({ queryKey: ["presets-validation"] });
+        void queryClient.invalidateQueries({
+          queryKey: ["presets-validation"],
+        });
       }
     } catch (error) {
       setSaveState("error");
@@ -893,7 +443,8 @@ export function PresetsView() {
             value={selectedName}
             onChange={setSelectedName}
             data={presets.map((item) => {
-              const valid = validationByName.get(item.name)?.valid ?? item.valid;
+              const valid =
+                validationByName.get(item.name)?.valid ?? item.valid;
               return {
                 value: item.name,
                 label: `${item.name}${valid ? "" : " · invalid"} · ${item.entryCount} models`,
