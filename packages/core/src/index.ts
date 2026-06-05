@@ -976,6 +976,7 @@ export const LlamaSourcePullResultSchema = z.object({
 
 export const LlamaSourceRefsSchema = z.object({
   branches: z.array(z.string()),
+  branchesWithUpstream: z.array(z.string()),
   tags: z.array(z.string()),
   currentBranch: z.string().nullable(),
   dirty: z.boolean().nullable(),

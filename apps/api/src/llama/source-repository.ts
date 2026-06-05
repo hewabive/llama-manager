@@ -110,6 +110,7 @@ export function listLlamaSourceRefs(): LlamaSourceRefs {
   const settings = getLlamaSourceSettings();
   const empty = {
     branches: [],
+    branchesWithUpstream: [],
     tags: [],
     currentBranch: null,
     dirty: null,
@@ -119,13 +120,25 @@ export function listLlamaSourceRefs(): LlamaSourceRefs {
   }
 
   try {
-    const branches = runGit(settings.repoPath, [
+    const branches: string[] = [];
+    const branchesWithUpstream: string[] = [];
+    const branchLines = runGit(settings.repoPath, [
       "for-each-ref",
-      "--format=%(refname:short)",
+      "--format=%(refname:short)\t%(upstream)",
       "refs/heads",
     ])
       .split("\n")
       .filter(Boolean);
+    for (const line of branchLines) {
+      const [name, upstream] = line.split("\t");
+      if (!name) {
+        continue;
+      }
+      branches.push(name);
+      if (upstream) {
+        branchesWithUpstream.push(name);
+      }
+    }
     const tags = runGit(settings.repoPath, [
       "for-each-ref",
       `--count=${RECENT_TAG_LIMIT}`,
@@ -141,6 +154,7 @@ export function listLlamaSourceRefs(): LlamaSourceRefs {
       runGit(settings.repoPath, ["status", "--porcelain"]).length > 0;
     return LlamaSourceRefsSchema.parse({
       branches,
+      branchesWithUpstream,
       tags,
       currentBranch,
       dirty,

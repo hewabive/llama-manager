@@ -404,10 +404,16 @@ export class LlamaBuildRunner {
       throw new Error(`unknown git ref: ${input.gitRef}`);
     }
 
-    const isBranch = input.gitRef ? refs.branches.includes(input.gitRef) : true;
+    const targetBranch = input.gitRef
+      ? refs.branches.includes(input.gitRef)
+        ? input.gitRef
+        : null
+      : refs.currentBranch;
+    const canPull =
+      targetBranch !== null && refs.branchesWithUpstream.includes(targetBranch);
     const effectiveInput: BuildJobStart = {
       ...input,
-      pull: input.pull && isBranch,
+      pull: input.pull && canPull,
     };
 
     const settings: BuildSettings = {

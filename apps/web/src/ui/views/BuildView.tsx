@@ -267,7 +267,10 @@ export function BuildView() {
   const effectiveBuildDir = buildDir
     ? `${buildDir.replace(/[\\/]+$/, "")}/${slugifyRef(refForDir)}`
     : "";
-  const willPull = runPull && !refIsTag;
+  const refIsLocalBranch = refs?.branches.includes(refForDir) ?? false;
+  const branchHasUpstream =
+    refs?.branchesWithUpstream.includes(refForDir) ?? false;
+  const willPull = runPull && refIsLocalBranch && branchHasUpstream;
   const selectedSteps = [
     ...(gitRef ? [`git checkout ${gitRef}`] : []),
     ...(willPull ? ["git pull --ff-only"] : []),
@@ -615,6 +618,10 @@ export function BuildView() {
               ) : refIsTag ? (
                 <Text c="dimmed" size="xs">
                   Tag checked out — git pull is skipped on build.
+                </Text>
+              ) : refIsLocalBranch && !branchHasUpstream ? (
+                <Text c="dimmed" size="xs">
+                  No upstream — git pull is skipped on build.
                 </Text>
               ) : null}
             </Box>
