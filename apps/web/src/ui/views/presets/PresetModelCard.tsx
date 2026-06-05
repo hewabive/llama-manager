@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import { Pencil } from "lucide-react";
 
-import { formatBytes, modelTitle } from "../../utils/models";
+import { formatBytes, modelTitle, presetEntrySource } from "../../utils/models";
 
 function presetArgumentCount(entry: ModelPresetEntry) {
   return Object.keys(entry.extraArgs ?? {}).length;
@@ -28,7 +28,14 @@ export function PresetModelCard(props: {
   const { model, entry } = props;
   const included = Boolean(entry);
   const title = model ? modelTitle(model) : (entry?.name ?? "model");
-  const path = model?.path ?? entry?.modelPath ?? "";
+  const source = entry ? presetEntrySource(entry) : "local";
+  const remoteRef =
+    entry && source === "hf"
+      ? entry.extraArgs["hf-repo"]
+      : entry && source === "url"
+        ? entry.extraArgs["model-url"]
+        : null;
+  const path = model?.path ?? remoteRef ?? entry?.modelPath ?? "";
 
   return (
     <Paper
@@ -66,6 +73,14 @@ export function PresetModelCard(props: {
                     {formatBytes(model.sizeBytes)}
                   </Badge>
                 </>
+              ) : source === "hf" ? (
+                <Badge variant="light" color="grape">
+                  HF
+                </Badge>
+              ) : source === "url" ? (
+                <Badge variant="light" color="blue">
+                  URL
+                </Badge>
               ) : (
                 <Badge variant="outline" color="yellow">
                   not in scan dir

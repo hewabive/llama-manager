@@ -1429,7 +1429,7 @@ export type PresetsSettings = z.infer<typeof PresetsSettingsSchema>;
 export const ModelPresetEntrySchema = z.object({
   id: z.string(),
   name: z.string().min(1),
-  modelPath: z.string().min(1),
+  modelPath: z.string(),
   mmprojPath: z.string().nullable(),
   extraArgs: z.record(z.string(), z.string()).default({}),
 });

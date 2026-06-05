@@ -1,11 +1,24 @@
 import type {
   LlamaArgumentOption,
+  ModelPresetEntry,
   ModelPresetFile,
   PresetDiagnostic,
 } from "@llama-manager/core";
 
 function normalizeKey(key: string) {
   return key.trim().replace(/^-+/, "");
+}
+
+const remoteSourceKeys = new Set(["hf-repo", "hf", "hfr", "model-url", "mu"]);
+
+function entryHasModelSource(entry: ModelPresetEntry) {
+  if (entry.modelPath.trim() !== "") {
+    return true;
+  }
+  return Object.entries(entry.extraArgs).some(
+    ([key, value]) =>
+      remoteSourceKeys.has(normalizeKey(key)) && value.trim() !== "",
+  );
 }
 
 function buildOptionLookup(options: LlamaArgumentOption[]) {
@@ -86,7 +99,7 @@ export function validatePresetStructure(
 ): PresetDiagnostic[] {
   const diagnostics: PresetDiagnostic[] = [];
   for (const entry of file.entries) {
-    if (entry.modelPath.trim() === "") {
+    if (!entryHasModelSource(entry)) {
       diagnostics.push({
         severity: "warning",
         message: `section '${entry.name}' has no model path; it only loads if the name matches an existing server model`,
@@ -121,7 +134,7 @@ export function validateModelPresetFile(
   }
 
   for (const entry of file.entries) {
-    if (entry.modelPath.trim() === "") {
+    if (!entryHasModelSource(entry)) {
       diagnostics.push({
         severity: "warning",
         message: `section '${entry.name}' has no model path; it only loads if the name matches an existing server model`,

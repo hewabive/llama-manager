@@ -1,10 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import type {
-  LlamaArgumentOption,
-  ModelPresetFile,
-} from "@llama-manager/core";
+import type { LlamaArgumentOption, ModelPresetFile } from "@llama-manager/core";
 
 import { presetFileHasErrors, validateModelPresetFile } from "./validate.js";
 
@@ -105,6 +102,28 @@ test("validateModelPresetFile accepts known keys and aliases", () => {
   assert.equal(presetFileHasErrors(diagnostics), false);
 });
 
+test("validateModelPresetFile does not warn on missing model when hf-repo is present", () => {
+  const diagnostics = validateModelPresetFile(
+    file({
+      entries: [
+        {
+          id: "m",
+          name: "m",
+          modelPath: "",
+          mmprojPath: null,
+          extraArgs: { "hf-repo": "user/repo:Q4_K_M" },
+        },
+      ],
+    }),
+    [
+      ...catalog,
+      option({ primaryName: "--hf-repo", names: ["-hf", "--hf-repo"] }),
+    ],
+  );
+
+  assert.deepEqual(diagnostics, []);
+});
+
 test("validateModelPresetFile warns on router-managed keys and missing model", () => {
   const diagnostics = validateModelPresetFile(
     file({
@@ -124,9 +143,7 @@ test("validateModelPresetFile warns on router-managed keys and missing model", (
   assert.equal(presetFileHasErrors(diagnostics), false);
   assert.equal(diagnostics.length, 2);
   assert.ok(
-    diagnostics.some(
-      (d) => d.key === null && /no model path/.test(d.message),
-    ),
+    diagnostics.some((d) => d.key === null && /no model path/.test(d.message)),
   );
   assert.ok(
     diagnostics.some(

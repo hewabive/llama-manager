@@ -164,3 +164,29 @@ export function presetEntryFromModel(
     defaults,
   );
 }
+
+export function remotePresetEntry(): ModelPresetEntry {
+  return {
+    id: createUiId("preset"),
+    name: "remote-model",
+    modelPath: "",
+    mmprojPath: null,
+    extraArgs: {},
+  };
+}
+
+export type PresetEntrySource = "local" | "hf" | "url";
+
+function extraArgConfigured(entry: ModelPresetEntry, key: string) {
+  return Boolean(entry.extraArgs[key]?.trim());
+}
+
+export function presetEntrySource(entry: ModelPresetEntry): PresetEntrySource {
+  if (extraArgConfigured(entry, "hf-repo")) {
+    return "hf";
+  }
+  if (extraArgConfigured(entry, "model-url")) {
+    return "url";
+  }
+  return "local";
+}

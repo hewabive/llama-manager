@@ -45,6 +45,7 @@ import {
   isVocabModel,
   modelMatchesSearch,
   presetEntryFromModel,
+  remotePresetEntry,
 } from "../utils/models";
 import { NewPresetModal } from "./presets/NewPresetModal";
 import { PresetArgsEditor } from "./presets/PresetArgsEditor";
@@ -377,6 +378,15 @@ export function PresetsView() {
     setEntries(entries.map((item) => (item.id === entry.id ? entry : item)));
   }
 
+  function addRemoteModel() {
+    if (!draftRef.current) {
+      return;
+    }
+    const entry = remotePresetEntry();
+    setEntries([...entries, entry]);
+    setSelectedPresetEntryId(entry.id);
+  }
+
   function togglePresetModel(model: GgufModel, checked: boolean) {
     if (checked) {
       if (entries.some((entry) => entry.modelPath === model.path)) {
@@ -567,6 +577,14 @@ export function PresetsView() {
                     <Badge variant="outline">
                       {scannedModels.length} scanned
                     </Badge>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<Plus size={14} />}
+                      onClick={addRemoteModel}
+                    >
+                      Add remote model
+                    </Button>
                   </Group>
                 </Group>
                 {presetModelsQuery.isError && (

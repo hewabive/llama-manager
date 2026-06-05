@@ -11,6 +11,15 @@ import { normalizePresetArgKey } from "../../utils/preset-args";
 import { useArgsCatalog } from "./useArgsCatalog";
 
 const structuredArgKeys = new Set(["model", "m", "mmproj", "mm"]);
+const hiddenArgKeys = new Set([
+  "hf-repo",
+  "hf",
+  "hfr",
+  "hf-file",
+  "hff",
+  "model-url",
+  "mu",
+]);
 
 const noPresetDefaults: LlamaArgumentDefault[] = [];
 
@@ -29,7 +38,12 @@ export function PresetArgsEditor(props: {
     const out: { key: string; value: string }[] = [];
     for (const item of presetDefaults) {
       const key = normalizePresetArgKey(item.key);
-      if (!key || structuredArgKeys.has(key) || seen.has(key)) {
+      if (
+        !key ||
+        structuredArgKeys.has(key) ||
+        hiddenArgKeys.has(key) ||
+        seen.has(key)
+      ) {
         continue;
       }
       seen.add(key);
@@ -50,7 +64,11 @@ export function PresetArgsEditor(props: {
       };
     }),
     ...Object.keys(props.extraArgs)
-      .filter((key) => !overlayKeys.has(key))
+      .filter(
+        (key) =>
+          !overlayKeys.has(key) &&
+          !hiddenArgKeys.has(normalizePresetArgKey(key)),
+      )
       .map((key) => ({
         key,
         isDefault: false,
