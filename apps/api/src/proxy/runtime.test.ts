@@ -223,6 +223,41 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
   assert.equal(busy.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
 });
 
+test("buildApiProxyRuntimeSnapshot marks an in-flight lease busy during prefill", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:10.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([["instance-a", health({ processing: false })]]),
+    busyTargetIds: new Set(["target-a"]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "busy");
+  assert.equal(snapshot.targets[0]?.activeRequests, 1);
+  assert.equal(snapshot.targets[0]?.idleSince, null);
+  assert.equal(snapshot.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
+});
+
+test("buildApiProxyRuntimeSnapshot does not override loading state for an in-flight lease", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:10.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([
+      ["instance-a", health({ modelStatus: "loading" })],
+    ]),
+    busyTargetIds: new Set(["target-a"]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "loading");
+});
+
 test("buildApiProxyRuntimeSnapshot treats listed models without status as idle", () => {
   resetApiProxyRuntimeTrackers();
 

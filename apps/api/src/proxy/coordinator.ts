@@ -68,6 +68,21 @@ export class ResourceGroupCoordinator {
     return promise;
   }
 
+  busyTargetIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const group of this.groups.values()) {
+      const holder = group.holder;
+      if (
+        holder &&
+        holder.status === "holding" &&
+        holder.targetId !== "__maintenance__"
+      ) {
+        ids.add(holder.targetId);
+      }
+    }
+    return ids;
+  }
+
   tryAcquireMaintenance(groupKey: string): ResourceLease | null {
     const group = this.groupFor(groupKey);
     if (group.holder || group.waiters.length > 0) {

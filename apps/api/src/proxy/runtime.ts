@@ -147,7 +147,7 @@ function processRuntimeState(
   return "unknown";
 }
 
-function deriveState(input: {
+function baseState(input: {
   target: ApiProxyTargetRecord;
   instanceId: string | null;
   instance: Instance | undefined;
@@ -180,6 +180,20 @@ function deriveState(input: {
     state: processRuntimeState(input.health, activeRequests),
     activeRequests,
   };
+}
+
+function deriveState(input: {
+  target: ApiProxyTargetRecord;
+  instanceId: string | null;
+  instance: Instance | undefined;
+  health: InstanceHealthSummary | undefined;
+  inFlight: boolean;
+}): { state: ApiProxyModelState; activeRequests: number } {
+  const base = baseState(input);
+  if (input.inFlight && stateIsIdle(base.state)) {
+    return { state: "busy", activeRequests: Math.max(base.activeRequests, 1) };
+  }
+  return base;
 }
 
 function trackerFor(targetId: string) {
@@ -240,6 +254,7 @@ export function deriveApiProxyTargetRuntime(input: {
   instance?: Instance | undefined;
   health?: InstanceHealthSummary | undefined;
   metadata?: ApiProxyRuntimeMetadataRecord | undefined;
+  inFlight?: boolean | undefined;
   checkedAt: string;
 }): ApiProxyTargetRuntime {
   const derived = input.endpointEnabled
@@ -248,6 +263,7 @@ export function deriveApiProxyTargetRuntime(input: {
         instanceId: input.instanceId,
         instance: input.instance,
         health: input.health,
+        inFlight: input.inFlight ?? false,
       })
     : { state: "error" as const, activeRequests: 0 };
   const tracker = updateTracker({
@@ -280,6 +296,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
   instances: Instance[];
   healthByInstanceId: Map<string, InstanceHealthSummary>;
   metadataByTargetId?: Map<string, ApiProxyRuntimeMetadataRecord> | undefined;
+  busyTargetIds?: Set<string> | undefined;
 }): ApiProxyRuntimeSnapshot {
   const instanceById = new Map(
     input.instances.map((instance) => [instance.name, instance]),
@@ -315,6 +332,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
           ? input.healthByInstanceId.get(resolution.instanceId)
           : undefined,
         metadata: input.metadataByTargetId?.get(target.id),
+        inFlight: input.busyTargetIds?.has(target.id) ?? false,
         checkedAt: input.checkedAt,
       });
     }),

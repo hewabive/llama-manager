@@ -51,6 +51,24 @@ test("serializes one holder per group, admits next on release", async () => {
   assert.equal(bState.done, true);
 });
 
+test("busyTargetIds reports only current holders, not waiters", async () => {
+  const coord = new ResourceGroupCoordinator();
+  const a = await coord.acquire(req("g", 100));
+  track(coord.acquire(req("g", 100)));
+  await flush();
+
+  assert.deepEqual([...coord.busyTargetIds()], ["target-100"]);
+
+  a.release();
+  await flush();
+  assert.deepEqual([...coord.busyTargetIds()], ["target-100"]);
+
+  const c = await coord.acquire(req("g2", 50));
+  assert.deepEqual([...coord.busyTargetIds()].sort(), ["target-100", "target-50"]);
+
+  c.release();
+});
+
 test("admits higher priority waiter first regardless of arrival order", async () => {
   const coord = new ResourceGroupCoordinator();
   const a = await coord.acquire(req("g", 100));

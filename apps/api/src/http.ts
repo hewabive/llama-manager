@@ -386,6 +386,7 @@ async function getApiProxyRuntimeSnapshot() {
       instances,
       healthByInstanceId: new Map(healthEntries),
       metadataByTargetId: listApiProxyRuntimeMetadata(),
+      busyTargetIds: resourceGroupCoordinator.busyTargetIds(),
     }),
   };
 }
