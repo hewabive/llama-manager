@@ -22,7 +22,6 @@ import {
   PasswordInput,
   ScrollArea,
   SegmentedControl,
-  Select,
   SimpleGrid,
   Stack,
   Switch,
@@ -31,7 +30,6 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -86,6 +84,7 @@ import {
   canonicalOptionForRow,
 } from "./InstanceArgumentRows";
 import { PathPickerInput } from "./PathPickerInput";
+import { TouchSelect } from "./TouchCombobox";
 import { createUiId } from "../utils/id";
 
 type LaunchMode = "model" | "router" | "remote";
@@ -272,7 +271,6 @@ export function InstanceFormModal(props: {
   const [selectedPresetName, setSelectedPresetName] = useState<string | null>(
     null,
   );
-  const isMobile = useMediaQuery("(max-width: 48em)");
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const form = useForm({
     initialValues: {
@@ -1259,7 +1257,7 @@ export function InstanceFormModal(props: {
             description="Used as the config file name: letters, digits, dot, underscore, hyphen"
             {...form.getInputProps("name")}
           />
-          <Select
+          <TouchSelect
             label="Binary"
             required
             description="Managed in the Path catalog page; the working directory defaults to the binary's folder."
@@ -1295,14 +1293,14 @@ export function InstanceFormModal(props: {
               />
               {launchMode === "model" ? (
                 <>
-                  <Select
+                  <TouchSelect
                     label="Model"
                     placeholder={
                       formModelsQuery.isFetching
                         ? "Loading models..."
                         : "Select GGUF model"
                     }
-                    searchable={!isMobile}
+                    searchable
                     clearable
                     value={selectedModelPath}
                     onChange={applyModelSelection}
@@ -1407,7 +1405,7 @@ export function InstanceFormModal(props: {
                 </Stack>
               ) : (
                 <Stack gap={6}>
-                  <Select
+                  <TouchSelect
                     label="Preset"
                     placeholder={
                       presetsQuery.isFetching
@@ -1491,10 +1489,10 @@ export function InstanceFormModal(props: {
                 <Collapse in={specEnabled}>
                   <Stack gap="xs">
                     {specTypeOptions.length > 0 ? (
-                      <Select
+                      <TouchSelect
                         label="Mechanism (--spec-type)"
                         clearable
-                        searchable={!isMobile}
+                        searchable
                         placeholder="draft-simple (default)"
                         value={specTypeValue || null}
                         onChange={(value) =>
@@ -1531,14 +1529,14 @@ export function InstanceFormModal(props: {
                     />
                     {specSource === "local" ? (
                       <>
-                        <Select
+                        <TouchSelect
                           label="Draft model"
                           placeholder={
                             formModelsQuery.isFetching
                               ? "Loading models..."
                               : "Select GGUF model"
                           }
-                          searchable={!isMobile}
+                          searchable
                           clearable
                           value={specDraftModelValue || null}
                           onChange={applySpecDraftModel}

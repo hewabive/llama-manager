@@ -38,6 +38,7 @@ import {
   updateLlamaArgumentDefaults,
 } from "../../api/client";
 import { ArgumentValueControl } from "../components/ArgumentValueControl";
+import { TouchSelect } from "../components/TouchCombobox";
 import {
   EngineeringMarkdown,
   displayEngineeringMarkdown,
@@ -767,7 +768,7 @@ export function ArgumentsView() {
               onChange={(event) => setSearch(event.currentTarget.value)}
               className="search-input"
             />
-            <Select
+            <TouchSelect
               aria-label="Argument category"
               label="Category"
               data={[

@@ -24,7 +24,7 @@ import {
   runInstanceApiProbe,
   streamInstanceApiProbe,
 } from "../../../api/client";
-import { TouchAutocomplete } from "../TouchAutocomplete";
+import { TouchAutocomplete } from "../TouchCombobox";
 import { ApiProbeResultView, StreamProbeResult } from "./Results";
 import {
   emptyStreamProbeState,

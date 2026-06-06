@@ -1,9 +1,10 @@
 import type { NetworkInterfaceAddress } from "@llama-manager/core";
-import { Select, Stack, Text, TextInput } from "@mantine/core";
+import { Stack, Text, TextInput } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { listNetworkInterfaces } from "../../api/client";
+import { TouchSelect } from "./TouchCombobox";
 
 const customHostSelectValue = "__custom_host__";
 
@@ -76,7 +77,7 @@ export function HostPicker(props: {
 
   return (
     <Stack gap={4}>
-      <Select
+      <TouchSelect
         label={props.label}
         searchable
         allowDeselect={false}

@@ -29,6 +29,7 @@ import {
   unboundTargetValue,
 } from "./forms";
 import type { SelectOption } from "./sections";
+import { TouchSelect } from "../components/TouchCombobox";
 
 function targetModelKindLabel(kind: ApiProxyTargetModelGroup["kind"]) {
   if (kind === "managed-single") return "single";
@@ -76,7 +77,7 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
             props.onDraftChange({ ...props.draft, ownedBy });
           }}
         />
-        <Select
+        <TouchSelect
           label="Route to"
           data={props.routeToOptions}
           value={props.draft.routeToValue ?? unboundTargetValue}
@@ -181,7 +182,7 @@ export function PipelineEditorModal(props: PipelineEditorModalProps) {
             }}
           />
         )}
-        <Select
+        <TouchSelect
           label="Route to"
           data={props.routeToOptions}
           value={props.draft.routeToValue ?? unboundTargetValue}
@@ -280,7 +281,7 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             props.onDraftChange({ ...props.draft, name });
           }}
         />
-        <Select
+        <TouchSelect
           data={modelSelectData}
           label="Target model"
           description="The servable model this target represents. Single-model instances need no model (it is implied); pick a named model only for router instances or external APIs."

@@ -22,7 +22,7 @@ import {
   type ProbeRequestOption,
 } from "../components/api-probe/ApiProbePanel";
 import { StatusTooltipIcon } from "../components/StatusTooltipIcon";
-import { TouchAutocomplete } from "../components/TouchAutocomplete";
+import { TouchAutocomplete } from "../components/TouchCombobox";
 import { useApiModelOptions } from "../hooks/use-api-model-options";
 import { llamaServerApiUrl } from "../utils/instance-url";
 

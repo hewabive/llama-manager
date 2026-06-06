@@ -1,7 +1,8 @@
 import type { Instance, InstanceHealthSummary } from "@llama-manager/core";
-import { Select, Stack } from "@mantine/core";
+import { Stack } from "@mantine/core";
 
 import { InstanceDetails } from "../components/InstanceDetails";
+import { TouchSelect } from "../components/TouchCombobox";
 import type { LaunchMonitor } from "../utils/launch";
 
 export function DiagnosticsView(props: {
@@ -15,7 +16,7 @@ export function DiagnosticsView(props: {
 }) {
   return (
     <Stack gap="md">
-      <Select
+      <TouchSelect
         label="Instance"
         data={props.instances.map((instance) => ({
           value: instance.name,

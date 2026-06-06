@@ -43,6 +43,7 @@ import {
   updateBuildSettings,
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
+import { TouchSelect } from "../components/TouchCombobox";
 import { formatLocalDateTime } from "../utils/time";
 
 function buildStatusColor(status: BuildJob["status"]) {
@@ -565,7 +566,7 @@ export function BuildView() {
             )}
           </Stack>
           <Stack gap={4}>
-            <Select
+            <TouchSelect
               label="Git ref"
               placeholder={detachedRef ?? "Detached / unknown"}
               description="Switches the llama.cpp checkout — affects builds and the Arguments page."

@@ -15,7 +15,6 @@ import {
   Modal,
   Paper,
   ScrollArea,
-  Select,
   Stack,
   Text,
   TextInput,
@@ -47,6 +46,7 @@ import {
   presetEntryFromModel,
   remotePresetEntry,
 } from "../utils/models";
+import { TouchSelect } from "../components/TouchCombobox";
 import { NewPresetModal } from "./presets/NewPresetModal";
 import { PresetArgsEditor } from "./presets/PresetArgsEditor";
 import { PresetEntryDetailModal } from "./presets/PresetEntryDetailModal";
@@ -459,7 +459,7 @@ export function PresetsView() {
             </Group>
           </Group>
 
-          <Select
+          <TouchSelect
             label="Preset"
             placeholder={
               presetsQuery.isFetching ? "Loading presets..." : "Select a preset"
@@ -478,7 +478,7 @@ export function PresetsView() {
             nothingFoundMessage="No presets in data/presets"
           />
 
-          <Select
+          <TouchSelect
             label="Validation binary"
             description="llama-server whose --help validates preset keys (different builds expose different args)."
             placeholder="Default (master build)"

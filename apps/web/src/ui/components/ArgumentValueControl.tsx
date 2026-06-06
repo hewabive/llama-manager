@@ -12,6 +12,7 @@ import {
   argumentAcceptsAutoAll,
   defaultArgumentValue,
 } from "../utils/argument-defaults";
+import { TouchSelect } from "./TouchCombobox";
 
 type ArgumentValueScope = "instance" | "preset";
 
@@ -127,7 +128,7 @@ export function ArgumentValueControl(props: {
     props.option.allowedValues.length > 0
   ) {
     return (
-      <Select
+      <TouchSelect
         aria-label={ariaLabel}
         data={props.option.allowedValues.map((value) => ({
           value,

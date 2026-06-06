@@ -1,6 +1,7 @@
-import { Select } from "@mantine/core";
 import type { OptionsFilter } from "@mantine/core";
 import { useMemo, useState } from "react";
+
+import { TouchSelect } from "./TouchCombobox";
 
 export type ArgumentPickerOption = {
   value: string;
@@ -52,7 +53,7 @@ export function ArgumentPicker(props: {
   };
 
   return (
-    <Select
+    <TouchSelect
       key={pickerKey}
       filter={filterOptions}
       label={props.label ?? "Add argument"}

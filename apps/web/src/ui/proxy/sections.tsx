@@ -17,7 +17,6 @@ import {
   Group,
   Loader,
   Paper,
-  Select,
   Stack,
   Table,
   Text,
@@ -25,6 +24,7 @@ import {
 } from "@mantine/core";
 import { Activity, BarChart3, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
+import { TouchSelect } from "../components/TouchCombobox";
 import { formatLocalDateTime } from "../utils/time";
 import {
   actionLabels,
@@ -635,7 +635,7 @@ export function SchedulerSection(props: SchedulerSectionProps) {
           </Text>
         </Group>
         <Group align="flex-end" wrap="wrap">
-          <Select
+          <TouchSelect
             label="Incoming request target"
             placeholder="Select target"
             data={props.targetOptions}
