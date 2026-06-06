@@ -222,7 +222,18 @@ export function ApiLabView(props: {
   );
 
   useEffect(() => {
-    if (baseUrlTouchedRef.current || baseUrl || !props.selectedInstance) {
+    if (baseUrlTouchedRef.current || baseUrl) {
+      return;
+    }
+    const managerProxyTarget = targetOptions.find(
+      (target) => target.kind === "manager-proxy",
+    );
+    if (managerProxyTarget) {
+      setBaseUrl(managerProxyTarget.baseUrl);
+      setQuickTarget(managerProxyTarget.value);
+      return;
+    }
+    if (!props.selectedInstance) {
       return;
     }
     const selectedEndpoint = targetOptions.find(
