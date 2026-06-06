@@ -30,7 +30,7 @@ export function ArgumentRow(props: {
   const disabled = props.isDefault && !props.active;
 
   return (
-    <Group gap="xs" wrap="nowrap" align="center">
+    <Group gap="xs" wrap="wrap" align="center">
       {props.isDefault ? (
         <Tooltip
           label={props.active ? "Enabled" : "Default — off, not applied"}
