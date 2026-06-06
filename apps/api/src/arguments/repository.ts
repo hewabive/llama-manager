@@ -1,21 +1,14 @@
 import {
-  LlamaArgumentHelpOverrideSchema,
   LlamaArgumentOptionSchema,
-  type LlamaArgumentHelpOverride,
-  type LlamaArgumentHelpOverrideUpdate,
   type LlamaArgumentOption,
 } from "@llama-manager/core";
 import { eq } from "drizzle-orm";
 import { existsSync } from "node:fs";
 
 import { db } from "../db/index.js";
-import {
-  llamaArgumentCatalogs,
-  llamaArgumentHelpOverrides,
-} from "../db/schema.js";
+import { llamaArgumentCatalogs } from "../db/schema.js";
 
 type CatalogRow = typeof llamaArgumentCatalogs.$inferSelect;
-type OverrideRow = typeof llamaArgumentHelpOverrides.$inferSelect;
 
 export type CachedArgumentCatalog = {
   binaryPath: string;
@@ -26,10 +19,6 @@ export type CachedArgumentCatalog = {
   options: LlamaArgumentOption[];
   generatedAt: string;
 };
-
-function nowIso() {
-  return new Date().toISOString();
-}
 
 function toCatalog(row: CatalogRow): CachedArgumentCatalog {
   return {
@@ -43,15 +32,6 @@ function toCatalog(row: CatalogRow): CachedArgumentCatalog {
     ),
     generatedAt: row.generatedAt,
   };
-}
-
-function toOverride(row: OverrideRow): LlamaArgumentHelpOverride {
-  return LlamaArgumentHelpOverrideSchema.parse({
-    primaryName: row.primaryName,
-    helpRu: row.helpRu,
-    notes: row.notes,
-    updatedAt: row.updatedAt,
-  });
 }
 
 export function getCachedArgumentCatalog(
@@ -113,55 +93,4 @@ export function pruneMissingArgumentCatalogs(): number {
   }
 
   return deleted;
-}
-
-export function listArgumentHelpOverrides(): LlamaArgumentHelpOverride[] {
-  return db.select().from(llamaArgumentHelpOverrides).all().map(toOverride);
-}
-
-export function getArgumentHelpOverride(
-  primaryName: string,
-): LlamaArgumentHelpOverride | null {
-  const row = db
-    .select()
-    .from(llamaArgumentHelpOverrides)
-    .where(eq(llamaArgumentHelpOverrides.primaryName, primaryName))
-    .get();
-  return row ? toOverride(row) : null;
-}
-
-export function saveArgumentHelpOverride(
-  input: LlamaArgumentHelpOverrideUpdate,
-): LlamaArgumentHelpOverride {
-  const current = getArgumentHelpOverride(input.primaryName);
-  const values = {
-    helpRu: input.helpRu,
-    notes: input.notes ?? null,
-    updatedAt: nowIso(),
-  };
-
-  if (current) {
-    db.update(llamaArgumentHelpOverrides)
-      .set(values)
-      .where(eq(llamaArgumentHelpOverrides.primaryName, input.primaryName))
-      .run();
-  } else {
-    db.insert(llamaArgumentHelpOverrides)
-      .values({ primaryName: input.primaryName, ...values })
-      .run();
-  }
-
-  const saved = getArgumentHelpOverride(input.primaryName);
-  if (!saved) {
-    throw new Error("failed to save argument help override");
-  }
-  return saved;
-}
-
-export function deleteArgumentHelpOverride(primaryName: string): boolean {
-  const result = db
-    .delete(llamaArgumentHelpOverrides)
-    .where(eq(llamaArgumentHelpOverrides.primaryName, primaryName))
-    .run();
-  return result.changes > 0;
 }

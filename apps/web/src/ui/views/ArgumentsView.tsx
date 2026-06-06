@@ -9,7 +9,6 @@ import {
   ActionIcon,
   Alert,
   Badge,
-  Button,
   Code,
   Divider,
   Group,
@@ -20,7 +19,6 @@ import {
   Switch,
   Table,
   Text,
-  Textarea,
   TextInput,
   Title,
   Tooltip,
@@ -28,18 +26,16 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMediaQuery } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Copy, Save, Star, Trash2 } from "lucide-react";
+import { AlertTriangle, Copy, Star } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  deleteLlamaArgumentOverride,
   getLlamaArgumentDefaults,
   getLlamaArgumentDoc,
   getLlamaArgumentDocsSyncReport,
   getLlamaArgumentHelpDiff,
   getLlamaArgumentReference,
   updateLlamaArgumentDefaults,
-  updateLlamaArgumentOverride,
 } from "../../api/client";
 import { ArgumentValueControl } from "../components/ArgumentValueControl";
 import {
@@ -82,7 +78,6 @@ function optionSearchText(option: LlamaArgumentOption) {
 }
 
 function sourceColor(source: LlamaArgumentOption["helpRuSource"]) {
-  if (source === "override") return "green";
   if (source === "registry") return "blue";
   if (source === "fallback") return "yellow";
   return "gray";
@@ -400,8 +395,6 @@ export function ArgumentsView() {
   const [valueType, setValueType] = useState(allFilterValue);
   const [showDeprecated, setShowDeprecated] = useState(false);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [helpRuDraft, setHelpRuDraft] = useState("");
-  const [notesDraft, setNotesDraft] = useState("");
   const [defaultValueDrafts, setDefaultValueDrafts] = useState<
     Record<string, string>
   >({});
@@ -547,15 +540,6 @@ export function ArgumentsView() {
   }, [filteredOptions, selectedName]);
 
   useEffect(() => {
-    setHelpRuDraft(selectedOption?.helpRu ?? "");
-    setNotesDraft(selectedOption?.notes ?? "");
-  }, [
-    selectedOption?.helpRu,
-    selectedOption?.notes,
-    selectedOption?.primaryName,
-  ]);
-
-  useEffect(() => {
     if (!selectedOption) {
       return;
     }
@@ -577,46 +561,6 @@ export function ArgumentsView() {
     selectedPresetDefault?.value,
     selectedPresetDefault?.valueType,
   ]);
-
-  const helpOverrideMutation = useMutation({
-    mutationFn: updateLlamaArgumentOverride,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["llama-args-reference"],
-      });
-      notifications.show({
-        title: "Argument help saved",
-        message: selectedOption?.primaryName,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Help save failed",
-        message: (error as Error).message,
-      });
-    },
-  });
-
-  const deleteHelpOverrideMutation = useMutation({
-    mutationFn: deleteLlamaArgumentOverride,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["llama-args-reference"],
-      });
-      notifications.show({
-        title: "Argument help reset",
-        message: selectedOption?.primaryName,
-      });
-    },
-    onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: "Help reset failed",
-        message: (error as Error).message,
-      });
-    },
-  });
 
   const defaultsMutation = useMutation({
     mutationFn: updateLlamaArgumentDefaults,
@@ -1132,62 +1076,6 @@ export function ArgumentsView() {
                   </Paper>
                 )}
               </Stack>
-
-              <Divider />
-
-              <details className="argument-overlay-editor">
-                <Text component="summary" fw={600} size="sm">
-                  Edit Russian overlay
-                </Text>
-                <Stack gap="xs" mt="xs">
-                  <Textarea
-                    label="Russian help overlay"
-                    minRows={4}
-                    value={helpRuDraft}
-                    onChange={(event) =>
-                      setHelpRuDraft(event.currentTarget.value)
-                    }
-                  />
-                  <TextInput
-                    label="Notes overlay"
-                    value={notesDraft}
-                    onChange={(event) =>
-                      setNotesDraft(event.currentTarget.value)
-                    }
-                  />
-                  <Group justify="flex-end" gap="xs">
-                    <Button
-                      variant="light"
-                      leftSection={<Save size={16} />}
-                      loading={helpOverrideMutation.isPending}
-                      disabled={!helpRuDraft.trim()}
-                      onClick={() =>
-                        helpOverrideMutation.mutate({
-                          primaryName: selectedOption.primaryName,
-                          helpRu: helpRuDraft.trim(),
-                          notes: notesDraft.trim() || null,
-                        })
-                      }
-                    >
-                      Save help
-                    </Button>
-                    <Button
-                      color="red"
-                      variant="subtle"
-                      leftSection={<Trash2 size={16} />}
-                      loading={deleteHelpOverrideMutation.isPending}
-                      disabled={selectedOption.helpRuSource !== "override"}
-                      onClick={() =>
-                        deleteHelpOverrideMutation.mutate(
-                          selectedOption.primaryName,
-                        )
-                      }
-                    >
-                      Reset
-                    </Button>
-                  </Group>
-                </Stack>
-              </details>
             </Stack>
           ) : (
             <Text c="dimmed" ta="center">

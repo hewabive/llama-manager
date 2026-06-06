@@ -44,23 +44,3 @@ export const llamaArgumentCatalogs = sqliteTable("llama_argument_catalogs", {
   optionsJson: text("options_json").notNull(),
   generatedAt: text("generated_at").notNull(),
 });
-
-export const llamaArgumentHelpOverrides = sqliteTable(
-  "llama_argument_help_overrides",
-  {
-    primaryName: text("primary_name").primaryKey(),
-    helpRu: text("help_ru").notNull(),
-    notes: text("notes"),
-    updatedAt: text("updated_at").notNull(),
-  },
-);
-
-export const apiProxyRuntimeMetadata = sqliteTable(
-  "api_proxy_runtime_metadata",
-  {
-    targetId: text("target_id").primaryKey(),
-    savedSlotIdsJson: text("saved_slot_ids_json").notNull(),
-    lastRequestAt: text("last_request_at"),
-    updatedAt: text("updated_at").notNull(),
-  },
-);

@@ -82,21 +82,5 @@ export function migrate() {
     )
   `);
 
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS llama_argument_help_overrides (
-      primary_name TEXT PRIMARY KEY NOT NULL,
-      help_ru TEXT NOT NULL,
-      notes TEXT,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS api_proxy_runtime_metadata (
-      target_id TEXT PRIMARY KEY NOT NULL,
-      saved_slot_ids_json TEXT NOT NULL,
-      last_request_at TEXT,
-      updated_at TEXT NOT NULL
-    )
-  `);
+  db.run(sql`DROP TABLE IF EXISTS llama_argument_help_overrides`);
 }

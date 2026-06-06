@@ -47,8 +47,6 @@ import type {
   LlamaArgumentDocsSyncReport,
   LlamaArgumentHelpDiff,
   LlamaArgumentEngineeringDoc,
-  LlamaArgumentHelpOverride,
-  LlamaArgumentHelpOverrideUpdate,
   LlamaSourcePullResult,
   LlamaSourceRefs,
   LlamaSourceSettings,
@@ -414,34 +412,6 @@ export async function getLlamaArgumentDocsSyncReport() {
 export async function getLlamaArgumentHelpDiff() {
   return request<{ data: LlamaArgumentHelpDiff }>(
     "/api/llama-args/docs-sync/diff",
-  );
-}
-
-export async function listLlamaArgumentOverrides() {
-  return request<{ data: LlamaArgumentHelpOverride[] }>(
-    "/api/llama-args/overrides",
-  );
-}
-
-export async function updateLlamaArgumentOverride(
-  input: LlamaArgumentHelpOverrideUpdate,
-) {
-  return request<{ data: LlamaArgumentHelpOverride }>(
-    "/api/llama-args/overrides",
-    {
-      method: "PUT",
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export async function deleteLlamaArgumentOverride(primaryName: string) {
-  const name = encodeURIComponent(primaryName);
-  return request<{ data: { deleted: boolean } }>(
-    `/api/llama-args/overrides/${name}`,
-    {
-      method: "DELETE",
-    },
   );
 }
 

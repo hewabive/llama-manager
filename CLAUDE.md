@@ -59,7 +59,7 @@ Portable/hand-editable config lives in files, not the DB, under one configurable
 - `config/settings.json` — `modelScan` / `llamaSource` / `build` / `presets` sections (`settings/store.ts`); build `repoPath` is canonical in `llamaSource`. `presets.validationBinaryPathRefId` (path-catalog id, nullable) picks the `llama-server` whose `--help` validates preset keys; null falls back to `defaultBinaryPath()` (`arguments/catalog.ts`: prefers `runtime/builds/master/bin`, then the most-recent existing path-catalog binary, then in-memory build jobs, then `build-reffdev`). The same default is exposed at `GET /api/build/default-binary` (`{path, refId, exists}`) and pre-selects the binary in the New-instance modal.
 - `config/argument-defaults.json` — default instance/preset args.
 - `config/proxy/{targets,models,pipelines,endpoints}.json` — API-proxy config (`proxy/config-files.ts` low-level store; `proxy/repository.ts` + `proxy/endpoints.ts` CRUD, signatures unchanged). Aggregate-per-type arrays; in-memory cache + write-through, external edits apply on restart. External-endpoint API keys live in `config/.secrets.json` (gitignored), never in `endpoints.json`; env-var auth stays preferred.
-JSON files seed from git-tracked repo-root `config/*.json` (not `data/config/`) and fail loud on malformed JSON; runtime-computed defaults fill absent sections. On first run after upgrade, `config-relocation.ts` moves legacy `data/{settings.json,argument-defaults.json,presets/}` into `data/config/`, `proxy/legacy-migration.ts` exports the old SQLite proxy tables to files then drops them (`api_proxy_runtime_metadata` stays in the DB, rebuilt without its target FK).
+JSON files seed from git-tracked repo-root `config/*.json` (not `data/config/`) and fail loud on malformed JSON; runtime-computed defaults fill absent sections. On first run after upgrade, `config-relocation.ts` moves legacy `data/{settings.json,argument-defaults.json,presets/}` into `data/config/`, `proxy/legacy-migration.ts` exports the old SQLite proxy tables to files then drops them, and `proxy/runtime-metadata-migration.ts` exports `api_proxy_runtime_metadata` to `data/proxy-runtime-metadata.json` then drops the table.
 
 ### Argument documentation
 
@@ -77,7 +77,8 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 ## Runtime layout & key env vars
 
-- `data/llama-manager.db` (WAL): binary `path_catalog`, process-run metadata, proxy **runtime metadata** (`api_proxy_runtime_metadata` — saved slots, last-request), and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs`, help overrides). Portable config is file-backed — see **File-backed config**.
+- `data/llama-manager.db` (WAL): binary `path_catalog`, process-run metadata, and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs`). Portable config is file-backed — see **File-backed config**.
+- `data/proxy-runtime-metadata.json`: API-proxy **runtime metadata** (per-target saved-slot ids for preemption restore). In-memory map + atomic write-through (`proxy/runtime-metadata-store.ts`); rebuildable/ephemeral, not git-tracked. `lastRequestAt` is memory-only (live-derived from activity, not persisted).
 - `data/config/` (= `LLAMA_MANAGER_CONFIG_DIR`): file-backed portable config — `presets/`, `instances/`, `settings.json`, `argument-defaults.json`, `proxy/*.json`, `.secrets.json` (seeded from repo-root `config/*.json`).
 - `data/proxy-requests/`: per-request capture logs (opt-in via a pipeline `capture-request` step), day-bucketed JSON.
 - `runtime/logs/`: managed-process stdout/stderr.

@@ -225,8 +225,6 @@ function updateTracker(input: {
   const tracker = trackerFor(input.targetId);
   if (input.metadata) {
     tracker.savedSlotIds = input.metadata.savedSlotIds;
-    tracker.lastRequestAt =
-      input.metadata.lastRequestAt ?? tracker.lastRequestAt;
   }
 
   if (input.activeRequests > 0 || input.state === "busy") {

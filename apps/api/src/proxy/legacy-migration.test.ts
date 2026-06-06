@@ -6,10 +6,6 @@ import { config } from "../config.js";
 import { sqlite } from "../db/index.js";
 import { readSecret, resetConfigFilesCache } from "./config-files.js";
 import { migrateProxyConfigToFiles } from "./legacy-migration.js";
-import {
-  getApiProxyRuntimeMetadata,
-  setApiProxyRuntimeMetadata,
-} from "./repository.js";
 import { getExternalApiEndpoint } from "./endpoints.js";
 
 function dropLegacyTables() {
@@ -136,10 +132,12 @@ test("exports legacy proxy tables to files and rebuilds schema", () => {
   }
   assert.ok(tables.includes("api_proxy_runtime_metadata"));
 
-  assert.equal(getApiProxyRuntimeMetadata("t1")?.savedSlotIds.join(","), "2");
-  assert.doesNotThrow(() =>
-    setApiProxyRuntimeMetadata("ghost-target", { savedSlotIds: [9] }),
-  );
+  const runtimeRow = sqlite
+    .prepare(
+      "SELECT saved_slot_ids_json FROM api_proxy_runtime_metadata WHERE target_id = 't1'",
+    )
+    .get() as { saved_slot_ids_json: string } | undefined;
+  assert.equal(runtimeRow?.saved_slot_ids_json, "[2]");
 });
 
 test("is idempotent when legacy tables are absent", () => {

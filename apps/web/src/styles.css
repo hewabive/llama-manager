@@ -204,14 +204,12 @@ code {
   text-overflow: ellipsis;
 }
 
-.argument-secondary-details summary,
-.argument-overlay-editor summary {
+.argument-secondary-details summary {
   cursor: pointer;
   list-style-position: inside;
 }
 
-.argument-secondary-details summary:hover,
-.argument-overlay-editor summary:hover {
+.argument-secondary-details summary:hover {
   color: var(--mantine-color-text);
 }
 

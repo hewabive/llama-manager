@@ -695,7 +695,6 @@ export const ApiProxyStatsSnapshotSchema = z.object({
 export const ApiProxyRuntimeMetadataRecordSchema = z.object({
   targetId: ApiProxyIdSchema,
   savedSlotIds: z.array(z.number().int().min(0)).default([]),
-  lastRequestAt: z.string().nullable().default(null),
   updatedAt: z.string(),
 });
 
@@ -1152,7 +1151,7 @@ export const LlamaArgumentOptionSchema = z.object({
   allowedValues: z.array(z.string()),
   help: z.string(),
   helpRu: z.string(),
-  helpRuSource: z.enum(["registry", "builtin", "override", "fallback"]),
+  helpRuSource: z.enum(["registry", "builtin", "fallback"]),
   notes: z.string().nullable(),
   doc: LlamaArgumentDocIndexSchema,
   control: LlamaArgumentControlSchema,
@@ -1176,19 +1175,6 @@ export const LlamaArgumentCatalogSchema = z.object({
     stale: z.boolean(),
   }),
   options: z.array(LlamaArgumentOptionSchema),
-});
-
-export const LlamaArgumentHelpOverrideSchema = z.object({
-  primaryName: z.string().min(1),
-  helpRu: z.string().min(1),
-  notes: z.string().nullable(),
-  updatedAt: z.string().nullable(),
-});
-
-export const LlamaArgumentHelpOverrideUpdateSchema = z.object({
-  primaryName: z.string().min(1),
-  helpRu: z.string().min(1),
-  notes: z.string().nullable().optional(),
 });
 
 export const LlamaArgumentDefaultValueTypeSchema = z.enum([
@@ -1717,12 +1703,6 @@ export type LlamaArgumentCompatibility = z.infer<
 export type LlamaArgumentDocIndex = z.infer<typeof LlamaArgumentDocIndexSchema>;
 export type LlamaArgumentOption = z.infer<typeof LlamaArgumentOptionSchema>;
 export type LlamaArgumentCatalog = z.infer<typeof LlamaArgumentCatalogSchema>;
-export type LlamaArgumentHelpOverride = z.infer<
-  typeof LlamaArgumentHelpOverrideSchema
->;
-export type LlamaArgumentHelpOverrideUpdate = z.infer<
-  typeof LlamaArgumentHelpOverrideUpdateSchema
->;
 export type LlamaArgumentDefaultValueType = z.infer<
   typeof LlamaArgumentDefaultValueTypeSchema
 >;

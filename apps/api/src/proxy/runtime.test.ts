@@ -295,12 +295,11 @@ test("buildApiProxyRuntimeSnapshot carries saved slot ids for scheduler planning
   assert.deepEqual(snapshot.targets[0]?.savedSlotIds, [0, 2]);
 });
 
-test("buildApiProxyRuntimeSnapshot uses persisted runtime metadata", () => {
+test("buildApiProxyRuntimeSnapshot uses persisted saved slot ids", () => {
   resetApiProxyRuntimeTrackers();
   const metadata: ApiProxyRuntimeMetadataRecord = {
     targetId: "target-a",
     savedSlotIds: [3],
-    lastRequestAt: "2026-05-30T09:59:00.000Z",
     updatedAt: "2026-05-30T09:59:01.000Z",
   };
 
@@ -314,7 +313,6 @@ test("buildApiProxyRuntimeSnapshot uses persisted runtime metadata", () => {
   });
 
   assert.deepEqual(snapshot.targets[0]?.savedSlotIds, [3]);
-  assert.equal(snapshot.targets[0]?.lastRequestAt, metadata.lastRequestAt);
 });
 
 test("buildApiProxyRuntimeSnapshot treats external endpoint as external API", () => {

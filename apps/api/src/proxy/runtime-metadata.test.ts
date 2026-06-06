@@ -29,24 +29,19 @@ function seedTarget(name: string) {
   });
 }
 
-test("setApiProxyRuntimeMetadata upserts and merges patch fields", () => {
+test("setApiProxyRuntimeMetadata upserts and keeps prior slot ids on empty patch", () => {
   const target = seedTarget("metadata-upsert");
 
   const created = setApiProxyRuntimeMetadata(target.id, {
     savedSlotIds: [0, 2],
   });
   assert.deepEqual(created.savedSlotIds, [0, 2]);
-  assert.equal(created.lastRequestAt, null);
 
-  const withRequest = setApiProxyRuntimeMetadata(target.id, {
-    lastRequestAt: "2026-06-02T10:00:00.000Z",
-  });
-  assert.deepEqual(withRequest.savedSlotIds, [0, 2]);
-  assert.equal(withRequest.lastRequestAt, "2026-06-02T10:00:00.000Z");
+  const untouched = setApiProxyRuntimeMetadata(target.id, {});
+  assert.deepEqual(untouched.savedSlotIds, [0, 2]);
 
   const cleared = setApiProxyRuntimeMetadata(target.id, { savedSlotIds: [] });
   assert.deepEqual(cleared.savedSlotIds, []);
-  assert.equal(cleared.lastRequestAt, "2026-06-02T10:00:00.000Z");
 
   deleteApiProxyTarget(target.id);
 });

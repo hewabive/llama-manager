@@ -38,7 +38,6 @@ import {
   type LlamaEndpointProbe,
   type ProcessPreflightIssue,
   LlamaArgumentDefaultsSchema,
-  LlamaArgumentHelpOverrideUpdateSchema,
   ModelPresetCreateSchema,
   ModelPresetWriteSchema,
   ModelScanSettingsSchema,
@@ -77,11 +76,6 @@ import {
 import { readArgumentEngineeringDoc } from "./arguments/docs.js";
 import { getLlamaArgumentDocsSyncReport } from "./arguments/docs-sync.js";
 import { generatedHelpChangedLines } from "./arguments/docs-source.js";
-import {
-  deleteArgumentHelpOverride,
-  listArgumentHelpOverrides,
-  saveArgumentHelpOverride,
-} from "./arguments/repository.js";
 import { tailBuildLog } from "./build/logs.js";
 import {
   getBuildJob,
@@ -1751,27 +1745,6 @@ app.get("/api/llama-args/docs-sync/diff", (c) => {
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }
-});
-
-app.get("/api/llama-args/overrides", (c) => {
-  return c.json({ data: listArgumentHelpOverrides() });
-});
-
-app.put("/api/llama-args/overrides", async (c) => {
-  const parsed = LlamaArgumentHelpOverrideUpdateSchema.safeParse(
-    await c.req.json(),
-  );
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten() }, 400);
-  }
-  return c.json({ data: saveArgumentHelpOverride(parsed.data) });
-});
-
-app.delete("/api/llama-args/overrides/:primaryName", (c) => {
-  const deleted = deleteArgumentHelpOverride(
-    decodeURIComponent(c.req.param("primaryName")),
-  );
-  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.get("/api/llama-args/defaults", (c) => {

@@ -9,7 +9,6 @@ import {
   ApiProxyPipelineRecordSchema,
   ApiProxyPipelineUpdateSchema,
   ApiProxyRequestLogRecordSchema,
-  ApiProxyRuntimeMetadataRecordSchema,
   ApiProxyTargetConfigSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetRecordSchema,
@@ -22,12 +21,10 @@ import {
   type ApiProxyPipelineRecord,
   type ApiProxyPipelineUpdate,
   type ApiProxyRequestLogRecord,
-  type ApiProxyRuntimeMetadataRecord,
   type ApiProxyTargetCreate,
   type ApiProxyTargetRecord,
   type ApiProxyTargetUpdate,
 } from "@llama-manager/core";
-import { eq } from "drizzle-orm";
 import {
   mkdirSync,
   readdirSync,
@@ -38,30 +35,26 @@ import {
 import { dirname, join, resolve } from "node:path";
 
 import { config } from "../config.js";
-import { db } from "../db/index.js";
-import { apiProxyRuntimeMetadata } from "../db/schema.js";
 import { newId } from "../utils/id.js";
 import { readCollection, writeCollection } from "./config-files.js";
+import { deleteApiProxyRuntimeMetadata } from "./runtime-metadata-store.js";
+
+export {
+  addApiProxySavedSlotId,
+  apiProxySlotFilename,
+  deleteApiProxyRuntimeMetadata,
+  getApiProxyRuntimeMetadata,
+  listApiProxyRuntimeMetadata,
+  removeApiProxySavedSlotId,
+  setApiProxyRuntimeMetadata,
+} from "./runtime-metadata-store.js";
 
 export const TARGETS_FILE = "targets.json";
 export const MODELS_FILE = "models.json";
 export const PIPELINES_FILE = "pipelines.json";
 
-type RuntimeMetadataRow = typeof apiProxyRuntimeMetadata.$inferSelect;
-
 function nowIso() {
   return new Date().toISOString();
-}
-
-function parseSlotIds(value: string) {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is number => Number.isInteger(item))
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 const requestLogsDir = resolve(config.dataDir, "proxy-requests");
@@ -389,113 +382,6 @@ export function deleteApiProxyPipeline(id: string): boolean {
     records.filter((pipeline) => pipeline.id !== id),
   );
   return true;
-}
-
-function toRuntimeMetadata(
-  row: RuntimeMetadataRow,
-): ApiProxyRuntimeMetadataRecord {
-  return ApiProxyRuntimeMetadataRecordSchema.parse({
-    targetId: row.targetId,
-    savedSlotIds: parseSlotIds(row.savedSlotIdsJson),
-    lastRequestAt: row.lastRequestAt,
-    updatedAt: row.updatedAt,
-  });
-}
-
-export function listApiProxyRuntimeMetadata(): Map<
-  string,
-  ApiProxyRuntimeMetadataRecord
-> {
-  return new Map(
-    db
-      .select()
-      .from(apiProxyRuntimeMetadata)
-      .all()
-      .map((row) => {
-        const record = toRuntimeMetadata(row);
-        return [record.targetId, record] as const;
-      }),
-  );
-}
-
-export function getApiProxyRuntimeMetadata(
-  targetId: string,
-): ApiProxyRuntimeMetadataRecord | null {
-  const row = db
-    .select()
-    .from(apiProxyRuntimeMetadata)
-    .where(eq(apiProxyRuntimeMetadata.targetId, targetId))
-    .get();
-  return row ? toRuntimeMetadata(row) : null;
-}
-
-export function setApiProxyRuntimeMetadata(
-  targetId: string,
-  patch: { savedSlotIds?: number[]; lastRequestAt?: string | null },
-): ApiProxyRuntimeMetadataRecord {
-  const current = getApiProxyRuntimeMetadata(targetId);
-  const savedSlotIds = patch.savedSlotIds ?? current?.savedSlotIds ?? [];
-  const lastRequestAt =
-    patch.lastRequestAt !== undefined
-      ? patch.lastRequestAt
-      : (current?.lastRequestAt ?? null);
-  const timestamp = nowIso();
-  const values = {
-    savedSlotIdsJson: JSON.stringify(savedSlotIds),
-    lastRequestAt,
-    updatedAt: timestamp,
-  };
-
-  db.insert(apiProxyRuntimeMetadata)
-    .values({ targetId, ...values })
-    .onConflictDoUpdate({
-      target: apiProxyRuntimeMetadata.targetId,
-      set: values,
-    })
-    .run();
-
-  const saved = getApiProxyRuntimeMetadata(targetId);
-  if (!saved) {
-    throw new Error("failed to persist API proxy runtime metadata");
-  }
-  return saved;
-}
-
-export function apiProxySlotFilename(targetId: string, slotId: number): string {
-  const slug = targetId.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return `llama-manager-${slug}-slot-${slotId}.bin`;
-}
-
-export function addApiProxySavedSlotId(
-  targetId: string,
-  slotId: number,
-): ApiProxyRuntimeMetadataRecord {
-  const current = getApiProxyRuntimeMetadata(targetId);
-  const next = new Set(current?.savedSlotIds ?? []);
-  next.add(slotId);
-  return setApiProxyRuntimeMetadata(targetId, {
-    savedSlotIds: [...next].sort((left, right) => left - right),
-  });
-}
-
-export function removeApiProxySavedSlotId(
-  targetId: string,
-  slotId: number,
-): ApiProxyRuntimeMetadataRecord {
-  const current = getApiProxyRuntimeMetadata(targetId);
-  const next = new Set(current?.savedSlotIds ?? []);
-  next.delete(slotId);
-  return setApiProxyRuntimeMetadata(targetId, {
-    savedSlotIds: [...next].sort((left, right) => left - right),
-  });
-}
-
-export function deleteApiProxyRuntimeMetadata(targetId: string): boolean {
-  const result = db
-    .delete(apiProxyRuntimeMetadata)
-    .where(eq(apiProxyRuntimeMetadata.targetId, targetId))
-    .run();
-  return result.changes > 0;
 }
 
 export function saveApiProxyRequestLog(input: {

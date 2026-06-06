@@ -14,7 +14,6 @@ import { getBuildSettings, listBuildJobs } from "../build/repository.js";
 import { listPathCatalogEntries } from "../path-catalog/repository.js";
 import {
   getCachedArgumentCatalog,
-  listArgumentHelpOverrides,
   saveArgumentCatalog,
   type CachedArgumentCatalog,
 } from "./repository.js";
@@ -472,26 +471,9 @@ function optionFallbackHelpRu(option: LlamaArgumentOption) {
   return `Оригинальная справка llama.cpp: ${option.help || option.names.join(", ")}`;
 }
 
-function applyHelpOverrides(options: LlamaArgumentOption[]) {
-  const overrides = new Map(
-    listArgumentHelpOverrides().map((override) => [
-      override.primaryName,
-      override,
-    ]),
-  );
+function applyArgumentHelp(options: LlamaArgumentOption[]) {
   return options.map((option) => {
     const category = categoryNameRu(option.category);
-    const override = overrides.get(option.primaryName);
-    if (override) {
-      return {
-        ...option,
-        category,
-        helpRu: override.helpRu,
-        helpRuSource: "override" as const,
-        notes: override.notes,
-      };
-    }
-
     if (option.helpRuSource === "registry") {
       return {
         ...option,
@@ -624,7 +606,7 @@ function referenceCatalogHash(options: LlamaArgumentOption[]) {
 
 export function getLlamaArgumentReferenceCatalog(): LlamaArgumentCatalog {
   const options = withArgumentDocsAndCompatibility(
-    applyHelpOverrides(loadArgumentRegistry().map((entry) => entry.option)),
+    applyArgumentHelp(loadArgumentRegistry().map((entry) => entry.option)),
   );
   const generatedAt = nowIso();
 
@@ -664,7 +646,7 @@ function toCatalog(input: {
     },
     cache: input.cache,
     options: withArgumentDocsAndCompatibility(
-      applyHelpOverrides(mergeWithArgumentRegistry(input.cached.options)),
+      applyArgumentHelp(mergeWithArgumentRegistry(input.cached.options)),
     ),
   };
 }
