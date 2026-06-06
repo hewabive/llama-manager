@@ -161,7 +161,6 @@ import {
   listApiProxyModels,
   listApiProxyPipelines,
   listApiProxyRequestLogs,
-  listApiProxyRuntimeMetadata,
   listApiProxyTargets,
   removeApiProxySavedSlotId,
   saveApiProxyRequestLog,
@@ -211,7 +210,7 @@ import {
   type ApiProxyProtocolOperation,
   type ApiProxyProtocolTransport,
 } from "./proxy/protocol.js";
-import { buildApiProxyRuntimeSnapshot } from "./proxy/runtime.js";
+import { getApiProxyRuntimeSnapshot } from "./proxy/runtime-snapshot.js";
 import { apiProxyStats } from "./proxy/stats.js";
 import { newId } from "./utils/id.js";
 import {
@@ -350,45 +349,6 @@ function validateApiProxyPipelineRefs(input: {
   routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
 }) {
   return validateApiProxyRouteToRef(input);
-}
-
-async function getApiProxyRuntimeSnapshot() {
-  const targets = listApiProxyTargets();
-  const instances = listInstances();
-  const endpoints = listApiEndpointCatalog(instances);
-  const peers = instances;
-  const targetInstanceIds = new Set(
-    targets
-      .map(
-        (target) =>
-          resolveApiProxyTarget(target, instances, endpoints).instanceId,
-      )
-      .filter((instanceId): instanceId is string => Boolean(instanceId)),
-  );
-  const healthEntries = await Promise.all(
-    instances
-      .filter((instance) => targetInstanceIds.has(instance.name))
-      .map(
-        async (instance) =>
-          [
-            instance.name,
-            await getInstanceHealthSummary(instance, { peers }),
-          ] as const,
-      ),
-  );
-
-  return {
-    targets,
-    snapshot: buildApiProxyRuntimeSnapshot({
-      checkedAt: new Date().toISOString(),
-      targets,
-      endpoints,
-      instances,
-      healthByInstanceId: new Map(healthEntries),
-      metadataByTargetId: listApiProxyRuntimeMetadata(),
-      busyTargetIds: resourceGroupCoordinator.busyTargetIds(),
-    }),
-  };
 }
 
 async function getApiProxyPlanPreview(input: {

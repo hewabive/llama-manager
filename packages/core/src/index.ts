@@ -1310,6 +1310,17 @@ export const PublicInstanceStatusSchema = z.object({
   summary: z.string(),
 });
 
+export const PublicProxyTargetSchema = z.object({
+  name: z.string(),
+  enabled: z.boolean(),
+  state: ApiProxyModelStateSchema,
+  activeRequests: z.number().int().nonnegative(),
+  model: z.string().nullable(),
+  idleSince: z.string().nullable(),
+  lastRequestAt: z.string().nullable(),
+  savedSlots: z.number().int().nonnegative(),
+});
+
 export const PublicStatusSchema = z.object({
   service: z.object({
     ok: z.boolean(),
@@ -1324,6 +1335,12 @@ export const PublicStatusSchema = z.object({
     error: z.number().int().nonnegative(),
     stopped: z.number().int().nonnegative(),
     items: z.array(PublicInstanceStatusSchema),
+  }),
+  proxy: z.object({
+    total: z.number().int().nonnegative(),
+    busy: z.number().int().nonnegative(),
+    activeRequests: z.number().int().nonnegative(),
+    targets: z.array(PublicProxyTargetSchema),
   }),
 });
 
@@ -1726,6 +1743,7 @@ export type SystemResources = z.infer<typeof SystemResourcesSchema>;
 export type AuthState = z.infer<typeof AuthStateSchema>;
 export type AdminLogin = z.infer<typeof AdminLoginSchema>;
 export type PublicInstanceStatus = z.infer<typeof PublicInstanceStatusSchema>;
+export type PublicProxyTarget = z.infer<typeof PublicProxyTargetSchema>;
 export type PublicStatus = z.infer<typeof PublicStatusSchema>;
 export type ExternalLlamaProcess = z.infer<typeof ExternalLlamaProcessSchema>;
 export type ExternalLlamaProcessesResult = z.infer<

@@ -1,4 +1,7 @@
-import type { PublicInstanceStatus } from "@llama-manager/core";
+import type {
+  PublicInstanceStatus,
+  PublicProxyTarget,
+} from "@llama-manager/core";
 import {
   Alert,
   Badge,
@@ -13,6 +16,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { getPublicStatus } from "../../api/client";
 import { SystemResourcesPanel } from "../components/SystemResourcesPanel";
+import { runtimeStateColor } from "../proxy/display";
 import { formatLocalDateTime } from "../utils/time";
 
 function statusColor(status: PublicInstanceStatus["status"]) {
@@ -21,6 +25,83 @@ function statusColor(status: PublicInstanceStatus["status"]) {
   if (status === "stale" || status === "degraded") return "orange";
   if (status === "error" || status === "invalid") return "red";
   return "gray";
+}
+
+function proxyTargetDetails(target: PublicProxyTarget) {
+  const details = [
+    `${target.activeRequests} active request(s)`,
+    `model ${target.model ?? "not loaded"}`,
+  ];
+  if (target.idleSince) {
+    details.push(`idle since ${formatLocalDateTime(target.idleSince)}`);
+  }
+  if (target.lastRequestAt) {
+    details.push(`last request ${formatLocalDateTime(target.lastRequestAt)}`);
+  }
+  if (target.savedSlots > 0) {
+    details.push(`saved slots ${target.savedSlots}`);
+  }
+  return details;
+}
+
+function ProxyTargetCard(props: { target: PublicProxyTarget }) {
+  const { target } = props;
+  const color = target.enabled ? runtimeStateColor(target.state) : "gray";
+  return (
+    <Paper withBorder p="sm" radius="sm" w={260}>
+      <Stack gap={6}>
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Text fw={700} style={{ wordBreak: "break-word" }}>
+            {target.name}
+          </Text>
+          <Badge
+            color={color}
+            variant={target.activeRequests > 0 ? "filled" : "light"}
+            style={{ flexShrink: 0 }}
+          >
+            {target.enabled ? target.state : "disabled"}
+          </Badge>
+        </Group>
+        <Stack gap={2}>
+          {proxyTargetDetails(target).map((detail) => (
+            <Text key={detail} c="dimmed" size="xs">
+              {detail}
+            </Text>
+          ))}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+function InstanceCard(props: { item: PublicInstanceStatus }) {
+  const { item } = props;
+  return (
+    <Paper withBorder p="sm" radius="sm" w={260}>
+      <Stack gap={6}>
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Text fw={700} style={{ wordBreak: "break-word" }}>
+            {item.name}
+          </Text>
+          <Badge
+            color={statusColor(item.status)}
+            variant="light"
+            style={{ flexShrink: 0 }}
+          >
+            {item.status}
+          </Badge>
+        </Group>
+        <Stack gap={2}>
+          <Text c="dimmed" size="xs">
+            {item.summary}
+          </Text>
+          <Text c="dimmed" size="xs">
+            checked {formatLocalDateTime(item.checkedAt)}
+          </Text>
+        </Stack>
+      </Stack>
+    </Paper>
+  );
 }
 
 function StatCard(props: { label: string; value: number }) {
@@ -67,6 +148,36 @@ export function PublicStatusView() {
         fetching={statusQuery.isFetching}
       />
 
+      {(status?.proxy.total ?? 0) > 0 && (
+        <Paper withBorder p="md" radius="sm">
+          <Stack gap="sm">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div className="section-heading">
+                <Text fw={700} size="lg">
+                  Proxy load
+                </Text>
+                <Text c="dimmed" size="sm">
+                  Live per-target state — color reflects load
+                </Text>
+              </div>
+              <Group gap="xs">
+                <Badge color="orange" variant="light">
+                  {status?.proxy.busy ?? 0} busy
+                </Badge>
+                <Badge color="blue" variant="light">
+                  {status?.proxy.activeRequests ?? 0} active req
+                </Badge>
+              </Group>
+            </Group>
+            <Group gap="xs" align="stretch">
+              {(status?.proxy.targets ?? []).map((target) => (
+                <ProxyTargetCard key={target.name} target={target} />
+              ))}
+            </Group>
+          </Stack>
+        </Paper>
+      )}
+
       <Paper withBorder p="md" radius="sm">
         <Stack gap="sm">
           <Group justify="space-between" align="flex-start">
@@ -83,33 +194,18 @@ export function PublicStatusView() {
             </Badge>
           </Group>
 
-          <Stack gap="xs">
+          <Group gap="xs" align="stretch">
             {(status?.instances.items ?? []).map((item) => (
-              <Paper key={item.name} withBorder p="sm" radius="sm">
-                <Group justify="space-between" align="flex-start">
-                  <div className="mobile-card__title">
-                    <Text fw={700}>{item.name}</Text>
-                    <Text c="dimmed" size="sm">
-                      {item.summary}
-                    </Text>
-                    <Text c="dimmed" size="xs">
-                      Checked {formatLocalDateTime(item.checkedAt)}
-                    </Text>
-                  </div>
-                  <Badge color={statusColor(item.status)} variant="light">
-                    {item.status}
-                  </Badge>
-                </Group>
-              </Paper>
+              <InstanceCard key={item.name} item={item} />
             ))}
             {status?.instances.items.length === 0 && (
-              <Paper withBorder p="md" radius="sm">
+              <Paper withBorder p="md" radius="sm" w="100%">
                 <Text c="dimmed" ta="center">
                   No instances configured
                 </Text>
               </Paper>
             )}
-          </Stack>
+          </Group>
         </Stack>
       </Paper>
     </Stack>
