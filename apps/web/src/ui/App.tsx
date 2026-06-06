@@ -166,7 +166,7 @@ export function App() {
   });
 
   return (
-    <AppShell header={{ height: { base: 132, sm: 58 } }} padding="md">
+    <AppShell header={{ height: { base: 148, sm: 58 } }} padding="md">
       <AppShell.Header>
         <Group className="app-header__inner" h="100%" px="md">
           <Group className="app-header__brand" gap="sm">

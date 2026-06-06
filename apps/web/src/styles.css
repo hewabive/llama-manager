@@ -345,15 +345,15 @@ code {
   .app-header__nav {
     order: 3;
     flex: 1 0 100%;
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    gap: 2px;
-    overflow-x: auto;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
     padding-bottom: 2px;
   }
 
   .app-header__nav .mantine-Button-root {
-    min-width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
     padding-left: 8px;
     padding-right: 8px;
   }
