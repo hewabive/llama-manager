@@ -4,7 +4,6 @@ import type {
   LlamaEndpointProbe,
 } from "@llama-manager/core";
 import {
-  Autocomplete,
   Button,
   Group,
   NumberInput,
@@ -25,6 +24,7 @@ import {
   runInstanceApiProbe,
   streamInstanceApiProbe,
 } from "../../../api/client";
+import { TouchAutocomplete } from "../TouchAutocomplete";
 import { ApiProbeResultView, StreamProbeResult } from "./Results";
 import {
   emptyStreamProbeState,
@@ -354,7 +354,7 @@ export function ApiProbePanel(props: {
             }}
             data={requestOptions}
           />
-          <Autocomplete
+          <TouchAutocomplete
             clearable
             data={modelOptions.map((option) => option.value)}
             label="Model"

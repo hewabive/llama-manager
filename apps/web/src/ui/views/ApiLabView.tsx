@@ -6,7 +6,7 @@ import type {
   InstanceHealthSummary,
 } from "@llama-manager/core";
 import { ApiLabProbeKindsByProfile } from "@llama-manager/core";
-import { Autocomplete, Group, Stack, Text } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -22,6 +22,7 @@ import {
   type ProbeRequestOption,
 } from "../components/api-probe/ApiProbePanel";
 import { StatusTooltipIcon } from "../components/StatusTooltipIcon";
+import { TouchAutocomplete } from "../components/TouchAutocomplete";
 import { useApiModelOptions } from "../hooks/use-api-model-options";
 import { llamaServerApiUrl } from "../utils/instance-url";
 
@@ -316,7 +317,7 @@ export function ApiLabView(props: {
   return (
     <Stack gap="md">
       <Group align="flex-end" gap="sm" wrap="wrap">
-        <Autocomplete
+        <TouchAutocomplete
           clearable
           data={targetOptions.map((target) => target.baseUrl)}
           label="Target / Base URL"
