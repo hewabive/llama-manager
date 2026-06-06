@@ -147,31 +147,51 @@ export function SystemResourcesPanel(props: {
                         {accelerator.vendor ?? accelerator.source}
                       </Badge>
                     </Group>
-                    <Progress
-                      value={Math.round(
-                        (accelerator.memoryUsedRatio ?? 0) * 100,
-                      )}
-                      color={memoryColor(
-                        accelerator.memoryUsedRatio ?? undefined,
-                      )}
-                      size="sm"
-                      radius="xs"
-                    />
-                    <Group gap="md" wrap="wrap">
+                    <Stack gap={2}>
+                      <Group justify="space-between" gap="xs">
+                        <Text c="dimmed" size="xs" tt="uppercase">
+                          VRAM
+                        </Text>
+                        <Text c="dimmed" size="xs">
+                          {acceleratorMemoryLabel(accelerator)}
+                        </Text>
+                      </Group>
+                      <Progress
+                        value={Math.round(
+                          (accelerator.memoryUsedRatio ?? 0) * 100,
+                        )}
+                        color={memoryColor(
+                          accelerator.memoryUsedRatio ?? undefined,
+                        )}
+                        size="sm"
+                        radius="xs"
+                      />
+                    </Stack>
+                    {accelerator.utilizationPercent !== null && (
+                      <Stack gap={2}>
+                        <Group justify="space-between" gap="xs">
+                          <Text c="dimmed" size="xs" tt="uppercase">
+                            GPU load
+                          </Text>
+                          <Text c="dimmed" size="xs">
+                            {accelerator.utilizationPercent}%
+                          </Text>
+                        </Group>
+                        <Progress
+                          value={accelerator.utilizationPercent}
+                          color={memoryColor(
+                            accelerator.utilizationPercent / 100,
+                          )}
+                          size="sm"
+                          radius="xs"
+                        />
+                      </Stack>
+                    )}
+                    {accelerator.temperatureC !== null && (
                       <Text c="dimmed" size="xs">
-                        VRAM {acceleratorMemoryLabel(accelerator)}
+                        {accelerator.temperatureC}C
                       </Text>
-                      {accelerator.utilizationPercent !== null && (
-                        <Text c="dimmed" size="xs">
-                          GPU {accelerator.utilizationPercent}%
-                        </Text>
-                      )}
-                      {accelerator.temperatureC !== null && (
-                        <Text c="dimmed" size="xs">
-                          {accelerator.temperatureC}C
-                        </Text>
-                      )}
-                    </Group>
+                    )}
                   </Stack>
                 </Paper>
               ))}
