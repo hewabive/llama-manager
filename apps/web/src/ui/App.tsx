@@ -50,6 +50,7 @@ export function App() {
     null,
   );
   const [monitorNowMs, setMonitorNowMs] = useState(Date.now());
+  const [apiLabVisited, setApiLabVisited] = useState(false);
   const { setColorScheme } = useMantineColorScheme();
   const colorScheme = useComputedColorScheme("dark");
   const queryClient = useQueryClient();
@@ -61,6 +62,11 @@ export function App() {
   const authState = authQuery.data?.data;
   const canUseAdmin = authState?.authenticated ?? false;
   const isPublicRoute = route === "status";
+  useEffect(() => {
+    if (route === "api-lab") {
+      setApiLabVisited(true);
+    }
+  }, [route]);
   const instancesQuery = useQuery({
     queryKey: ["instances"],
     queryFn: listInstances,
@@ -296,13 +302,15 @@ export function App() {
 
           {canUseAdmin && route === "proxy" && <ProxyView />}
 
-          {canUseAdmin && route === "api-lab" && (
-            <ApiLabView
-              instances={instances}
-              selectedInstance={selectedInstance}
-              selectedHealth={selectedHealth}
-              onSelect={setSelectedId}
-            />
+          {canUseAdmin && apiLabVisited && (
+            <div style={{ display: route === "api-lab" ? "contents" : "none" }}>
+              <ApiLabView
+                instances={instances}
+                selectedInstance={selectedInstance}
+                selectedHealth={selectedHealth}
+                onSelect={setSelectedId}
+              />
+            </div>
           )}
 
           {canUseAdmin && route === "models" && (
