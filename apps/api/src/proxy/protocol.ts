@@ -84,6 +84,7 @@ export type ApiProxyResumableStreamChunk = {
   model: string | null;
   reasoning?: string | undefined;
   usage?: ApiProxyResumableUsage | undefined;
+  genMs?: number | undefined;
   phase?: ApiProxyResumablePhase | undefined;
   toolCall?: ApiProxyResumableToolCallDelta | undefined;
 };

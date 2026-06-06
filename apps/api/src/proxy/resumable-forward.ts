@@ -42,6 +42,7 @@ function applyFrame(
   frame: string,
   codec: ApiProxyResumableCodec,
   state: ResumableBufferState,
+  meta: { upstreamGenMs: number | null },
 ): "done" | null {
   for (const line of frame.split("\n")) {
     const trimmed = line.trimStart();
@@ -71,6 +72,9 @@ function applyFrame(
     }
     if (chunk.finishReason) {
       state.finishReason = chunk.finishReason;
+    }
+    if (typeof chunk.genMs === "number") {
+      meta.upstreamGenMs = chunk.genMs;
     }
     if (chunk.phase === "tool") {
       state.inToolPhase = true;
@@ -124,6 +128,7 @@ export async function runResumableUpstreamAttempt(input: {
   const now = input.now ?? (() => performance.now());
   let firstTokenAt: number | null = null;
   let lastTokenAt = 0;
+  const meta: { upstreamGenMs: number | null } = { upstreamGenMs: null };
   const controller = new AbortController();
   const onPreempt = () => {
     if (!input.state.inToolPhase) {
@@ -139,7 +144,9 @@ export async function runResumableUpstreamAttempt(input: {
   ): ResumableUpstreamOutcome => {
     preemptSignal.removeEventListener("abort", onPreempt);
     consumerSignal?.removeEventListener("abort", onConsumerGone);
-    if (firstTokenAt !== null) {
+    if (meta.upstreamGenMs !== null) {
+      input.state.genMs += Math.max(0, meta.upstreamGenMs);
+    } else if (firstTokenAt !== null) {
       input.state.genMs += Math.max(0, lastTokenAt - firstTokenAt);
     }
     return outcome;
@@ -190,7 +197,7 @@ export async function runResumableUpstreamAttempt(input: {
         pending = pending.slice(index + 2);
         const before =
           input.state.text.length + input.state.reasoningText.length;
-        const result = applyFrame(frame, input.codec, input.state);
+        const result = applyFrame(frame, input.codec, input.state, meta);
         if (input.state.text.length + input.state.reasoningText.length > before) {
           if (firstTokenAt === null) {
             firstTokenAt = now();
@@ -204,7 +211,7 @@ export async function runResumableUpstreamAttempt(input: {
       }
     }
     if (pending.trim()) {
-      applyFrame(pending, input.codec, input.state);
+      applyFrame(pending, input.codec, input.state, meta);
     }
     return settle({ type: "completed" });
   } catch (error) {

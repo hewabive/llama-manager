@@ -130,6 +130,28 @@ test("parseChunk extracts usage from a usage-only chunk", () => {
   );
 });
 
+test("parseChunk reads upstream predicted_ms timing as genMs", () => {
+  assert.deepEqual(
+    openAiResumableCodec.parseChunk(
+      JSON.stringify({
+        id: "x",
+        model: "m",
+        choices: [],
+        usage: { prompt_tokens: 12, completion_tokens: 7 },
+        timings: { predicted_ms: 1900.6, predicted_per_second: 3.68 },
+      }),
+    ),
+    {
+      text: "",
+      finishReason: null,
+      id: "x",
+      model: "m",
+      genMs: 1901,
+      usage: { promptTokens: 12, completionTokens: 7 },
+    },
+  );
+});
+
 test("runResumableUpstreamAttempt accumulates usage and active generation time", async () => {
   const state = createResumableBufferState();
   const times = [100, 100, 1100];
@@ -156,6 +178,39 @@ test("runResumableUpstreamAttempt accumulates usage and active generation time",
   assert.equal(state.completionTokens, 5);
   assert.equal(state.promptTokens, 10);
   assert.equal(state.genMs, 1000);
+});
+
+test("runResumableUpstreamAttempt prefers upstream predicted_ms over arrival delta", async () => {
+  const state = createResumableBufferState();
+  const times = [100, 100, 1100];
+  let i = 0;
+  const usageWithTimings = `data: ${JSON.stringify({
+    id: "cmpl",
+    model: "m",
+    choices: [],
+    usage: { prompt_tokens: 10, completion_tokens: 5 },
+    timings: { predicted_ms: 250, predicted_per_second: 20 },
+  })}\n\n`;
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state,
+    preemptSignal: new AbortController().signal,
+    now: () => times[i++] ?? 9999,
+    fetchImpl: makeFetch([
+      chunkFrame({ content: "Hel" }),
+      chunkFrame({ content: "lo", finish: "stop" }),
+      usageWithTimings,
+      "data: [DONE]\n\n",
+    ]),
+  });
+
+  assert.equal(outcome.type, "completed");
+  assert.equal(state.completionTokens, 5);
+  assert.equal(state.genMs, 250);
 });
 
 test("completion tokens accumulate across resume rounds", async () => {

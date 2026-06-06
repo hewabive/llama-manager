@@ -95,6 +95,7 @@ export function createUsageMeterStream(input: {
   let pending = "";
   let promptTokens: number | null = null;
   let completionTokens = 0;
+  let upstreamGenMs: number | null = null;
   let firstTokenAt: number | null = null;
   let lastTokenAt = 0;
   let done = false;
@@ -119,6 +120,9 @@ export function createUsageMeterStream(input: {
           firstTokenAt = now();
         }
         lastTokenAt = now();
+      }
+      if (typeof chunk.genMs === "number") {
+        upstreamGenMs = chunk.genMs;
       }
       if (chunk.usage) {
         if (typeof chunk.usage.completionTokens === "number") {
@@ -152,9 +156,11 @@ export function createUsageMeterStream(input: {
       promptTokens,
       completionTokens,
       genMs:
-        firstTokenAt !== null
-          ? Math.round(Math.max(0, lastTokenAt - firstTokenAt))
-          : 0,
+        upstreamGenMs !== null
+          ? Math.round(upstreamGenMs)
+          : firstTokenAt !== null
+            ? Math.round(Math.max(0, lastTokenAt - firstTokenAt))
+            : 0,
     });
   };
 

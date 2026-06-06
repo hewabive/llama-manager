@@ -124,6 +124,41 @@ test("createUsageMeterStream strips synthetic usage frame and meters tokens", as
   assert.equal(Number.isInteger(counted?.genMs), true);
 });
 
+test("createUsageMeterStream prefers upstream predicted_ms over frame-arrival delta", async () => {
+  let counted: ProxyUsageCounts | undefined;
+  let clock = 0;
+  const meter = createUsageMeterStream({
+    codec: openAiResumableCodec,
+    stripUsageFrames: true,
+    now: () => (clock += 10),
+    onComplete: (usage) => {
+      counted = usage;
+    },
+  });
+
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        openAiFrames([
+          `data: ${JSON.stringify({ id: "a", model: "m", choices: [{ delta: { content: "Hello" } }] })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}`,
+          `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 3, completion_tokens: 4 }, timings: { predicted_ms: 2000 } })}`,
+          "data: [DONE]",
+        ]),
+      );
+      controller.close();
+    },
+  });
+
+  await drain(input.pipeThrough(meter.transform));
+
+  assert.deepEqual(counted, {
+    promptTokens: 3,
+    completionTokens: 4,
+    genMs: 2000,
+  });
+});
+
 test("createUsageMeterStream passthrough keeps usage frame when not stripping", async () => {
   let counted: ProxyUsageCounts | undefined;
   const meter = createUsageMeterStream({

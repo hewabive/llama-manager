@@ -110,6 +110,11 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
     const delta = asObject(choice?.delta);
     const content = typeof delta?.content === "string" ? delta.content : "";
     const usage = asObject(event.usage);
+    const timings = asObject(event.timings);
+    const predictedMs =
+      timings && typeof timings.predicted_ms === "number" && Number.isFinite(timings.predicted_ms)
+        ? timings.predicted_ms
+        : null;
 
     const deltaToolCalls = Array.isArray(delta?.tool_calls)
       ? delta.tool_calls
@@ -147,6 +152,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
       ...(reasoning ? { reasoning } : {}),
       ...(phase ? { phase } : {}),
       ...(toolCall ? { toolCall } : {}),
+      ...(predictedMs !== null ? { genMs: Math.round(predictedMs) } : {}),
       ...(usage
         ? {
             usage: {
