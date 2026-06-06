@@ -1,14 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const pathCatalog = sqliteTable("path_catalog", {
-  id: text("id").primaryKey(),
-  kind: text("kind").notNull(),
-  name: text("name").notNull(),
-  path: text("path").notNull(),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 export const processRuns = sqliteTable("process_runs", {
   id: text("id").primaryKey(),
   instanceId: text("instance_id").notNull(),
