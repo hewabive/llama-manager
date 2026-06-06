@@ -9,6 +9,14 @@ body {
   background: var(--mantine-color-body);
 }
 
+.mantine-AppShell-main {
+  overflow-x: clip;
+}
+
+.mantine-Modal-content .mantine-ScrollArea-content {
+  min-width: 0;
+}
+
 code {
   white-space: nowrap;
 }
