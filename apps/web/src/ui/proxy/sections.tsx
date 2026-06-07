@@ -25,7 +25,7 @@ import {
 import { Activity, BarChart3, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
 import { TouchSelect } from "../components/TouchCombobox";
-import { formatLocalDateTime } from "../utils/time";
+import { formatLocalDateTime, formatLocalHour } from "../utils/time";
 import {
   actionLabels,
   runtimeDetails,
@@ -750,7 +750,7 @@ export function StatsSection(props: StatsSectionProps) {
             <Table striped withTableBorder fz="xs">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Hour (UTC)</Table.Th>
+                  <Table.Th>Hour</Table.Th>
                   <Table.Th>Requests</Table.Th>
                   <Table.Th>Errors</Table.Th>
                   <Table.Th>Tokens</Table.Th>
@@ -760,7 +760,7 @@ export function StatsSection(props: StatsSectionProps) {
               <Table.Tbody>
                 {(snapshot?.buckets ?? []).slice(0, 12).map((bucket) => (
                   <Table.Tr key={bucket.hour}>
-                    <Table.Td>{bucket.hour.replace("T", " ")}</Table.Td>
+                    <Table.Td>{formatLocalHour(bucket.hour)}</Table.Td>
                     <Table.Td>{bucket.requests}</Table.Td>
                     <Table.Td>{bucket.errors}</Table.Td>
                     <Table.Td>{bucket.completionTokens}</Table.Td>
