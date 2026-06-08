@@ -1,12 +1,10 @@
 import type {
   ApiEndpointRecord,
   ApiLabProbeProfile,
-  ApiProbeKind,
   Instance,
   InstanceHealthSummary,
 } from "@llama-manager/core";
-import { ApiLabProbeKindsByProfile } from "@llama-manager/core";
-import { Group, Stack, Text } from "@mantine/core";
+import { Group, Select, Stack, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -50,8 +48,17 @@ const profileRequestOptions: Record<ApiLabProbeProfile, ProbeRequestOption[]> =
       { value: "apply-template", label: "Apply template" },
       { value: "infill", label: "Infill" },
     ],
-    anthropic: [{ value: "count-tokens", label: "Count tokens" }],
+    anthropic: [
+      { value: "chat", label: "Messages (chat)" },
+      { value: "count-tokens", label: "Count tokens" },
+    ],
   };
+
+const protocolLabels: Record<ApiLabProbeProfile, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  "llama-native": "llama.cpp native",
+};
 
 function normalizeHttpUrlLabel(value: string) {
   try {
@@ -93,22 +100,6 @@ function normalizeBaseUrlForProfile(
   return apiVersionBaseUrl(value);
 }
 
-function probeProfileForKind(kind: ApiProbeKind): ApiLabProbeProfile {
-  if (
-    (ApiLabProbeKindsByProfile["llama-native"] as readonly string[]).includes(
-      kind,
-    )
-  ) {
-    return "llama-native";
-  }
-  if (
-    (ApiLabProbeKindsByProfile.anthropic as readonly string[]).includes(kind)
-  ) {
-    return "anthropic";
-  }
-  return "openai";
-}
-
 function managerProxyRootUrl() {
   const configured = import.meta.env.VITE_API_URL as string | undefined;
   if (configured?.trim()) {
@@ -128,6 +119,7 @@ export function ApiLabView(props: {
   const queryClient = useQueryClient();
   const [baseUrl, setBaseUrl] = useState("");
   const [quickTarget, setQuickTarget] = useState<string | null>(null);
+  const [protocol, setProtocol] = useState<ApiLabProbeProfile>("openai");
   const baseUrlTouchedRef = useRef(false);
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
@@ -307,16 +299,40 @@ export function ApiLabView(props: {
     }
     return modelDiscovery.status;
   })();
-  const requestOptions = [
-    ...profileRequestOptions.openai,
-    ...profileRequestOptions.anthropic,
-    ...(nativeTargetSelected ? profileRequestOptions["llama-native"] : []),
-  ];
+  const protocolOptions = useMemo(() => {
+    const profiles: ApiLabProbeProfile[] = nativeTargetSelected
+      ? ["openai", "anthropic", "llama-native"]
+      : ["openai", "anthropic"];
+    return profiles.map((profile) => ({
+      value: profile,
+      label: protocolLabels[profile],
+    }));
+  }, [nativeTargetSelected]);
+
+  useEffect(() => {
+    if (protocol === "llama-native" && !nativeTargetSelected) {
+      setProtocol("openai");
+    }
+  }, [protocol, nativeTargetSelected]);
+
+  const requestOptions = profileRequestOptions[protocol];
   const baseUrlPlaceholder = "http://127.0.0.1:8080/v1";
 
   return (
     <Stack gap="md">
       <Group align="flex-end" gap="sm" wrap="wrap">
+        <Select
+          label="Protocol / API"
+          data={protocolOptions}
+          value={protocol}
+          allowDeselect={false}
+          onChange={(value) => {
+            if (value) {
+              setProtocol(value as ApiLabProbeProfile);
+            }
+          }}
+          style={{ width: 200 }}
+        />
         <TouchAutocomplete
           clearable
           data={targetOptions.map((target) => target.baseUrl)}
@@ -373,14 +389,11 @@ export function ApiLabView(props: {
         }
         modelOptions={activeModelOptions}
         requestOptions={requestOptions}
-        autoloadVisible={nativeTargetSelected}
+        autoloadVisible={protocol === "llama-native"}
         runProbe={(probe) =>
           runApiLabProbe({
-            profile: probeProfileForKind(probe.kind),
-            baseUrl: normalizeBaseUrlForProfile(
-              probeProfileForKind(probe.kind),
-              baseUrl,
-            ),
+            profile: protocol,
+            baseUrl: normalizeBaseUrlForProfile(protocol, baseUrl),
             endpointId: matchedQuickTarget?.endpointId,
             probe,
           })
@@ -388,11 +401,8 @@ export function ApiLabView(props: {
         streamProbe={(_id, probe, callbacks, signal) =>
           streamApiLabProbe(
             {
-              profile: probeProfileForKind(probe.kind),
-              baseUrl: normalizeBaseUrlForProfile(
-                probeProfileForKind(probe.kind),
-                baseUrl,
-              ),
+              profile: protocol,
+              baseUrl: normalizeBaseUrlForProfile(protocol, baseUrl),
               endpointId: matchedQuickTarget?.endpointId,
               probe,
             },

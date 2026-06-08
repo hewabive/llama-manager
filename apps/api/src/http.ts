@@ -487,11 +487,18 @@ function parseApiLabProfile(value: string | undefined) {
   return parsed.data;
 }
 
+function apiLabProfileHeaders(
+  profile: ApiLabProbeProfile,
+): Record<string, string> {
+  return profile === "anthropic" ? { "anthropic-version": "2023-06-01" } : {};
+}
+
 function resolveApiLabEndpoint(input: {
   profile: ApiLabProbeProfile;
   baseUrl?: string | undefined;
   endpointId?: string | undefined;
 }) {
+  const profileHeaders = apiLabProfileHeaders(input.profile);
   if (input.endpointId) {
     const endpoint = getApiEndpointFromCatalog(
       input.endpointId,
@@ -506,7 +513,7 @@ function resolveApiLabEndpoint(input: {
     }
     return {
       baseUrl: normalizeApiLabBaseUrl(input.profile, endpoint.baseUrl),
-      headers: auth.headers,
+      headers: { ...profileHeaders, ...auth.headers },
     };
   }
 
@@ -515,7 +522,7 @@ function resolveApiLabEndpoint(input: {
   }
   return {
     baseUrl: normalizeApiLabBaseUrl(input.profile, input.baseUrl),
-    headers: {},
+    headers: profileHeaders,
   };
 }
 
@@ -2188,6 +2195,11 @@ function streamDeltaText(value: unknown) {
     choice?.text;
   if (typeof content === "string") return content;
 
+  if (record.type === "content_block_delta") {
+    const anthropicDelta = recordValue(record.delta);
+    if (typeof anthropicDelta?.text === "string") return anthropicDelta.text;
+  }
+
   if (typeof record.type === "string" && record.type.endsWith(".delta")) {
     const deltaText = record.delta ?? record.text;
     if (typeof deltaText === "string") return deltaText;
@@ -2197,9 +2209,13 @@ function streamDeltaText(value: unknown) {
 }
 
 function streamFinishReason(value: unknown) {
-  const choice = firstRecord(recordValue(value)?.choices);
+  const record = recordValue(value);
+  const choice = firstRecord(record?.choices);
   const reason = choice?.finish_reason;
-  return typeof reason === "string" ? reason : null;
+  if (typeof reason === "string") return reason;
+  const anthropicStop =
+    recordValue(record?.delta)?.stop_reason ?? record?.stop_reason;
+  return typeof anthropicStop === "string" ? anthropicStop : null;
 }
 
 function streamEventData(block: string) {
@@ -2229,6 +2245,7 @@ async function writeUpstreamStreamEvents(props: {
   let buffer = "";
   let finalBody: unknown = null;
   let finishReason: string | null = null;
+  let usage: unknown = null;
 
   const consumeBlock = async (block: string) => {
     const data = streamEventData(block);
@@ -2239,6 +2256,7 @@ async function writeUpstreamStreamEvents(props: {
       const parsed = JSON.parse(data) as unknown;
       finalBody = parsed;
       finishReason = streamFinishReason(parsed) ?? finishReason;
+      usage = recordValue(parsed)?.usage ?? usage;
       const delta = streamDeltaText(parsed);
       if (delta) {
         await props.stream.writeSSE({
@@ -2285,7 +2303,7 @@ async function writeUpstreamStreamEvents(props: {
       data: JSON.stringify({
         latencyMs,
         finishReason,
-        usage: finalRecord?.usage ?? null,
+        usage: usage ?? finalRecord?.usage ?? null,
         timings: finalRecord?.timings ?? null,
       }),
     });

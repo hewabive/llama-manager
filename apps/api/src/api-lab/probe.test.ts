@@ -50,6 +50,50 @@ test("apiLabProbeTargetFromBaseUrl keeps llama.cpp native endpoints at server ro
   });
 });
 
+test("apiLabProbeTargetFromBaseUrl sends a chat probe to the Anthropic messages endpoint", () => {
+  const target = apiLabProbeTargetFromBaseUrl(
+    "anthropic",
+    "https://api.anthropic.com/v1",
+    {
+      kind: "chat",
+      model: "claude-sonnet-4-6",
+      prompt: "Hello",
+      systemPrompt: "Be terse.",
+      maxTokens: 8,
+      temperature: 0.1,
+      autoload: true,
+    },
+    { stream: true },
+  );
+
+  assert.equal(target.endpoint, "/messages");
+  assert.equal(target.url, "https://api.anthropic.com/v1/messages");
+  assert.deepEqual(target.requestBody, {
+    system: "Be terse.",
+    messages: [{ role: "user", content: "Hello" }],
+    max_tokens: 8,
+    temperature: 0.1,
+    stream: true,
+    model: "claude-sonnet-4-6",
+  });
+});
+
+test("ApiLabProbeTargetRequestSchema accepts a chat probe for the Anthropic profile", () => {
+  const parsed = ApiLabProbeTargetRequestSchema.safeParse({
+    profile: "anthropic",
+    baseUrl: "https://api.anthropic.com/v1",
+    probe: {
+      kind: "chat",
+      prompt: "Hello",
+      maxTokens: 4,
+      temperature: 0.1,
+      autoload: true,
+    },
+  });
+
+  assert.equal(parsed.success, true);
+});
+
 test("ApiLabProbeTargetRequestSchema rejects probe kinds from another profile", () => {
   const parsed = ApiLabProbeTargetRequestSchema.safeParse({
     profile: "llama-native",

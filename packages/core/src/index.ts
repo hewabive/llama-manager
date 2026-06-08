@@ -321,7 +321,7 @@ export const ApiEndpointRecordSchema = ApiEndpointConfigSchema.extend({
 export const ApiLabProbeKindsByProfile = {
   openai: OpenAiApiProbeKindSchema.options,
   "llama-native": LlamaNativeApiProbeKindSchema.options,
-  anthropic: AnthropicApiProbeKindSchema.options,
+  anthropic: ["chat", ...AnthropicApiProbeKindSchema.options],
 } as const;
 
 export const ApiProbeRequestSchema = z

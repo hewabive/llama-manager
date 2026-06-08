@@ -174,14 +174,34 @@ function llamaNativeApiProbeRequestBody(
   };
 }
 
-function anthropicApiProbeRequestBody(input: ApiProbeRequest) {
+function anthropicApiProbeRequestBody(
+  input: ApiProbeRequest,
+  options: { stream?: boolean } = {},
+) {
   const systemPrompt = compactOptionalString(input.systemPrompt);
+
+  if (input.kind === "count-tokens") {
+    return {
+      endpoint: "/messages/count_tokens",
+      body: withModel(
+        {
+          ...(systemPrompt ? { system: systemPrompt } : {}),
+          messages: [{ role: "user", content: input.prompt }],
+        },
+        input.model,
+      ),
+    };
+  }
+
   return {
-    endpoint: "/messages/count_tokens",
+    endpoint: "/messages",
     body: withModel(
       {
         ...(systemPrompt ? { system: systemPrompt } : {}),
         messages: [{ role: "user", content: input.prompt }],
+        max_tokens: input.maxTokens,
+        temperature: input.temperature,
+        stream: options.stream ?? false,
       },
       input.model,
     ),
@@ -199,7 +219,7 @@ export function apiLabProbeTargetFromBaseUrl(
       ? openAiApiProbeRequestBody(input, options)
       : profile === "llama-native"
         ? llamaNativeApiProbeRequestBody(input, options)
-        : anthropicApiProbeRequestBody(input);
+        : anthropicApiProbeRequestBody(input, options);
   const endpointWithQuery =
     profile === "llama-native"
       ? endpointWithAutoload(endpoint, input.autoload)
