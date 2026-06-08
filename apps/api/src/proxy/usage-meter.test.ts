@@ -50,6 +50,25 @@ test("usageFromNonStreamBody reads Anthropic usage", () => {
   });
 });
 
+test("usageFromNonStreamBody sums Anthropic cache input tokens", () => {
+  const usage = usageFromNonStreamBody(
+    "anthropic",
+    JSON.stringify({
+      usage: {
+        input_tokens: 1,
+        cache_read_input_tokens: 240,
+        cache_creation_input_tokens: 12,
+        output_tokens: 9,
+      },
+    }),
+  );
+  assert.deepEqual(usage, {
+    promptTokens: 253,
+    completionTokens: 9,
+    genMs: 0,
+  });
+});
+
 test("usageFromNonStreamBody returns null without usage", () => {
   assert.equal(usageFromNonStreamBody("openai", "{}"), null);
   assert.equal(usageFromNonStreamBody("openai", "not json"), null);
@@ -218,5 +237,35 @@ test("createUsageMeterStream meters Anthropic stream without stripping", async (
   const out = await drain(input.pipeThrough(meter.transform));
   assert.equal(out.includes("message_start"), true);
   assert.equal(counted?.promptTokens, 8);
+  assert.equal(counted?.completionTokens, 6);
+});
+
+test("createUsageMeterStream sums Anthropic cache input tokens", async () => {
+  let counted: ProxyUsageCounts | undefined;
+  const meter = createUsageMeterStream({
+    codec: anthropicResumableCodec,
+    stripUsageFrames: false,
+    now: () => 0,
+    onComplete: (usage) => {
+      counted = usage;
+    },
+  });
+
+  const frames = [
+    `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg", model: "m", usage: { input_tokens: 1, cache_read_input_tokens: 199 } } })}`,
+    `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: "hi" } })}`,
+    `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 6 } })}`,
+  ];
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(frames.map((f) => `${f}\n\n`).join("")),
+      );
+      controller.close();
+    },
+  });
+
+  await drain(input.pipeThrough(meter.transform));
+  assert.equal(counted?.promptTokens, 200);
   assert.equal(counted?.completionTokens, 6);
 });

@@ -16,6 +16,28 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+export function anthropicPromptTokens(
+  usage: Record<string, unknown> | null | undefined,
+): number | null {
+  if (!usage) {
+    return null;
+  }
+  let total = 0;
+  let seen = false;
+  for (const key of [
+    "input_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+  ]) {
+    const value = numberOrNull(usage[key]);
+    if (value !== null) {
+      total += value;
+      seen = true;
+    }
+  }
+  return seen ? total : null;
+}
+
 export function usageFromNonStreamBody(
   protocol: ApiProxyProtocolId,
   bodyText: string,
@@ -37,7 +59,7 @@ export function usageFromNonStreamBody(
       return null;
     }
     return {
-      promptTokens: numberOrNull(usage.input_tokens),
+      promptTokens: anthropicPromptTokens(usage),
       completionTokens,
       genMs: 0,
     };

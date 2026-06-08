@@ -4,6 +4,7 @@ import type {
   ApiProxyResumableCodec,
   ApiProxyResumableToolCall,
 } from "./protocol.js";
+import { anthropicPromptTokens } from "./usage-meter.js";
 
 export type AnthropicErrorType =
   | "invalid_request_error"
@@ -163,8 +164,7 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
         id: typeof message?.id === "string" ? message.id : null,
         model: typeof message?.model === "string" ? message.model : null,
         usage: {
-          promptTokens:
-            typeof usage?.input_tokens === "number" ? usage.input_tokens : null,
+          promptTokens: anthropicPromptTokens(usage),
           completionTokens: null,
         },
       };
@@ -179,7 +179,7 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
         id: null,
         model: null,
         usage: {
-          promptTokens: null,
+          promptTokens: anthropicPromptTokens(usage),
           completionTokens:
             typeof usage?.output_tokens === "number"
               ? usage.output_tokens
