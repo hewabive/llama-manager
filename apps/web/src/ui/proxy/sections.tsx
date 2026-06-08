@@ -800,7 +800,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Target</Table.Th>
                   <Table.Th>Actions</Table.Th>
-                  <Table.Th>Tokens</Table.Th>
+                  <Table.Th>Tokens (in/out)</Table.Th>
                   <Table.Th>Rate</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>ms</Table.Th>
@@ -848,7 +848,11 @@ export function StatsSection(props: StatsSectionProps) {
                         "—"
                       )}
                     </Table.Td>
-                    <Table.Td>{trace.usage?.completionTokens ?? "—"}</Table.Td>
+                    <Table.Td>
+                      {trace.usage
+                        ? `${trace.usage.promptTokens ?? "—"} / ${trace.usage.completionTokens}`
+                        : "—"}
+                    </Table.Td>
                     <Table.Td>
                       {trace.usage
                         ? formatRate(trace.usage.ratePerSecond)
