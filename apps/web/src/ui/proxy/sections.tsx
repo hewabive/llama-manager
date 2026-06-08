@@ -854,7 +854,7 @@ export function StatsSection(props: StatsSectionProps) {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {props.traces.slice(0, 12).map((trace) => (
+                {props.traces.slice(0, 50).map((trace) => (
                   <Table.Tr key={trace.id}>
                     <Table.Td>{formatLocalDateTime(trace.at)}</Table.Td>
                     <Table.Td>
