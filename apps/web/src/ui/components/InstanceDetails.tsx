@@ -14,11 +14,11 @@ import type {
   PromptCacheState,
 } from "@llama-manager/core";
 import {
+  Accordion,
   Badge,
   Box,
   Button,
   Code,
-  Divider,
   Group,
   Paper,
   Progress,
@@ -26,6 +26,7 @@ import {
   SegmentedControl,
   SimpleGrid,
   Stack,
+  Tabs,
   Text,
   TextInput,
   Title,
@@ -43,7 +44,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   getInstanceHealthSummary,
@@ -104,34 +105,39 @@ function probeColor(probe: LlamaEndpointProbe | undefined) {
   return "red";
 }
 
-function ProbeCard(props: {
+function probeTooltip(probe: LlamaEndpointProbe | undefined) {
+  if (!probe) return "not probed";
+  const parts = [`${probe.status} · ${probe.latencyMs} ms`];
+  if (isModelScopedRouterProbe(probe)) {
+    parts.push("router endpoint requires a model (see per-model diagnostics)");
+  } else if (probe.error) {
+    parts.push(probe.error);
+  }
+  return parts.join(" · ");
+}
+
+function ProbePill(props: {
   title: string;
   probe: LlamaEndpointProbe | undefined;
 }) {
   return (
-    <Paper withBorder p="sm" radius="sm">
-      <Group justify="space-between" gap="xs" wrap="nowrap">
-        <Text fw={600} size="sm">
-          {props.title}
-        </Text>
-        <Badge color={probeColor(props.probe)} variant="light">
-          {props.probe?.status ?? "offline"}
-        </Badge>
-      </Group>
-      <Text c="dimmed" size="xs" mt={4}>
-        {props.probe ? `${props.probe.latencyMs} ms` : "not probed"}
-      </Text>
-      {isModelScopedRouterProbe(props.probe) && (
-        <Text c="dimmed" size="xs" mt={4}>
-          Router endpoint requires a model. See per-model diagnostics.
-        </Text>
-      )}
-      {props.probe?.error && (
-        <Text c="red" size="xs" mt={4} lineClamp={2}>
-          {props.probe.error}
-        </Text>
-      )}
-    </Paper>
+    <Tooltip label={probeTooltip(props.probe)} withArrow multiline maw={320}>
+      <Badge
+        color={probeColor(props.probe)}
+        variant="light"
+        styles={{ root: { textTransform: "none" } }}
+      >
+        {props.title}: {props.probe?.status ?? "offline"}
+      </Badge>
+    </Tooltip>
+  );
+}
+
+function SectionLabel(props: { children: ReactNode }) {
+  return (
+    <Text fw={700} size="xs" tt="uppercase" c="dimmed" mt="xs">
+      {props.children}
+    </Text>
   );
 }
 
@@ -2111,6 +2117,12 @@ export function InstanceDetails(props: {
               </Badge>
             </Group>
           </Group>
+          <Group gap="xs" mt="sm">
+            <ProbePill title="health" probe={llama?.health} />
+            <ProbePill title="props" probe={llama?.props} />
+            <ProbePill title="slots" probe={llama?.slots} />
+            <ProbePill title="v1/models" probe={llama?.models} />
+          </Group>
           {health && (
             <Text c="dimmed" size="xs" mt={6}>
               Checked: {formatLocalDateTime(health.checkedAt)}
@@ -2118,13 +2130,7 @@ export function InstanceDetails(props: {
           )}
         </Paper>
 
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
-          <ProbeCard title="health" probe={llama?.health} />
-          <ProbeCard title="props" probe={llama?.props} />
-          <ProbeCard title="slots" probe={llama?.slots} />
-          <ProbeCard title="v1/models" probe={llama?.models} />
-        </SimpleGrid>
-
+        <SectionLabel>Memory &amp; cache</SectionLabel>
         <MemoryLayoutPanel layout={statusSummary?.memoryLayout} />
 
         {rootSlotRows.length > 0 && (
@@ -2166,36 +2172,7 @@ export function InstanceDetails(props: {
           />
         )}
 
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-          <Stack gap={4}>
-            <Text fw={600} size="sm">
-              Runtime
-            </Text>
-            <Text size="sm">PID: {runtime?.pid ?? "-"}</Text>
-            <Text size="sm">
-              Started: {formatLocalDateTime(runtime?.startedAt)}
-            </Text>
-            <Text size="sm">Exit code: {runtime?.exitCode ?? "-"}</Text>
-            <Text size="sm" lineClamp={2}>
-              Log: {runtime?.logPath ?? "-"}
-            </Text>
-            <Text size="sm" lineClamp={2}>
-              Raw log: {runtime?.rawLogPath ?? "-"}
-            </Text>
-          </Stack>
-          <Stack gap={4}>
-            <Text fw={600} size="sm">
-              llama-server
-            </Text>
-            <Text size="sm">Base URL: {llama?.baseUrl || "-"}</Text>
-            {summary.map(([label, value]) => (
-              <Text key={label} size="sm" lineClamp={2}>
-                {label}: {String(value)}
-              </Text>
-            ))}
-          </Stack>
-        </SimpleGrid>
-
+        <SectionLabel>Models</SectionLabel>
         <V1ModelsPanel
           probe={llama?.models}
           modelDiagnostics={llama?.modelDiagnostics ?? {}}
@@ -2214,130 +2191,230 @@ export function InstanceDetails(props: {
           pendingSlotAction={pendingSlotAction}
         />
 
-        <LlamaCapabilitiesPanel
-          data={
-            canProbeCapabilities ? (capabilitiesQuery.data?.data ?? null) : null
-          }
-          disabledReason={
-            canProbeCapabilities
-              ? null
-              : "Start the instance to probe live llama-server endpoints."
-          }
-          loading={capabilitiesQuery.isFetching}
-          error={
-            canProbeCapabilities
-              ? ((capabilitiesQuery.error as Error | null)?.message ?? null)
-              : null
-          }
-          onRefresh={() => void capabilitiesQuery.refetch()}
-        />
+        <SectionLabel>Details</SectionLabel>
+        <Accordion multiple variant="contained" radius="sm">
+          <Accordion.Item value="runtime">
+            <Accordion.Control>Runtime &amp; paths</Accordion.Control>
+            <Accordion.Panel>
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                <Stack gap={4}>
+                  <Text fw={600} size="sm">
+                    Runtime
+                  </Text>
+                  <Text size="sm">PID: {runtime?.pid ?? "-"}</Text>
+                  <Text size="sm">
+                    Started: {formatLocalDateTime(runtime?.startedAt)}
+                  </Text>
+                  <Text size="sm">Exit code: {runtime?.exitCode ?? "-"}</Text>
+                  <Text size="sm" lineClamp={2}>
+                    Log: {runtime?.logPath ?? "-"}
+                  </Text>
+                  <Text size="sm" lineClamp={2}>
+                    Raw log: {runtime?.rawLogPath ?? "-"}
+                  </Text>
+                </Stack>
+                <Stack gap={4}>
+                  <Text fw={600} size="sm">
+                    llama-server
+                  </Text>
+                  <Text size="sm">Base URL: {llama?.baseUrl || "-"}</Text>
+                  {summary.map(([label, value]) => (
+                    <Text key={label} size="sm" lineClamp={2}>
+                      {label}: {String(value)}
+                    </Text>
+                  ))}
+                </Stack>
+              </SimpleGrid>
+            </Accordion.Panel>
+          </Accordion.Item>
 
-        <Paper withBorder p="sm" radius="sm">
-          <Group justify="space-between" mb="xs">
-            <Text fw={600} size="sm">
-              Preflight
-            </Text>
-            <Badge
-              color={preflight ? (preflight.ok ? "green" : "red") : "gray"}
-              variant="light"
-            >
-              {preflight
-                ? preflight.ok
-                  ? "ok"
-                  : "needs attention"
-                : "checking"}
-            </Badge>
-          </Group>
-          <Stack gap={4}>
-            {(preflight?.issues ?? []).map((issue, index) => (
-              <Text
-                key={`${issue.field}-${index}`}
-                c={issue.level === "error" ? "red" : "yellow"}
-                size="xs"
+          <Accordion.Item value="capabilities">
+            <Accordion.Control>Capabilities</Accordion.Control>
+            <Accordion.Panel>
+              <LlamaCapabilitiesPanel
+                data={
+                  canProbeCapabilities
+                    ? (capabilitiesQuery.data?.data ?? null)
+                    : null
+                }
+                disabledReason={
+                  canProbeCapabilities
+                    ? null
+                    : "Start the instance to probe live llama-server endpoints."
+                }
+                loading={capabilitiesQuery.isFetching}
+                error={
+                  canProbeCapabilities
+                    ? ((capabilitiesQuery.error as Error | null)?.message ??
+                      null)
+                    : null
+                }
+                onRefresh={() => void capabilitiesQuery.refetch()}
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="preflight">
+            <Accordion.Control>
+              <Group
+                justify="space-between"
+                wrap="nowrap"
+                pr="sm"
+                style={{ flexGrow: 1 }}
               >
-                {issue.field}: {issue.message}
-              </Text>
-            ))}
-            {preflight && preflight.issues.length === 0 && (
-              <Text c="dimmed" size="xs">
-                Binary, working directory and known path arguments look valid.
-              </Text>
-            )}
-          </Stack>
-        </Paper>
+                <Text fw={600} size="sm">
+                  Preflight
+                </Text>
+                <Badge
+                  color={preflight ? (preflight.ok ? "green" : "red") : "gray"}
+                  variant="light"
+                >
+                  {preflight
+                    ? preflight.ok
+                      ? "ok"
+                      : "needs attention"
+                    : "checking"}
+                </Badge>
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap={4}>
+                {(preflight?.issues ?? []).map((issue, index) => (
+                  <Text
+                    key={`${issue.field}-${index}`}
+                    c={issue.level === "error" ? "red" : "yellow"}
+                    size="xs"
+                  >
+                    {issue.field}: {issue.message}
+                  </Text>
+                ))}
+                {preflight && preflight.issues.length === 0 && (
+                  <Text c="dimmed" size="xs">
+                    Binary, working directory and known path arguments look
+                    valid.
+                  </Text>
+                )}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
 
-        <Paper withBorder p="sm" radius="sm">
-          <Group justify="space-between" mb="xs">
-            <Text fw={600} size="sm">
-              Parsed status
-            </Text>
-            <Badge
-              color={statusSummary?.ready ? "green" : "gray"}
-              variant="light"
+          <Accordion.Item value="parsed-status">
+            <Accordion.Control>
+              <Group
+                justify="space-between"
+                wrap="nowrap"
+                pr="sm"
+                style={{ flexGrow: 1 }}
+              >
+                <Text fw={600} size="sm">
+                  Parsed status
+                </Text>
+                <Badge
+                  color={statusSummary?.ready ? "green" : "gray"}
+                  variant="light"
+                >
+                  {statusSummary?.ready ? "ready" : "not ready"}
+                </Badge>
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+                <Text size="sm" lineClamp={1}>
+                  URL: {statusSummary?.listeningUrl ?? llama?.baseUrl ?? "-"}
+                </Text>
+                <Text size="sm" lineClamp={1}>
+                  Model:{" "}
+                  {statusSummary?.modelAlias ?? statusSummary?.modelPath ?? "-"}
+                </Text>
+                <Text size="sm">
+                  Context: {statusSummary?.contextSize ?? "-"}
+                </Text>
+                <Text size="sm">Slots: {statusSummary?.slots ?? "-"}</Text>
+                <Text size="sm" lineClamp={1}>
+                  GPU/offload: {statusSummary?.gpuLayers ?? "-"}
+                </Text>
+                <Text size="sm">
+                  Warnings: {statusSummary?.warnings.length ?? 0}
+                </Text>
+              </SimpleGrid>
+              {Boolean(
+                (statusSummary?.errors.length ?? 0) +
+                (statusSummary?.warnings.length ?? 0) +
+                (statusSummary?.notices.length ?? 0),
+              ) && (
+                <Stack gap={4} mt="xs">
+                  {(statusSummary?.errors ?? [])
+                    .slice(-3)
+                    .map((line, index) => (
+                      <Text
+                        key={`error-${index}`}
+                        c="red"
+                        size="xs"
+                        lineClamp={2}
+                      >
+                        {line}
+                      </Text>
+                    ))}
+                  {(statusSummary?.warnings ?? [])
+                    .slice(-4)
+                    .map((line, index) => (
+                      <Text
+                        key={`warning-${index}`}
+                        c="yellow"
+                        size="xs"
+                        lineClamp={2}
+                      >
+                        {line}
+                      </Text>
+                    ))}
+                  {(statusSummary?.notices ?? [])
+                    .slice(-4)
+                    .map((line, index) => (
+                      <Text
+                        key={`notice-${index}`}
+                        c="dimmed"
+                        size="xs"
+                        lineClamp={2}
+                      >
+                        {line}
+                      </Text>
+                    ))}
+                </Stack>
+              )}
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+
+        <SectionLabel>Logs &amp; events</SectionLabel>
+        <Tabs defaultValue="log">
+          <Tabs.List>
+            <Tabs.Tab
+              value="log"
+              rightSection={
+                <Badge variant="light" size="sm">
+                  {logTail?.lines.length ?? 0}
+                </Badge>
+              }
             >
-              {statusSummary?.ready ? "ready" : "not ready"}
-            </Badge>
-          </Group>
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
-            <Text size="sm" lineClamp={1}>
-              URL: {statusSummary?.listeningUrl ?? llama?.baseUrl ?? "-"}
-            </Text>
-            <Text size="sm" lineClamp={1}>
-              Model:{" "}
-              {statusSummary?.modelAlias ?? statusSummary?.modelPath ?? "-"}
-            </Text>
-            <Text size="sm">Context: {statusSummary?.contextSize ?? "-"}</Text>
-            <Text size="sm">Slots: {statusSummary?.slots ?? "-"}</Text>
-            <Text size="sm" lineClamp={1}>
-              GPU/offload: {statusSummary?.gpuLayers ?? "-"}
-            </Text>
-            <Text size="sm">
-              Warnings: {statusSummary?.warnings.length ?? 0}
-            </Text>
-          </SimpleGrid>
-          {Boolean(
-            (statusSummary?.errors.length ?? 0) +
-            (statusSummary?.warnings.length ?? 0) +
-            (statusSummary?.notices.length ?? 0),
-          ) && (
-            <Stack gap={4} mt="xs">
-              {(statusSummary?.errors ?? []).slice(-3).map((line, index) => (
-                <Text key={`error-${index}`} c="red" size="xs" lineClamp={2}>
-                  {line}
-                </Text>
-              ))}
-              {(statusSummary?.warnings ?? []).slice(-4).map((line, index) => (
-                <Text
-                  key={`warning-${index}`}
-                  c="yellow"
-                  size="xs"
-                  lineClamp={2}
-                >
-                  {line}
-                </Text>
-              ))}
-              {(statusSummary?.notices ?? []).slice(-4).map((line, index) => (
-                <Text
-                  key={`notice-${index}`}
-                  c="dimmed"
-                  size="xs"
-                  lineClamp={2}
-                >
-                  {line}
-                </Text>
-              ))}
-            </Stack>
-          )}
-        </Paper>
+              Log
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="events"
+              rightSection={
+                <Badge variant="light" size="sm">
+                  {events.length}
+                </Badge>
+              }
+            >
+              Events
+            </Tabs.Tab>
+          </Tabs.List>
 
-        <Divider />
-
-        <Box>
-          <Group justify="space-between" mb="xs">
-            <Text fw={600} size="sm">
-              Recent log
-            </Text>
-            <Group gap="xs">
+          <Tabs.Panel value="log" pt="xs">
+            <Group justify="space-between" mb="xs" wrap="nowrap">
+              <Text c="dimmed" size="xs" lineClamp={1}>
+                {logTail?.logPath ?? "No log file yet"}
+              </Text>
               <SegmentedControl
                 size="xs"
                 value={logSource}
@@ -2349,61 +2426,49 @@ export function InstanceDetails(props: {
                   setLogSource(value === "raw" ? "raw" : "filtered")
                 }
               />
-              <Badge variant="light">{logTail?.lines.length ?? 0}</Badge>
             </Group>
-          </Group>
-          <Text c="dimmed" size="xs" lineClamp={1} mb="xs">
-            {logTail?.logPath ?? "No log file yet"}
-          </Text>
-          <ScrollArea h={220} type="auto" offsetScrollbars>
-            <Stack gap={4}>
-              {logTail?.lines.map((line, index) => (
-                <Code
-                  key={`${logTail.logPath}-${index}`}
-                  block
-                  className="code-wrap"
-                >
-                  {line}
-                </Code>
-              ))}
-              {(!logTail || logTail.lines.length === 0) && (
-                <Text c="dimmed" size="sm" ta="center" py="lg">
-                  No log history yet
-                </Text>
-              )}
-            </Stack>
-          </ScrollArea>
-        </Box>
+            <ScrollArea h={260} type="auto" offsetScrollbars>
+              <Stack gap={4}>
+                {logTail?.lines.map((line, index) => (
+                  <Code
+                    key={`${logTail.logPath}-${index}`}
+                    block
+                    className="code-wrap"
+                  >
+                    {line}
+                  </Code>
+                ))}
+                {(!logTail || logTail.lines.length === 0) && (
+                  <Text c="dimmed" size="sm" ta="center" py="lg">
+                    No log history yet
+                  </Text>
+                )}
+              </Stack>
+            </ScrollArea>
+          </Tabs.Panel>
 
-        <Divider />
-
-        <Box>
-          <Group justify="space-between" mb="xs">
-            <Text fw={600} size="sm">
-              Live events
-            </Text>
-            <Badge variant="light">{events.length}</Badge>
-          </Group>
-          <ScrollArea h={260} type="auto" offsetScrollbars>
-            <Stack gap={4}>
-              {events.map((event, index) => (
-                <Code
-                  key={`${event.timestamp}-${index}`}
-                  block
-                  className="code-wrap"
-                >
-                  {formatLocalDateTime(event.timestamp)} [{event.type}]{" "}
-                  {event.message.trimEnd()}
-                </Code>
-              ))}
-              {events.length === 0 && (
-                <Text c="dimmed" size="sm" ta="center" py="lg">
-                  No runtime events yet
-                </Text>
-              )}
-            </Stack>
-          </ScrollArea>
-        </Box>
+          <Tabs.Panel value="events" pt="xs">
+            <ScrollArea h={260} type="auto" offsetScrollbars>
+              <Stack gap={4}>
+                {events.map((event, index) => (
+                  <Code
+                    key={`${event.timestamp}-${index}`}
+                    block
+                    className="code-wrap"
+                  >
+                    {formatLocalDateTime(event.timestamp)} [{event.type}]{" "}
+                    {event.message.trimEnd()}
+                  </Code>
+                ))}
+                {events.length === 0 && (
+                  <Text c="dimmed" size="sm" ta="center" py="lg">
+                    No runtime events yet
+                  </Text>
+                )}
+              </Stack>
+            </ScrollArea>
+          </Tabs.Panel>
+        </Tabs>
       </Stack>
     </Paper>
   );
