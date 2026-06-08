@@ -120,7 +120,11 @@ import {
   getModelScanSettings,
   saveModelScanSettings,
 } from "./models/cache-repository.js";
-import { defaultModelsDirectory, scanModels } from "./models/scanner.js";
+import {
+  defaultModelsDirectory,
+  scanModels,
+  scanModelsFromCache,
+} from "./models/scanner.js";
 import {
   createPreset,
   deletePreset,
@@ -1869,13 +1873,20 @@ app.get("/api/models", async (c) => {
   try {
     const settings = getModelScanSettings();
     const maxDepth = Number(c.req.query("maxDepth") ?? settings.maxDepth);
+    const directory =
+      c.req.query("dir") ?? settings.directory ?? defaultModelsDirectory;
+    const resolvedMaxDepth = Number.isFinite(maxDepth) ? maxDepth : 8;
+    if (c.req.query("cached") === "true") {
+      return c.json({
+        data: scanModelsFromCache({ directory, maxDepth: resolvedMaxDepth }),
+      });
+    }
     const result = await scanModels({
-      directory:
-        c.req.query("dir") ?? settings.directory ?? defaultModelsDirectory,
-      maxDepth: Number.isFinite(maxDepth) ? maxDepth : 8,
+      directory,
+      maxDepth: resolvedMaxDepth,
       refresh: c.req.query("refresh") === "true",
     });
-    return c.json({ data: result });
+    return c.json({ data: { ...result, fromCache: false } });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
   }

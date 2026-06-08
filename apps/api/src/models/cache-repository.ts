@@ -38,6 +38,15 @@ export function getCachedModel(path: string): GgufModel | null {
   return toModel(row);
 }
 
+export function listAllCachedModels(): GgufModel[] {
+  return db
+    .select()
+    .from(modelCache)
+    .all()
+    .filter((row) => row.parserVersion === GGUF_PARSER_VERSION)
+    .map(toModel);
+}
+
 export function saveCachedModel(model: GgufModel) {
   db.insert(modelCache)
     .values({
@@ -63,6 +72,7 @@ export function saveCachedModel(model: GgufModel) {
         isMmproj: String(model.isMmproj),
         mmprojPathsJson: JSON.stringify(model.mmprojPaths),
         metadataJson: JSON.stringify(model.metadata),
+        parserVersion: GGUF_PARSER_VERSION,
         error: model.error ?? null,
         scannedAt: new Date().toISOString(),
       },

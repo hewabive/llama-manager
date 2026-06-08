@@ -52,7 +52,6 @@ import {
   listPathCatalog,
   listPresets,
   previewInstancePreflight,
-  scanModels,
   updateInstance,
 } from "../../api/client";
 import {
@@ -85,6 +84,7 @@ import {
 } from "./InstanceArgumentRows";
 import { PathPickerInput } from "./PathPickerInput";
 import { TouchSelect } from "./TouchCombobox";
+import { useScannedModels } from "../hooks/use-scanned-models";
 import { createUiId } from "../utils/id";
 
 type LaunchMode = "model" | "router" | "remote";
@@ -292,13 +292,8 @@ export function InstanceFormModal(props: {
   });
   const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
-  const formModelsQuery = useQuery({
-    queryKey: ["models", modelDirectory, modelMaxDepth],
-    queryFn: () =>
-      scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
-    enabled: props.opened && modelDirectory !== "",
-    retry: false,
-    staleTime: 60_000,
+  const scanned = useScannedModels(modelDirectory, modelMaxDepth, {
+    enabled: props.opened,
   });
   const pathCatalogQuery = useQuery({
     queryKey: ["path-catalog"],
@@ -402,10 +397,10 @@ export function InstanceFormModal(props: {
   );
   const selectableModels = useMemo(
     () =>
-      (formModelsQuery.data?.data.models ?? [])
+      scanned.models
         .filter((model) => !model.isMmproj && !isVocabModel(model))
         .sort(compareModelTitles),
-    [formModelsQuery.data?.data.models],
+    [scanned.models],
   );
   const selectedModel =
     selectableModels.find((model) => model.path === selectedModelPath) ?? null;
@@ -1296,7 +1291,7 @@ export function InstanceFormModal(props: {
                   <TouchSelect
                     label="Model"
                     placeholder={
-                      formModelsQuery.isFetching
+                      scanned.coldLoading
                         ? "Loading models..."
                         : "Select GGUF model"
                     }
@@ -1306,9 +1301,11 @@ export function InstanceFormModal(props: {
                     onChange={applyModelSelection}
                     data={modelOptions}
                     nothingFoundMessage={
-                      formModelsQuery.isError
-                        ? (formModelsQuery.error as Error).message
-                        : "No models found"
+                      scanned.isError && scanned.error
+                        ? scanned.error.message
+                        : scanned.coldLoading
+                          ? "Loading models..."
+                          : "No models found"
                     }
                   />
                   <PathPickerInput
@@ -1532,7 +1529,7 @@ export function InstanceFormModal(props: {
                         <TouchSelect
                           label="Draft model"
                           placeholder={
-                            formModelsQuery.isFetching
+                            scanned.coldLoading
                               ? "Loading models..."
                               : "Select GGUF model"
                           }

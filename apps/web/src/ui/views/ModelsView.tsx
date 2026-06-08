@@ -27,6 +27,7 @@ import {
   updateModelScanSettings,
 } from "../../api/client";
 import { PathPickerInput } from "../components/PathPickerInput";
+import { useScannedModels } from "../hooks/use-scanned-models";
 import {
   bitsPerWeight,
   compareModelTitles,
@@ -190,9 +191,7 @@ function ModelDetailPanel(props: { model: GgufModel }) {
   );
 }
 
-export function ModelsView(props: {
-  onUseModel: (model: GgufModel) => void;
-}) {
+export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
   const queryClient = useQueryClient();
   const [directory, setDirectory] = useState("");
   const [maxDepth, setMaxDepth] = useState(8);
@@ -205,21 +204,10 @@ export function ModelsView(props: {
     queryKey: ["model-scan-settings"],
     queryFn: getModelScanSettings,
   });
-  const modelsQuery = useQuery({
-    queryKey: [
-      "models",
-      scanParams?.directory ?? "",
-      scanParams?.maxDepth ?? 0,
-    ],
-    queryFn: () => {
-      if (!scanParams) {
-        throw new Error("Model scan is not configured");
-      }
-      return scanModels(scanParams);
-    },
-    enabled: scanParams !== null,
-    retry: false,
-  });
+  const scanned = useScannedModels(
+    scanParams?.directory ?? "",
+    scanParams?.maxDepth ?? 0,
+  );
   const refreshModelsMutation = useMutation({
     mutationFn: (params: ModelScanParams) =>
       scanModels({ ...params, refresh: true }),
@@ -227,6 +215,10 @@ export function ModelsView(props: {
       setScanParams(params);
       queryClient.setQueryData(
         ["models", params.directory, params.maxDepth],
+        result,
+      );
+      queryClient.setQueryData(
+        ["models", params.directory, params.maxDepth, "cache"],
         result,
       );
     },
@@ -276,7 +268,7 @@ export function ModelsView(props: {
       scanParams?.directory === params.directory &&
       scanParams.maxDepth === params.maxDepth
     ) {
-      void modelsQuery.refetch();
+      scanned.refetch();
       return;
     }
     setScanParams(params);
@@ -295,8 +287,8 @@ export function ModelsView(props: {
   }
 
   const models = useMemo(
-    () => [...(modelsQuery.data?.data.models ?? [])].sort(compareModelTitles),
-    [modelsQuery.data?.data.models],
+    () => [...scanned.models].sort(compareModelTitles),
+    [scanned.models],
   );
   const filteredModels = models.filter((model) => {
     if (hideVocab && isVocabModel(model)) {
@@ -309,9 +301,9 @@ export function ModelsView(props: {
   });
 
   const emptyMessage =
-    modelsQuery.isFetching || settingsQuery.isFetching
+    scanned.coldLoading || settingsQuery.isFetching
       ? "Scanning models..."
-      : modelsQuery.isFetched
+      : scanned.fetched
         ? "No matching GGUF files found"
         : "Run scan to list models";
 
@@ -357,7 +349,7 @@ export function ModelsView(props: {
             <Button
               aria-label="Scan model directory"
               onClick={() => requestScan({ directory, maxDepth })}
-              loading={modelsQuery.isFetching}
+              loading={scanned.reconciling}
             >
               Scan
             </Button>
@@ -367,18 +359,16 @@ export function ModelsView(props: {
               onClick={() =>
                 refreshModelsMutation.mutate({ directory, maxDepth })
               }
-              loading={
-                modelsQuery.isFetching || refreshModelsMutation.isPending
-              }
+              loading={scanned.reconciling || refreshModelsMutation.isPending}
             >
               Refresh metadata
             </Button>
           </Group>
         </Group>
 
-        {modelsQuery.error && (
+        {scanned.isError && scanned.error && (
           <Text c="red" size="sm">
-            {(modelsQuery.error as Error).message}
+            {scanned.error.message}
           </Text>
         )}
 
@@ -405,10 +395,9 @@ export function ModelsView(props: {
             <Badge variant="light">
               {filteredModels.length}/{models.length}
             </Badge>
-            {modelsQuery.data?.data.cache && (
+            {scanned.cache && (
               <Badge variant="outline">
-                cache {modelsQuery.data.data.cache.hits}/
-                {modelsQuery.data.data.cache.misses}
+                cache {scanned.cache.hits}/{scanned.cache.misses}
               </Badge>
             )}
           </Group>

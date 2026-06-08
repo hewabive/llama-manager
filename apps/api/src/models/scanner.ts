@@ -4,10 +4,14 @@ import type {
   ModelScanResult,
 } from "@llama-manager/core";
 import { lstat, opendir, stat } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import { config } from "../config.js";
-import { getCachedModel, saveCachedModel } from "./cache-repository.js";
+import {
+  getCachedModel,
+  listAllCachedModels,
+  saveCachedModel,
+} from "./cache-repository.js";
 import { readGgufMetadata, readGgufParameterCount } from "./gguf.js";
 
 const IGNORED_DIRS = new Set([
@@ -358,5 +362,54 @@ export async function scanModels(input: {
       hits: cacheHits,
       misses: cacheMisses,
     },
+  };
+}
+
+function isUnderDirectory(path: string, directory: string, maxDepth: number) {
+  const rel = relative(directory, dirname(path));
+  if (rel.startsWith("..") || resolve(directory, rel) !== dirname(path)) {
+    return false;
+  }
+  const depth = rel === "" ? 0 : rel.split(sep).length;
+  return depth <= maxDepth;
+}
+
+export function scanModelsFromCache(input: {
+  directory?: string;
+  maxDepth?: number;
+}): ModelScanResult {
+  const directory = resolve(input.directory || defaultModelsDirectory);
+  const maxDepth = Math.max(
+    0,
+    Math.min(input.maxDepth ?? DEFAULT_MAX_DEPTH, 16),
+  );
+  const scoped = listAllCachedModels().filter((model) =>
+    isUnderDirectory(model.path, directory, maxDepth),
+  );
+
+  const mmprojByDir = new Map<string, string[]>();
+  for (const model of scoped) {
+    if (model.isMmproj) {
+      const list = mmprojByDir.get(model.directory) ?? [];
+      list.push(model.path);
+      mmprojByDir.set(model.directory, list);
+    }
+  }
+
+  const models = scoped
+    .map((model) => ({
+      ...model,
+      mmprojPaths: model.isMmproj
+        ? []
+        : (mmprojByDir.get(model.directory) ?? []),
+    }))
+    .sort(compareModelNames);
+
+  return {
+    directory,
+    models,
+    scannedAt: "",
+    cache: { hits: scoped.length, misses: 0 },
+    fromCache: true,
   };
 }

@@ -36,7 +36,6 @@ import {
   listPresets,
   listPresetValidations,
   savePreset,
-  scanModels,
   updatePresetsSettings,
 } from "../../api/client";
 import {
@@ -47,6 +46,7 @@ import {
   remotePresetEntry,
 } from "../utils/models";
 import { TouchSelect } from "../components/TouchCombobox";
+import { useScannedModels } from "../hooks/use-scanned-models";
 import { NewPresetModal } from "./presets/NewPresetModal";
 import { PresetArgsEditor } from "./presets/PresetArgsEditor";
 import { PresetEntryDetailModal } from "./presets/PresetEntryDetailModal";
@@ -140,14 +140,7 @@ export function PresetsView() {
   const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
   const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
   const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
-  const presetModelsQuery = useQuery({
-    queryKey: ["models", modelDirectory, modelMaxDepth],
-    queryFn: () =>
-      scanModels({ directory: modelDirectory, maxDepth: modelMaxDepth }),
-    enabled: modelDirectory !== "",
-    retry: false,
-    staleTime: 60_000,
-  });
+  const scanned = useScannedModels(modelDirectory, modelMaxDepth);
 
   useEffect(() => {
     selectedNameRef.current = selectedName;
@@ -323,10 +316,10 @@ export function PresetsView() {
 
   const scannedModels = useMemo(
     () =>
-      (presetModelsQuery.data?.data.models ?? [])
+      scanned.models
         .filter((model) => !model.isMmproj && !isVocabModel(model))
         .sort(compareModelTitles),
-    [presetModelsQuery.data?.data.models],
+    [scanned.models],
   );
   const entries = draft?.entries ?? [];
   const entryByModelPath = useMemo(
@@ -349,6 +342,9 @@ export function PresetsView() {
     [scannedModels, presetModelSearch],
   );
   const orphanEntries = useMemo(() => {
+    if (!scanned.ready) {
+      return [];
+    }
     const query = presetModelSearch.trim().toLowerCase();
     return entries
       .filter((entry) => !scannedPaths.has(entry.modelPath))
@@ -357,7 +353,7 @@ export function PresetsView() {
           query === "" ||
           `${entry.name} ${entry.modelPath}`.toLowerCase().includes(query),
       );
-  }, [entries, scannedPaths, presetModelSearch]);
+  }, [entries, scannedPaths, presetModelSearch, scanned.ready]);
   const selectedPresetEntry =
     entries.find((entry) => entry.id === selectedPresetEntryId) ??
     (pendingEntry?.id === selectedPresetEntryId ? pendingEntry : null);
@@ -592,6 +588,12 @@ export function PresetsView() {
                     <Badge variant="outline">
                       {scannedModels.length} scanned
                     </Badge>
+                    {scanned.reconciling && (
+                      <Group gap={6} c="dimmed">
+                        <Loader size="xs" />
+                        <Text size="xs">rescanning…</Text>
+                      </Group>
+                    )}
                     <Button
                       size="xs"
                       variant="light"
@@ -602,9 +604,9 @@ export function PresetsView() {
                     </Button>
                   </Group>
                 </Group>
-                {presetModelsQuery.isError && (
+                {scanned.isError && scanned.error && (
                   <Text c="red" size="sm">
-                    {(presetModelsQuery.error as Error).message}
+                    {scanned.error.message}
                   </Text>
                 )}
                 <ScrollArea.Autosize mah={520} type="auto" offsetScrollbars>
@@ -662,7 +664,7 @@ export function PresetsView() {
                       orphanEntries.length === 0 && (
                         <Paper withBorder p="md" radius="sm">
                           <Text c="dimmed" ta="center">
-                            {presetModelsQuery.isFetching
+                            {scanned.coldLoading
                               ? "Loading models..."
                               : "No matching GGUF files found"}
                           </Text>

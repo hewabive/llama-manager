@@ -1406,6 +1406,7 @@ export const ModelScanResultSchema = z.object({
     hits: z.number(),
     misses: z.number(),
   }),
+  fromCache: z.boolean().optional(),
 });
 
 export const ModelScanSettingsSchema = z.object({

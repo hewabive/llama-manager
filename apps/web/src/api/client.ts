@@ -503,12 +503,13 @@ export async function getBuildJobLogs(id: string, lines = 200) {
 }
 
 export async function scanModels(
-  input: ModelScanSettings & { refresh?: boolean },
+  input: ModelScanSettings & { refresh?: boolean; cached?: boolean },
 ) {
   const params = new URLSearchParams({
     dir: input.directory,
     maxDepth: String(input.maxDepth),
     ...(input.refresh ? { refresh: "true" } : {}),
+    ...(input.cached ? { cached: "true" } : {}),
   });
   return request<{ data: ModelScanResult }>(`/api/models?${params.toString()}`);
 }

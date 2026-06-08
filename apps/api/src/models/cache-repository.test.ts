@@ -6,11 +6,15 @@ import test from "node:test";
 
 import type { GgufModel } from "@llama-manager/core";
 
+import { db } from "../db/index.js";
+import { modelCache } from "../db/schema.js";
 import {
   getCachedModel,
+  listAllCachedModels,
   pruneMissingCachedModels,
   saveCachedModel,
 } from "./cache-repository.js";
+import { GGUF_PARSER_VERSION } from "./gguf.js";
 
 function model(path: string): GgufModel {
   return {
@@ -68,6 +72,38 @@ test("pruneMissingCachedModels removes cache rows for missing model files", () =
     assert.ok(deleted >= 1);
     assert.ok(getCachedModel(existingModel));
     assert.equal(getCachedModel(missingModel), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("saveCachedModel refreshes parserVersion on conflict so the cache hits again", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-cache-"));
+  const path = join(dir, "stale.gguf");
+
+  try {
+    const saved = model(path);
+    db.insert(modelCache)
+      .values({
+        path,
+        name: saved.name,
+        directory: saved.directory,
+        sizeBytes: String(saved.sizeBytes),
+        modifiedAt: saved.modifiedAt,
+        isMmproj: "false",
+        mmprojPathsJson: "[]",
+        metadataJson: JSON.stringify(saved.metadata),
+        parserVersion: GGUF_PARSER_VERSION - 1,
+        error: null,
+        scannedAt: saved.modifiedAt,
+      })
+      .run();
+    assert.equal(getCachedModel(path), null);
+
+    saveCachedModel(saved);
+
+    assert.ok(getCachedModel(path));
+    assert.ok(listAllCachedModels().some((m) => m.path === path));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { scanModels } from "./scanner.js";
+import { scanModels, scanModelsFromCache } from "./scanner.js";
 
 test("scanModels reports a friendly error for a missing directory", async () => {
   const missing = join(
@@ -52,6 +52,33 @@ test("scanModels collapses split GGUF shards into a single model", async () => {
       ["alpha-00001-of-00003.gguf", "beta.gguf", "zeta.gguf"],
     );
     assert.equal(result.models[0]?.sizeBytes, 6);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scanModelsFromCache returns cached models scoped by directory and depth", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-cache-scan-"));
+
+  try {
+    const nested = join(dir, "sub");
+    mkdirSync(nested);
+    writeFileSync(join(dir, "top.gguf"), "a");
+    writeFileSync(join(nested, "deep.gguf"), "bb");
+    await scanModels({ directory: dir, maxDepth: 4, refresh: true });
+
+    const full = scanModelsFromCache({ directory: dir, maxDepth: 4 });
+    assert.equal(full.fromCache, true);
+    assert.deepEqual(full.models.map((model) => model.name).sort(), [
+      "deep.gguf",
+      "top.gguf",
+    ]);
+
+    const shallow = scanModelsFromCache({ directory: dir, maxDepth: 0 });
+    assert.deepEqual(
+      shallow.models.map((model) => model.name),
+      ["top.gguf"],
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
