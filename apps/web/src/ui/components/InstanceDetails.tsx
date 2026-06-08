@@ -1813,6 +1813,7 @@ export function InstanceDetails(props: {
 }) {
   const [events, setEvents] = useState<ProcessEvent[]>([]);
   const [logSource, setLogSource] = useState<"filtered" | "raw">("filtered");
+  const [openDetails, setOpenDetails] = useState<string[]>([]);
   const queryClient = useQueryClient();
   const id = props.instance?.name;
 
@@ -1850,10 +1851,11 @@ export function InstanceDetails(props: {
     ? ["ready", "degraded", "stale", "running"].includes(capabilityStatus)
     : false;
 
+  const capabilitiesOpen = openDetails.includes("capabilities");
   const capabilitiesQuery = useQuery({
     queryKey: ["instance-llama-capabilities", id],
     queryFn: () => getLlamaCapabilities(id!),
-    enabled: Boolean(id) && canProbeCapabilities,
+    enabled: Boolean(id) && canProbeCapabilities && capabilitiesOpen,
     staleTime: 30_000,
   });
 
@@ -2191,7 +2193,13 @@ export function InstanceDetails(props: {
         />
 
         <SectionLabel>Details</SectionLabel>
-        <Accordion multiple variant="contained" radius="sm">
+        <Accordion
+          multiple
+          variant="contained"
+          radius="sm"
+          value={openDetails}
+          onChange={setOpenDetails}
+        >
           <Accordion.Item value="runtime">
             <Accordion.Control>Runtime &amp; paths</Accordion.Control>
             <Accordion.Panel>
