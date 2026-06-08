@@ -35,11 +35,11 @@ export const StoredEndpointSchema = ApiEndpointRecordSchema.pick({
   updatedAt: true,
 });
 
-export type StoredEndpoint = z.infer<typeof StoredEndpointSchema>;
+type StoredEndpoint = z.infer<typeof StoredEndpointSchema>;
 
-export const managerProxyEndpointId = "manager-proxy";
+const managerProxyEndpointId = "manager-proxy";
 
-export function instanceEndpointId(instanceId: string) {
+function instanceEndpointId(instanceId: string) {
   return `instance:${instanceId}`;
 }
 
@@ -140,15 +140,13 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
   });
 }
 
-export function listExternalApiEndpoints(): ApiEndpointRecord[] {
+function listExternalApiEndpoints(): ApiEndpointRecord[] {
   return readStoredEndpoints()
     .map(toExternalEndpoint)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function getStoredExternalApiEndpoint(
-  id: string,
-): StoredEndpoint | null {
+function getStoredExternalApiEndpoint(id: string): StoredEndpoint | null {
   return readStoredEndpoints().find((item) => item.id === id) ?? null;
 }
 

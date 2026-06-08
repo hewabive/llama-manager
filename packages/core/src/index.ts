@@ -405,8 +405,6 @@ export const ApiLabProbeTargetRequestSchema = z
     }
   });
 
-export const ApiProbeTargetRequestSchema = ApiLabProbeTargetRequestSchema;
-
 export const ApiProbeResultSchema = z.object({
   profile: ApiLabProbeProfileSchema.optional(),
   kind: ApiProbeKindSchema,
@@ -1625,7 +1623,6 @@ export type ApiProbeRequest = z.infer<typeof ApiProbeRequestSchema>;
 export type ApiLabProbeTargetRequest = z.infer<
   typeof ApiLabProbeTargetRequestSchema
 >;
-export type ApiProbeTargetRequest = z.infer<typeof ApiProbeTargetRequestSchema>;
 export type ApiProbeResult = z.infer<typeof ApiProbeResultSchema>;
 export type ApiProxyTargetKind = z.infer<typeof ApiProxyTargetKindSchema>;
 export type ApiProxyTargetRole = z.infer<typeof ApiProxyTargetRoleSchema>;

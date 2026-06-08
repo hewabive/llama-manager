@@ -12,11 +12,11 @@ export function objectRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function stringValue(value: unknown) {
+function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-export function arrayValue(value: unknown): unknown[] {
+function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
@@ -67,7 +67,7 @@ function endpointErrorText(probe: LlamaEndpointProbe | undefined) {
   return probe?.error ?? null;
 }
 
-export function formatNumber(value: unknown) {
+function formatNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value)
     ? new Intl.NumberFormat().format(Math.round(value * 100) / 100)
     : null;

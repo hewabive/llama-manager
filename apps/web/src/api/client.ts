@@ -247,13 +247,6 @@ export async function getApiProxyTargetModels() {
   );
 }
 
-export async function listApiProxyRequestLogs(limit = 100) {
-  const params = new URLSearchParams({ limit: String(limit) });
-  return request<{ data: ApiProxyRequestLogRecord[] }>(
-    `/api/proxy/requests?${params.toString()}`,
-  );
-}
-
 export async function createApiEndpoint(input: ApiEndpointCreate) {
   return request<{ data: ApiEndpointRecord }>("/api/endpoints", {
     method: "POST",
@@ -473,19 +466,6 @@ export async function getDefaultLlamaServerBinary() {
   }>("/api/build/default-binary");
 }
 
-export async function getLlamaSourceSettings() {
-  return request<{ data: LlamaSourceSettings }>("/api/llama-source/settings");
-}
-
-export async function updateLlamaSourceSettings(
-  input: LlamaSourceSettingsUpdate,
-) {
-  return request<{ data: LlamaSourceSettings }>("/api/llama-source/settings", {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });
-}
-
 export async function getLlamaSourceStatus() {
   return request<{ data: LlamaSourceStatus }>("/api/llama-source/status");
 }
@@ -590,13 +570,6 @@ export async function createPreset(input: ModelPresetCreate) {
     method: "POST",
     body: JSON.stringify(input),
   });
-}
-
-export async function deletePreset(name: string) {
-  return request<{ data: { deleted: boolean } }>(
-    `/api/presets/${encodeURIComponent(name)}`,
-    { method: "DELETE" },
-  );
 }
 
 export type SavePresetResult =
@@ -731,19 +704,19 @@ export async function getApiLabModels(
   );
 }
 
-export type ApiProbeStreamMeta = {
+type ApiProbeStreamMeta = {
   kind: ApiProbeRequest["kind"];
   endpoint: string;
   requestBody: unknown;
 };
 
-export type ApiProbeStreamStatus = {
+type ApiProbeStreamStatus = {
   ok: boolean;
   status: number;
   latencyMs: number;
 };
 
-export type ApiProbeStreamDone = {
+type ApiProbeStreamDone = {
   latencyMs: number;
   finishReason: string | null;
   usage: unknown;

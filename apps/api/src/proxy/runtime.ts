@@ -242,7 +242,7 @@ function updateTracker(input: {
   return tracker;
 }
 
-export function deriveApiProxyTargetRuntime(input: {
+function deriveApiProxyTargetRuntime(input: {
   target: ApiProxyTargetRecord;
   kind: "managed-instance" | "external-api";
   endpointId: string;

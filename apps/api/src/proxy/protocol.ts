@@ -18,7 +18,7 @@ export type ApiProxyProtocolResponse = {
   headers?: Record<string, string>;
 };
 
-export type ApiProxyProtocolDiagnosticCode =
+type ApiProxyProtocolDiagnosticCode =
   | "llama_manager_proxy_model_unbound"
   | "llama_manager_proxy_target_not_found"
   | "llama_manager_proxy_plan_blocked"
@@ -57,7 +57,7 @@ export type ApiProxyProtocolModelResolution =
       response: ApiProxyProtocolResponse;
     };
 
-export type ApiProxyResumableUsage = {
+type ApiProxyResumableUsage = {
   promptTokens: number | null;
   completionTokens: number | null;
   cacheReadTokens?: number | null;
@@ -79,7 +79,7 @@ export type ApiProxyResumableToolCall = {
   arguments: string;
 };
 
-export type ApiProxyResumableStreamChunk = {
+type ApiProxyResumableStreamChunk = {
   text: string;
   finishReason: string | null;
   id: string | null;

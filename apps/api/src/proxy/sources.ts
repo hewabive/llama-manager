@@ -16,9 +16,9 @@ import {
   writeCollection,
 } from "./config-files.js";
 
-export const SOURCES_FILE = "sources.json";
+const SOURCES_FILE = "sources.json";
 
-export const StoredSourceSchema = ApiProxySourceRecordSchema.pick({
+const StoredSourceSchema = ApiProxySourceRecordSchema.pick({
   id: true,
   name: true,
   enabled: true,
@@ -27,7 +27,7 @@ export const StoredSourceSchema = ApiProxySourceRecordSchema.pick({
   updatedAt: true,
 });
 
-export type StoredSource = z.infer<typeof StoredSourceSchema>;
+type StoredSource = z.infer<typeof StoredSourceSchema>;
 
 function sourceSecretId(id: string) {
   return `source:${id}`;

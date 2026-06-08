@@ -35,7 +35,7 @@ export function defaultArgumentValue(
   return "";
 }
 
-export function defaultArgumentValueType(
+function defaultArgumentValueType(
   option: LlamaArgumentOption,
   scope: "instance" | "preset",
 ): LlamaArgumentDefault["valueType"] {

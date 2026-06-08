@@ -1,6 +1,6 @@
 import type { Instance, InstanceHealthSummary } from "@llama-manager/core";
 
-export function argString(args: Instance["args"], key: string) {
+function argString(args: Instance["args"], key: string) {
   const value = args[key];
   if (value === undefined || value === null || Array.isArray(value)) {
     return "";
@@ -36,7 +36,7 @@ function urlHost(host: string) {
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
-export function instancePort(instance: Instance) {
+function instancePort(instance: Instance) {
   const port = Number(instance.args["--port"] ?? 8080);
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
 }

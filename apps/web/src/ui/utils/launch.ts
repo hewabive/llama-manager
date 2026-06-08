@@ -6,12 +6,6 @@ export type LaunchMonitor = {
   source: "create" | "start" | "restart";
 };
 
-export function isStartupStatus(
-  status: InstanceHealthSummary["status"] | undefined,
-) {
-  return status === "starting" || status === "loading";
-}
-
 export function isLaunchTerminalStatus(
   status: InstanceHealthSummary["status"] | undefined,
 ) {

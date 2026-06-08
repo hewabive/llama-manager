@@ -35,7 +35,7 @@ import {
 const presetsDir = config.presetsDir;
 const presetNamePattern = /^[A-Za-z0-9._-]+$/;
 
-export function presetPath(name: string): string {
+function presetPath(name: string): string {
   return resolve(presetsDir, `${name}.ini`);
 }
 

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": ["nvidia-smi"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.{ts,mjs}"]
+    },
+    "apps/web": {
+      "entry": ["src/main.tsx", "index.html", "vite.config.ts"],
+      "vite": false
+    }
+  }
+}

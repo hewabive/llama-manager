@@ -13,7 +13,7 @@ export type OpenAiErrorType =
   | "not_found_error"
   | "server_error";
 
-export function openAiError(input: {
+function openAiError(input: {
   message: string;
   type: OpenAiErrorType;
   code: string;

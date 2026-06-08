@@ -16,7 +16,7 @@ import { createProcessRun, updateProcessRun } from "./runs-repository.js";
 
 type RuntimeStatus = Instance["status"];
 
-export type ProcessState = RuntimeState;
+type ProcessState = RuntimeState;
 
 type MutableProcessState = {
   instanceId: string;
@@ -37,14 +37,14 @@ type RuntimeProcess = MutableProcessState & {
   forceKillTimer?: NodeJS.Timeout;
 };
 
-export type ProcessSupervisorShutdownResult = {
+type ProcessSupervisorShutdownResult = {
   requested: number;
   stopped: number;
   forced: number;
   skipped: number;
 };
 
-export class ProcessSupervisor extends EventEmitter {
+class ProcessSupervisor extends EventEmitter {
   private readonly processes = new Map<string, RuntimeProcess>();
 
   getState(instanceId: string): ProcessState | undefined {

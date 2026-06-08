@@ -372,7 +372,7 @@ function writeHeader(
   stream.write("\n");
 }
 
-export class LlamaBuildRunner {
+class LlamaBuildRunner {
   private running: RunningBuild | null = null;
 
   isRunning(): boolean {

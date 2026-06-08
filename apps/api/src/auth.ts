@@ -82,7 +82,7 @@ export function verifyAdminPassword(password: string) {
   return safeEqual(password, config.auth.password ?? "");
 }
 
-export function createSessionToken() {
+function createSessionToken() {
   const payload: SessionPayload = {
     exp: Math.floor(Date.now() / 1000) + config.auth.sessionTtlSeconds,
   };
@@ -90,7 +90,7 @@ export function createSessionToken() {
   return `${data}.${sign(data)}`;
 }
 
-export function verifySessionToken(token: string | undefined) {
+function verifySessionToken(token: string | undefined) {
   if (!isAuthEnabled()) {
     return true;
   }

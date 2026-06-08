@@ -21,17 +21,17 @@ const helpEndMarker = "<!-- HELP_END -->";
 const helpBlockName = "HELP_START..HELP_END";
 const sourceRelativePath = "tools/server/README.md";
 
-export const argumentHelpSourceDirectory = resolve(
+const argumentHelpSourceDirectory = resolve(
   config.rootDir,
   "content",
   "llama-args",
   "source",
 );
-export const argumentHelpSourceSnapshotPath = resolve(
+const argumentHelpSourceSnapshotPath = resolve(
   argumentHelpSourceDirectory,
   "server-help.generated.md",
 );
-export const argumentHelpSourceMetadataPath = resolve(
+const argumentHelpSourceMetadataPath = resolve(
   argumentHelpSourceDirectory,
   "help-source.json",
 );
@@ -49,11 +49,11 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-export function hashHelpBlock(block: string) {
+function hashHelpBlock(block: string) {
   return createHash("sha256").update(block).digest("hex");
 }
 
-export function normalizeHelpBlock(block: string) {
+function normalizeHelpBlock(block: string) {
   return `${block.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd()}\n`;
 }
 
@@ -114,7 +114,7 @@ function readMetadata(): HelpSourceMetadata | null {
   }
 }
 
-export function readStoredGeneratedHelpBlock() {
+function readStoredGeneratedHelpBlock() {
   if (!existsSync(argumentHelpSourceSnapshotPath)) {
     return null;
   }
@@ -123,7 +123,7 @@ export function readStoredGeneratedHelpBlock() {
   );
 }
 
-export function readCurrentGeneratedHelpBlock() {
+function readCurrentGeneratedHelpBlock() {
   const path = sourceReadmePath();
   if (!existsSync(path)) {
     throw new Error(`llama.cpp server README not found: ${path}`);

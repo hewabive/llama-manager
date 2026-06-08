@@ -10,7 +10,7 @@ const TIMING_PATTERN =
 const MAX_BUFFER_BYTES = 64 * 1024;
 const MAX_TIMINGS_PER_INSTANCE = 64;
 
-export type ApiProxyCacheOrigin = "live" | "restored" | "fresh";
+type ApiProxyCacheOrigin = "live" | "restored" | "fresh";
 
 export type ApiProxySlotResolution = {
   slotId: number | null;

@@ -101,7 +101,7 @@ export function isRoutineManagerProbeSideEffectLogLine(line: string) {
   );
 }
 
-export function isRoutineManagerProbeLogLine(
+function isRoutineManagerProbeLogLine(
   line: string,
   localAddresses = localProbeAddresses(),
 ) {

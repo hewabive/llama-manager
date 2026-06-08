@@ -69,8 +69,8 @@ export function parseTargetModelValue(value: string): {
 }
 
 export const unboundTargetValue = "__unbound__";
-export const routeToTargetPrefix = "target:";
-export const routeToPipelinePrefix = "pipeline:";
+const routeToTargetPrefix = "target:";
+const routeToPipelinePrefix = "pipeline:";
 
 export const emptyTargetDraft: TargetDraft = {
   name: "",
@@ -117,14 +117,14 @@ function slotIdsText(value: number[]) {
   return value.join(", ");
 }
 
-export function routeToValue(routeTo: ApiProxyRouteTo | null | undefined) {
+function routeToValue(routeTo: ApiProxyRouteTo | null | undefined) {
   if (!routeTo) {
     return null;
   }
   return `${routeTo.type}:${routeTo.id}`;
 }
 
-export function routeToFromValue(value: string | null): ApiProxyRouteTo | null {
+function routeToFromValue(value: string | null): ApiProxyRouteTo | null {
   if (!value || value === unboundTargetValue) {
     return null;
   }

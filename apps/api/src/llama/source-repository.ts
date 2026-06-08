@@ -20,7 +20,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-export function defaultLlamaSourceRepoPath() {
+function defaultLlamaSourceRepoPath() {
   return resolve(config.rootDir, "..", "llama.cpp");
 }
 

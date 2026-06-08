@@ -36,7 +36,7 @@ export function argumentDocSlug(primaryName: string) {
   );
 }
 
-export function argumentDocPath(primaryName: string) {
+function argumentDocPath(primaryName: string) {
   return resolve(argumentDocsDirectory, `${argumentDocSlug(primaryName)}.md`);
 }
 
@@ -148,7 +148,7 @@ function firstMarkdownParagraph(markdown: string) {
   return paragraph?.replace(/\s+/g, " ").slice(0, 240) ?? null;
 }
 
-export function getArgumentDocIndex(
+function getArgumentDocIndex(
   option: LlamaArgumentOption,
 ): LlamaArgumentDocIndex {
   const path = argumentDocPath(option.primaryName);
