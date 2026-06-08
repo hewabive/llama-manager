@@ -608,6 +608,7 @@ type ProxyTraceAccumulator = {
   status: number;
   ok: boolean;
   errorCode: string | null;
+  errorMessage: string | null;
   durationMs: number;
 };
 
@@ -633,8 +634,30 @@ function createProxyTrace(
     status: 0,
     ok: false,
     errorCode: null,
+    errorMessage: null,
     durationMs: 0,
   };
+}
+
+function safeJsonParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function errorBodyMessage(body: unknown): string | null {
+  if (body && typeof body === "object") {
+    const err = (body as { error?: unknown }).error;
+    if (err && typeof err === "object") {
+      const message = (err as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+    }
+  }
+  return null;
 }
 
 type ProxyTraceRecorder = {
@@ -709,6 +732,11 @@ async function proxyProtocolEndpoint(
       recorder,
     );
     return response;
+  } catch (error) {
+    if (!trace.errorMessage) {
+      trace.errorMessage = (error as Error).message;
+    }
+    throw error;
   } finally {
     if (!deferred) {
       recorder.record(response);
@@ -738,6 +766,7 @@ async function proxyProtocolEndpointInner(
   });
 
   if (!resolution.ok) {
+    trace.errorMessage = errorBodyMessage(resolution.response.body);
     return c.json(resolution.response.body, resolution.response.status);
   }
   trace.modelId = resolution.request.modelId;
@@ -748,6 +777,7 @@ async function proxyProtocolEndpointInner(
     recordRequest: saveApiProxyRequestLog,
   });
   if (!route.ok) {
+    trace.errorMessage = route.diagnostic.message;
     const response = adapter.diagnosticError(
       resolution.request,
       route.diagnostic,
@@ -771,6 +801,7 @@ async function proxyProtocolEndpointInner(
     targetIdOverride: route.targetId,
   });
   if (!decision.ok) {
+    trace.errorMessage = errorBodyMessage(decision.response.body);
     return c.json(decision.response.body, decision.response.status);
   }
   trace.targetId = decision.target.id;
@@ -792,11 +823,13 @@ async function proxyProtocolEndpointInner(
         signal: c.req.raw.signal,
       });
     } catch {
+      const message = `Request for model ${route.request.modelId} was aborted while queued.`;
+      trace.errorMessage = message;
       const response = adapter.diagnosticError(route.request, {
         status: 503,
         code: "llama_manager_proxy_upstream_unavailable",
         param: "model",
-        message: `Request for model ${route.request.modelId} was aborted while queued.`,
+        message,
       });
       return c.json(response.body, response.status);
     }
@@ -881,6 +914,7 @@ async function proxyProtocolEndpointInner(
 
     const execution = await makeTargetReady(decision.preview);
     if (!execution.ok) {
+      trace.errorMessage = execution.diagnostic.message;
       const response = adapter.diagnosticError(
         route.request,
         execution.diagnostic,
@@ -895,18 +929,21 @@ async function proxyProtocolEndpointInner(
       listApiEndpointCatalog(instances),
     );
     if (!targetResolution.enabled) {
+      const message =
+        targetResolution.error ??
+        `Proxy target ${decision.target.name} endpoint is unavailable.`;
+      trace.errorMessage = message;
       const response = adapter.diagnosticError(route.request, {
         status: 503,
         code: "llama_manager_proxy_upstream_unavailable",
         param: "model",
-        message:
-          targetResolution.error ??
-          `Proxy target ${decision.target.name} endpoint is unavailable.`,
+        message,
       });
       return c.json(response.body, response.status);
     }
     const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
     if (!auth.ok) {
+      trace.errorMessage = auth.error;
       const response = adapter.diagnosticError(route.request, {
         status: 503,
         code: "llama_manager_proxy_upstream_unavailable",
@@ -950,7 +987,15 @@ async function proxyProtocolEndpointInner(
       });
 
       if (!upstream.ok || !upstream.body) {
-        return upstream;
+        const text = await upstream.text().catch(() => "");
+        if (text) {
+          trace.errorMessage =
+            errorBodyMessage(safeJsonParse(text)) ?? text.slice(0, 500);
+        }
+        return new Response(text, {
+          status: upstream.status,
+          headers: upstream.headers,
+        });
       }
 
       if (!route.request.stream) {
@@ -1008,13 +1053,15 @@ async function proxyProtocolEndpointInner(
       });
       return metered;
     } catch (error) {
+      const message = `Proxy target ${decision.target.name} failed to forward request: ${
+        (error as Error).message
+      }`;
+      trace.errorMessage = message;
       const response = adapter.diagnosticError(route.request, {
         status: 502,
         code: "llama_manager_proxy_upstream_error",
         param: "model",
-        message: `Proxy target ${decision.target.name} failed to forward request: ${
-          (error as Error).message
-        }`,
+        message,
       });
       return c.json(response.body, response.status);
     }
@@ -1032,18 +1079,21 @@ async function proxyProtocolEndpointInner(
       listApiEndpointCatalog(instances),
     );
     if (!targetResolution.enabled) {
+      const message =
+        targetResolution.error ??
+        `Proxy target ${decision.target.name} endpoint is unavailable.`;
+      trace.errorMessage = message;
       const response = adapter.diagnosticError(route.request, {
         status: 503,
         code: "llama_manager_proxy_upstream_unavailable",
         param: "model",
-        message:
-          targetResolution.error ??
-          `Proxy target ${decision.target.name} endpoint is unavailable.`,
+        message,
       });
       return c.json(response.body, response.status);
     }
     const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
     if (!auth.ok) {
+      trace.errorMessage = auth.error;
       const response = adapter.diagnosticError(route.request, {
         status: 503,
         code: "llama_manager_proxy_upstream_unavailable",
@@ -1078,6 +1128,7 @@ async function proxyProtocolEndpointInner(
         if (execution.ok) {
           return { ok: true };
         }
+        trace.errorMessage = execution.diagnostic.message;
         const response = adapter.diagnosticError(
           route.request,
           execution.diagnostic,
@@ -1107,6 +1158,7 @@ async function proxyProtocolEndpointInner(
       yieldLease: () => heldLease.yield(),
       wantsStream: route.request.stream,
       onError: (message) => {
+        trace.errorMessage = `Proxy target ${decision.target.name} failed to forward request: ${message}`;
         const response = adapter.diagnosticError(route.request, {
           status: 502,
           code: "llama_manager_proxy_upstream_error",

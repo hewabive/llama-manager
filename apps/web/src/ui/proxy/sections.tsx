@@ -952,9 +952,29 @@ export function StatsSection(props: StatsSectionProps) {
                         : "—"}
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={trace.ok ? "green" : "red"} variant="light">
-                        {trace.status}
-                      </Badge>
+                      {trace.errorMessage ? (
+                        <Tooltip
+                          label={trace.errorMessage}
+                          multiline
+                          maw={420}
+                          withArrow
+                        >
+                          <Badge
+                            color={trace.ok ? "green" : "red"}
+                            variant="light"
+                            style={{ cursor: "help" }}
+                          >
+                            {trace.status}
+                          </Badge>
+                        </Tooltip>
+                      ) : (
+                        <Badge
+                          color={trace.ok ? "green" : "red"}
+                          variant="light"
+                        >
+                          {trace.status}
+                        </Badge>
+                      )}
                     </Table.Td>
                     <Table.Td>{trace.durationMs}</Table.Td>
                   </Table.Tr>

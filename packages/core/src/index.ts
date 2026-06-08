@@ -661,6 +661,7 @@ export const ApiProxyRequestTraceSchema = z.object({
   status: z.number().int().min(0).default(0),
   ok: z.boolean().default(false),
   errorCode: z.string().nullable().default(null),
+  errorMessage: z.string().nullable().default(null),
   durationMs: z.number().int().min(0).default(0),
 });
 

@@ -25,6 +25,7 @@ function trace(
     status: 200,
     ok: true,
     errorCode: null,
+    errorMessage: null,
     durationMs: 0,
     ...over,
   };
