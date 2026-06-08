@@ -116,6 +116,17 @@ function probeTooltip(probe: LlamaEndpointProbe | undefined) {
   return parts.join(" · ");
 }
 
+function slowestProbe(probes: Array<[string, LlamaEndpointProbe | undefined]>) {
+  let slowest: { label: string; latencyMs: number } | null = null;
+  for (const [label, probe] of probes) {
+    if (!probe) continue;
+    if (!slowest || probe.latencyMs > slowest.latencyMs) {
+      slowest = { label, latencyMs: probe.latencyMs };
+    }
+  }
+  return slowest;
+}
+
 function ProbePill(props: {
   title: string;
   probe: LlamaEndpointProbe | undefined;
@@ -2030,6 +2041,12 @@ export function InstanceDetails(props: {
   const webUiUrl = llamaServerWebUrl(props.instance);
   const webUiDisabled = !canOpenLlamaWebUi(health, webUiUrl);
   const rootSlotRows = slotRowsFromProbe(llama?.slots);
+  const slowestLlamaProbe = slowestProbe([
+    ["health", llama?.health],
+    ["props", llama?.props],
+    ["slots", llama?.slots],
+    ["v1/models", llama?.models],
+  ]);
   const pendingSlotAction = slotActionMutation.isPending
     ? (slotActionMutation.variables ?? null)
     : null;
@@ -2101,9 +2118,12 @@ export function InstanceDetails(props: {
             <ProbePill title="slots" probe={llama?.slots} />
             <ProbePill title="v1/models" probe={llama?.models} />
           </Group>
-          {health && (
+          {(health || slowestLlamaProbe) && (
             <Text c="dimmed" size="xs" mt={6}>
-              Checked: {formatLocalDateTime(health.checkedAt)}
+              {health && `Checked: ${formatLocalDateTime(health.checkedAt)}`}
+              {health && slowestLlamaProbe && " · "}
+              {slowestLlamaProbe &&
+                `Slowest probe: ${slowestLlamaProbe.label} ${slowestLlamaProbe.latencyMs} ms`}
             </Text>
           )}
         </Paper>
