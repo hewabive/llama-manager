@@ -725,21 +725,7 @@ function CacheCell(props: { usage: ApiProxyTraceUsage | null }) {
     input === null
       ? null
       : Math.max(0, input - (cacheRead ?? 0) - (cacheCreation ?? 0));
-  return (
-    <Tooltip
-      label={
-        <Stack gap={2}>
-          <Text size="xs">cache read: {cacheRead ?? 0}</Text>
-          <Text size="xs">cache write: {cacheCreation ?? 0}</Text>
-          <Text size="xs">fresh input: {fresh ?? "—"}</Text>
-        </Stack>
-      }
-    >
-      <Text size="xs" style={{ textDecoration: "underline dotted" }}>
-        {`${cacheRead ?? 0} / ${cacheCreation ?? 0}`}
-      </Text>
-    </Tooltip>
-  );
+  return <>{`${cacheRead ?? 0} / ${cacheCreation ?? 0} / ${fresh ?? "—"}`}</>;
 }
 
 function StatBlock(props: { label: string; value: string }) {
@@ -839,7 +825,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Target</Table.Th>
                   <Table.Th>Actions</Table.Th>
                   <Table.Th>Tokens (in/out)</Table.Th>
-                  <Table.Th>Cache (r/w)</Table.Th>
+                  <Table.Th>Cache (read/write/fresh)</Table.Th>
                   <Table.Th>Rate</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>ms</Table.Th>
