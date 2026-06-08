@@ -708,8 +708,10 @@ function traceProtocolColor(protocol: string): string {
 function TwoLineHeader(props: { title: string; hint: string }) {
   return (
     <Stack gap={0}>
-      <Text size="xs">{props.title}</Text>
-      <Text size="xs" c="dimmed">
+      <Text size="xs" fw={700}>
+        {props.title}
+      </Text>
+      <Text size="xs" fw={400} c="dimmed">
         {props.hint}
       </Text>
     </Stack>
@@ -825,7 +827,12 @@ export function StatsSection(props: StatsSectionProps) {
             <Text fw={600} size="sm">
               Recent requests
             </Text>
-            <Table striped withTableBorder fz="xs">
+            <Table
+              striped
+              withTableBorder
+              fz="xs"
+              styles={{ th: { verticalAlign: "top" } }}
+            >
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Time</Table.Th>
