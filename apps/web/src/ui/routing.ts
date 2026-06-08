@@ -12,6 +12,7 @@ export type AppRoute =
   | "models"
   | "presets"
   | "build"
+  | "source-sync"
   | "processes";
 
 export const appRoutes: {
@@ -86,6 +87,12 @@ export const appRoutes: {
     label: "Build",
     title: "Build",
     description: "Update llama.cpp and build llama-server with CMake",
+  },
+  {
+    id: "source-sync",
+    label: "Sync",
+    title: "Source Sync",
+    description: "Divergences between llama-manager and the llama.cpp checkout",
   },
   {
     id: "processes",

@@ -39,6 +39,7 @@ import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
 import { ProxyView } from "./views/ProxyView";
 import { PublicStatusView } from "./views/PublicStatusView";
+import { SourceSyncView } from "./views/SourceSyncView";
 
 export function App() {
   const [route, setRoute] = useHashRoute();
@@ -322,6 +323,8 @@ export function App() {
           )}
 
           {canUseAdmin && route === "presets" && <PresetsView />}
+
+          {canUseAdmin && route === "source-sync" && <SourceSyncView />}
 
           {canUseAdmin && route === "processes" && <ProcessesView />}
         </Stack>

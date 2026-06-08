@@ -260,7 +260,7 @@ type CapabilityDefinition = {
   body?: (model: string | null) => Record<string, unknown>;
 };
 
-const capabilityDefinitions: CapabilityDefinition[] = [
+export const capabilityDefinitions: CapabilityDefinition[] = [
   {
     id: "health",
     label: "Health",

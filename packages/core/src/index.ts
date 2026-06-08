@@ -1252,6 +1252,31 @@ export const LlamaArgumentHelpDiffSchema = z.object({
   diff: z.string(),
 });
 
+export const LlamaSourceSyncDivergenceSchema = z.object({
+  kind: z.enum(["unprobed", "stale"]),
+  severity: z.enum(["info", "warning"]),
+  label: z.string(),
+  detail: z.string().nullable(),
+});
+
+export const LlamaSourceSyncSectionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  sourcePath: z.string(),
+  status: z.enum(["in-sync", "drift", "error"]),
+  summary: z.string(),
+  error: z.string().nullable(),
+  divergences: z.array(LlamaSourceSyncDivergenceSchema),
+});
+
+export const LlamaSourceSyncReportSchema = z.object({
+  checkedAt: z.string(),
+  repoPath: z.string(),
+  llamaCppCommit: z.string().nullable(),
+  sections: z.array(LlamaSourceSyncSectionSchema),
+});
+
 export const NetworkInterfaceAddressSchema = z.object({
   name: z.string(),
   address: z.string(),
@@ -1691,6 +1716,13 @@ export type LlamaArgumentDocsSyncReport = z.infer<
   typeof LlamaArgumentDocsSyncReportSchema
 >;
 export type LlamaArgumentHelpDiff = z.infer<typeof LlamaArgumentHelpDiffSchema>;
+export type LlamaSourceSyncDivergence = z.infer<
+  typeof LlamaSourceSyncDivergenceSchema
+>;
+export type LlamaSourceSyncSection = z.infer<
+  typeof LlamaSourceSyncSectionSchema
+>;
+export type LlamaSourceSyncReport = z.infer<typeof LlamaSourceSyncReportSchema>;
 export type BuildSettings = z.infer<typeof BuildSettingsSchema>;
 export type BuildJobStatus = z.infer<typeof BuildJobStatusSchema>;
 export type BuildJobStepName = z.infer<typeof BuildJobStepNameSchema>;

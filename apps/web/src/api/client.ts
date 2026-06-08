@@ -46,6 +46,7 @@ import type {
   LlamaArgumentDefaults,
   LlamaArgumentDocsSyncReport,
   LlamaArgumentHelpDiff,
+  LlamaSourceSyncReport,
   LlamaArgumentEngineeringDoc,
   LlamaSourcePullResult,
   LlamaSourceRefs,
@@ -413,6 +414,10 @@ export async function getLlamaArgumentHelpDiff() {
   return request<{ data: LlamaArgumentHelpDiff }>(
     "/api/llama-args/docs-sync/diff",
   );
+}
+
+export async function getLlamaSourceSyncReport() {
+  return request<{ data: LlamaSourceSyncReport }>("/api/llama-source/sync");
 }
 
 export async function getLlamaArgumentDefaults() {

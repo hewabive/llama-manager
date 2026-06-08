@@ -116,6 +116,7 @@ import {
   pullLlamaSource,
   saveLlamaSourceSettings,
 } from "./llama/source-repository.js";
+import { getLlamaSourceSyncReport } from "./llama/source-sync.js";
 import {
   getModelScanSettings,
   saveModelScanSettings,
@@ -1860,6 +1861,14 @@ app.get("/api/llama-source/status", (c) => {
 
 app.get("/api/llama-source/refs", (c) => {
   return c.json({ data: listLlamaSourceRefs() });
+});
+
+app.get("/api/llama-source/sync", (c) => {
+  try {
+    return c.json({ data: getLlamaSourceSyncReport() });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
 });
 
 app.post("/api/llama-source/checkout", async (c) => {
