@@ -125,7 +125,7 @@ test("parseChunk extracts usage from a usage-only chunk", () => {
       finishReason: null,
       id: "x",
       model: "m",
-      usage: { promptTokens: 12, completionTokens: 7 },
+      usage: { promptTokens: 12, cacheReadTokens: null, completionTokens: 7 },
     },
   );
 });
@@ -147,7 +147,7 @@ test("parseChunk reads upstream predicted_ms timing as genMs", () => {
       id: "x",
       model: "m",
       genMs: 1901,
-      usage: { promptTokens: 12, completionTokens: 7 },
+      usage: { promptTokens: 12, cacheReadTokens: null, completionTokens: 7 },
     },
   );
 });

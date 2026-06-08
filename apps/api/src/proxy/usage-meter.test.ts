@@ -65,6 +65,22 @@ test("usageFromNonStreamBody reads Anthropic timings predicted_ms", () => {
   assert.equal(usage?.genMs, 1500);
 });
 
+test("usageFromNonStreamBody reads OpenAI cached prompt tokens", () => {
+  const usage = usageFromNonStreamBody(
+    "openai",
+    JSON.stringify({
+      usage: {
+        prompt_tokens: 53,
+        completion_tokens: 51,
+        prompt_tokens_details: { cached_tokens: 52 },
+      },
+    }),
+  );
+  assert.equal(usage?.promptTokens, 53);
+  assert.equal(usage?.cacheReadTokens, 52);
+  assert.equal(usage?.cacheCreationTokens, null);
+});
+
 test("usageFromNonStreamBody reads OpenAI Responses input/output tokens", () => {
   const usage = usageFromNonStreamBody(
     "openai",

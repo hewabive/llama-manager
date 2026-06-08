@@ -6,6 +6,7 @@ import type {
   ApiProxyResumablePhase,
   ApiProxyResumableToolCallDelta,
 } from "./protocol.js";
+import { openaiCachedTokens } from "./usage-meter.js";
 
 export type OpenAiErrorType =
   | "invalid_request_error"
@@ -162,6 +163,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
                 typeof usage.prompt_tokens === "number"
                   ? usage.prompt_tokens
                   : null,
+              cacheReadTokens: openaiCachedTokens(usage),
               completionTokens:
                 typeof usage.completion_tokens === "number"
                   ? usage.completion_tokens

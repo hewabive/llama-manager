@@ -52,6 +52,13 @@ export function anthropicCacheCreationTokens(
   return numberOrNull(usage?.cache_creation_input_tokens);
 }
 
+export function openaiCachedTokens(
+  usage: Record<string, unknown> | null | undefined,
+): number | null {
+  const details = asObject(usage?.prompt_tokens_details);
+  return numberOrNull(details?.cached_tokens);
+}
+
 export function usageFromNonStreamBody(
   protocol: ApiProxyProtocolId,
   bodyText: string,
@@ -90,7 +97,7 @@ export function usageFromNonStreamBody(
   return {
     promptTokens:
       numberOrNull(usage.prompt_tokens) ?? numberOrNull(usage.input_tokens),
-    cacheReadTokens: null,
+    cacheReadTokens: openaiCachedTokens(usage),
     cacheCreationTokens: null,
     completionTokens,
     genMs: Math.round(predictedMs),
