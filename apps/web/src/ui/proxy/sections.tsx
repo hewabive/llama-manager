@@ -877,6 +877,7 @@ export function StatsSection(props: StatsSectionProps) {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Time</Table.Th>
+                  <Table.Th>Source</Table.Th>
                   <Table.Th>API</Table.Th>
                   <Table.Th>Type</Table.Th>
                   <Table.Th>Stream</Table.Th>
@@ -899,6 +900,17 @@ export function StatsSection(props: StatsSectionProps) {
                 {props.traces.slice(0, 50).map((trace) => (
                   <Table.Tr key={trace.id}>
                     <Table.Td>{formatLocalDateTime(trace.at)}</Table.Td>
+                    <Table.Td>
+                      {trace.sourceName ? (
+                        <Badge color="grape" variant="light">
+                          {trace.sourceName}
+                        </Badge>
+                      ) : (
+                        <Text size="xs" c="dimmed">
+                          anonymous
+                        </Text>
+                      )}
+                    </Table.Td>
                     <Table.Td>
                       <Badge
                         color={traceProtocolColor(trace.protocol)}

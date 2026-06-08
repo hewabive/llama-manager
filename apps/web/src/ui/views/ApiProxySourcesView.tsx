@@ -1,0 +1,326 @@
+import type {
+  ApiProxySourceRecord,
+  ApiProxySourceUpdate,
+} from "@llama-manager/core";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Group,
+  Modal,
+  Paper,
+  Stack,
+  Switch,
+  Table,
+  Text,
+  TextInput,
+  Textarea,
+  Title,
+  Tooltip,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useState } from "react";
+
+import {
+  createApiProxySource,
+  deleteApiProxySource,
+  listApiProxySources,
+  updateApiProxySource,
+} from "../../api/client";
+import { formatLocalDateTime } from "../utils/time";
+
+type SourceEditor =
+  | { mode: "create" }
+  | { mode: "edit"; source: ApiProxySourceRecord };
+
+type SourceDraft = {
+  name: string;
+  apiKey: string;
+  note: string;
+  enabled: boolean;
+};
+
+const emptyDraft: SourceDraft = {
+  name: "",
+  apiKey: "",
+  note: "",
+  enabled: true,
+};
+
+function draftFromRecord(source: ApiProxySourceRecord): SourceDraft {
+  return {
+    name: source.name,
+    apiKey: "",
+    note: source.note,
+    enabled: source.enabled,
+  };
+}
+
+export function ApiProxySourcesView() {
+  const queryClient = useQueryClient();
+  const [editor, setEditor] = useState<SourceEditor | null>(null);
+  const [draft, setDraft] = useState<SourceDraft>(emptyDraft);
+
+  const sourcesQuery = useQuery({
+    queryKey: ["api-proxy-sources"],
+    queryFn: listApiProxySources,
+  });
+  const sources = sourcesQuery.data?.data ?? [];
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["api-proxy-sources"] });
+
+  const closeEditor = () => {
+    setEditor(null);
+    setDraft(emptyDraft);
+  };
+
+  const createMutation = useMutation({
+    mutationFn: createApiProxySource,
+    onSuccess: async () => {
+      await invalidate();
+      closeEditor();
+      notifications.show({
+        title: "Source saved",
+        message: "Requests with this key will be labeled with the source.",
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Source save failed",
+        message: (error as Error).message,
+      }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ApiProxySourceUpdate }) =>
+      updateApiProxySource(id, input),
+    onSuccess: async () => {
+      await invalidate();
+      closeEditor();
+      notifications.show({ title: "Source updated", message: "Saved." });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Source update failed",
+        message: (error as Error).message,
+      }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteApiProxySource,
+    onSuccess: async () => {
+      await invalidate();
+      notifications.show({ title: "Source deleted", message: "Removed." });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Source delete failed",
+        message: (error as Error).message,
+      }),
+  });
+
+  function openCreate() {
+    setEditor({ mode: "create" });
+    setDraft(emptyDraft);
+  }
+
+  function openEdit(source: ApiProxySourceRecord) {
+    setEditor({ mode: "edit", source });
+    setDraft(draftFromRecord(source));
+  }
+
+  function generateKey() {
+    const value = crypto.randomUUID().replace(/-/g, "");
+    setDraft((current) => ({ ...current, apiKey: `sk-${value}` }));
+  }
+
+  function save() {
+    if (editor?.mode === "edit") {
+      const input: ApiProxySourceUpdate = {
+        name: draft.name,
+        enabled: draft.enabled,
+        note: draft.note,
+      };
+      if (draft.apiKey.trim()) {
+        input.apiKey = draft.apiKey.trim();
+      }
+      updateMutation.mutate({ id: editor.source.id, input });
+      return;
+    }
+    createMutation.mutate({
+      name: draft.name,
+      enabled: draft.enabled,
+      note: draft.note,
+      ...(draft.apiKey.trim() ? { apiKey: draft.apiKey.trim() } : {}),
+    });
+  }
+
+  const busy = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <Stack gap="md">
+      <Paper withBorder p="md">
+        <Group justify="space-between" mb="sm">
+          <div>
+            <Title order={4}>Request sources</Title>
+            <Text size="sm" c="dimmed">
+              Map an API key to a source label so proxy requests show their
+              origin. Not real authentication — unknown or missing keys still
+              pass through as anonymous.
+            </Text>
+          </div>
+          <Button leftSection={<Plus size={16} />} onClick={openCreate}>
+            New source
+          </Button>
+        </Group>
+
+        <Table striped withTableBorder fz="sm">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Name</Table.Th>
+              <Table.Th>API key</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Note</Table.Th>
+              <Table.Th>Updated</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {sources.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={6}>
+                  <Text size="sm" c="dimmed">
+                    No sources yet.
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            )}
+            {sources.map((source) => (
+              <Table.Tr key={source.id}>
+                <Table.Td>{source.name}</Table.Td>
+                <Table.Td>
+                  {source.keyConfigured ? (
+                    <Badge color="teal" variant="light">
+                      configured
+                    </Badge>
+                  ) : (
+                    <Badge color="gray" variant="light">
+                      none
+                    </Badge>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <Badge
+                    color={source.enabled ? "green" : "gray"}
+                    variant="light"
+                  >
+                    {source.enabled ? "enabled" : "disabled"}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>{source.note || "—"}</Table.Td>
+                <Table.Td>{formatLocalDateTime(source.updatedAt)}</Table.Td>
+                <Table.Td>
+                  <Group gap="xs" justify="flex-end">
+                    <Tooltip label="Edit">
+                      <ActionIcon
+                        variant="subtle"
+                        onClick={() => openEdit(source)}
+                      >
+                        <Pencil size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Delete">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        loading={deleteMutation.isPending}
+                        onClick={() => deleteMutation.mutate(source.id)}
+                      >
+                        <Trash2 size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Paper>
+
+      <Modal
+        opened={editor !== null}
+        onClose={closeEditor}
+        title={editor?.mode === "edit" ? "Edit source" : "New source"}
+      >
+        <Stack gap="sm">
+          <TextInput
+            label="Name"
+            placeholder="e.g. cline, openwebui, scripts"
+            value={draft.name}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setDraft((current) => ({ ...current, name: value }));
+            }}
+          />
+          <TextInput
+            label="API key"
+            description={
+              editor?.mode === "edit"
+                ? "Leave blank to keep the current key."
+                : "Clients send this as Authorization: Bearer <key> or x-api-key."
+            }
+            placeholder={
+              editor?.mode === "edit" && editor.source.keyConfigured
+                ? "•••••••• (unchanged)"
+                : "sk-…"
+            }
+            value={draft.apiKey}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setDraft((current) => ({ ...current, apiKey: value }));
+            }}
+            rightSection={
+              <Tooltip label="Generate">
+                <ActionIcon variant="subtle" onClick={generateKey}>
+                  <RefreshCw size={16} />
+                </ActionIcon>
+              </Tooltip>
+            }
+          />
+          <Textarea
+            label="Note"
+            autosize
+            minRows={1}
+            value={draft.note}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setDraft((current) => ({ ...current, note: value }));
+            }}
+          />
+          <Switch
+            label="Enabled"
+            checked={draft.enabled}
+            onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              setDraft((current) => ({ ...current, enabled: checked }));
+            }}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeEditor}>
+              Cancel
+            </Button>
+            <Button loading={busy} onClick={save} disabled={!draft.name.trim()}>
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </Stack>
+  );
+}

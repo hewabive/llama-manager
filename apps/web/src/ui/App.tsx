@@ -28,6 +28,7 @@ import { appRoutes, useHashRoute } from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { ApiLabView } from "./views/ApiLabView";
 import { ApiEndpointsView } from "./views/ApiEndpointsView";
+import { ApiProxySourcesView } from "./views/ApiProxySourcesView";
 import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
 import { DiagnosticsView } from "./views/DiagnosticsView";
@@ -301,6 +302,8 @@ export function App() {
           {canUseAdmin && route === "endpoints" && <ApiEndpointsView />}
 
           {canUseAdmin && route === "proxy" && <ProxyView />}
+
+          {canUseAdmin && route === "sources" && <ApiProxySourcesView />}
 
           {canUseAdmin && apiLabVisited && (
             <div style={{ display: route === "api-lab" ? "contents" : "none" }}>

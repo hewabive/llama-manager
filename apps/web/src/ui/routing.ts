@@ -8,6 +8,7 @@ export type AppRoute =
   | "paths"
   | "endpoints"
   | "proxy"
+  | "sources"
   | "api-lab"
   | "models"
   | "presets"
@@ -63,6 +64,12 @@ export const appRoutes: {
     title: "API Proxy",
     description:
       "Publish API models and guard forwarding through scheduler plans",
+  },
+  {
+    id: "sources",
+    label: "Sources",
+    title: "Request Sources",
+    description: "Label proxy requests by API key to track and route by origin",
   },
   {
     id: "api-lab",

@@ -633,6 +633,44 @@ export const ApiProxyRequestLogRecordSchema = z.object({
   createdAt: z.string(),
 });
 
+const ApiProxySourceNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(
+    /^[A-Za-z0-9._-]+$/,
+    "Use letters, digits, dot, underscore or hyphen only",
+  );
+
+const ApiProxySourceKeySchema = z.string().trim().max(400).optional();
+
+export const ApiProxySourceConfigSchema = z.object({
+  id: ApiProxyIdSchema,
+  name: ApiProxySourceNameSchema,
+  enabled: z.boolean().default(true),
+  note: z.string().trim().max(400).default(""),
+});
+
+export const ApiProxySourceCreateSchema = ApiProxySourceConfigSchema.omit({
+  id: true,
+}).extend({
+  apiKey: ApiProxySourceKeySchema,
+});
+
+export const ApiProxySourceUpdateSchema = z.object({
+  name: ApiProxySourceNameSchema.optional(),
+  enabled: z.boolean().optional(),
+  note: z.string().trim().max(400).optional(),
+  apiKey: ApiProxySourceKeySchema,
+});
+
+export const ApiProxySourceRecordSchema = ApiProxySourceConfigSchema.extend({
+  keyConfigured: z.boolean().default(false),
+  createdAt: z.string().nullable().default(null),
+  updatedAt: z.string().nullable().default(null),
+});
+
 export const ApiProxyTraceUsageSchema = z.object({
   promptTokens: z.number().int().min(0).nullable().default(null),
   cacheReadTokens: z.number().int().min(0).nullable().default(null),
@@ -649,6 +687,8 @@ export const ApiProxyRequestTraceSchema = z.object({
   endpoint: z.string().min(1),
   routePath: z.string().min(1),
   modelId: z.string(),
+  sourceId: ApiProxyIdSchema.nullable().default(null),
+  sourceName: z.string().nullable().default(null),
   stream: z.boolean().nullable().default(null),
   targetId: ApiProxyIdSchema.nullable().default(null),
   targetName: z.string().nullable().default(null),
@@ -1632,6 +1672,10 @@ export type ApiProxyTargetModelCatalog = z.infer<
 export type ApiProxyRequestLogRecord = z.infer<
   typeof ApiProxyRequestLogRecordSchema
 >;
+export type ApiProxySourceConfig = z.infer<typeof ApiProxySourceConfigSchema>;
+export type ApiProxySourceCreate = z.infer<typeof ApiProxySourceCreateSchema>;
+export type ApiProxySourceUpdate = z.infer<typeof ApiProxySourceUpdateSchema>;
+export type ApiProxySourceRecord = z.infer<typeof ApiProxySourceRecordSchema>;
 export type ApiProxyRequestTrace = z.infer<typeof ApiProxyRequestTraceSchema>;
 export type ApiProxyTraceUsage = z.infer<typeof ApiProxyTraceUsageSchema>;
 export type ApiProxyStatsModelEntry = z.infer<

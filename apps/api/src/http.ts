@@ -2,6 +2,8 @@ import {
   AdminLoginSchema,
   ApiEndpointCreateSchema,
   ApiEndpointUpdateSchema,
+  ApiProxySourceCreateSchema,
+  ApiProxySourceUpdateSchema,
   ApiProxyModelCreateSchema,
   ApiProxyModelUpdateSchema,
   ApiProxyPipelineCreateSchema,
@@ -176,6 +178,15 @@ import {
   listApiEndpointCatalog,
   updateApiEndpoint,
 } from "./proxy/endpoints.js";
+import {
+  createApiProxySource,
+  deleteApiProxySource,
+  extractRequestApiKey,
+  getApiProxySource,
+  listApiProxySources,
+  resolveApiProxySourceByKey,
+  updateApiProxySource,
+} from "./proxy/sources.js";
 import {
   openAiModelsList,
   openAiProtocolAdapter,
@@ -589,6 +600,8 @@ type ProxyTraceAccumulator = {
   endpoint: string;
   routePath: string;
   modelId: string;
+  sourceId: string | null;
+  sourceName: string | null;
   stream: boolean | null;
   targetId: string | null;
   targetName: string | null;
@@ -622,6 +635,8 @@ function createProxyTrace(
     endpoint: operation.endpoint,
     routePath: operation.routePath,
     modelId: "",
+    sourceId: null,
+    sourceName: null,
     stream: null,
     targetId: null,
     targetName: null,
@@ -704,6 +719,13 @@ async function proxyProtocolEndpoint(
   operation: ApiProxyProtocolOperation,
 ) {
   const trace = createProxyTrace(operation);
+  const source = resolveApiProxySourceByKey(
+    extractRequestApiKey(c.req.raw.headers),
+  );
+  if (source) {
+    trace.sourceId = source.id;
+    trace.sourceName = source.name;
+  }
   const started = performance.now();
   let recorded = false;
   let deferred = false;
@@ -1505,6 +1527,47 @@ app.get("/api/proxy/traces", (c) => {
   return c.json({
     data: apiProxyStats.recentTraces(Number.isFinite(limit) ? limit : 50),
   });
+});
+
+app.get("/api/proxy/sources", (c) => {
+  return c.json({ data: listApiProxySources() });
+});
+
+app.post("/api/proxy/sources", async (c) => {
+  const parsed = ApiProxySourceCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  try {
+    return c.json({ data: createApiProxySource(parsed.data) }, 201);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.patch("/api/proxy/sources/:id", async (c) => {
+  const parsed = ApiProxySourceUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  try {
+    const source = updateApiProxySource(c.req.param("id"), parsed.data);
+    if (!source) {
+      return c.json({ error: "proxy source not found" }, 404);
+    }
+    return c.json({ data: source });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.delete("/api/proxy/sources/:id", (c) => {
+  const id = c.req.param("id");
+  if (!getApiProxySource(id)) {
+    return c.json({ data: { deleted: false } }, 404);
+  }
+  const deleted = deleteApiProxySource(id);
+  return c.json({ data: { deleted } }, deleted ? 200 : 404);
 });
 
 app.get("/api/endpoints", (c) => {

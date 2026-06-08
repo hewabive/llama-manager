@@ -13,6 +13,8 @@ function trace(
     protocol: "openai",
     endpoint: "chat.completions",
     routePath: "/v1/chat/completions",
+    sourceId: null,
+    sourceName: null,
     stream: null,
     targetId: null,
     targetName: null,

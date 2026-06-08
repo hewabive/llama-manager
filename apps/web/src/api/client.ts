@@ -14,6 +14,9 @@ import type {
   ApiProxyPipelineUpdate,
   ApiProxyRequestLogRecord,
   ApiProxyRequestTrace,
+  ApiProxySourceCreate,
+  ApiProxySourceRecord,
+  ApiProxySourceUpdate,
   ApiProxyRuntimeSnapshot,
   ApiProxyStatsSnapshot,
   ApiProxyTargetModelCatalog,
@@ -267,6 +270,33 @@ export async function updateApiEndpoint(id: string, input: ApiEndpointUpdate) {
 
 export async function deleteApiEndpoint(id: string) {
   return request<{ data: { deleted: boolean } }>(`/api/endpoints/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listApiProxySources() {
+  return request<{ data: ApiProxySourceRecord[] }>("/api/proxy/sources");
+}
+
+export async function createApiProxySource(input: ApiProxySourceCreate) {
+  return request<{ data: ApiProxySourceRecord }>("/api/proxy/sources", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateApiProxySource(
+  id: string,
+  input: ApiProxySourceUpdate,
+) {
+  return request<{ data: ApiProxySourceRecord }>(`/api/proxy/sources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteApiProxySource(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/proxy/sources/${id}`, {
     method: "DELETE",
   });
 }
