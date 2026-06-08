@@ -653,6 +653,8 @@ export const ApiProxyRequestTraceSchema = z.object({
   targetId: ApiProxyIdSchema.nullable().default(null),
   targetName: z.string().nullable().default(null),
   resourceGroupId: z.string().nullable().default(null),
+  slotId: z.number().int().min(0).nullable().default(null),
+  cacheOrigin: z.enum(["live", "restored", "fresh"]).nullable().default(null),
   textReplacementCount: z.number().int().min(0).default(0),
   schedulerActions: z.array(z.string()).default([]),
   usage: ApiProxyTraceUsageSchema.nullable().default(null),

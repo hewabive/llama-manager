@@ -215,6 +215,7 @@ import {
 } from "./proxy/protocol.js";
 import { getApiProxyRuntimeSnapshot } from "./proxy/runtime-snapshot.js";
 import { apiProxyStats } from "./proxy/stats.js";
+import { apiProxySlotTracker } from "./proxy/slot-tracker.js";
 import { newId } from "./utils/id.js";
 import {
   planApiProxyIdleMaintenance,
@@ -591,6 +592,8 @@ type ProxyTraceAccumulator = {
   targetId: string | null;
   targetName: string | null;
   resourceGroupId: string | null;
+  slotId: number | null;
+  cacheOrigin: "live" | "restored" | "fresh" | null;
   textReplacementCount: number;
   schedulerActions: string[];
   usage: {
@@ -621,6 +624,8 @@ function createProxyTrace(
     targetId: null,
     targetName: null,
     resourceGroupId: null,
+    slotId: null,
+    cacheOrigin: null,
     textReplacementCount: 0,
     schedulerActions: [],
     usage: null,
@@ -884,6 +889,17 @@ async function proxyProtocolEndpointInner(
       ? withIncludeUsage(route.request.body)
       : route.request.body;
 
+    const instanceId = targetResolution.instanceId;
+    const slotSeq =
+      instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
+    const resolveSlot = () => {
+      if (instanceId !== null && slotSeq !== null) {
+        const resolved = apiProxySlotTracker.resolve(instanceId, slotSeq);
+        trace.slotId = resolved.slotId;
+        trace.cacheOrigin = resolved.origin;
+      }
+    };
+
     try {
       const forwardStart = performance.now();
       const upstream = await forwardApiProxyRequest({
@@ -919,6 +935,7 @@ async function proxyProtocolEndpointInner(
             ratePerSecond: ratePerSecondFromUsage({ ...usage, genMs }),
           };
         }
+        resolveSlot();
         return new Response(text, {
           status: upstream.status,
           headers: upstream.headers,
@@ -944,6 +961,7 @@ async function proxyProtocolEndpointInner(
             genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
           };
+          resolveSlot();
           recorder.record(metered);
         },
       });
@@ -1007,6 +1025,9 @@ async function proxyProtocolEndpointInner(
       upstreamPath,
       new URL(c.req.url).search,
     );
+    const instanceId = targetResolution.instanceId;
+    const slotSeq =
+      instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
     const state = createResumableBufferState();
     const buildBody = (tail: string | null) => {
       const built = codec.upstreamBody(route.request.body, tail) as Record<
@@ -1078,6 +1099,11 @@ async function proxyProtocolEndpointInner(
           ? state.completionTokens / (state.genMs / 1000)
           : null,
     };
+    if (instanceId !== null && slotSeq !== null) {
+      const resolved = apiProxySlotTracker.resolve(instanceId, slotSeq);
+      trace.slotId = resolved.slotId;
+      trace.cacheOrigin = resolved.origin;
+    }
 
     return new Response(final.body, {
       status: final.status,

@@ -705,6 +705,47 @@ function traceProtocolColor(protocol: string): string {
   return protocol === "anthropic" ? "violet" : "blue";
 }
 
+const CACHE_ORIGIN_COLORS: Record<
+  NonNullable<ApiProxyRequestTrace["cacheOrigin"]>,
+  string
+> = {
+  live: "teal",
+  restored: "blue",
+  fresh: "gray",
+};
+
+const CACHE_ORIGIN_HINTS: Record<
+  NonNullable<ApiProxyRequestTrace["cacheOrigin"]>,
+  string
+> = {
+  live: "prefix still resident in the slot",
+  restored: "restored into the slot from the RAM prompt cache",
+  fresh: "no cache reuse — prompt processed from scratch",
+};
+
+function SlotCell(props: { trace: ApiProxyRequestTrace }) {
+  const { slotId, cacheOrigin } = props.trace;
+  if (slotId === null) {
+    return <>—</>;
+  }
+  return (
+    <Group gap={6} wrap="nowrap">
+      <Text size="xs">{slotId}</Text>
+      {cacheOrigin && (
+        <Tooltip label={CACHE_ORIGIN_HINTS[cacheOrigin]}>
+          <Badge
+            size="xs"
+            variant="light"
+            color={CACHE_ORIGIN_COLORS[cacheOrigin]}
+          >
+            {cacheOrigin}
+          </Badge>
+        </Tooltip>
+      )}
+    </Group>
+  );
+}
+
 function TwoLineHeader(props: { title: string; hint: string }) {
   return (
     <Stack gap={0}>
@@ -841,6 +882,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Stream</Table.Th>
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Target</Table.Th>
+                  <Table.Th>Slot</Table.Th>
                   <Table.Th>Actions</Table.Th>
                   <Table.Th>
                     <TwoLineHeader title="Tokens" hint="in/out" />
@@ -886,6 +928,9 @@ export function StatsSection(props: StatsSectionProps) {
                     </Table.Td>
                     <Table.Td>{trace.modelId || "—"}</Table.Td>
                     <Table.Td>{trace.targetName ?? "—"}</Table.Td>
+                    <Table.Td>
+                      <SlotCell trace={trace} />
+                    </Table.Td>
                     <Table.Td>
                       {trace.schedulerActions.length > 0 ? (
                         <Tooltip label={trace.schedulerActions.join(", ")}>

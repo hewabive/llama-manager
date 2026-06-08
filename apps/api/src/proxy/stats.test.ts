@@ -17,6 +17,8 @@ function trace(
     targetId: null,
     targetName: null,
     resourceGroupId: null,
+    slotId: null,
+    cacheOrigin: null,
     textReplacementCount: 0,
     schedulerActions: [],
     usage: null,
