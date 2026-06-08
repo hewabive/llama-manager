@@ -175,7 +175,11 @@ import {
   listApiEndpointCatalog,
   updateApiEndpoint,
 } from "./proxy/endpoints.js";
-import { openAiModelsList, openAiProtocolAdapter } from "./proxy/openai.js";
+import {
+  openAiModelsList,
+  openAiProtocolAdapter,
+  openAiResponsesUsageCodec,
+} from "./proxy/openai.js";
 import { config } from "./config.js";
 import { anthropicProtocolAdapter } from "./proxy/anthropic.js";
 import {
@@ -207,6 +211,7 @@ import {
   type ApiProxyProtocolAdapter,
   type ApiProxyProtocolOperation,
   type ApiProxyProtocolTransport,
+  type ApiProxyResumableCodec,
 } from "./proxy/protocol.js";
 import { getApiProxyRuntimeSnapshot } from "./proxy/runtime-snapshot.js";
 import { apiProxyStats } from "./proxy/stats.js";
@@ -550,6 +555,31 @@ function protocolOperation(input: {
 
 const resumableEndpoints = new Set(["chat.completions", "messages"]);
 
+type StreamUsageMeter = {
+  codec: Pick<ApiProxyResumableCodec, "parseChunk">;
+  inject: boolean;
+  strip: boolean;
+};
+
+function resolveStreamUsageMeter(
+  operation: ApiProxyProtocolOperation,
+  adapter: ApiProxyProtocolAdapter,
+  body: unknown,
+): StreamUsageMeter | null {
+  if (adapter.resumable && resumableEndpoints.has(operation.endpoint)) {
+    const isOpenAi = operation.protocol === "openai";
+    return {
+      codec: adapter.resumable,
+      inject: isOpenAi,
+      strip: isOpenAi && !includeUsageRequested(body),
+    };
+  }
+  if (operation.protocol === "openai" && operation.endpoint === "responses") {
+    return { codec: openAiResponsesUsageCodec, inject: false, strip: false };
+  }
+  return null;
+}
+
 type ProxyTraceAccumulator = {
   id: string;
   at: string;
@@ -847,12 +877,10 @@ async function proxyProtocolEndpointInner(
       return c.json(response.body, response.status);
     }
 
-    const meterCodec = adapter.resumable;
-    const meterStream =
-      meterCodec !== undefined && resumableEndpoints.has(operation.endpoint);
-    const injectIncludeUsage =
-      meterStream && operation.protocol === "openai" && route.request.stream;
-    const forwardBody = injectIncludeUsage
+    const streamMeter = route.request.stream
+      ? resolveStreamUsageMeter(operation, adapter, route.request.body)
+      : null;
+    const forwardBody = streamMeter?.inject
       ? withIncludeUsage(route.request.body)
       : route.request.body;
 
@@ -897,16 +925,14 @@ async function proxyProtocolEndpointInner(
         });
       }
 
-      if (!meterCodec || !meterStream) {
+      if (!streamMeter) {
         return upstream;
       }
 
       let metered: Response | undefined;
-      const stripUsageFrames =
-        operation.protocol === "openai" &&
-        !includeUsageRequested(route.request.body);
+      const stripUsageFrames = streamMeter.strip;
       const meter = createUsageMeterStream({
-        codec: meterCodec,
+        codec: streamMeter.codec,
         stripUsageFrames,
         now: () => performance.now(),
         onComplete: (usage) => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { anthropicResumableCodec } from "./anthropic.js";
-import { openAiResumableCodec } from "./openai.js";
+import { openAiResponsesUsageCodec, openAiResumableCodec } from "./openai.js";
 import {
   createUsageMeterStream,
   includeUsageRequested,
@@ -334,4 +334,44 @@ test("createUsageMeterStream sums Anthropic cache input tokens", async () => {
   await drain(input.pipeThrough(meter.transform));
   assert.equal(counted?.promptTokens, 200);
   assert.equal(counted?.completionTokens, 6);
+});
+
+test("createUsageMeterStream meters OpenAI Responses stream", async () => {
+  let counted: ProxyUsageCounts | undefined;
+  const meter = createUsageMeterStream({
+    codec: openAiResponsesUsageCodec,
+    stripUsageFrames: false,
+    now: () => 0,
+    onComplete: (usage) => {
+      counted = usage;
+    },
+  });
+
+  const frames = [
+    `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: "hi" })}`,
+    `event: response.completed\ndata: ${JSON.stringify({
+      type: "response.completed",
+      response: {
+        usage: {
+          input_tokens: 30,
+          output_tokens: 5,
+          input_tokens_details: { cached_tokens: 25 },
+        },
+      },
+    })}`,
+  ];
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(frames.map((f) => `${f}\n\n`).join("")),
+      );
+      controller.close();
+    },
+  });
+
+  const out = await drain(input.pipeThrough(meter.transform));
+  assert.equal(out.includes("response.completed"), true);
+  assert.equal(counted?.promptTokens, 30);
+  assert.equal(counted?.cacheReadTokens, 25);
+  assert.equal(counted?.completionTokens, 5);
 });

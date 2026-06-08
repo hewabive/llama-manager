@@ -137,7 +137,7 @@ export type UsageMeterStream = {
 };
 
 export function createUsageMeterStream(input: {
-  codec: ApiProxyResumableCodec;
+  codec: Pick<ApiProxyResumableCodec, "parseChunk">;
   stripUsageFrames: boolean;
   now: () => number;
   onComplete: (usage: ProxyUsageCounts) => void;

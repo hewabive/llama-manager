@@ -326,3 +326,59 @@ export const openAiProtocolAdapter: ApiProxyProtocolAdapter = {
     ),
   }),
 };
+
+export const openAiResponsesUsageCodec: Pick<
+  ApiProxyResumableCodec,
+  "parseChunk"
+> = {
+  parseChunk(data) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return null;
+    }
+    const event = asObject(parsed);
+    if (!event) {
+      return null;
+    }
+    const type = typeof event.type === "string" ? event.type : null;
+    if (type === "response.completed") {
+      const response = asObject(event.response);
+      const usage = asObject(response?.usage);
+      return {
+        text: "",
+        finishReason: "stop",
+        id: null,
+        model: null,
+        ...(usage
+          ? {
+              usage: {
+                promptTokens:
+                  typeof usage.input_tokens === "number"
+                    ? usage.input_tokens
+                    : null,
+                cacheReadTokens: openaiCachedTokens(usage),
+                completionTokens:
+                  typeof usage.output_tokens === "number"
+                    ? usage.output_tokens
+                    : null,
+              },
+            }
+          : {}),
+      };
+    }
+    if (
+      type === "response.output_text.delta" ||
+      type === "response.reasoning_text.delta"
+    ) {
+      return {
+        text: typeof event.delta === "string" ? event.delta : "",
+        finishReason: null,
+        id: null,
+        model: null,
+      };
+    }
+    return null;
+  },
+};
