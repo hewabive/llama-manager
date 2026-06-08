@@ -901,6 +901,13 @@ export const InstanceHealthActionsSchema = z.object({
   canRestart: z.boolean(),
 });
 
+export const PromptCacheStateSchema = z.object({
+  prompts: z.number().int().min(0),
+  sizeMiB: z.number().min(0),
+  limitMiB: z.number().min(0).nullable(),
+  at: z.string(),
+});
+
 export const InstanceHealthSummarySchema = z.object({
   instanceId: z.string(),
   status: InstanceHealthSummaryStatusSchema,
@@ -910,6 +917,7 @@ export const InstanceHealthSummarySchema = z.object({
   preflight: ProcessPreflightResultSchema,
   llama: LlamaProbeSchema,
   logSummary: InstanceLogSummarySchema,
+  promptCache: PromptCacheStateSchema.nullable().default(null),
   checkedAt: z.string(),
 });
 
@@ -1652,6 +1660,7 @@ export type InstanceHealthSummaryStatus = z.infer<
 >;
 export type InstanceHealthActions = z.infer<typeof InstanceHealthActionsSchema>;
 export type InstanceHealthSummary = z.infer<typeof InstanceHealthSummarySchema>;
+export type PromptCacheState = z.infer<typeof PromptCacheStateSchema>;
 export type InstanceBulkActionName = z.infer<
   typeof InstanceBulkActionNameSchema
 >;

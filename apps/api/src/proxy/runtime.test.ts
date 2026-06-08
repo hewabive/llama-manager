@@ -179,6 +179,7 @@ function health(
       },
       updatedAt: "2026-05-30T10:00:00.000Z",
     },
+    promptCache: null,
     checkedAt: "2026-05-30T10:00:00.000Z",
   };
 }

@@ -14,6 +14,7 @@ import {
   validateInstancePreflight,
   validateInstanceStartPreflight,
 } from "./preflight.js";
+import { promptCacheTracker } from "./prompt-cache-tracker.js";
 import { latestProcessRun } from "./runs-repository.js";
 import { supervisor } from "./supervisor.js";
 
@@ -293,6 +294,7 @@ export async function getInstanceHealthSummary(
     preflight,
     llama,
     logSummary,
+    promptCache: promptCacheTracker.get(instance.name),
     checkedAt: nowIso(),
   };
 }
