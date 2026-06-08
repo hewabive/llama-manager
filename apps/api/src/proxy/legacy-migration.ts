@@ -10,11 +10,7 @@ import { resolve } from "node:path";
 import { config } from "../config.js";
 import { sqlite } from "../db/index.js";
 import { writeCollection, setSecret } from "./config-files.js";
-import {
-  MODELS_FILE,
-  PIPELINES_FILE,
-  TARGETS_FILE,
-} from "./repository.js";
+import { MODELS_FILE, PIPELINES_FILE, TARGETS_FILE } from "./repository.js";
 import { ENDPOINTS_FILE, StoredEndpointSchema } from "./endpoints.js";
 
 function tableExists(name: string): boolean {

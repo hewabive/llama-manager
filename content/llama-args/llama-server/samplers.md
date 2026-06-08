@@ -74,7 +74,7 @@ CLI также принимает альтернативы: `top-k`, `top-p`, `t
 Пример массива:
 
 ```json
-{"samplers": ["top_k", "top_p", "min_p", "temperature"]}
+{ "samplers": ["top_k", "top_p", "min_p", "temperature"] }
 ```
 
 ## Когда использовать

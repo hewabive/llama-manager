@@ -51,7 +51,6 @@ see https://github.com/ggml-org/llama.cpp/issues/1437
 - Переменные окружения: `LLAMA_ARG_NUMA`
 - Значение по умолчанию: `disabled`
 
-
 ## Что меняет в llama-server
 
 Обработчик записывает enum в `params.numa`: `GGML_NUMA_STRATEGY_DISTRIBUTE`, `GGML_NUMA_STRATEGY_ISOLATE` или `GGML_NUMA_STRATEGY_NUMACTL`. В `server.cpp` после `llama_backend_init()` вызывается `llama_numa_init(params.numa)`, который передает стратегию в CPU backend через `ggml_backend_cpu_numa_init`.
@@ -83,7 +82,6 @@ see https://github.com/ggml-org/llama.cpp/issues/1437
 В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `numa = isolate`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
 Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
-
 
 ## Типовые проблемы и диагностика
 

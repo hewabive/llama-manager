@@ -414,4 +414,3 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
     </Modal>
   );
 }
-

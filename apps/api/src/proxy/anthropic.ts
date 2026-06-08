@@ -57,7 +57,9 @@ function parseToolInput(args: string): unknown {
   }
 }
 
-function anthropicToolBlocks(toolCalls: ApiProxyResumableToolCall[] | undefined) {
+function anthropicToolBlocks(
+  toolCalls: ApiProxyResumableToolCall[] | undefined,
+) {
   return (toolCalls ?? [])
     .filter((call) => call.name)
     .map((call, index) => ({
@@ -306,8 +308,7 @@ export const anthropicResumableCodec: ApiProxyResumableCodec = {
           type: "message_delta",
           delta: { stop_reason: stopReason, stop_sequence: null },
           usage: { output_tokens: outputTokens },
-        }) +
-        event("message_stop", { type: "message_stop" });
+        }) + event("message_stop", { type: "message_stop" });
       return {
         status: 200,
         headers: { "content-type": "text/event-stream" },

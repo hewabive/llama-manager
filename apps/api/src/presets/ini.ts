@@ -24,7 +24,9 @@ function extraArgLines(entry: ModelPresetEntry) {
         [rawKey.trim().replace(/^-+/, ""), value.trim()] as const,
     )
     .filter(([key]) => key && !reservedEntryKeys.has(key))
-    .map(([key, value]) => (value ? `${key} = ${escapeValue(value)}` : `${key} =`));
+    .map(([key, value]) =>
+      value ? `${key} = ${escapeValue(value)}` : `${key} =`,
+    );
 }
 
 type StructuredField = "model" | "mmproj";
@@ -56,7 +58,10 @@ function matchKv(line: string): { key: string; value: string } | null {
   return { key: match[1]!, value: value.replace(/[ \t]+$/, "") };
 }
 
-function entryFromSection(name: string, kv: Map<string, string>): ModelPresetEntry {
+function entryFromSection(
+  name: string,
+  kv: Map<string, string>,
+): ModelPresetEntry {
   const entry: ModelPresetEntry = {
     id: name,
     name,

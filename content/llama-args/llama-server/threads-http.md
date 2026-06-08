@@ -45,7 +45,6 @@ number of threads used to process HTTP requests (default: -1)
 - Переменные окружения: `LLAMA_ARG_THREADS_HTTP`
 - Значение по умолчанию: `-1`
 
-
 ## Что меняет в llama-server
 
 Обработчик CLI записывает значение в `params.n_threads_http`. В `server-http.cpp` перед запуском cpp-httplib сервер вычисляет фактическое число потоков: если `params.n_threads_http < 1`, используется `max(params.n_parallel + 4, hardware_concurrency() - 1)`. Затем создается `httplib::ThreadPool(n_threads_http, n_threads_http + 1024)`.
@@ -74,7 +73,6 @@ number of threads used to process HTTP requests (default: -1)
 В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `threads-http = 8`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
 Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
-
 
 ## Типовые проблемы и диагностика
 

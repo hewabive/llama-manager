@@ -50,7 +50,6 @@ Set the verbosity threshold. Messages with a higher verbosity will be ignored. V
 - Переменные окружения: `LLAMA_ARG_LOG_VERBOSITY`
 - Значение по умолчанию: `3`
 
-
 ## Что меняет в llama-server
 
 Обработчик записывает `params.verbosity = value` и вызывает `common_log_set_verbosity_thold(value)`. Макросы `LOG_*` сравнивают свой уровень с этим threshold до вычисления и записи сообщения. В server tasks `params.verbose` становится `true`, когда базовая `verbosity > 9`, что добавляет `__verbose` в ответы.
@@ -77,7 +76,6 @@ Set the verbosity threshold. Messages with a higher verbosity will be ignored. V
 ## INI-пресеты и router-режим
 
 В локальном `--models-preset` параметр пишется по длинному имени без дефисов. Для paired boolean flags `common_preset::to_args()` выбирает положительный или отрицательный CLI-аргумент по boolean-значению. Logging-параметры не входят в список reserved router args, поэтому могут передаваться дочерним model servers; учитывайте, что `--log-file` в нескольких дочерних процессах должен указывать на разные файлы, иначе процессы будут конкурировать за один путь.
-
 
 ## Типовые проблемы и диагностика
 

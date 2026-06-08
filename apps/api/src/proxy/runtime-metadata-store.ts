@@ -112,7 +112,9 @@ export function addApiProxySavedSlotId(
   targetId: string,
   slotId: number,
 ): ApiProxyRuntimeMetadataRecord {
-  const next = new Set(getApiProxyRuntimeMetadata(targetId)?.savedSlotIds ?? []);
+  const next = new Set(
+    getApiProxyRuntimeMetadata(targetId)?.savedSlotIds ?? [],
+  );
   next.add(slotId);
   return setApiProxyRuntimeMetadata(targetId, {
     savedSlotIds: [...next].sort((left, right) => left - right),
@@ -123,7 +125,9 @@ export function removeApiProxySavedSlotId(
   targetId: string,
   slotId: number,
 ): ApiProxyRuntimeMetadataRecord {
-  const next = new Set(getApiProxyRuntimeMetadata(targetId)?.savedSlotIds ?? []);
+  const next = new Set(
+    getApiProxyRuntimeMetadata(targetId)?.savedSlotIds ?? [],
+  );
   next.delete(slotId);
   return setApiProxyRuntimeMetadata(targetId, {
     savedSlotIds: [...next].sort((left, right) => left - right),

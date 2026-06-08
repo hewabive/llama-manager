@@ -120,7 +120,10 @@ llama-server --model /models/model.gguf -l 15043+1 -l 2-100
 ```json
 {
   "prompt": "Say hello",
-  "logit_bias": [["Hello", 1.0], [15043, -1.0]]
+  "logit_bias": [
+    ["Hello", 1.0],
+    [15043, -1.0]
+  ]
 }
 ```
 

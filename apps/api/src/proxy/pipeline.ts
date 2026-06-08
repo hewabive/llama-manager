@@ -177,7 +177,10 @@ function legacyModelRouteTo(request: ApiProxyProtocolModelRequest) {
   return (
     request.model.routeTo ??
     (request.model.targetId
-      ? ({ type: "target", id: request.model.targetId } satisfies ApiProxyRouteTo)
+      ? ({
+          type: "target",
+          id: request.model.targetId,
+        } satisfies ApiProxyRouteTo)
       : null)
   );
 }

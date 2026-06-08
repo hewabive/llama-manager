@@ -55,9 +55,7 @@ function readDefaults(): LlamaArgumentDefaults {
   try {
     json = JSON.parse(raw);
   } catch (error) {
-    throw new Error(
-      `Invalid JSON in ${filePath}: ${(error as Error).message}`,
-    );
+    throw new Error(`Invalid JSON in ${filePath}: ${(error as Error).message}`);
   }
   return LlamaArgumentDefaultsSchema.parse(json);
 }

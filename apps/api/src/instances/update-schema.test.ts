@@ -17,10 +17,7 @@ test("InstanceCreateSchema defaults missing args and env", () => {
 });
 
 test("InstanceCreateSchema requires a binary catalog reference", () => {
-  assert.equal(
-    InstanceCreateSchema.safeParse({ name: "test" }).success,
-    false,
-  );
+  assert.equal(InstanceCreateSchema.safeParse({ name: "test" }).success, false);
 });
 
 test("InstanceUpdateSchema keeps omitted args and env undefined", () => {

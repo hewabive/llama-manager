@@ -42,7 +42,6 @@ use strict CPU placement (default: 0)
 - Переменные окружения: `не заданы`
 - Значение по умолчанию: `0`
 
-
 ## Что меняет в llama-server
 
 Обработчик записывает число в `params.cpuparams.strict_cpu`. В `ggml_thread_cpumask_next()` значение `false` копирует всю affinity mask каждому worker thread, а значение `true` выбирает один следующий CPU из маски для каждого потока.
@@ -67,13 +66,11 @@ use strict CPU placement (default: 0)
 - `--prio` и `--poll` применяются к тому же CPU threadpool, поэтому их стоит настраивать вместе с `--threads` и affinity.
 - `--numa` включает отдельную NUMA-логику CPU backend; не смешивайте ее с ручной affinity, пока не измерили результат на конкретной машине.
 
-
 ## INI-пресеты и router-режим
 
 В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `cpu-strict = 1`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
 Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
-
 
 ## Типовые проблемы и диагностика
 
@@ -81,7 +78,6 @@ use strict CPU placement (default: 0)
 - Ошибки `invalid cpumask`, `invalid range`, `Start index out of bounds` или `End index out of bounds` означают, что аргумент не прошел парсер `parse_cpu_mask()`/`parse_cpu_range()`.
 - Предупреждения `failed to set affinity` или `failed to set thread priority` печатает CPU backend, когда ОС не разрешила affinity/scheduler policy или CPU index отсутствует в доступном cpuset.
 - Для проверки фактических значений смотрите строку `system_info: n_threads = ...`; для HTTP-пула отдельно печатается `using N threads for HTTP server`.
-
 
 ## Примеры
 
@@ -93,7 +89,6 @@ llama-server --model /models/model.gguf --cpu-strict 1 --cpu-range 0-7 --threads
 [*]
 cpu-strict = 1
 ```
-
 
 ## Источники
 

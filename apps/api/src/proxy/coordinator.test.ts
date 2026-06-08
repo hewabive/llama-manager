@@ -64,7 +64,10 @@ test("busyTargetIds reports only current holders, not waiters", async () => {
   assert.deepEqual([...coord.busyTargetIds()], ["target-100"]);
 
   const c = await coord.acquire(req("g2", 50));
-  assert.deepEqual([...coord.busyTargetIds()].sort(), ["target-100", "target-50"]);
+  assert.deepEqual([...coord.busyTargetIds()].sort(), [
+    "target-100",
+    "target-50",
+  ]);
 
   c.release();
 });

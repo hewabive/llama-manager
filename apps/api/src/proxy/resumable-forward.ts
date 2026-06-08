@@ -96,7 +96,10 @@ function applyFrame(
       if (typeof chunk.usage.completionTokens === "number") {
         state.completionTokens += chunk.usage.completionTokens;
       }
-      if (state.promptTokens === null && typeof chunk.usage.promptTokens === "number") {
+      if (
+        state.promptTokens === null &&
+        typeof chunk.usage.promptTokens === "number"
+      ) {
         state.promptTokens = chunk.usage.promptTokens;
       }
     }
@@ -198,7 +201,10 @@ export async function runResumableUpstreamAttempt(input: {
         const before =
           input.state.text.length + input.state.reasoningText.length;
         const result = applyFrame(frame, input.codec, input.state, meta);
-        if (input.state.text.length + input.state.reasoningText.length > before) {
+        if (
+          input.state.text.length + input.state.reasoningText.length >
+          before
+        ) {
           if (firstTokenAt === null) {
             firstTokenAt = now();
           }

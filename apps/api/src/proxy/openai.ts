@@ -112,7 +112,9 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
     const usage = asObject(event.usage);
     const timings = asObject(event.timings);
     const predictedMs =
-      timings && typeof timings.predicted_ms === "number" && Number.isFinite(timings.predicted_ms)
+      timings &&
+      typeof timings.predicted_ms === "number" &&
+      Number.isFinite(timings.predicted_ms)
         ? timings.predicted_ms
         : null;
 

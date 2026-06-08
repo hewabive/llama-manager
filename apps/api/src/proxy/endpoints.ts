@@ -146,7 +146,9 @@ export function listExternalApiEndpoints(): ApiEndpointRecord[] {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function getStoredExternalApiEndpoint(id: string): StoredEndpoint | null {
+export function getStoredExternalApiEndpoint(
+  id: string,
+): StoredEndpoint | null {
   return readStoredEndpoints().find((item) => item.id === id) ?? null;
 }
 

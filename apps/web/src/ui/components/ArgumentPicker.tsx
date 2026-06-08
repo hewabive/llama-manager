@@ -48,7 +48,8 @@ export function ArgumentPicker(props: {
       return exact;
     }
     return options.filter(
-      (item) => "label" in item && item.label.toLowerCase().includes(normalized),
+      (item) =>
+        "label" in item && item.label.toLowerCase().includes(normalized),
     );
   };
 

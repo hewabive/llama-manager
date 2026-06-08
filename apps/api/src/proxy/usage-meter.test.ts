@@ -56,7 +56,10 @@ test("usageFromNonStreamBody returns null without usage", () => {
 });
 
 test("includeUsageRequested / withIncludeUsage", () => {
-  assert.equal(includeUsageRequested({ stream_options: { include_usage: true } }), true);
+  assert.equal(
+    includeUsageRequested({ stream_options: { include_usage: true } }),
+    true,
+  );
   assert.equal(includeUsageRequested({ stream_options: {} }), false);
   assert.equal(includeUsageRequested({}), false);
   assert.deepEqual(withIncludeUsage({ model: "m", stream_options: { x: 1 } }), {
@@ -65,9 +68,7 @@ test("includeUsageRequested / withIncludeUsage", () => {
   });
 });
 
-async function drain(
-  stream: ReadableStream<Uint8Array>,
-): Promise<string> {
+async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let out = "";
@@ -207,7 +208,9 @@ test("createUsageMeterStream meters Anthropic stream without stripping", async (
   ];
   const input = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(frames.map((f) => `${f}\n\n`).join("")));
+      controller.enqueue(
+        new TextEncoder().encode(frames.map((f) => `${f}\n\n`).join("")),
+      );
       controller.close();
     },
   });

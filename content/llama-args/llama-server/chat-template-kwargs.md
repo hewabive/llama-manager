@@ -52,7 +52,7 @@ sets additional params for the json template parser, must be a valid json object
 Значение обязано быть JSON object:
 
 ```json
-{"reasoning_effort":"high","custom_flag":true}
+{ "reasoning_effort": "high", "custom_flag": true }
 ```
 
 Строки, числа, boolean, массивы и объекты внутри значения допустимы как JSON. Невалидный JSON завершит запуск ошибкой парсинга.

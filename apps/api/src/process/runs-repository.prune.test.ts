@@ -42,11 +42,41 @@ function runIdsFor(instanceId: string): string[] {
 }
 
 test("pruneProcessRunHistory keeps latest run plus open runs per instance", () => {
-  seedRun({ id: "a1", instanceId: "a", status: "exited", startedAt: "2026-01-01T00:00:01.000Z", stoppedAt: "2026-01-01T00:00:02.000Z" });
-  seedRun({ id: "a2", instanceId: "a", status: "exited", startedAt: "2026-01-01T00:00:03.000Z", stoppedAt: "2026-01-01T00:00:04.000Z" });
-  seedRun({ id: "a3", instanceId: "a", status: "exited", startedAt: "2026-01-01T00:00:05.000Z", stoppedAt: "2026-01-01T00:00:06.000Z" });
-  seedRun({ id: "a-stale", instanceId: "a", status: "stale", startedAt: "2026-01-01T00:00:00.500Z", stoppedAt: null });
-  seedRun({ id: "b1", instanceId: "b", status: "running", startedAt: "2026-01-01T00:00:01.000Z", stoppedAt: null });
+  seedRun({
+    id: "a1",
+    instanceId: "a",
+    status: "exited",
+    startedAt: "2026-01-01T00:00:01.000Z",
+    stoppedAt: "2026-01-01T00:00:02.000Z",
+  });
+  seedRun({
+    id: "a2",
+    instanceId: "a",
+    status: "exited",
+    startedAt: "2026-01-01T00:00:03.000Z",
+    stoppedAt: "2026-01-01T00:00:04.000Z",
+  });
+  seedRun({
+    id: "a3",
+    instanceId: "a",
+    status: "exited",
+    startedAt: "2026-01-01T00:00:05.000Z",
+    stoppedAt: "2026-01-01T00:00:06.000Z",
+  });
+  seedRun({
+    id: "a-stale",
+    instanceId: "a",
+    status: "stale",
+    startedAt: "2026-01-01T00:00:00.500Z",
+    stoppedAt: null,
+  });
+  seedRun({
+    id: "b1",
+    instanceId: "b",
+    status: "running",
+    startedAt: "2026-01-01T00:00:01.000Z",
+    stoppedAt: null,
+  });
 
   const result = pruneProcessRunHistory();
 
@@ -56,8 +86,20 @@ test("pruneProcessRunHistory keeps latest run plus open runs per instance", () =
 });
 
 test("createProcessRun drops prior closed runs for the instance but keeps open ones", () => {
-  seedRun({ id: "c-old", instanceId: "c", status: "exited", startedAt: "2026-01-01T00:00:01.000Z", stoppedAt: "2026-01-01T00:00:02.000Z" });
-  seedRun({ id: "c-stale", instanceId: "c", status: "stale", startedAt: "2026-01-01T00:00:00.500Z", stoppedAt: null });
+  seedRun({
+    id: "c-old",
+    instanceId: "c",
+    status: "exited",
+    startedAt: "2026-01-01T00:00:01.000Z",
+    stoppedAt: "2026-01-01T00:00:02.000Z",
+  });
+  seedRun({
+    id: "c-stale",
+    instanceId: "c",
+    status: "stale",
+    startedAt: "2026-01-01T00:00:00.500Z",
+    stoppedAt: null,
+  });
 
   const newId = createProcessRun({
     instanceId: "c",

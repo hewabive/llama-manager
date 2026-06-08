@@ -40,7 +40,6 @@ whether to enable internal libllama performance timings (default: false)
 - Переменные окружения: `LLAMA_ARG_PERF`
 - Значение по умолчанию: `params.no_perf = false`
 
-
 ## Что меняет в llama-server
 
 Обработчик boolean-аргумента записывает `params.no_perf = !value` и `params.sampling.no_perf = !value`. Далее `common_context_params_to_llama()` переносит значение в `llama_context_params.no_perf`, а sampler использует `params.sampling.no_perf` при измерении времени.
@@ -68,7 +67,6 @@ whether to enable internal libllama performance timings (default: false)
 В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `perf = true`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
 Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
-
 
 ## Типовые проблемы и диагностика
 

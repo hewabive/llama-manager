@@ -294,7 +294,10 @@ test("anthropicResumableCodec.finalResponse emits tool_use blocks", () => {
     promptTokens: 5,
     toolCalls: [{ id: "toolu_1", name: "get_weather", arguments: "{}" }],
   });
-  assert.match(sse.body, /"type":"tool_use","id":"toolu_1","name":"get_weather"/);
+  assert.match(
+    sse.body,
+    /"type":"tool_use","id":"toolu_1","name":"get_weather"/,
+  );
   assert.match(sse.body, /"stop_reason":"tool_use"/);
 });
 

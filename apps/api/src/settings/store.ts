@@ -1,4 +1,7 @@
-import { AppSettingsFileSchema, type AppSettingsFile } from "@llama-manager/core";
+import {
+  AppSettingsFileSchema,
+  type AppSettingsFile,
+} from "@llama-manager/core";
 import {
   copyFileSync,
   existsSync,

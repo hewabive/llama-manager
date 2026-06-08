@@ -249,7 +249,8 @@ export async function getInstanceHealthSummary(
   instance: Instance,
   options: HealthSummaryOptions = {},
 ): Promise<InstanceHealthSummary> {
-  const runtime = supervisor.getState(instance.name) ?? durableRuntime(instance);
+  const runtime =
+    supervisor.getState(instance.name) ?? durableRuntime(instance);
   const shouldCheckStartAvailability = ["stopped", "exited", "error"].includes(
     runtime.status,
   );

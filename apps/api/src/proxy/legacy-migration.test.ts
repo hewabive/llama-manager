@@ -85,7 +85,9 @@ function seedLegacyDb() {
     )
     .run(ts, ts);
   sqlite
-    .prepare(`INSERT INTO api_proxy_runtime_metadata VALUES ('t1','[2]',NULL,?)`)
+    .prepare(
+      `INSERT INTO api_proxy_runtime_metadata VALUES ('t1','[2]',NULL,?)`,
+    )
     .run(ts);
 }
 

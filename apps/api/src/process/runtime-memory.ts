@@ -199,7 +199,9 @@ export function parseProcStatusRss(
 ): Omit<ProcMemoryUsage, "pid"> | null {
   const values = new Map<string, number>();
   for (const line of contents.split(/\r?\n/)) {
-    const match = /^(RssAnon|RssFile|RssShmem):\s+(\d+)\s+kB$/i.exec(line.trim());
+    const match = /^(RssAnon|RssFile|RssShmem):\s+(\d+)\s+kB$/i.exec(
+      line.trim(),
+    );
     if (!match) {
       continue;
     }

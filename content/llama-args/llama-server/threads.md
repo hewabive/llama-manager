@@ -45,7 +45,6 @@ number of CPU threads to use during generation (default: -1)
 - Переменные окружения: `LLAMA_ARG_THREADS`
 - Значение по умолчанию: `-1`
 
-
 ## Что меняет в llama-server
 
 Обработчик записывает значение в `params.cpuparams.n_threads`. Если пользователь передал `0` или отрицательное значение через сам аргумент, оно сразу заменяется на `std::thread::hardware_concurrency()`. Если аргумент не указан, поле остается `-1` до `postprocess_cpu_params()`, где выбирается `common_cpu_get_num_math()`. Затем итог попадает в `llama_context_params.n_threads` и в параметры ggml threadpool.
@@ -70,13 +69,11 @@ number of CPU threads to use during generation (default: -1)
 - `--prio` и `--poll` применяются к тому же CPU threadpool, поэтому их стоит настраивать вместе с `--threads` и affinity.
 - `--numa` включает отдельную NUMA-логику CPU backend; не смешивайте ее с ручной affinity, пока не измерили результат на конкретной машине.
 
-
 ## INI-пресеты и router-режим
 
 В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `threads = 8`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
 Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
-
 
 ## Типовые проблемы и диагностика
 
@@ -84,7 +81,6 @@ number of CPU threads to use during generation (default: -1)
 - Ошибки `invalid cpumask`, `invalid range`, `Start index out of bounds` или `End index out of bounds` означают, что аргумент не прошел парсер `parse_cpu_mask()`/`parse_cpu_range()`.
 - Предупреждения `failed to set affinity` или `failed to set thread priority` печатает CPU backend, когда ОС не разрешила affinity/scheduler policy или CPU index отсутствует в доступном cpuset.
 - Для проверки фактических значений смотрите строку `system_info: n_threads = ...`; для HTTP-пула отдельно печатается `using N threads for HTTP server`.
-
 
 ## Примеры
 
@@ -100,7 +96,6 @@ llama-server --model /models/model.gguf --threads 6 --threads-batch 12
 [*]
 threads = 8
 ```
-
 
 ## Источники
 

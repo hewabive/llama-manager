@@ -51,33 +51,34 @@ function useTouchListFirst(
   };
 }
 
-export const TouchAutocomplete = forwardRef<HTMLInputElement, AutocompleteProps>(
-  function TouchAutocomplete(props, ref) {
-    const { coarsePointer, mergedRef, typing, setTyping, leftSectionProps } =
-      useTouchListFirst(ref, Boolean(props.leftSection));
+export const TouchAutocomplete = forwardRef<
+  HTMLInputElement,
+  AutocompleteProps
+>(function TouchAutocomplete(props, ref) {
+  const { coarsePointer, mergedRef, typing, setTyping, leftSectionProps } =
+    useTouchListFirst(ref, Boolean(props.leftSection));
 
-    if (!coarsePointer) {
-      return <Autocomplete ref={ref} {...props} />;
-    }
+  if (!coarsePointer) {
+    return <Autocomplete ref={ref} {...props} />;
+  }
 
-    return (
-      <Autocomplete
-        {...props}
-        {...leftSectionProps}
-        ref={mergedRef}
-        inputMode={typing ? "text" : "none"}
-        onOptionSubmit={(value) => {
-          setTyping(false);
-          props.onOptionSubmit?.(value);
-        }}
-        onBlur={(event) => {
-          setTyping(false);
-          props.onBlur?.(event);
-        }}
-      />
-    );
-  },
-);
+  return (
+    <Autocomplete
+      {...props}
+      {...leftSectionProps}
+      ref={mergedRef}
+      inputMode={typing ? "text" : "none"}
+      onOptionSubmit={(value) => {
+        setTyping(false);
+        props.onOptionSubmit?.(value);
+      }}
+      onBlur={(event) => {
+        setTyping(false);
+        props.onBlur?.(event);
+      }}
+    />
+  );
+});
 
 export const TouchSelect = forwardRef<HTMLInputElement, SelectProps>(
   function TouchSelect(props, ref) {

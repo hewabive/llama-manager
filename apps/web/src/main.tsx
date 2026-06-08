@@ -16,7 +16,10 @@ type RootErrorBoundaryState = {
   error: Error | null;
 };
 
-class RootErrorBoundary extends React.Component<React.PropsWithChildren, RootErrorBoundaryState> {
+class RootErrorBoundary extends React.Component<
+  React.PropsWithChildren,
+  RootErrorBoundaryState
+> {
   state: RootErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): RootErrorBoundaryState {

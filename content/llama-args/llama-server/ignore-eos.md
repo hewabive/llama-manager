@@ -53,7 +53,7 @@ llama-server --model /models/model.gguf --ignore-eos
 В HTTP:
 
 ```json
-{"ignore_eos": true}
+{ "ignore_eos": true }
 ```
 
 ## Когда использовать

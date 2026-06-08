@@ -25,6 +25,8 @@ export function listNetworkInterfaceAddresses(): NetworkInterfaceAddress[] {
     if (left.internal !== right.internal) {
       return left.internal ? 1 : -1;
     }
-    return `${left.name}:${left.address}`.localeCompare(`${right.name}:${right.address}`);
+    return `${left.name}:${left.address}`.localeCompare(
+      `${right.name}:${right.address}`,
+    );
   });
 }

@@ -260,9 +260,6 @@ export function pipelinePayload(draft: PipelineDraft): ApiProxyPipelineCreate {
     enabled: draft.enabled,
     nodeType: draft.nodeType,
     routeTo: routeToFromValue(draft.routeToValue),
-    steps:
-      draft.nodeType === "save-request"
-        ? [captureStep]
-        : [replaceStep],
+    steps: draft.nodeType === "save-request" ? [captureStep] : [replaceStep],
   };
 }

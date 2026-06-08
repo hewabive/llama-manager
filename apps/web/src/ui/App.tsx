@@ -146,7 +146,6 @@ export function App() {
     );
   }
 
-
   const logoutMutation = useMutation({
     mutationFn: logoutAdmin,
     onSuccess: async () => {

@@ -43,7 +43,6 @@ use strict CPU placement (default: same as --cpu-strict)
 - Переменные окружения: `не заданы`
 - Значение по умолчанию: `same as --cpu-strict`
 
-
 ## Что меняет в llama-server
 
 Обработчик записывает число в `params.cpuparams_batch.strict_cpu`. В `ggml_thread_cpumask_next()` значение `false` копирует всю affinity mask каждому worker thread, а значение `true` выбирает один следующий CPU из маски для каждого потока.
@@ -66,13 +65,11 @@ use strict CPU placement (default: same as --cpu-strict)
 - Если batch CPU-профиль не задан, он наследует `--cpu-strict` вместе с остальным основным CPU-профилем.
 - Значение должно соответствовать `--threads-batch`: если потоков больше, чем CPU в маске, CPU будут назначаться повторно.
 
-
 ## INI-пресеты и router-режим
 
 В локальном `--models-preset` параметр записывается по длинному имени без ведущих дефисов, например `cpu-strict-batch = 1`. `common_preset::to_args()` рендерит последнюю форму алиаса обратно в CLI-аргументы.
 
 Для router-режима параметр может входить в глобальную секцию `[*]` или в секцию конкретной модели. Router удаляет только зарезервированные сетевые и модельные параметры вроде `LLAMA_ARG_HOST`, `LLAMA_ARG_PORT`, `LLAMA_ARG_MODEL`, `LLAMA_ARG_MODELS_PRESET`; CPU, NUMA, logging и verbosity не входят в этот список и передаются дочернему `llama-server`, если указаны в пресете.
-
 
 ## Типовые проблемы и диагностика
 
@@ -80,7 +77,6 @@ use strict CPU placement (default: same as --cpu-strict)
 - Ошибки `invalid cpumask`, `invalid range`, `Start index out of bounds` или `End index out of bounds` означают, что аргумент не прошел парсер `parse_cpu_mask()`/`parse_cpu_range()`.
 - Предупреждения `failed to set affinity` или `failed to set thread priority` печатает CPU backend, когда ОС не разрешила affinity/scheduler policy или CPU index отсутствует в доступном cpuset.
 - Для проверки фактических значений смотрите строку `system_info: n_threads = ...`; для HTTP-пула отдельно печатается `using N threads for HTTP server`.
-
 
 ## Примеры
 
@@ -92,7 +88,6 @@ llama-server --model /models/model.gguf --cpu-strict-batch 1 --cpu-range 0-7 --t
 [*]
 cpu-strict-batch = 1
 ```
-
 
 ## Источники
 

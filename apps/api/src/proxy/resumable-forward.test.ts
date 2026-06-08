@@ -462,13 +462,18 @@ test("runResumableUpstreamAttempt defers preemption during a tool call", async (
   const state = createResumableBufferState();
   const preempt = new AbortController();
   const encoder = new TextEncoder();
-  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
   const fetchImpl = (async () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         streamController = controller;
-        controller.enqueue(encoder.encode(toolFrame({ id: "call_1", name: "get_weather" })));
-        controller.enqueue(encoder.encode(toolFrame({ arguments: '{"city":"Moscow"}' })));
+        controller.enqueue(
+          encoder.encode(toolFrame({ id: "call_1", name: "get_weather" })),
+        );
+        controller.enqueue(
+          encoder.encode(toolFrame({ arguments: '{"city":"Moscow"}' })),
+        );
       },
     });
     return new Response(stream, {
@@ -493,17 +498,17 @@ test("runResumableUpstreamAttempt defers preemption during a tool call", async (
   preempt.abort();
   await flush();
 
-  const controller = streamController as ReadableStreamDefaultController<Uint8Array> | null;
+  const controller =
+    streamController as ReadableStreamDefaultController<Uint8Array> | null;
   assert.notEqual(controller, null);
   controller!.enqueue(encoder.encode("data: [DONE]\n\n"));
   controller!.close();
   const outcome = await pending;
 
   assert.equal(outcome.type, "completed");
-  assert.deepEqual(
-    state.toolCalls.filter(Boolean),
-    [{ id: "call_1", name: "get_weather", arguments: '{"city":"Moscow"}' }],
-  );
+  assert.deepEqual(state.toolCalls.filter(Boolean), [
+    { id: "call_1", name: "get_weather", arguments: '{"city":"Moscow"}' },
+  ]);
 });
 
 test("runResumableForward regenerates from scratch when preempted before any text", async () => {

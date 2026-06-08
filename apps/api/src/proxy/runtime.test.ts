@@ -231,7 +231,9 @@ test("buildApiProxyRuntimeSnapshot marks an in-flight lease busy during prefill"
     targets: [target()],
     endpoints: [apiEndpoint()],
     instances: [instance()],
-    healthByInstanceId: new Map([["instance-a", health({ processing: false })]]),
+    healthByInstanceId: new Map([
+      ["instance-a", health({ processing: false })],
+    ]),
     busyTargetIds: new Set(["target-a"]),
   });
 

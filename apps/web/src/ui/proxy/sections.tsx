@@ -276,9 +276,7 @@ export function PipelinesSection(props: PipelinesSectionProps) {
                       </Badge>
                     </Group>
                   </Table.Td>
-                  <Table.Td>
-                    {pipelineNodeTypeLabel(pipeline)}
-                  </Table.Td>
+                  <Table.Td>{pipelineNodeTypeLabel(pipeline)}</Table.Td>
                   <Table.Td>
                     <Group gap={6} wrap="wrap">
                       {pipeline.steps.map((step) => (
@@ -300,9 +298,7 @@ export function PipelinesSection(props: PipelinesSectionProps) {
                       props.pipelineById,
                     )}
                   </Table.Td>
-                  <Table.Td>
-                    {formatLocalDateTime(pipeline.updatedAt)}
-                  </Table.Td>
+                  <Table.Td>{formatLocalDateTime(pipeline.updatedAt)}</Table.Td>
                   <Table.Td>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
                       <Tooltip label="Edit node">
@@ -827,4 +823,3 @@ export function StatsSection(props: StatsSectionProps) {
     </Paper>
   );
 }
-

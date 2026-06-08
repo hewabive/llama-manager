@@ -84,8 +84,12 @@ test("aggregates totals, per-model breakdown, rate and error counts", () => {
 });
 
 test("buckets by hour and snapshot(hours) selects newest", () => {
-  apiProxyStats.record(trace({ at: "2026-06-03T20:30:00.000Z", modelId: "m1" }));
-  apiProxyStats.record(trace({ at: "2026-06-03T21:30:00.000Z", modelId: "m1" }));
+  apiProxyStats.record(
+    trace({ at: "2026-06-03T20:30:00.000Z", modelId: "m1" }),
+  );
+  apiProxyStats.record(
+    trace({ at: "2026-06-03T21:30:00.000Z", modelId: "m1" }),
+  );
 
   const all = apiProxyStats.snapshot();
   assert.equal(all.buckets.length, 2);
@@ -99,9 +103,7 @@ test("buckets by hour and snapshot(hours) selects newest", () => {
 
 test("recentTraces is a newest-first ring capped at 50", () => {
   for (let i = 0; i < 60; i += 1) {
-    apiProxyStats.record(
-      trace({ at: HOUR, modelId: "m1", id: `trace-${i}` }),
-    );
+    apiProxyStats.record(trace({ at: HOUR, modelId: "m1", id: `trace-${i}` }));
   }
   const recent = apiProxyStats.recentTraces();
   assert.equal(recent.length, 50);
