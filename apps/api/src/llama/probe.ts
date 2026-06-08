@@ -347,6 +347,14 @@ const capabilityDefinitions: CapabilityDefinition[] = [
     body: (model) => (model ? { model } : {}),
   },
   {
+    id: "audio-transcriptions",
+    label: "Audio transcription",
+    category: "generation",
+    method: "POST",
+    endpoint: "/v1/audio/transcriptions",
+    body: (model) => (model ? { model } : {}),
+  },
+  {
     id: "tokenize",
     label: "Tokenize",
     category: "tokens",
@@ -368,6 +376,22 @@ const capabilityDefinitions: CapabilityDefinition[] = [
     category: "tokens",
     method: "POST",
     endpoint: "/v1/messages/count_tokens",
+    body: (model) => (model ? { model } : {}),
+  },
+  {
+    id: "chat-input-tokens",
+    label: "Chat input tokens",
+    category: "tokens",
+    method: "POST",
+    endpoint: "/v1/chat/completions/input_tokens",
+    body: (model) => (model ? { model } : {}),
+  },
+  {
+    id: "responses-input-tokens",
+    label: "Responses input tokens",
+    category: "tokens",
+    method: "POST",
+    endpoint: "/v1/responses/input_tokens",
     body: (model) => (model ? { model } : {}),
   },
   {
