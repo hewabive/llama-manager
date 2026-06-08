@@ -95,6 +95,21 @@ test("usageFromNonStreamBody reads OpenAI Responses input/output tokens", () => 
   });
 });
 
+test("usageFromNonStreamBody reads OpenAI Responses cached tokens", () => {
+  const usage = usageFromNonStreamBody(
+    "openai",
+    JSON.stringify({
+      usage: {
+        input_tokens: 30,
+        output_tokens: 8,
+        input_tokens_details: { cached_tokens: 25 },
+      },
+    }),
+  );
+  assert.equal(usage?.promptTokens, 30);
+  assert.equal(usage?.cacheReadTokens, 25);
+});
+
 test("usageFromNonStreamBody sums Anthropic cache input tokens", () => {
   const usage = usageFromNonStreamBody(
     "anthropic",

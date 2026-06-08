@@ -55,8 +55,12 @@ export function anthropicCacheCreationTokens(
 export function openaiCachedTokens(
   usage: Record<string, unknown> | null | undefined,
 ): number | null {
-  const details = asObject(usage?.prompt_tokens_details);
-  return numberOrNull(details?.cached_tokens);
+  const promptDetails = asObject(usage?.prompt_tokens_details);
+  const inputDetails = asObject(usage?.input_tokens_details);
+  return (
+    numberOrNull(promptDetails?.cached_tokens) ??
+    numberOrNull(inputDetails?.cached_tokens)
+  );
 }
 
 export function usageFromNonStreamBody(
