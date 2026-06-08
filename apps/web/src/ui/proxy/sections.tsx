@@ -738,9 +738,7 @@ function CacheCell(props: { usage: ApiProxyTraceUsage | null }) {
     input === null
       ? null
       : Math.max(0, input - (cacheRead ?? 0) - (cacheCreation ?? 0));
-  return (
-    <>{`${cacheRead ?? "—"} / ${cacheCreation ?? "—"} / ${fresh ?? "—"}`}</>
-  );
+  return <>{`${cacheRead ?? "—"} / ${fresh ?? "—"}`}</>;
 }
 
 function StatBlock(props: { label: string; value: string }) {
@@ -848,7 +846,7 @@ export function StatsSection(props: StatsSectionProps) {
                     <TwoLineHeader title="Tokens" hint="in/out" />
                   </Table.Th>
                   <Table.Th>
-                    <TwoLineHeader title="Cache" hint="read/write/new" />
+                    <TwoLineHeader title="Cache" hint="read/new" />
                   </Table.Th>
                   <Table.Th>Rate</Table.Th>
                   <Table.Th>Status</Table.Th>
