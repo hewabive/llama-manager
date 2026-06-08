@@ -1,0 +1,1143 @@
+import {
+  InstanceArgsSchema,
+  type Instance,
+  type InstanceCreate,
+  type InstancePreflightPreview,
+  type InstanceUpdate,
+  type LlamaArgumentOption,
+} from "@llama-manager/core";
+import { useForm } from "@mantine/form";
+import { notifications } from "@mantine/notifications";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  createInstance,
+  getDefaultLlamaServerBinary,
+  getLlamaArgumentDefaults,
+  getLlamaArguments,
+  getModelScanSettings,
+  getSystemResources,
+  instanceAction,
+  listPathCatalog,
+  listPresets,
+  previewInstancePreflight,
+  updateInstance,
+} from "../../api/client";
+import { useScannedModels } from "../hooks/use-scanned-models";
+import { createUiId } from "../utils/id";
+import {
+  compareModelTitles,
+  formatBytes,
+  instanceNameFromModelPath,
+  isVocabModel,
+  modelTitle,
+  pathBaseName,
+} from "../utils/models";
+import {
+  type ArgRow,
+  argsToRows,
+  canonicalOptionForRow,
+  cliNameForArgument,
+  defaultRows,
+  defaultValueForArgument,
+  removeArgRow,
+  removeArgRows,
+  rowValue,
+  rowsToArgsWithCatalog,
+  upsertArgRow,
+  valueTypeFromArgument,
+} from "./InstanceArgumentRows";
+import {
+  argString,
+  hasConfiguredArg,
+  hasModelSource,
+  hasOwnKey,
+  hasSpecConfig,
+  isManagedArgRow,
+  isSelectableInstanceArgument,
+  launchModeFromArgs,
+  nextAvailablePort,
+  parseEnvJson,
+  presetNameFromPath,
+  splitCudaVisibleDevices,
+  SPEC_ADVANCED_KEYS,
+  SPEC_DRAFT_HF_KEY,
+  SPEC_DRAFT_MODEL_KEY,
+  SPEC_KEYS,
+  SPEC_TYPE_KEY,
+  type DraftSource,
+  type LaunchMode,
+  type RemoteSource,
+} from "./instance-form-helpers";
+
+export type InstanceFormModalProps = {
+  opened: boolean;
+  onClose: () => void;
+  instances: Instance[];
+  onSaved?: (instance: Instance) => void;
+  onLaunchStarted?: (instance: Instance, source: "create") => void;
+  instance?: Instance | null;
+  initialModelPath?: string | null;
+};
+
+export function useInstanceForm(props: InstanceFormModalProps) {
+  const queryClient = useQueryClient();
+  const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
+  const initializedFormKeyRef = useRef<string | null>(null);
+  const catalogNormalizedFormKeyRef = useRef<string | null>(null);
+  const [initializedFormKey, setInitializedFormKey] = useState<string | null>(
+    null,
+  );
+  const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
+  const [showRawArgs, setShowRawArgs] = useState(false);
+  const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
+    null,
+  );
+  const [launchMode, setLaunchMode] = useState<LaunchMode>("model");
+  const [remoteSource, setRemoteSource] = useState<RemoteSource>("hf");
+  const [specEnabled, setSpecEnabled] = useState(false);
+  const [specSource, setSpecSource] = useState<DraftSource>("local");
+  const [specAdvancedOpen, setSpecAdvancedOpen] = useState(false);
+  const [selectedBinaryPathRefId, setSelectedBinaryPathRefId] = useState<
+    string | null
+  >(null);
+  const [selectedPresetName, setSelectedPresetName] = useState<string | null>(
+    null,
+  );
+  const [startAfterCreate, setStartAfterCreate] = useState(false);
+  const form = useForm({
+    initialValues: {
+      name: "local-router",
+      envJson: JSON.stringify({}, null, 2),
+    },
+    validate: {
+      name: (value) =>
+        /^[A-Za-z0-9._-]+$/.test(value)
+          ? null
+          : "Only letters, digits, dot, underscore and hyphen are allowed",
+    },
+  });
+  const isEdit = Boolean(props.instance);
+  const modelSettingsQuery = useQuery({
+    queryKey: ["model-scan-settings"],
+    queryFn: getModelScanSettings,
+    enabled: props.opened,
+  });
+  const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
+  const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
+  const scanned = useScannedModels(modelDirectory, modelMaxDepth, {
+    enabled: props.opened,
+  });
+  const pathCatalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog(),
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const defaultBinaryQuery = useQuery({
+    queryKey: ["build-default-binary"],
+    queryFn: getDefaultLlamaServerBinary,
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const selectedBinaryPath = useMemo(() => {
+    const entry = (pathCatalogQuery.data?.data ?? []).find(
+      (item) => item.id === selectedBinaryPathRefId && item.kind === "binary",
+    );
+    return entry?.path ?? "";
+  }, [pathCatalogQuery.data?.data, selectedBinaryPathRefId]);
+  const argsCatalogQuery = useQuery({
+    queryKey: ["llama-args", selectedBinaryPath],
+    queryFn: () => getLlamaArguments(selectedBinaryPath),
+    enabled: props.opened && Boolean(selectedBinaryPath),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const systemResourcesQuery = useQuery({
+    queryKey: ["system-resources"],
+    queryFn: getSystemResources,
+    enabled: props.opened,
+    staleTime: 10_000,
+  });
+  const argumentDefaultsQuery = useQuery({
+    queryKey: ["llama-arg-defaults"],
+    queryFn: getLlamaArgumentDefaults,
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const presetsQuery = useQuery({
+    queryKey: ["presets"],
+    queryFn: listPresets,
+    enabled: props.opened,
+    staleTime: 60_000,
+  });
+  const instanceDefaultArgs = useMemo(
+    () => argumentDefaultsQuery.data?.data.instance ?? [],
+    [argumentDefaultsQuery.data?.data.instance],
+  );
+
+  const argsCatalog = argsCatalogQuery.data?.data;
+  const argsCatalogTooltip = argsCatalog
+    ? `Reload from binary --help. Catalog has ${argsCatalog.options.length} args, ${argsCatalog.cache.hit ? "cache hit" : "fresh parse"}: ${argsCatalog.binaryPath}`
+    : "Reload from binary --help";
+  const knownArgs = argsCatalog?.options ?? [];
+  const knownArgByName = useMemo(() => {
+    const map = new Map<string, LlamaArgumentOption>();
+    for (const option of knownArgs) {
+      map.set(option.primaryName, option);
+      for (const name of option.names) {
+        map.set(name, option);
+      }
+      for (const name of option.compatibility.binaryNames) {
+        map.set(name, option);
+      }
+    }
+    return map;
+  }, [knownArgs]);
+  const defaultOverlay = useMemo(() => {
+    const seen = new Set<string>();
+    const out: LlamaArgumentOption[] = [];
+    for (const item of instanceDefaultArgs) {
+      const option = knownArgByName.get(item.key);
+      if (!option || seen.has(option.primaryName)) {
+        continue;
+      }
+      seen.add(option.primaryName);
+      out.push(option);
+    }
+    return out;
+  }, [instanceDefaultArgs, knownArgByName]);
+  const defaultKeySet = useMemo(
+    () => new Set(defaultOverlay.map((option) => option.primaryName)),
+    [defaultOverlay],
+  );
+  const visibleKnownArgs = knownArgs.filter(
+    (option) =>
+      isSelectableInstanceArgument(option) &&
+      (showDeprecatedArgs || !option.deprecated),
+  );
+  const visibleArgRows = useMemo(
+    () => argRows.filter((row) => !isManagedArgRow(row)),
+    [argRows],
+  );
+  const manualArgRows = useMemo(
+    () =>
+      visibleArgRows.filter((row) => {
+        const option = canonicalOptionForRow(row, knownArgByName);
+        return !option || !defaultKeySet.has(option.primaryName);
+      }),
+    [visibleArgRows, knownArgByName, defaultKeySet],
+  );
+  const selectableModels = useMemo(
+    () =>
+      scanned.models
+        .filter((model) => !model.isMmproj && !isVocabModel(model))
+        .sort(compareModelTitles),
+    [scanned.models],
+  );
+  const selectedModel =
+    selectableModels.find((model) => model.path === selectedModelPath) ?? null;
+  const modelOptions = useMemo(() => {
+    const options = selectableModels.map((model) => ({
+      value: model.path,
+      label: `${modelTitle(model)} · ${pathBaseName(model.path)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+    }));
+    if (
+      selectedModelPath &&
+      !options.some((option) => option.value === selectedModelPath)
+    ) {
+      options.push({
+        value: selectedModelPath,
+        label: `${pathBaseName(selectedModelPath)} · custom path`,
+      });
+    }
+    return options;
+  }, [selectableModels, selectedModelPath]);
+  const binaryCatalogEntries = useMemo(
+    () =>
+      (pathCatalogQuery.data?.data ?? []).filter(
+        (entry) => entry.kind === "binary",
+      ),
+    [pathCatalogQuery.data?.data],
+  );
+  const binaryCatalogOptions = useMemo(
+    () =>
+      binaryCatalogEntries.map((entry) => ({
+        value: entry.id,
+        label: `${entry.name} · ${pathBaseName(entry.path)}`,
+      })),
+    [binaryCatalogEntries],
+  );
+  const presetByName = useMemo(
+    () =>
+      new Map(
+        (presetsQuery.data?.data ?? []).map((summary) => [
+          summary.name,
+          summary,
+        ]),
+      ),
+    [presetsQuery.data?.data],
+  );
+  const presetOptions = useMemo(() => {
+    const summaries = presetsQuery.data?.data ?? [];
+    const options = summaries.map((summary) => ({
+      value: summary.name,
+      label: `${summary.name}${summary.valid ? "" : " · invalid"} · ${summary.entryCount} models`,
+    }));
+    if (
+      selectedPresetName &&
+      !options.some((option) => option.value === selectedPresetName)
+    ) {
+      options.push({
+        value: selectedPresetName,
+        label: `${selectedPresetName} · missing file`,
+      });
+    }
+    return options;
+  }, [presetsQuery.data?.data, selectedPresetName]);
+  const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
+  const hfRepoValue = rowValue(argRows, "--hf-repo");
+  const hfFileValue = rowValue(argRows, "--hf-file");
+  const modelUrlValue = rowValue(argRows, "--model-url");
+  const mmprojUrlValue = rowValue(argRows, "--mmproj-url");
+  const remoteDestinationValue = rowValue(argRows, "--model");
+  const specDraftModelValue = rowValue(argRows, SPEC_DRAFT_MODEL_KEY);
+  const specDraftHfValue = rowValue(argRows, SPEC_DRAFT_HF_KEY);
+  const specTypeValue = rowValue(argRows, SPEC_TYPE_KEY);
+  const specTypeOption = knownArgByName.get(SPEC_TYPE_KEY);
+  const specTypeOptions = (specTypeOption?.allowedValues ?? []).map(
+    (value) => ({
+      value,
+      label: value,
+    }),
+  );
+  const draftModel =
+    selectableModels.find((model) => model.path === specDraftModelValue) ??
+    null;
+  const draftVocabHint =
+    specSource === "local" && selectedModel && draftModel
+      ? {
+          ok:
+            selectedModel.metadata.architecture ===
+              draftModel.metadata.architecture &&
+            selectedModel.metadata.vocabularySize ===
+              draftModel.metadata.vocabularySize,
+          mainArch: selectedModel.metadata.architecture ?? "unknown",
+          draftArch: draftModel.metadata.architecture ?? "unknown",
+        }
+      : null;
+  const draftModelOptions = useMemo(() => {
+    const options = selectableModels.map((model) => ({
+      value: model.path,
+      label: `${modelTitle(model)} · ${pathBaseName(model.path)} · ${model.metadata.quantization ?? "unknown"} · ${formatBytes(model.sizeBytes)}`,
+    }));
+    if (
+      specDraftModelValue &&
+      !options.some((option) => option.value === specDraftModelValue)
+    ) {
+      options.push({
+        value: specDraftModelValue,
+        label: `${pathBaseName(specDraftModelValue)} · custom path`,
+      });
+    }
+    return options;
+  }, [selectableModels, specDraftModelValue]);
+  const portRawValue = rowValue(argRows, "--port");
+  const portValue = portRawValue === "" ? "" : Number(portRawValue);
+  const envDraft = useMemo(() => {
+    try {
+      return parseEnvJson(form.values.envJson);
+    } catch {
+      return null;
+    }
+  }, [form.values.envJson]);
+  const cudaAccelerators = (
+    systemResourcesQuery.data?.data.accelerators ?? []
+  ).filter(
+    (accelerator) =>
+      accelerator.kind === "gpu" &&
+      (accelerator.vendor === "NVIDIA" || accelerator.source === "nvidia-smi"),
+  );
+  const cudaVisibleDevices = envDraft?.CUDA_VISIBLE_DEVICES;
+  const cudaMode =
+    envDraft && hasOwnKey(envDraft, "CUDA_VISIBLE_DEVICES")
+      ? cudaVisibleDevices === ""
+        ? "none"
+        : "specific"
+      : "all";
+  const selectedCudaDevices = splitCudaVisibleDevices(cudaVisibleDevices);
+  const singleCudaAccelerator =
+    cudaAccelerators.length === 1 ? cudaAccelerators[0] : null;
+  const singleCudaEnabled = singleCudaAccelerator
+    ? cudaMode === "all" ||
+      selectedCudaDevices.includes(singleCudaAccelerator.id)
+    : false;
+  const cudaDeviceOptions = useMemo(() => {
+    const options = cudaAccelerators.map((accelerator) => ({
+      value: accelerator.id,
+      label: `GPU ${accelerator.id} · ${accelerator.name}`,
+    }));
+    for (const id of selectedCudaDevices) {
+      if (!options.some((option) => option.value === id)) {
+        options.push({ value: id, label: `GPU ${id} · custom` });
+      }
+    }
+    return options;
+  }, [cudaAccelerators, selectedCudaDevices]);
+  const visibleCudaDeviceIds =
+    cudaMode === "all"
+      ? cudaAccelerators.map((accelerator) => accelerator.id)
+      : selectedCudaDevices;
+
+  useEffect(() => {
+    if (!props.opened) {
+      initializedFormKeyRef.current = null;
+      catalogNormalizedFormKeyRef.current = null;
+      setInitializedFormKey(null);
+      return;
+    }
+
+    const formKey = `${props.instance?.name ?? "new"}:${props.initialModelPath ?? ""}`;
+    if (initializedFormKeyRef.current === formKey) {
+      return;
+    }
+    if (!props.instance && argumentDefaultsQuery.isLoading) {
+      return;
+    }
+    initializedFormKeyRef.current = formKey;
+    setInitializedFormKey(formKey);
+
+    if (props.instance) {
+      const modelPath = argString(props.instance.args, "--model") || null;
+      const presetPathValue =
+        argString(props.instance.args, "--models-preset") || null;
+      const presetName = presetPathValue
+        ? presetNameFromPath(presetPathValue)
+        : null;
+      form.setValues({
+        name: props.instance.name,
+        envJson: JSON.stringify(props.instance.env, null, 2),
+      });
+      setSelectedBinaryPathRefId(props.instance.binaryPathRefId);
+      setSelectedModelPath(modelPath);
+      setSelectedPresetName(presetName);
+      const mode = launchModeFromArgs(props.instance.args);
+      setLaunchMode(mode);
+      if (mode === "remote") {
+        setRemoteSource(
+          hasConfiguredArg(props.instance.args, "--model-url") ? "url" : "hf",
+        );
+      }
+      setSpecEnabled(hasSpecConfig(props.instance.args));
+      setSpecSource(
+        hasConfiguredArg(props.instance.args, SPEC_DRAFT_HF_KEY)
+          ? "hf"
+          : "local",
+      );
+      setSpecAdvancedOpen(
+        SPEC_ADVANCED_KEYS.some((key) =>
+          hasConfiguredArg(props.instance!.args, key),
+        ),
+      );
+      setStartAfterCreate(false);
+      setArgRows(argsToRows(props.instance.args, knownArgByName));
+    } else {
+      const modelPath = props.initialModelPath ?? null;
+      const port = nextAvailablePort(props.instances);
+      form.setValues({
+        name: modelPath ? instanceNameFromModelPath(modelPath) : "local-server",
+        envJson: JSON.stringify({}, null, 2),
+      });
+      setSelectedBinaryPathRefId(null);
+      setSelectedModelPath(modelPath);
+      setSelectedPresetName(null);
+      setLaunchMode("model");
+      setRemoteSource("hf");
+      setSpecEnabled(false);
+      setSpecSource("local");
+      setSpecAdvancedOpen(false);
+      setStartAfterCreate(false);
+      setArgRows(defaultRows(modelPath ?? undefined, port));
+    }
+  }, [
+    argumentDefaultsQuery.isLoading,
+    props.opened,
+    props.instance?.name,
+    props.initialModelPath,
+  ]);
+
+  useEffect(() => {
+    if (!props.opened || !props.instance || knownArgByName.size === 0) {
+      return;
+    }
+    const formKey = `${props.instance.name}:${props.initialModelPath ?? ""}`;
+    if (
+      initializedFormKeyRef.current !== formKey ||
+      catalogNormalizedFormKeyRef.current === formKey
+    ) {
+      return;
+    }
+    catalogNormalizedFormKeyRef.current = formKey;
+    setArgRows(argsToRows(props.instance.args, knownArgByName));
+  }, [props.opened, props.instance, props.initialModelPath, knownArgByName]);
+
+  useEffect(() => {
+    if (
+      !props.opened ||
+      props.instance ||
+      selectedBinaryPathRefId ||
+      binaryCatalogEntries.length === 0 ||
+      defaultBinaryQuery.isLoading
+    ) {
+      return;
+    }
+    const defaultRefId = defaultBinaryQuery.data?.data.refId ?? null;
+    const preferred =
+      binaryCatalogEntries.find((entry) => entry.id === defaultRefId) ??
+      binaryCatalogEntries[0];
+    if (preferred) {
+      setSelectedBinaryPathRefId(preferred.id);
+    }
+  }, [
+    props.opened,
+    props.instance,
+    selectedBinaryPathRefId,
+    binaryCatalogEntries,
+    defaultBinaryQuery.data?.data.refId,
+    defaultBinaryQuery.isLoading,
+  ]);
+
+  const draftPreview = useMemo(() => {
+    try {
+      const args = InstanceArgsSchema.parse(
+        rowsToArgsWithCatalog(argRows, knownArgByName),
+      );
+      const env = parseEnvJson(form.values.envJson);
+      if (!selectedBinaryPathRefId) {
+        return { input: null, error: "Select a binary from the catalog" };
+      }
+      const input: InstancePreflightPreview = {
+        name: form.values.name,
+        binaryPathRefId: selectedBinaryPathRefId,
+        args,
+        env,
+      };
+      return { input, error: null };
+    } catch (error) {
+      return { input: null, error: (error as Error).message };
+    }
+  }, [
+    argRows,
+    form.values.envJson,
+    form.values.name,
+    knownArgByName,
+    props.instance?.name,
+    selectedBinaryPathRefId,
+  ]);
+
+  const preflightPreviewQuery = useQuery({
+    queryKey: ["instance-preflight-preview", draftPreview.input],
+    queryFn: () => previewInstancePreflight(draftPreview.input!),
+    enabled: props.opened && Boolean(draftPreview.input),
+    staleTime: 1_000,
+    retry: false,
+  });
+
+  function applyLaunchMode(mode: LaunchMode) {
+    setLaunchMode(mode);
+    if (mode === "model") {
+      setSelectedPresetName(null);
+      setArgRows((rows) =>
+        removeArgRows(rows, [
+          "--models-preset",
+          "--models-max",
+          "--models-autoload",
+          "--no-models-autoload",
+          "--hf-repo",
+          "--hf-file",
+          "--model-url",
+          "--mmproj-url",
+        ]),
+      );
+      return;
+    }
+    if (mode === "remote") {
+      setSelectedPresetName(null);
+      setSelectedModelPath(null);
+      setArgRows((rows) =>
+        removeArgRows(rows, [
+          "--model",
+          "--models-preset",
+          "--models-max",
+          "--models-autoload",
+          "--no-models-autoload",
+        ]),
+      );
+      return;
+    }
+
+    applyPresetSelection(selectedPresetName);
+  }
+
+  function applyBinaryPathRef(refId: string | null) {
+    setSelectedBinaryPathRefId(refId);
+  }
+
+  function defaultRowActive(option: LlamaArgumentOption) {
+    const row = argRows.find(
+      (item) =>
+        canonicalOptionForRow(item, knownArgByName)?.primaryName ===
+        option.primaryName,
+    );
+    return Boolean(row) && row?.valueType !== "null";
+  }
+
+  function defaultRowValue(option: LlamaArgumentOption) {
+    const row = argRows.find(
+      (item) =>
+        canonicalOptionForRow(item, knownArgByName)?.primaryName ===
+        option.primaryName,
+    );
+    return row?.value ?? defaultValueForArgument(option);
+  }
+
+  function setDefaultActive(option: LlamaArgumentOption, active: boolean) {
+    setArgRows((rows) => {
+      const without = rows.filter(
+        (row) =>
+          canonicalOptionForRow(row, knownArgByName)?.primaryName !==
+          option.primaryName,
+      );
+      if (!active) {
+        return without;
+      }
+      const existing = rows.find(
+        (row) =>
+          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
+          option.primaryName,
+      );
+      return [
+        ...without,
+        {
+          id: existing?.id ?? createUiId(),
+          key: cliNameForArgument(option),
+          value: existing?.value || defaultValueForArgument(option),
+          valueType: valueTypeFromArgument(option),
+        },
+      ];
+    });
+  }
+
+  function setDefaultValue(option: LlamaArgumentOption, value: string) {
+    setArgRows((rows) => {
+      const next: ArgRow = {
+        id: createUiId(),
+        key: cliNameForArgument(option),
+        value,
+        valueType: valueTypeFromArgument(option),
+      };
+      let replaced = false;
+      const mapped = rows.map((row) => {
+        if (
+          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
+          option.primaryName
+        ) {
+          replaced = true;
+          return { ...next, id: row.id };
+        }
+        return row;
+      });
+      return replaced ? mapped : [...mapped, next];
+    });
+  }
+
+  function applyPresetSelection(presetName: string | null) {
+    setLaunchMode("router");
+    setSelectedPresetName(presetName);
+    setSelectedModelPath(null);
+    setSpecEnabled(false);
+    setSpecAdvancedOpen(false);
+    const presetFilePath = presetName
+      ? (presetByName.get(presetName)?.path ?? "")
+      : "";
+    setArgRows((rows) => {
+      let next = removeArgRows(rows, [
+        "--model",
+        "--hf-repo",
+        "--hf-file",
+        "--model-url",
+        "--mmproj-url",
+        ...SPEC_KEYS,
+      ]);
+      next =
+        presetName && presetFilePath
+          ? upsertArgRow(next, "--models-preset", presetFilePath, "string")
+          : removeArgRow(next, "--models-preset");
+      if (presetName && !rowValue(next, "--models-max")) {
+        next = upsertArgRow(next, "--models-max", "4", "number");
+      }
+      if (
+        presetName &&
+        !rowValue(next, "--models-autoload") &&
+        !rowValue(next, "--no-models-autoload")
+      ) {
+        next = upsertArgRow(next, "--models-autoload", "", "flag");
+      }
+      return next;
+    });
+    if (
+      !isEdit &&
+      presetName &&
+      (!form.values.name ||
+        form.values.name === "local-server" ||
+        form.values.name === "local-router")
+    ) {
+      form.setFieldValue("name", "local-router");
+    }
+  }
+
+  function applyModelSelection(modelPath: string | null) {
+    setLaunchMode("model");
+    setSelectedModelPath(modelPath);
+    setSelectedPresetName(null);
+    setArgRows((rows) => {
+      let next = modelPath
+        ? upsertArgRow(rows, "--model", modelPath, "string")
+        : removeArgRow(rows, "--model");
+      next = removeArgRows(next, [
+        "--models-preset",
+        "--models-max",
+        "--models-autoload",
+        "--no-models-autoload",
+        "--hf-repo",
+        "--hf-file",
+        "--model-url",
+        "--mmproj-url",
+      ]);
+      return next;
+    });
+    if (
+      !isEdit &&
+      modelPath &&
+      (!form.values.name ||
+        form.values.name === "local-server" ||
+        form.values.name === "local-router")
+    ) {
+      form.setFieldValue("name", instanceNameFromModelPath(modelPath));
+    }
+  }
+
+  function applyRemoteRepo(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--hf-repo", trimmed, "string")
+        : removeArgRow(rows, "--hf-repo"),
+    );
+    const base = trimmed.split(":")[0] ?? trimmed;
+    const name = (base.split("/").filter(Boolean).pop() ?? "").replace(
+      /\.gguf$/i,
+      "",
+    );
+    if (
+      !isEdit &&
+      name &&
+      (!form.values.name ||
+        form.values.name === "local-server" ||
+        form.values.name === "local-router")
+    ) {
+      form.setFieldValue("name", name);
+    }
+  }
+
+  function applyRemoteFile(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--hf-file", trimmed, "string")
+        : removeArgRow(rows, "--hf-file"),
+    );
+  }
+
+  function applyRemoteUrl(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--model-url", trimmed, "string")
+        : removeArgRow(rows, "--model-url"),
+    );
+  }
+
+  function applyRemoteDestination(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--model", trimmed, "string")
+        : removeArgRow(rows, "--model"),
+    );
+  }
+
+  function applyMmprojUrl(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--mmproj-url", trimmed, "string")
+        : removeArgRow(rows, "--mmproj-url"),
+    );
+  }
+
+  function applyRemoteSource(source: RemoteSource) {
+    setRemoteSource(source);
+    setArgRows((rows) =>
+      source === "hf"
+        ? removeArgRows(rows, ["--model-url", "--model", "--mmproj-url"])
+        : removeArgRows(rows, ["--hf-repo", "--hf-file"]),
+    );
+  }
+
+  function applySpecEnabled(enabled: boolean) {
+    setSpecEnabled(enabled);
+    if (!enabled) {
+      setArgRows((rows) => removeArgRows(rows, SPEC_KEYS));
+      setSpecAdvancedOpen(false);
+    }
+  }
+
+  function applySpecSource(source: DraftSource) {
+    setSpecSource(source);
+    setArgRows((rows) =>
+      source === "local"
+        ? removeArgRow(rows, SPEC_DRAFT_HF_KEY)
+        : removeArgRow(rows, SPEC_DRAFT_MODEL_KEY),
+    );
+  }
+
+  function applySpecDraftModel(value: string | null) {
+    const trimmed = (value ?? "").trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, SPEC_DRAFT_MODEL_KEY, trimmed, "string")
+        : removeArgRow(rows, SPEC_DRAFT_MODEL_KEY),
+    );
+  }
+
+  function applySpecDraftHf(value: string) {
+    const trimmed = value.trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, SPEC_DRAFT_HF_KEY, trimmed, "string")
+        : removeArgRow(rows, SPEC_DRAFT_HF_KEY),
+    );
+  }
+
+  function applySpecArg(
+    key: string,
+    value: string,
+    valueType: ArgRow["valueType"],
+  ) {
+    setArgRows((rows) =>
+      value.trim()
+        ? upsertArgRow(rows, key, value, valueType)
+        : removeArgRow(rows, key),
+    );
+  }
+
+  function applyHfToken(value: string) {
+    updateEnvironment((env) => {
+      if (value) {
+        env.HF_TOKEN = value;
+      } else {
+        delete env.HF_TOKEN;
+      }
+      return env;
+    });
+  }
+
+  async function invalidateSavedInstance(id: string) {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["instances"] }),
+      queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-health-summary", id],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),
+      queryClient.invalidateQueries({ queryKey: ["instance-llama", id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-status-summary", id],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["instance-logs", id] }),
+    ]);
+  }
+
+  const mutation = useMutation({
+    mutationFn: async (input: InstanceCreate | InstanceUpdate) => {
+      if (props.instance) {
+        return updateInstance(props.instance.name, input);
+      }
+      return createInstance(input as InstanceCreate);
+    },
+    onSuccess: async (result) => {
+      const created = result.data;
+      props.onSaved?.(created);
+      let notification: {
+        title: string;
+        message: string;
+        color?: "yellow" | "red";
+      } = {
+        title: isEdit ? "Instance updated" : "Instance created",
+        message: "Configuration saved",
+      };
+
+      if (!isEdit && startAfterCreate) {
+        const preview = preflightPreviewQuery.data?.data;
+        if (preview && !preview.ok) {
+          notification = {
+            title: "Instance created",
+            message: "Start skipped because preflight has blocking issues",
+            color: "yellow",
+          };
+        } else {
+          try {
+            await instanceAction(created.name, "start");
+            props.onLaunchStarted?.(created, "create");
+            notification = {
+              title: "Instance created and started",
+              message: created.name,
+            };
+          } catch (error) {
+            notification = {
+              title: "Instance created, start failed",
+              message: (error as Error).message,
+              color: "red",
+            };
+          }
+        }
+      }
+
+      await invalidateSavedInstance(created.name);
+      props.onClose();
+      form.reset();
+      setArgRows(defaultRows());
+      setStartAfterCreate(false);
+      notifications.show(notification);
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: isEdit ? "Update failed" : "Create failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  const refreshArgsMutation = useMutation({
+    mutationFn: () => getLlamaArguments(selectedBinaryPath, true),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["llama-args", selectedBinaryPath], result);
+      notifications.show({
+        title: "Argument catalog refreshed",
+        message: `${result.data.options.length} options`,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Argument refresh failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  function updateEnvironment(
+    mutator: (env: Record<string, string>) => Record<string, string>,
+  ) {
+    try {
+      const current = parseEnvJson(form.values.envJson);
+      form.setFieldValue(
+        "envJson",
+        JSON.stringify(mutator({ ...current }), null, 2),
+      );
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Environment JSON is invalid",
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  function applySingleCudaVisibility(enabled: boolean) {
+    updateEnvironment((env) => {
+      if (enabled) {
+        delete env.CUDA_VISIBLE_DEVICES;
+        return env;
+      }
+      env.CUDA_VISIBLE_DEVICES = "";
+      return env;
+    });
+  }
+
+  function applyCudaDevices(devices: string[]) {
+    updateEnvironment((env) => {
+      const selected = devices.filter(Boolean);
+      const detectedIds = cudaAccelerators.map((accelerator) => accelerator.id);
+      const allDetectedSelected =
+        detectedIds.length > 0 &&
+        selected.length === detectedIds.length &&
+        detectedIds.every((id) => selected.includes(id));
+
+      if (selected.length === 0) {
+        env.CUDA_VISIBLE_DEVICES = "";
+      } else if (allDetectedSelected) {
+        delete env.CUDA_VISIBLE_DEVICES;
+      } else {
+        env.CUDA_VISIBLE_DEVICES = selected.join(",");
+      }
+      return env;
+    });
+  }
+
+  function submit(values: typeof form.values) {
+    try {
+      if (!selectedBinaryPathRefId) {
+        throw new Error("Select a binary from the catalog");
+      }
+      if (launchMode === "router" && !selectedPresetName) {
+        throw new Error("Router preset is not selected");
+      }
+      const rows =
+        launchMode === "router"
+          ? removeArgRows(argRows, [
+              "--model",
+              "--hf-repo",
+              "--hf-file",
+              "--model-url",
+              "--mmproj-url",
+            ])
+          : removeArgRows(argRows, [
+              "--models-preset",
+              "--models-max",
+              "--models-autoload",
+              "--no-models-autoload",
+            ]);
+      const args = InstanceArgsSchema.parse(
+        rowsToArgsWithCatalog(rows, knownArgByName),
+      );
+      if (launchMode !== "router" && !hasModelSource(args)) {
+        throw new Error(
+          "Select a model or configure --hf-repo/--model-url before creating the instance",
+        );
+      }
+      const input: InstanceCreate = {
+        name: values.name,
+        binaryPathRefId: selectedBinaryPathRefId,
+        args,
+        env: parseEnvJson(values.envJson),
+      };
+      mutation.mutate(input);
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Invalid configuration",
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  const waitingForInitialDefaults =
+    props.opened &&
+    !props.instance &&
+    initializedFormKey === null &&
+    argumentDefaultsQuery.isLoading;
+  const modalTitle = isEdit
+    ? "Edit llama-server instance"
+    : "New llama-server instance";
+
+  return {
+    form,
+    isEdit,
+    waitingForInitialDefaults,
+    modalTitle,
+    argRows,
+    setArgRows,
+    pathCatalogQuery,
+    binaryCatalogOptions,
+    selectedBinaryPathRefId,
+    applyBinaryPathRef,
+    launchMode,
+    applyLaunchMode,
+    scanned,
+    selectedModel,
+    selectedModelPath,
+    applyModelSelection,
+    modelOptions,
+    remoteSource,
+    applyRemoteSource,
+    hfRepoValue,
+    applyRemoteRepo,
+    hfFileValue,
+    applyRemoteFile,
+    modelUrlValue,
+    applyRemoteUrl,
+    remoteDestinationValue,
+    applyRemoteDestination,
+    mmprojUrlValue,
+    applyMmprojUrl,
+    envDraft,
+    applyHfToken,
+    presetsQuery,
+    selectedPresetName,
+    applyPresetSelection,
+    presetOptions,
+    hostValue,
+    portValue,
+    specEnabled,
+    applySpecEnabled,
+    specTypeOptions,
+    specTypeValue,
+    applySpecArg,
+    specSource,
+    applySpecSource,
+    specDraftModelValue,
+    applySpecDraftModel,
+    specDraftHfValue,
+    applySpecDraftHf,
+    draftVocabHint,
+    specAdvancedOpen,
+    setSpecAdvancedOpen,
+    draftModelOptions,
+    showDeprecatedArgs,
+    setShowDeprecatedArgs,
+    showRawArgs,
+    setShowRawArgs,
+    argsCatalogQuery,
+    argsCatalogTooltip,
+    visibleKnownArgs,
+    knownArgByName,
+    refreshArgsMutation,
+    defaultOverlay,
+    defaultRowValue,
+    defaultRowActive,
+    setDefaultActive,
+    setDefaultValue,
+    manualArgRows,
+    draftPreview,
+    preflightPreviewQuery,
+    cudaAccelerators,
+    singleCudaAccelerator,
+    singleCudaEnabled,
+    applySingleCudaVisibility,
+    visibleCudaDeviceIds,
+    applyCudaDevices,
+    cudaDeviceOptions,
+    cudaMode,
+    selectedCudaDevices,
+    mutation,
+    startAfterCreate,
+    setStartAfterCreate,
+    submit,
+  };
+}
+
+export type InstanceFormController = ReturnType<typeof useInstanceForm>;
