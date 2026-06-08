@@ -710,32 +710,33 @@ function TokensCell(props: { usage: ApiProxyTraceUsage | null }) {
   if (!usage) {
     return <>—</>;
   }
-  const input = usage.promptTokens;
-  const cacheRead = usage.cacheReadTokens;
-  const cacheCreation = usage.cacheCreationTokens;
-  const hasCache = cacheRead !== null || cacheCreation !== null;
+  return <>{`${usage.promptTokens ?? "—"} / ${usage.completionTokens}`}</>;
+}
+
+function CacheCell(props: { usage: ApiProxyTraceUsage | null }) {
+  const usage = props.usage;
+  const cacheRead = usage?.cacheReadTokens ?? null;
+  const cacheCreation = usage?.cacheCreationTokens ?? null;
+  if (cacheRead === null && cacheCreation === null) {
+    return <>—</>;
+  }
+  const input = usage?.promptTokens ?? null;
   const fresh =
     input === null
       ? null
       : Math.max(0, input - (cacheRead ?? 0) - (cacheCreation ?? 0));
-  const summary = `${input ?? "—"} / ${usage.completionTokens}`;
-  if (!hasCache) {
-    return <>{summary}</>;
-  }
   return (
     <Tooltip
       label={
         <Stack gap={2}>
-          <Text size="xs">Input total: {input ?? "—"}</Text>
-          <Text size="xs">• fresh: {fresh ?? "—"}</Text>
-          <Text size="xs">• cache read: {cacheRead ?? 0}</Text>
-          <Text size="xs">• cache write: {cacheCreation ?? 0}</Text>
-          <Text size="xs">Output: {usage.completionTokens}</Text>
+          <Text size="xs">cache read: {cacheRead ?? 0}</Text>
+          <Text size="xs">cache write: {cacheCreation ?? 0}</Text>
+          <Text size="xs">fresh input: {fresh ?? "—"}</Text>
         </Stack>
       }
     >
       <Text size="xs" style={{ textDecoration: "underline dotted" }}>
-        {summary}
+        {`${cacheRead ?? 0} / ${cacheCreation ?? 0}`}
       </Text>
     </Tooltip>
   );
@@ -838,6 +839,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Target</Table.Th>
                   <Table.Th>Actions</Table.Th>
                   <Table.Th>Tokens (in/out)</Table.Th>
+                  <Table.Th>Cache (r/w)</Table.Th>
                   <Table.Th>Rate</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>ms</Table.Th>
@@ -887,6 +889,9 @@ export function StatsSection(props: StatsSectionProps) {
                     </Table.Td>
                     <Table.Td>
                       <TokensCell usage={trace.usage} />
+                    </Table.Td>
+                    <Table.Td>
+                      <CacheCell usage={trace.usage} />
                     </Table.Td>
                     <Table.Td>
                       {trace.usage
