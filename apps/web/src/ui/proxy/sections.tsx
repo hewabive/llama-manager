@@ -687,6 +687,23 @@ function formatRate(rate: number | null): string {
   return rate === null ? "—" : `${rate.toFixed(1)} t/s`;
 }
 
+const traceEndpointLabels: Record<string, string> = {
+  "chat.completions": "Chat",
+  completions: "Completions",
+  embeddings: "Embeddings",
+  responses: "Responses",
+  messages: "Messages",
+  "messages.count_tokens": "Count tokens",
+};
+
+function formatTraceEndpoint(endpoint: string): string {
+  return traceEndpointLabels[endpoint] ?? endpoint;
+}
+
+function traceProtocolColor(protocol: string): string {
+  return protocol === "anthropic" ? "violet" : "blue";
+}
+
 function StatBlock(props: { label: string; value: string }) {
   return (
     <Stack gap={0} miw={120}>
@@ -777,6 +794,8 @@ export function StatsSection(props: StatsSectionProps) {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Time</Table.Th>
+                  <Table.Th>API</Table.Th>
+                  <Table.Th>Type</Table.Th>
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Target</Table.Th>
                   <Table.Th>Actions</Table.Th>
@@ -790,6 +809,21 @@ export function StatsSection(props: StatsSectionProps) {
                 {props.traces.slice(0, 12).map((trace) => (
                   <Table.Tr key={trace.id}>
                     <Table.Td>{formatLocalDateTime(trace.at)}</Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={traceProtocolColor(trace.protocol)}
+                        variant="light"
+                      >
+                        {trace.protocol}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Tooltip label={trace.routePath}>
+                        <Text size="xs">
+                          {formatTraceEndpoint(trace.endpoint)}
+                        </Text>
+                      </Tooltip>
+                    </Table.Td>
                     <Table.Td>{trace.modelId || "—"}</Table.Td>
                     <Table.Td>{trace.targetName ?? "—"}</Table.Td>
                     <Table.Td>
