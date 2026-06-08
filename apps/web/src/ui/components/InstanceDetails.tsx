@@ -2079,44 +2079,22 @@ export function InstanceDetails(props: {
         </Group>
 
         <Paper withBorder p="sm" radius="sm">
-          <Group justify="space-between" align="flex-start" gap="sm">
-            <Stack gap={4}>
-              <Text fw={600} size="sm">
-                Health
-              </Text>
-              <Text
-                c={
-                  health?.status === "error" || health?.status === "invalid"
-                    ? "red"
-                    : "dimmed"
-                }
-                size="sm"
-              >
-                {health?.reason ??
-                  "Checking process, preflight, logs and HTTP endpoints..."}
-              </Text>
-            </Stack>
-            <Group gap="xs">
-              <Badge
-                color={health?.actions.canStart ? "green" : "gray"}
-                variant="outline"
-              >
-                start
-              </Badge>
-              <Badge
-                color={health?.actions.canStop ? "yellow" : "gray"}
-                variant="outline"
-              >
-                stop
-              </Badge>
-              <Badge
-                color={health?.actions.canRestart ? "blue" : "gray"}
-                variant="outline"
-              >
-                restart
-              </Badge>
-            </Group>
-          </Group>
+          <Stack gap={4}>
+            <Text fw={600} size="sm">
+              Health
+            </Text>
+            <Text
+              c={
+                health?.status === "error" || health?.status === "invalid"
+                  ? "red"
+                  : "dimmed"
+              }
+              size="sm"
+            >
+              {health?.reason ??
+                "Checking process, preflight, logs and HTTP endpoints..."}
+            </Text>
+          </Stack>
           <Group gap="xs" mt="sm">
             <ProbePill title="health" probe={llama?.health} />
             <ProbePill title="props" probe={llama?.props} />
