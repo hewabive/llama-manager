@@ -164,7 +164,12 @@ test("anthropicResumableCodec.parseChunk reads Anthropic SSE events", () => {
       finishReason: null,
       id: "msg_1",
       model: "m",
-      usage: { promptTokens: 5, completionTokens: null },
+      usage: {
+        promptTokens: 5,
+        cacheReadTokens: null,
+        cacheCreationTokens: null,
+        completionTokens: null,
+      },
     },
   );
 
@@ -181,7 +186,12 @@ test("anthropicResumableCodec.parseChunk reads Anthropic SSE events", () => {
       finishReason: "end_turn",
       id: null,
       model: null,
-      usage: { promptTokens: null, completionTokens: 7 },
+      usage: {
+        promptTokens: null,
+        cacheReadTokens: null,
+        cacheCreationTokens: null,
+        completionTokens: 7,
+      },
     },
   );
 });

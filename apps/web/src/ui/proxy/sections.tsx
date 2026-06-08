@@ -7,6 +7,7 @@ import type {
   ApiProxyStatsSnapshot,
   ApiProxyTargetRecord,
   ApiProxyTargetRuntime,
+  ApiProxyTraceUsage,
 } from "@llama-manager/core";
 import {
   ActionIcon,
@@ -704,6 +705,42 @@ function traceProtocolColor(protocol: string): string {
   return protocol === "anthropic" ? "violet" : "blue";
 }
 
+function TokensCell(props: { usage: ApiProxyTraceUsage | null }) {
+  const usage = props.usage;
+  if (!usage) {
+    return <>—</>;
+  }
+  const input = usage.promptTokens;
+  const cacheRead = usage.cacheReadTokens;
+  const cacheCreation = usage.cacheCreationTokens;
+  const hasCache = cacheRead !== null || cacheCreation !== null;
+  const fresh =
+    input === null
+      ? null
+      : Math.max(0, input - (cacheRead ?? 0) - (cacheCreation ?? 0));
+  const summary = `${input ?? "—"} / ${usage.completionTokens}`;
+  if (!hasCache) {
+    return <>{summary}</>;
+  }
+  return (
+    <Tooltip
+      label={
+        <Stack gap={2}>
+          <Text size="xs">Input total: {input ?? "—"}</Text>
+          <Text size="xs">• fresh: {fresh ?? "—"}</Text>
+          <Text size="xs">• cache read: {cacheRead ?? 0}</Text>
+          <Text size="xs">• cache write: {cacheCreation ?? 0}</Text>
+          <Text size="xs">Output: {usage.completionTokens}</Text>
+        </Stack>
+      }
+    >
+      <Text size="xs" style={{ textDecoration: "underline dotted" }}>
+        {summary}
+      </Text>
+    </Tooltip>
+  );
+}
+
 function StatBlock(props: { label: string; value: string }) {
   return (
     <Stack gap={0} miw={120}>
@@ -849,9 +886,7 @@ export function StatsSection(props: StatsSectionProps) {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      {trace.usage
-                        ? `${trace.usage.promptTokens ?? "—"} / ${trace.usage.completionTokens}`
-                        : "—"}
+                      <TokensCell usage={trace.usage} />
                     </Table.Td>
                     <Table.Td>
                       {trace.usage

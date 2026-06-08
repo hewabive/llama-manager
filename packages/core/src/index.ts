@@ -635,6 +635,8 @@ export const ApiProxyRequestLogRecordSchema = z.object({
 
 export const ApiProxyTraceUsageSchema = z.object({
   promptTokens: z.number().int().min(0).nullable().default(null),
+  cacheReadTokens: z.number().int().min(0).nullable().default(null),
+  cacheCreationTokens: z.number().int().min(0).nullable().default(null),
   completionTokens: z.number().int().min(0).default(0),
   genMs: z.number().int().min(0).default(0),
   ratePerSecond: z.number().min(0).nullable().default(null),

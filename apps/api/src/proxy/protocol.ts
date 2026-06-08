@@ -60,6 +60,8 @@ export type ApiProxyProtocolModelResolution =
 export type ApiProxyResumableUsage = {
   promptTokens: number | null;
   completionTokens: number | null;
+  cacheReadTokens?: number | null;
+  cacheCreationTokens?: number | null;
 };
 
 export type ApiProxyResumablePhase = "text" | "thinking" | "tool";

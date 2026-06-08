@@ -21,6 +21,8 @@ test("usageFromNonStreamBody reads OpenAI usage and timings", () => {
   );
   assert.deepEqual(usage, {
     promptTokens: 11,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
     completionTokens: 7,
     genMs: 350,
   });
@@ -45,6 +47,8 @@ test("usageFromNonStreamBody reads Anthropic usage", () => {
   );
   assert.deepEqual(usage, {
     promptTokens: 5,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
     completionTokens: 9,
     genMs: 0,
   });
@@ -64,6 +68,8 @@ test("usageFromNonStreamBody sums Anthropic cache input tokens", () => {
   );
   assert.deepEqual(usage, {
     promptTokens: 253,
+    cacheReadTokens: 240,
+    cacheCreationTokens: 12,
     completionTokens: 9,
     genMs: 0,
   });
@@ -138,6 +144,8 @@ test("createUsageMeterStream strips synthetic usage frame and meters tokens", as
   assert.equal(out.includes("[DONE]"), true);
   assert.deepEqual(counted, {
     promptTokens: 3,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
     completionTokens: 4,
     genMs: 10,
   });
@@ -174,6 +182,8 @@ test("createUsageMeterStream prefers upstream predicted_ms over frame-arrival de
 
   assert.deepEqual(counted, {
     promptTokens: 3,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
     completionTokens: 4,
     genMs: 2000,
   });

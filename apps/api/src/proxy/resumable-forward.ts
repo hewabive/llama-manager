@@ -12,6 +12,8 @@ export type ResumableBufferState = {
   finishReason: string | null;
   completionTokens: number;
   promptTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
   genMs: number;
   toolCalls: ApiProxyResumableToolCall[];
   inToolPhase: boolean;
@@ -32,6 +34,8 @@ export function createResumableBufferState(): ResumableBufferState {
     finishReason: null,
     completionTokens: 0,
     promptTokens: null,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
     genMs: 0,
     toolCalls: [],
     inToolPhase: false,
@@ -101,6 +105,18 @@ function applyFrame(
         typeof chunk.usage.promptTokens === "number"
       ) {
         state.promptTokens = chunk.usage.promptTokens;
+      }
+      if (
+        state.cacheReadTokens === null &&
+        typeof chunk.usage.cacheReadTokens === "number"
+      ) {
+        state.cacheReadTokens = chunk.usage.cacheReadTokens;
+      }
+      if (
+        state.cacheCreationTokens === null &&
+        typeof chunk.usage.cacheCreationTokens === "number"
+      ) {
+        state.cacheCreationTokens = chunk.usage.cacheCreationTokens;
       }
     }
   }

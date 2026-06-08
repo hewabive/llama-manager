@@ -565,6 +565,8 @@ type ProxyTraceAccumulator = {
   schedulerActions: string[];
   usage: {
     promptTokens: number | null;
+    cacheReadTokens: number | null;
+    cacheCreationTokens: number | null;
     completionTokens: number;
     genMs: number;
     ratePerSecond: number | null;
@@ -877,6 +879,8 @@ async function proxyProtocolEndpointInner(
         if (usage) {
           trace.usage = {
             promptTokens: usage.promptTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
             completionTokens: usage.completionTokens,
             genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
@@ -899,6 +903,8 @@ async function proxyProtocolEndpointInner(
         onComplete: (usage) => {
           trace.usage = {
             promptTokens: usage.promptTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
             completionTokens: usage.completionTokens,
             genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
@@ -1028,6 +1034,8 @@ async function proxyProtocolEndpointInner(
 
     trace.usage = {
       promptTokens: state.promptTokens,
+      cacheReadTokens: state.cacheReadTokens,
+      cacheCreationTokens: state.cacheCreationTokens,
       completionTokens: state.completionTokens,
       genMs: Math.round(state.genMs),
       ratePerSecond:

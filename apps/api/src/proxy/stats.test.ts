@@ -41,6 +41,8 @@ test("aggregates totals, per-model breakdown, rate and error counts", () => {
       modelId: "m1",
       usage: {
         promptTokens: 10,
+        cacheReadTokens: null,
+        cacheCreationTokens: null,
         completionTokens: 100,
         genMs: 1000,
         ratePerSecond: 100,
@@ -56,6 +58,8 @@ test("aggregates totals, per-model breakdown, rate and error counts", () => {
       status: 503,
       usage: {
         promptTokens: 5,
+        cacheReadTokens: null,
+        cacheCreationTokens: null,
         completionTokens: 50,
         genMs: 1000,
         ratePerSecond: 50,

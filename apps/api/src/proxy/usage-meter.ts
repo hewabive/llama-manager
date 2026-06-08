@@ -2,6 +2,8 @@ import type { ApiProxyProtocolId, ApiProxyResumableCodec } from "./protocol.js";
 
 export type ProxyUsageCounts = {
   promptTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
   completionTokens: number;
   genMs: number;
 };
@@ -38,6 +40,18 @@ export function anthropicPromptTokens(
   return seen ? total : null;
 }
 
+export function anthropicCacheReadTokens(
+  usage: Record<string, unknown> | null | undefined,
+): number | null {
+  return numberOrNull(usage?.cache_read_input_tokens);
+}
+
+export function anthropicCacheCreationTokens(
+  usage: Record<string, unknown> | null | undefined,
+): number | null {
+  return numberOrNull(usage?.cache_creation_input_tokens);
+}
+
 export function usageFromNonStreamBody(
   protocol: ApiProxyProtocolId,
   bodyText: string,
@@ -60,6 +74,8 @@ export function usageFromNonStreamBody(
     }
     return {
       promptTokens: anthropicPromptTokens(usage),
+      cacheReadTokens: anthropicCacheReadTokens(usage),
+      cacheCreationTokens: anthropicCacheCreationTokens(usage),
       completionTokens,
       genMs: 0,
     };
@@ -72,6 +88,8 @@ export function usageFromNonStreamBody(
   const predictedMs = timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0;
   return {
     promptTokens: numberOrNull(usage.prompt_tokens),
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
     completionTokens,
     genMs: Math.round(predictedMs),
   };
@@ -116,6 +134,8 @@ export function createUsageMeterStream(input: {
   const encoder = new TextEncoder();
   let pending = "";
   let promptTokens: number | null = null;
+  let cacheReadTokens: number | null = null;
+  let cacheCreationTokens: number | null = null;
   let completionTokens = 0;
   let upstreamGenMs: number | null = null;
   let firstTokenAt: number | null = null;
@@ -157,6 +177,18 @@ export function createUsageMeterStream(input: {
           promptTokens = chunk.usage.promptTokens;
         }
         if (
+          cacheReadTokens === null &&
+          typeof chunk.usage.cacheReadTokens === "number"
+        ) {
+          cacheReadTokens = chunk.usage.cacheReadTokens;
+        }
+        if (
+          cacheCreationTokens === null &&
+          typeof chunk.usage.cacheCreationTokens === "number"
+        ) {
+          cacheCreationTokens = chunk.usage.cacheCreationTokens;
+        }
+        if (
           stripUsageFrames &&
           chunk.text === "" &&
           !chunk.toolCall &&
@@ -176,6 +208,8 @@ export function createUsageMeterStream(input: {
     done = true;
     onComplete({
       promptTokens,
+      cacheReadTokens,
+      cacheCreationTokens,
       completionTokens,
       genMs:
         upstreamGenMs !== null
