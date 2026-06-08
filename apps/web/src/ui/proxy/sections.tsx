@@ -796,6 +796,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Time</Table.Th>
                   <Table.Th>API</Table.Th>
                   <Table.Th>Type</Table.Th>
+                  <Table.Th>Stream</Table.Th>
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Target</Table.Th>
                   <Table.Th>Actions</Table.Th>
@@ -823,6 +824,18 @@ export function StatsSection(props: StatsSectionProps) {
                           {formatTraceEndpoint(trace.endpoint)}
                         </Text>
                       </Tooltip>
+                    </Table.Td>
+                    <Table.Td>
+                      {trace.stream === null ? (
+                        "—"
+                      ) : (
+                        <Badge
+                          color={trace.stream ? "teal" : "gray"}
+                          variant="light"
+                        >
+                          {trace.stream ? "stream" : "single"}
+                        </Badge>
+                      )}
                     </Table.Td>
                     <Table.Td>{trace.modelId || "—"}</Table.Td>
                     <Table.Td>{trace.targetName ?? "—"}</Table.Td>

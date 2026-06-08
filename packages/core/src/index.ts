@@ -647,6 +647,7 @@ export const ApiProxyRequestTraceSchema = z.object({
   endpoint: z.string().min(1),
   routePath: z.string().min(1),
   modelId: z.string(),
+  stream: z.boolean().nullable().default(null),
   targetId: ApiProxyIdSchema.nullable().default(null),
   targetName: z.string().nullable().default(null),
   resourceGroupId: z.string().nullable().default(null),

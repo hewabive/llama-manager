@@ -557,6 +557,7 @@ type ProxyTraceAccumulator = {
   endpoint: string;
   routePath: string;
   modelId: string;
+  stream: boolean | null;
   targetId: string | null;
   targetName: string | null;
   resourceGroupId: string | null;
@@ -584,6 +585,7 @@ function createProxyTrace(
     endpoint: operation.endpoint,
     routePath: operation.routePath,
     modelId: "",
+    stream: null,
     targetId: null,
     targetName: null,
     resourceGroupId: null,
@@ -682,6 +684,7 @@ async function proxyProtocolEndpointInner(
     return c.json(response.body, response.status);
   }
   trace.targetId = route.targetId;
+  trace.stream = route.request.stream;
   trace.textReplacementCount = route.textReplacementCount;
 
   const decision = await prepareApiProxyProtocolGatewayRequest({
