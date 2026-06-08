@@ -1846,8 +1846,9 @@ export function InstanceDetails(props: {
 
   const capabilityStatus =
     props.health?.status ?? props.instance?.status ?? null;
-  const canProbeCapabilities =
-    capabilityStatus === "running" || capabilityStatus === "stale";
+  const canProbeCapabilities = capabilityStatus
+    ? ["ready", "degraded", "stale", "running"].includes(capabilityStatus)
+    : false;
 
   const capabilitiesQuery = useQuery({
     queryKey: ["instance-llama-capabilities", id],
