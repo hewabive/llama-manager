@@ -67,6 +67,8 @@ export function usageFromNonStreamBody(
   if (!usage) {
     return null;
   }
+  const timings = asObject(obj?.timings);
+  const predictedMs = timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0;
   if (protocol === "anthropic") {
     const completionTokens = numberOrNull(usage.output_tokens);
     if (completionTokens === null) {
@@ -77,17 +79,17 @@ export function usageFromNonStreamBody(
       cacheReadTokens: anthropicCacheReadTokens(usage),
       cacheCreationTokens: anthropicCacheCreationTokens(usage),
       completionTokens,
-      genMs: 0,
+      genMs: Math.round(predictedMs),
     };
   }
-  const completionTokens = numberOrNull(usage.completion_tokens);
+  const completionTokens =
+    numberOrNull(usage.completion_tokens) ?? numberOrNull(usage.output_tokens);
   if (completionTokens === null) {
     return null;
   }
-  const timings = asObject(obj?.timings);
-  const predictedMs = timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0;
   return {
-    promptTokens: numberOrNull(usage.prompt_tokens),
+    promptTokens:
+      numberOrNull(usage.prompt_tokens) ?? numberOrNull(usage.input_tokens),
     cacheReadTokens: null,
     cacheCreationTokens: null,
     completionTokens,

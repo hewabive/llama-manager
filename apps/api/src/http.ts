@@ -848,15 +848,16 @@ async function proxyProtocolEndpointInner(
     }
 
     const meterCodec = adapter.resumable;
-    const meterUsage =
+    const meterStream =
       meterCodec !== undefined && resumableEndpoints.has(operation.endpoint);
     const injectIncludeUsage =
-      meterUsage && operation.protocol === "openai" && route.request.stream;
+      meterStream && operation.protocol === "openai" && route.request.stream;
     const forwardBody = injectIncludeUsage
       ? withIncludeUsage(route.request.body)
       : route.request.body;
 
     try {
+      const forwardStart = performance.now();
       const upstream = await forwardApiProxyRequest({
         baseUrl: targetResolution.baseUrl,
         method: c.req.method,
@@ -869,7 +870,7 @@ async function proxyProtocolEndpointInner(
         signal: c.req.raw.signal,
       });
 
-      if (!meterCodec || !meterUsage || !upstream.ok || !upstream.body) {
+      if (!upstream.ok || !upstream.body) {
         return upstream;
       }
 
@@ -877,19 +878,27 @@ async function proxyProtocolEndpointInner(
         const text = await upstream.text();
         const usage = usageFromNonStreamBody(operation.protocol, text);
         if (usage) {
+          const genMs =
+            usage.genMs > 0
+              ? usage.genMs
+              : Math.round(performance.now() - forwardStart);
           trace.usage = {
             promptTokens: usage.promptTokens,
             cacheReadTokens: usage.cacheReadTokens,
             cacheCreationTokens: usage.cacheCreationTokens,
             completionTokens: usage.completionTokens,
-            genMs: Math.round(usage.genMs),
-            ratePerSecond: ratePerSecondFromUsage(usage),
+            genMs,
+            ratePerSecond: ratePerSecondFromUsage({ ...usage, genMs }),
           };
         }
         return new Response(text, {
           status: upstream.status,
           headers: upstream.headers,
         });
+      }
+
+      if (!meterCodec || !meterStream) {
+        return upstream;
       }
 
       let metered: Response | undefined;

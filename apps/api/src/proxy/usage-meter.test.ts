@@ -54,6 +54,31 @@ test("usageFromNonStreamBody reads Anthropic usage", () => {
   });
 });
 
+test("usageFromNonStreamBody reads Anthropic timings predicted_ms", () => {
+  const usage = usageFromNonStreamBody(
+    "anthropic",
+    JSON.stringify({
+      usage: { input_tokens: 5, output_tokens: 9 },
+      timings: { predicted_ms: 1500 },
+    }),
+  );
+  assert.equal(usage?.genMs, 1500);
+});
+
+test("usageFromNonStreamBody reads OpenAI Responses input/output tokens", () => {
+  const usage = usageFromNonStreamBody(
+    "openai",
+    JSON.stringify({ usage: { input_tokens: 12, output_tokens: 8 } }),
+  );
+  assert.deepEqual(usage, {
+    promptTokens: 12,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
+    completionTokens: 8,
+    genMs: 0,
+  });
+});
+
 test("usageFromNonStreamBody sums Anthropic cache input tokens", () => {
   const usage = usageFromNonStreamBody(
     "anthropic",
