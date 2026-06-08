@@ -152,10 +152,8 @@ test("parseChunk reads upstream predicted_ms timing as genMs", () => {
   );
 });
 
-test("runResumableUpstreamAttempt accumulates usage and active generation time", async () => {
+test("runResumableUpstreamAttempt leaves genMs at zero without upstream timing", async () => {
   const state = createResumableBufferState();
-  const times = [100, 100, 1100];
-  let i = 0;
   const outcome = await runResumableUpstreamAttempt({
     url: "http://upstream",
     method: "POST",
@@ -164,7 +162,6 @@ test("runResumableUpstreamAttempt accumulates usage and active generation time",
     codec,
     state,
     preemptSignal: new AbortController().signal,
-    now: () => times[i++] ?? 9999,
     fetchImpl: makeFetch([
       chunkFrame({ content: "Hel" }),
       chunkFrame({ content: "lo", finish: "stop" }),
@@ -177,13 +174,11 @@ test("runResumableUpstreamAttempt accumulates usage and active generation time",
   assert.equal(state.text, "Hello");
   assert.equal(state.completionTokens, 5);
   assert.equal(state.promptTokens, 10);
-  assert.equal(state.genMs, 1000);
+  assert.equal(state.genMs, 0);
 });
 
-test("runResumableUpstreamAttempt prefers upstream predicted_ms over arrival delta", async () => {
+test("runResumableUpstreamAttempt reads upstream predicted_ms as genMs", async () => {
   const state = createResumableBufferState();
-  const times = [100, 100, 1100];
-  let i = 0;
   const usageWithTimings = `data: ${JSON.stringify({
     id: "cmpl",
     model: "m",
@@ -199,7 +194,6 @@ test("runResumableUpstreamAttempt prefers upstream predicted_ms over arrival del
     codec,
     state,
     preemptSignal: new AbortController().signal,
-    now: () => times[i++] ?? 9999,
     fetchImpl: makeFetch([
       chunkFrame({ content: "Hel" }),
       chunkFrame({ content: "lo", finish: "stop" }),

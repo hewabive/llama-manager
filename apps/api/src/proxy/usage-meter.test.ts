@@ -169,11 +169,9 @@ function openAiFrames(frames: string[]): Uint8Array {
 
 test("createUsageMeterStream strips synthetic usage frame and meters tokens", async () => {
   let counted: ProxyUsageCounts | undefined;
-  let clock = 0;
   const meter = createUsageMeterStream({
     codec: openAiResumableCodec,
     stripUsageFrames: true,
-    now: () => (clock += 10),
     onComplete: (usage) => {
       counted = usage;
     },
@@ -203,18 +201,16 @@ test("createUsageMeterStream strips synthetic usage frame and meters tokens", as
     cacheReadTokens: null,
     cacheCreationTokens: null,
     completionTokens: 4,
-    genMs: 10,
+    genMs: 0,
   });
   assert.equal(Number.isInteger(counted?.genMs), true);
 });
 
-test("createUsageMeterStream prefers upstream predicted_ms over frame-arrival delta", async () => {
+test("createUsageMeterStream reports upstream predicted_ms as genMs", async () => {
   let counted: ProxyUsageCounts | undefined;
-  let clock = 0;
   const meter = createUsageMeterStream({
     codec: openAiResumableCodec,
     stripUsageFrames: true,
-    now: () => (clock += 10),
     onComplete: (usage) => {
       counted = usage;
     },
@@ -250,7 +246,6 @@ test("createUsageMeterStream passthrough keeps usage frame when not stripping", 
   const meter = createUsageMeterStream({
     codec: openAiResumableCodec,
     stripUsageFrames: false,
-    now: () => 0,
     onComplete: (usage) => {
       counted = usage;
     },
@@ -280,7 +275,6 @@ test("createUsageMeterStream meters Anthropic stream without stripping", async (
   const meter = createUsageMeterStream({
     codec: anthropicResumableCodec,
     stripUsageFrames: false,
-    now: () => 0,
     onComplete: (usage) => {
       counted = usage;
     },
@@ -311,7 +305,6 @@ test("createUsageMeterStream sums Anthropic cache input tokens", async () => {
   const meter = createUsageMeterStream({
     codec: anthropicResumableCodec,
     stripUsageFrames: false,
-    now: () => 0,
     onComplete: (usage) => {
       counted = usage;
     },
@@ -341,7 +334,6 @@ test("createUsageMeterStream meters OpenAI Responses stream", async () => {
   const meter = createUsageMeterStream({
     codec: openAiResponsesUsageCodec,
     stripUsageFrames: false,
-    now: () => 0,
     onComplete: (usage) => {
       counted = usage;
     },

@@ -133,7 +133,6 @@ export async function runResumableUpstreamAttempt(input: {
   preemptSignal: AbortSignal;
   consumerSignal?: AbortSignal | undefined;
   fetchImpl?: typeof fetch | undefined;
-  now?: (() => number) | undefined;
 }): Promise<ResumableUpstreamOutcome> {
   const { preemptSignal, consumerSignal } = input;
   if (consumerSignal?.aborted) {
@@ -144,9 +143,6 @@ export async function runResumableUpstreamAttempt(input: {
   }
 
   const fetchImpl = input.fetchImpl ?? fetch;
-  const now = input.now ?? (() => performance.now());
-  let firstTokenAt: number | null = null;
-  let lastTokenAt = 0;
   const meta: { upstreamGenMs: number | null } = { upstreamGenMs: null };
   const controller = new AbortController();
   const onPreempt = () => {
@@ -165,8 +161,6 @@ export async function runResumableUpstreamAttempt(input: {
     consumerSignal?.removeEventListener("abort", onConsumerGone);
     if (meta.upstreamGenMs !== null) {
       input.state.genMs += Math.max(0, meta.upstreamGenMs);
-    } else if (firstTokenAt !== null) {
-      input.state.genMs += Math.max(0, lastTokenAt - firstTokenAt);
     }
     return outcome;
   };
@@ -214,18 +208,7 @@ export async function runResumableUpstreamAttempt(input: {
       while (index !== -1) {
         const frame = pending.slice(0, index);
         pending = pending.slice(index + 2);
-        const before =
-          input.state.text.length + input.state.reasoningText.length;
         const result = applyFrame(frame, input.codec, input.state, meta);
-        if (
-          input.state.text.length + input.state.reasoningText.length >
-          before
-        ) {
-          if (firstTokenAt === null) {
-            firstTokenAt = now();
-          }
-          lastTokenAt = now();
-        }
         if (result === "done") {
           return settle({ type: "completed" });
         }

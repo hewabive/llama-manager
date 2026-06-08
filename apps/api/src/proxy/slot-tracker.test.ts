@@ -28,6 +28,7 @@ test("LCP selection without restore is live cache", () => {
   assert.deepEqual(tracker.resolve("inst", since), {
     slotId: 2,
     origin: "live",
+    task: 137,
   });
 });
 
@@ -38,6 +39,7 @@ test("LRU selection without restore is fresh", () => {
   assert.deepEqual(tracker.resolve("inst", since), {
     slotId: 0,
     origin: "fresh",
+    task: 138,
   });
 });
 
@@ -49,6 +51,7 @@ test("restore from prompt cache is reported regardless of selection method", () 
   assert.deepEqual(tracker.resolve("inst", since), {
     slotId: 0,
     origin: "restored",
+    task: 138,
   });
 });
 
@@ -59,6 +62,7 @@ test("returns nulls when no selection happened after the mark", () => {
   assert.deepEqual(tracker.resolve("inst", since), {
     slotId: null,
     origin: null,
+    task: null,
   });
 });
 
@@ -74,6 +78,7 @@ test("a stale restore from a previous request does not leak forward", () => {
   assert.deepEqual(tracker.resolve("inst", second), {
     slotId: 2,
     origin: "live",
+    task: 137,
   });
 });
 
@@ -106,4 +111,56 @@ test("ignores non-selection slot lines", () => {
     ),
   );
   assert.equal(tracker.resolve("inst", since).slotId, null);
+});
+
+const EVAL_TIMING_LINE =
+  "0.04.858.648 I slot print_timing: id  0 | task 3 |        eval time =    1606.23 ms /    20 tokens (   80.31 ms per token,    12.45 tokens per second)\n";
+
+test("parses eval-time print_timing into a generation timing", async () => {
+  const tracker = new ApiProxySlotTracker();
+  tracker.observe(event("inst", EVAL_TIMING_LINE));
+  assert.deepEqual(await tracker.awaitTiming("inst", 3, 0), {
+    genMs: 1606.23,
+    completionTokens: 20,
+    tokensPerSecond: 12.45,
+  });
+});
+
+test("awaitTiming resolves when the timing line arrives later", async () => {
+  const tracker = new ApiProxySlotTracker();
+  const pending = tracker.awaitTiming("inst", 3, 1000);
+  tracker.observe(event("inst", EVAL_TIMING_LINE));
+  assert.deepEqual(await pending, {
+    genMs: 1606.23,
+    completionTokens: 20,
+    tokensPerSecond: 12.45,
+  });
+});
+
+test("awaitTiming times out to null without a timing line", async () => {
+  const tracker = new ApiProxySlotTracker();
+  assert.equal(await tracker.awaitTiming("inst", 3, 0), null);
+});
+
+test("does not treat prompt-eval, total-time or interim lines as eval timing", async () => {
+  const tracker = new ApiProxySlotTracker();
+  tracker.observe(
+    event(
+      "inst",
+      "0.04 I slot print_timing: id  0 | task 7 | prompt eval time =     828.70 ms /    23 tokens (   36.03 ms per token,    27.75 tokens per second)\n",
+    ),
+  );
+  tracker.observe(
+    event(
+      "inst",
+      "0.04 I slot print_timing: id  0 | task 7 |       total time =    2434.92 ms /    43 tokens\n",
+    ),
+  );
+  tracker.observe(
+    event(
+      "inst",
+      "0.03 I slot print_timing: id  0 | task 7 | n_decoded =    100, tg =  52.33 t/s\n",
+    ),
+  );
+  assert.equal(await tracker.awaitTiming("inst", 7, 0), null);
 });

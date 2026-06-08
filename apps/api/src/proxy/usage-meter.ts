@@ -139,10 +139,9 @@ export type UsageMeterStream = {
 export function createUsageMeterStream(input: {
   codec: Pick<ApiProxyResumableCodec, "parseChunk">;
   stripUsageFrames: boolean;
-  now: () => number;
   onComplete: (usage: ProxyUsageCounts) => void;
 }): UsageMeterStream {
-  const { codec, stripUsageFrames, now, onComplete } = input;
+  const { codec, stripUsageFrames, onComplete } = input;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let pending = "";
@@ -151,8 +150,6 @@ export function createUsageMeterStream(input: {
   let cacheCreationTokens: number | null = null;
   let completionTokens = 0;
   let upstreamGenMs: number | null = null;
-  let firstTokenAt: number | null = null;
-  let lastTokenAt = 0;
   let done = false;
 
   const observeFrame = (frame: string): boolean => {
@@ -169,12 +166,6 @@ export function createUsageMeterStream(input: {
       const chunk = codec.parseChunk(data);
       if (chunk === "done" || chunk === null) {
         continue;
-      }
-      if (chunk.text) {
-        if (firstTokenAt === null) {
-          firstTokenAt = now();
-        }
-        lastTokenAt = now();
       }
       if (typeof chunk.genMs === "number") {
         upstreamGenMs = chunk.genMs;
@@ -224,12 +215,7 @@ export function createUsageMeterStream(input: {
       cacheReadTokens,
       cacheCreationTokens,
       completionTokens,
-      genMs:
-        upstreamGenMs !== null
-          ? Math.round(upstreamGenMs)
-          : firstTokenAt !== null
-            ? Math.round(Math.max(0, lastTokenAt - firstTokenAt))
-            : 0,
+      genMs: upstreamGenMs !== null ? Math.round(upstreamGenMs) : 0,
     });
   };
 

@@ -642,6 +642,39 @@ type ProxyTraceRecorder = {
   markDeferred: () => void;
 };
 
+const SERVER_TIMING_WAIT_MS = 1500;
+
+async function applyServerGenerationTiming(
+  trace: ProxyTraceAccumulator,
+  instanceId: string | null,
+  task: number | null,
+): Promise<void> {
+  if (instanceId === null || task === null) {
+    return;
+  }
+  const timing = await apiProxySlotTracker.awaitTiming(
+    instanceId,
+    task,
+    SERVER_TIMING_WAIT_MS,
+  );
+  if (!timing) {
+    return;
+  }
+  if (trace.usage) {
+    trace.usage.genMs = Math.round(timing.genMs);
+    trace.usage.ratePerSecond = timing.tokensPerSecond;
+  } else {
+    trace.usage = {
+      promptTokens: null,
+      cacheReadTokens: null,
+      cacheCreationTokens: null,
+      completionTokens: timing.completionTokens,
+      genMs: Math.round(timing.genMs),
+      ratePerSecond: timing.tokensPerSecond,
+    };
+  }
+}
+
 async function proxyProtocolEndpoint(
   c: Context,
   adapter: ApiProxyProtocolAdapter,
@@ -893,16 +926,17 @@ async function proxyProtocolEndpointInner(
     const instanceId = targetResolution.instanceId;
     const slotSeq =
       instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
-    const resolveSlot = () => {
+    const resolveSlot = (): number | null => {
       if (instanceId !== null && slotSeq !== null) {
         const resolved = apiProxySlotTracker.resolve(instanceId, slotSeq);
         trace.slotId = resolved.slotId;
         trace.cacheOrigin = resolved.origin;
+        return resolved.task;
       }
+      return null;
     };
 
     try {
-      const forwardStart = performance.now();
       const upstream = await forwardApiProxyRequest({
         baseUrl: targetResolution.baseUrl,
         method: c.req.method,
@@ -923,20 +957,17 @@ async function proxyProtocolEndpointInner(
         const text = await upstream.text();
         const usage = usageFromNonStreamBody(operation.protocol, text);
         if (usage) {
-          const genMs =
-            usage.genMs > 0
-              ? usage.genMs
-              : Math.round(performance.now() - forwardStart);
           trace.usage = {
             promptTokens: usage.promptTokens,
             cacheReadTokens: usage.cacheReadTokens,
             cacheCreationTokens: usage.cacheCreationTokens,
             completionTokens: usage.completionTokens,
-            genMs,
-            ratePerSecond: ratePerSecondFromUsage({ ...usage, genMs }),
+            genMs: usage.genMs,
+            ratePerSecond: ratePerSecondFromUsage(usage),
           };
         }
-        resolveSlot();
+        const task = resolveSlot();
+        await applyServerGenerationTiming(trace, instanceId, task);
         return new Response(text, {
           status: upstream.status,
           headers: upstream.headers,
@@ -952,7 +983,6 @@ async function proxyProtocolEndpointInner(
       const meter = createUsageMeterStream({
         codec: streamMeter.codec,
         stripUsageFrames,
-        now: () => performance.now(),
         onComplete: (usage) => {
           trace.usage = {
             promptTokens: usage.promptTokens,
@@ -962,8 +992,10 @@ async function proxyProtocolEndpointInner(
             genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
           };
-          resolveSlot();
-          recorder.record(metered);
+          const task = resolveSlot();
+          void applyServerGenerationTiming(trace, instanceId, task).finally(
+            () => recorder.record(metered),
+          );
         },
       });
       metered = new Response(upstream.body.pipeThrough(meter.transform), {
@@ -1100,11 +1132,14 @@ async function proxyProtocolEndpointInner(
           ? state.completionTokens / (state.genMs / 1000)
           : null,
     };
+    let task: number | null = null;
     if (instanceId !== null && slotSeq !== null) {
       const resolved = apiProxySlotTracker.resolve(instanceId, slotSeq);
       trace.slotId = resolved.slotId;
       trace.cacheOrigin = resolved.origin;
+      task = resolved.task;
     }
+    await applyServerGenerationTiming(trace, instanceId, task);
 
     return new Response(final.body, {
       status: final.status,
