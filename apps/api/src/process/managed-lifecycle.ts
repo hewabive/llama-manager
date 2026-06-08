@@ -1,0 +1,180 @@
+import type {
+  Instance,
+  InstanceBulkActionName,
+  ProcessPreflightIssue,
+  RuntimeState,
+} from "@llama-manager/core";
+
+import { listInstances } from "../instances/repository.js";
+import { getInstanceHealthSummary } from "./health-summary.js";
+import {
+  ProcessPreflightError,
+  validateInstancePreflight,
+  validateInstanceStartPreflight,
+} from "./preflight.js";
+import { liveStaleProcessRun, stopStaleProcess } from "./stale.js";
+import { supervisor } from "./supervisor.js";
+
+function staleProcessConflict(instanceId: string) {
+  const stale = liveStaleProcessRun(instanceId);
+  if (stale) {
+    return `instance has unmanaged stale process pid=${stale.pid}; stop it before starting another`;
+  }
+  return null;
+}
+
+export class ProcessActionHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409 = 400,
+    readonly issues: ProcessPreflightIssue[] = [],
+  ) {
+    super(message);
+    this.name = "ProcessActionHttpError";
+  }
+}
+
+export function actionAllowed(
+  action: InstanceBulkActionName,
+  health: Awaited<ReturnType<typeof getInstanceHealthSummary>>,
+) {
+  if (action === "start") return health.actions.canStart;
+  if (action === "stop") return health.actions.canStop;
+  return health.actions.canRestart;
+}
+
+export function skippedActionMessage(
+  action: InstanceBulkActionName,
+  health: Awaited<ReturnType<typeof getInstanceHealthSummary>>,
+) {
+  if (!health.preflight.ok && (action === "start" || action === "restart")) {
+    const error = health.preflight.issues.find(
+      (issue) => issue.level === "error",
+    );
+    return error?.message ?? "preflight must pass before starting";
+  }
+  if (health.status === "stale" && action !== "stop") {
+    return "stale process must be stopped before starting another";
+  }
+  if (action === "start") return "instance is not startable";
+  if (action === "stop") return "instance is not running";
+  return "instance is not restartable";
+}
+
+export function actionErrorPayload(error: unknown): {
+  error: string;
+  issues: ProcessPreflightIssue[];
+  status: 400 | 404 | 409;
+} {
+  if (error instanceof ProcessPreflightError) {
+    return {
+      error: error.message || "preflight failed",
+      issues: error.result.issues,
+      status: 400,
+    };
+  }
+  if (error instanceof ProcessActionHttpError) {
+    return {
+      error: error.message,
+      issues: error.issues,
+      status: error.status,
+    };
+  }
+  return {
+    error: (error as Error).message,
+    issues: [],
+    status: 400,
+  };
+}
+
+function issueMessage(issue: ProcessPreflightIssue) {
+  return issue.field ? `${issue.field}: ${issue.message}` : issue.message;
+}
+
+export function actionErrorProxyMessage(error: unknown) {
+  const payload = actionErrorPayload(error);
+  const errors = payload.issues.filter((issue) => issue.level === "error");
+  const issues = errors.length > 0 ? errors : payload.issues;
+  if (issues.length === 0) {
+    return payload.error;
+  }
+  return `${payload.error}: ${issues.map(issueMessage).join("; ")}`;
+}
+
+export async function startManagedInstance(
+  instance: Instance,
+): Promise<RuntimeState> {
+  const staleConflict = staleProcessConflict(instance.name);
+  if (staleConflict) {
+    throw new ProcessActionHttpError(staleConflict, 409);
+  }
+  const preflight = await validateInstanceStartPreflight(instance, {
+    peers: listInstances(),
+  });
+  if (!preflight.ok) {
+    throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
+  }
+  return supervisor.start(instance);
+}
+
+export async function startOrRecoverManagedInstance(
+  instance: Instance,
+): Promise<RuntimeState> {
+  if (liveStaleProcessRun(instance.name)) {
+    return restartManagedInstance(instance);
+  }
+  return startManagedInstance(instance);
+}
+
+export async function stopManagedInstance(
+  instanceId: string,
+): Promise<RuntimeState> {
+  const state = supervisor.stop(instanceId);
+  if (state) {
+    return state;
+  }
+
+  const staleState = await stopStaleProcess(instanceId);
+  if (staleState) {
+    return staleState;
+  }
+
+  throw new ProcessActionHttpError("instance is not running", 404);
+}
+
+export async function restartManagedInstance(
+  instance: Instance,
+): Promise<RuntimeState> {
+  const preflight = validateInstancePreflight(instance, {
+    peers: listInstances(),
+  });
+  if (!preflight.ok) {
+    throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
+  }
+
+  const staleState = await stopStaleProcess(instance.name);
+  if (staleState) {
+    const startPreflight = await validateInstanceStartPreflight(instance, {
+      peers: listInstances(),
+    });
+    if (!startPreflight.ok) {
+      throw new ProcessActionHttpError(
+        "preflight failed",
+        400,
+        startPreflight.issues,
+      );
+    }
+    return supervisor.start(instance);
+  }
+
+  return supervisor.restart(instance);
+}
+
+export async function runInstanceAction(
+  instance: Instance,
+  action: InstanceBulkActionName,
+) {
+  if (action === "start") return startManagedInstance(instance);
+  if (action === "stop") return stopManagedInstance(instance.name);
+  return restartManagedInstance(instance);
+}

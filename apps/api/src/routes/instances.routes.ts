@@ -1,0 +1,241 @@
+import {
+  InstanceCreateSchema,
+  InstancePreflightPreviewSchema,
+  InstanceUpdateSchema,
+  type Instance,
+} from "@llama-manager/core";
+import type { Hono } from "hono";
+
+import {
+  InstanceNameConflictError,
+  createInstance,
+  deleteInstance,
+  getInstance,
+  listInstances,
+  updateInstance,
+} from "../instances/repository.js";
+import { getPathCatalogEntry } from "../path-catalog/repository.js";
+import { getInstanceHealthSummary } from "../process/health-summary.js";
+import { summarizeInstanceLog } from "../process/log-summary.js";
+import { tailInstanceLog } from "../process/logs.js";
+import { validateInstanceStartPreflight } from "../process/preflight.js";
+import { latestProcessRun } from "../process/runs-repository.js";
+import { stopStaleProcess } from "../process/stale.js";
+import { supervisor } from "../process/supervisor.js";
+
+function resolveInstancePathRefs(instance: Instance): Instance {
+  const binaryRef = instance.binaryPathRefId
+    ? getPathCatalogEntry(instance.binaryPathRefId)
+    : null;
+
+  return {
+    ...instance,
+    binaryPath: binaryRef?.path ?? "",
+  };
+}
+
+function validateInstancePathRefs(input: {
+  binaryPathRefId?: string | null | undefined;
+}) {
+  if (input.binaryPathRefId) {
+    const entry = getPathCatalogEntry(input.binaryPathRefId);
+    if (!entry) return "binary path catalog entry not found";
+    if (entry.kind !== "binary") return "binary path reference is not a binary";
+  }
+  return null;
+}
+
+export function registerInstanceRoutes(app: Hono) {
+  app.get("/api/instances", (c) => {
+    return c.json({ data: listInstances() });
+  });
+
+  app.get("/api/instances/health-summary", async (c) => {
+    const instances = listInstances();
+    return c.json({
+      data: await Promise.all(
+        instances.map((instance) =>
+          getInstanceHealthSummary(instance, { peers: instances }),
+        ),
+      ),
+    });
+  });
+
+  app.post("/api/instances", async (c) => {
+    const parsed = InstanceCreateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateInstancePathRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+    try {
+      return c.json({ data: createInstance(parsed.data) }, 201);
+    } catch (error) {
+      if (error instanceof InstanceNameConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/instances/preflight", async (c) => {
+    const parsed = InstancePreflightPreviewSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateInstancePathRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+
+    const timestamp = new Date().toISOString();
+    const preview = parsed.data;
+    const instance = resolveInstancePathRefs({
+      name: preview.name ?? "preview",
+      binaryPath: "",
+      binaryPathRefId: preview.binaryPathRefId,
+      cwd: preview.cwd,
+      args: preview.args,
+      env: preview.env,
+      status: "stopped",
+      pid: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    return c.json({
+      data: await validateInstanceStartPreflight(instance, {
+        peers: listInstances(),
+        allowActiveSelfPort: Boolean(preview.name),
+      }),
+    });
+  });
+
+  app.get("/api/instances/:id", (c) => {
+    const instance = getInstance(c.req.param("id"));
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+    return c.json({ data: instance });
+  });
+
+  app.get("/api/instances/:id/runtime", (c) => {
+    const instance = getInstance(c.req.param("id"));
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+
+    const latestRun = latestProcessRun(instance.name);
+    const fallbackPid = latestRun?.pid ? Number(latestRun.pid) : null;
+    return c.json({
+      data: supervisor.getState(instance.name) ?? {
+        instanceId: instance.name,
+        pid: fallbackPid && Number.isFinite(fallbackPid) ? fallbackPid : null,
+        status: latestRun?.status ?? instance.status,
+        startedAt: latestRun?.startedAt ?? null,
+        stoppedAt: latestRun?.stoppedAt ?? null,
+        exitCode:
+          latestRun?.exitCode === null || latestRun?.exitCode === undefined
+            ? null
+            : Number(latestRun.exitCode),
+        logPath: latestRun?.logPath ?? null,
+        rawLogPath: latestRun?.rawLogPath ?? null,
+      },
+    });
+  });
+
+  app.get("/api/instances/:id/preflight", async (c) => {
+    const instance = getInstance(c.req.param("id"));
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+
+    return c.json({
+      data: await validateInstanceStartPreflight(instance, {
+        peers: listInstances(),
+        allowActiveSelfPort: true,
+      }),
+    });
+  });
+
+  app.get("/api/instances/:id/health-summary", async (c) => {
+    const instance = getInstance(c.req.param("id"));
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+
+    return c.json({
+      data: await getInstanceHealthSummary(instance, {
+        peers: listInstances(),
+      }),
+    });
+  });
+
+  app.get("/api/instances/:id/logs", (c) => {
+    const instance = getInstance(c.req.param("id"));
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+
+    const lines = Number(c.req.query("lines") ?? "200");
+    const source = c.req.query("source") === "raw" ? "raw" : "filtered";
+    return c.json({
+      data: tailInstanceLog({
+        instanceId: instance.name,
+        runtime: supervisor.getState(instance.name),
+        lines: Number.isFinite(lines) ? lines : 200,
+        source,
+      }),
+    });
+  });
+
+  app.get("/api/instances/:id/status-summary", async (c) => {
+    const instance = getInstance(c.req.param("id"));
+    if (!instance) {
+      return c.json({ error: "instance not found" }, 404);
+    }
+
+    return c.json({
+      data: await summarizeInstanceLog({
+        instanceId: instance.name,
+        runtime: supervisor.getState(instance.name),
+      }),
+    });
+  });
+
+  app.patch("/api/instances/:id", async (c) => {
+    const parsed = InstanceUpdateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateInstancePathRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+    try {
+      const instance = updateInstance(c.req.param("id"), parsed.data);
+      if (!instance) {
+        return c.json({ error: "instance not found" }, 404);
+      }
+      return c.json({ data: instance });
+    } catch (error) {
+      if (error instanceof InstanceNameConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
+    }
+  });
+
+  app.delete("/api/instances/:id", async (c) => {
+    const id = c.req.param("id");
+    supervisor.stop(id, 2_000);
+    try {
+      await stopStaleProcess(id, 2_000);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+    const deleted = deleteInstance(id);
+    return c.json({ data: { deleted } }, deleted ? 200 : 404);
+  });
+}

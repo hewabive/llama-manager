@@ -1,0 +1,284 @@
+import {
+  ApiProxyModelCreateSchema,
+  ApiProxyModelUpdateSchema,
+  ApiProxyPipelineCreateSchema,
+  ApiProxyPipelineUpdateSchema,
+  ApiProxyTargetCreateSchema,
+  ApiProxyTargetUpdateSchema,
+} from "@llama-manager/core";
+import type { Hono } from "hono";
+
+import { getInstance, listInstances } from "../instances/repository.js";
+import { getApiEndpointFromCatalog } from "../proxy/endpoints.js";
+import {
+  createApiProxyModel,
+  createApiProxyPipeline,
+  createApiProxyTarget,
+  deleteApiProxyModel,
+  deleteApiProxyPipeline,
+  deleteApiProxyTarget,
+  getApiProxyModel,
+  getApiProxyPipeline,
+  getApiProxyTarget,
+  listApiProxyModels,
+  listApiProxyPipelines,
+  updateApiProxyModel,
+  updateApiProxyPipeline,
+  updateApiProxyTarget,
+} from "../proxy/repository.js";
+import { isRouterInstance } from "../proxy/target-models.js";
+
+function validateApiProxyTargetRefs(input: {
+  endpointId?: string | undefined;
+}) {
+  if (!input.endpointId) {
+    return null;
+  }
+  const endpoint = getApiEndpointFromCatalog(input.endpointId, listInstances());
+  if (!endpoint) {
+    return "proxy target endpoint not found";
+  }
+  if (endpoint.kind === "manager-proxy") {
+    return "proxy target cannot point to llama-manager proxy itself";
+  }
+  return null;
+}
+
+function validateApiProxyTargetModel(input: {
+  endpointId?: string | undefined;
+  model?: string | null | undefined;
+}) {
+  if (!input.endpointId || !input.model) {
+    return null;
+  }
+  const instances = listInstances();
+  const endpoint = getApiEndpointFromCatalog(input.endpointId, instances);
+  if (
+    !endpoint ||
+    endpoint.kind !== "managed-instance" ||
+    !endpoint.instanceId
+  ) {
+    return null;
+  }
+  const instance = getInstance(endpoint.instanceId);
+  if (instance && !isRouterInstance(instance)) {
+    return `target ${endpoint.name} is a single-model instance: leave the model empty (it is implied by the instance). A model is only set for router (--models-preset) instances.`;
+  }
+  return null;
+}
+
+function validateApiProxyRouteToRef(input: {
+  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+}) {
+  if (!input.routeTo) {
+    return null;
+  }
+  if (input.routeTo.type === "target" && !getApiProxyTarget(input.routeTo.id)) {
+    return "route target not found";
+  }
+  if (
+    input.routeTo.type === "pipeline" &&
+    !getApiProxyPipeline(input.routeTo.id)
+  ) {
+    return "route pipeline not found";
+  }
+  return null;
+}
+
+function validateApiProxyModelRefs(input: {
+  targetId?: string | null | undefined;
+  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+}) {
+  if (input.targetId && !getApiProxyTarget(input.targetId)) {
+    return "proxy model target not found";
+  }
+  return validateApiProxyRouteToRef(input);
+}
+
+function validateApiProxyPipelineRefs(input: {
+  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+}) {
+  return validateApiProxyRouteToRef(input);
+}
+
+export function registerProxyTargetRoutes(app: Hono) {
+  app.post("/api/proxy/models", async (c) => {
+    const parsed = ApiProxyModelCreateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyModelRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+
+    try {
+      return c.json({ data: createApiProxyModel(parsed.data) }, 201);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.patch("/api/proxy/models/:id", async (c) => {
+    const parsed = ApiProxyModelUpdateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyModelRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+
+    try {
+      const model = updateApiProxyModel(c.req.param("id"), parsed.data);
+      if (!model) {
+        return c.json({ error: "proxy model not found" }, 404);
+      }
+      return c.json({ data: model });
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.delete("/api/proxy/models/:id", (c) => {
+    const model = getApiProxyModel(c.req.param("id"));
+    if (!model) {
+      return c.json({ data: { deleted: false } }, 404);
+    }
+    const deleted = deleteApiProxyModel(model.id);
+    return c.json({ data: { deleted } }, deleted ? 200 : 404);
+  });
+
+  app.post("/api/proxy/pipelines", async (c) => {
+    const parsed = ApiProxyPipelineCreateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyPipelineRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+
+    try {
+      return c.json({ data: createApiProxyPipeline(parsed.data) }, 201);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.patch("/api/proxy/pipelines/:id", async (c) => {
+    const parsed = ApiProxyPipelineUpdateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyPipelineRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+
+    try {
+      const pipeline = updateApiProxyPipeline(c.req.param("id"), parsed.data);
+      if (!pipeline) {
+        return c.json({ error: "proxy pipeline not found" }, 404);
+      }
+      return c.json({ data: pipeline });
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.delete("/api/proxy/pipelines/:id", (c) => {
+    const id = c.req.param("id");
+    const usedByModels = listApiProxyModels().filter(
+      (model) => model.routeTo?.type === "pipeline" && model.routeTo.id === id,
+    );
+    const usedByPipelines = listApiProxyPipelines().filter(
+      (pipeline) =>
+        pipeline.routeTo?.type === "pipeline" && pipeline.routeTo.id === id,
+    );
+    if (usedByModels.length + usedByPipelines.length > 0) {
+      return c.json(
+        {
+          error: `proxy pipeline is used by ${usedByModels.length + usedByPipelines.length} route(s)`,
+        },
+        400,
+      );
+    }
+    const deleted = deleteApiProxyPipeline(id);
+    return c.json({ data: { deleted } }, deleted ? 200 : 404);
+  });
+
+  app.post("/api/proxy/targets", async (c) => {
+    const parsed = ApiProxyTargetCreateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyTargetRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+    const modelError = validateApiProxyTargetModel(parsed.data);
+    if (modelError) {
+      return c.json({ error: modelError }, 400);
+    }
+
+    try {
+      return c.json({ data: createApiProxyTarget(parsed.data) }, 201);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.patch("/api/proxy/targets/:id", async (c) => {
+    const parsed = ApiProxyTargetUpdateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyTargetRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+    if ("model" in parsed.data) {
+      const existing = getApiProxyTarget(c.req.param("id"));
+      const modelError = validateApiProxyTargetModel({
+        endpointId: parsed.data.endpointId ?? existing?.endpointId,
+        model: parsed.data.model,
+      });
+      if (modelError) {
+        return c.json({ error: modelError }, 400);
+      }
+    }
+
+    try {
+      const target = updateApiProxyTarget(c.req.param("id"), parsed.data);
+      if (!target) {
+        return c.json({ error: "proxy target not found" }, 404);
+      }
+      return c.json({ data: target });
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.delete("/api/proxy/targets/:id", (c) => {
+    const id = c.req.param("id");
+    const usedByModels = listApiProxyModels().filter(
+      (model) =>
+        model.targetId === id ||
+        (model.routeTo?.type === "target" && model.routeTo.id === id),
+    );
+    const usedByPipelines = listApiProxyPipelines().filter(
+      (pipeline) =>
+        pipeline.routeTo?.type === "target" && pipeline.routeTo.id === id,
+    );
+    const usedCount = usedByModels.length + usedByPipelines.length;
+    if (usedCount > 0) {
+      return c.json(
+        { error: `proxy target is used by ${usedCount} route(s)` },
+        400,
+      );
+    }
+    const deleted = deleteApiProxyTarget(id);
+    return c.json({ data: { deleted } }, deleted ? 200 : 404);
+  });
+}
