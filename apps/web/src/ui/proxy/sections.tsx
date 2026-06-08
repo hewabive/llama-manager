@@ -705,6 +705,17 @@ function traceProtocolColor(protocol: string): string {
   return protocol === "anthropic" ? "violet" : "blue";
 }
 
+function TwoLineHeader(props: { title: string; hint: string }) {
+  return (
+    <Stack gap={0}>
+      <Text size="xs">{props.title}</Text>
+      <Text size="xs" c="dimmed">
+        {props.hint}
+      </Text>
+    </Stack>
+  );
+}
+
 function TokensCell(props: { usage: ApiProxyTraceUsage | null }) {
   const usage = props.usage;
   if (!usage) {
@@ -824,8 +835,12 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Target</Table.Th>
                   <Table.Th>Actions</Table.Th>
-                  <Table.Th>Tokens (in/out)</Table.Th>
-                  <Table.Th>Cache (read/write/fresh)</Table.Th>
+                  <Table.Th>
+                    <TwoLineHeader title="Tokens" hint="in/out" />
+                  </Table.Th>
+                  <Table.Th>
+                    <TwoLineHeader title="Cache" hint="read/write/new" />
+                  </Table.Th>
                   <Table.Th>Rate</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>ms</Table.Th>
