@@ -8,6 +8,7 @@ import { Group, Select, Stack, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { absoluteUrl } from "../../api/base.js";
 import {
   getApiProxyConfig,
   runApiLabProbe,
@@ -101,13 +102,7 @@ function normalizeBaseUrlForProfile(
 }
 
 function managerProxyRootUrl() {
-  const configured = import.meta.env.VITE_API_URL as string | undefined;
-  if (configured?.trim()) {
-    return stripV1BaseUrl(
-      new URL(configured, window.location.origin).toString(),
-    );
-  }
-  return window.location.origin;
+  return absoluteUrl("");
 }
 
 export function ApiLabView(props: {

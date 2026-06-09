@@ -82,7 +82,7 @@ import type {
   SystemResources,
 } from "@llama-manager/core";
 
-const apiBase = import.meta.env.VITE_API_URL ?? "";
+import { apiBase } from "./base.js";
 
 function formatApiErrorValue(value: unknown): string | null {
   if (!value) return null;

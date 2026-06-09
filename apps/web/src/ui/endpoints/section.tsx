@@ -13,6 +13,8 @@ import {
 } from "@mantine/core";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
+import { absoluteUrl } from "../../api/base.js";
+
 type ApiEndpointsSectionProps = {
   endpoints: ApiEndpointRecord[];
   targetCountByEndpointId: Map<string, number>;
@@ -41,7 +43,7 @@ function endpointBaseUrl(endpoint: ApiEndpointRecord) {
   if (typeof window === "undefined") {
     return endpoint.baseUrl;
   }
-  return new URL("/v1", window.location.origin).toString();
+  return absoluteUrl("/v1");
 }
 
 export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
