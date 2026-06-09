@@ -8,13 +8,13 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @llama-manager/core build && pnpm --parallel --filter @llama-manager/api --filter @llama-manager/web dev",
+    "dev": "pnpm --filter @llama-manager/core --filter @llama-manager/anthropic-openai-bridge build && pnpm --parallel --filter @llama-manager/api --filter @llama-manager/web dev",
     "update:run": "git pull --ff-only && pnpm install && pnpm serve",
     "build": "pnpm -r build",
     "start": "node apps/api/dist/index.js",
     "serve": "pnpm build && pnpm start",
     "auth:hash": "pnpm --filter @llama-manager/api run auth:hash",
-    "check": "pnpm check:events && pnpm --filter @llama-manager/core build && pnpm -r check",
+    "check": "pnpm check:events && pnpm --filter @llama-manager/core --filter @llama-manager/anthropic-openai-bridge build && pnpm -r check",
     "check:events": "node scripts/check-react-event-captures.mjs",
     "knip": "knip",
     "format": "prettier --write .",
