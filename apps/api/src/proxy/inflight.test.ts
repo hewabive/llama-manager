@@ -67,7 +67,10 @@ test("records live prefill progress and seeds prompt tokens from total", () => {
 
 test("excludes entries without a resolved target", () => {
   apiProxyInflight.reset();
-  const handle = apiProxyInflight.begin({ modelId: "m", protocol: "anthropic" });
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "anthropic",
+  });
   assert.equal(apiProxyInflight.snapshotByTarget().size, 0);
   handle.setTarget("t2");
   assert.equal(only("t2").modelId, "m");

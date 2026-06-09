@@ -51,7 +51,10 @@ function toView(entry: InflightEntry, at: number): ApiProxyInflightRequest {
   const prefillMs =
     entry.dispatchedAt === null
       ? null
-      : Math.max(0, Math.round((entry.firstTokenAt ?? at) - entry.dispatchedAt));
+      : Math.max(
+          0,
+          Math.round((entry.firstTokenAt ?? at) - entry.dispatchedAt),
+        );
   const generatingMs =
     entry.firstTokenAt === null
       ? null

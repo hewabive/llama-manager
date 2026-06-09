@@ -83,7 +83,9 @@ export function usageFromNonStreamBody(
   const timings = asObject(obj?.timings);
   const predictedMs = timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0;
   const promptMs = timings ? numberOrNull(timings.prompt_ms) : null;
-  const promptPerSecond = timings ? numberOrNull(timings.prompt_per_second) : null;
+  const promptPerSecond = timings
+    ? numberOrNull(timings.prompt_per_second)
+    : null;
   const prefillMs = promptMs === null ? null : Math.round(promptMs);
   if (protocol === "anthropic") {
     const completionTokens = numberOrNull(usage.output_tokens);

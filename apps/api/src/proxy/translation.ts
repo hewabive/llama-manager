@@ -1,3 +1,7 @@
+import type {
+  ApiLabProbeProfile,
+  ApiProxyAnthropicDialect,
+} from "@llama-manager/core";
 import {
   createAnthropicSseEmitter,
   mapOpenAiFinishReason,
@@ -20,12 +24,14 @@ const llamaServerRequestOptions = {
 
 export function shouldTranslateAnthropicMessages(
   operation: ApiProxyProtocolOperation,
-  instanceId: string | null,
+  upstreamProfile: ApiLabProbeProfile,
+  dialect: ApiProxyAnthropicDialect,
 ): boolean {
   return (
     operation.protocol === "anthropic" &&
     operation.endpoint === "messages" &&
-    instanceId !== null
+    dialect !== "native" &&
+    upstreamProfile !== "anthropic"
   );
 }
 

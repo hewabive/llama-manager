@@ -22,26 +22,36 @@ const messagesOperation = {
   transport: "http-json" as const,
 };
 
-test("translation applies to anthropic messages on managed instances only", () => {
+test("translation applies to anthropic messages on non-anthropic upstreams", () => {
   assert.equal(
-    shouldTranslateAnthropicMessages(messagesOperation, "inst"),
+    shouldTranslateAnthropicMessages(messagesOperation, "openai", "auto"),
     true,
   );
   assert.equal(
-    shouldTranslateAnthropicMessages(messagesOperation, null),
+    shouldTranslateAnthropicMessages(messagesOperation, "llama-native", "auto"),
+    true,
+  );
+  assert.equal(
+    shouldTranslateAnthropicMessages(messagesOperation, "anthropic", "auto"),
+    false,
+  );
+  assert.equal(
+    shouldTranslateAnthropicMessages(messagesOperation, "openai", "native"),
     false,
   );
   assert.equal(
     shouldTranslateAnthropicMessages(
       { ...messagesOperation, endpoint: "messages.count_tokens" },
-      "inst",
+      "openai",
+      "auto",
     ),
     false,
   );
   assert.equal(
     shouldTranslateAnthropicMessages(
       { ...messagesOperation, protocol: "openai" },
-      "inst",
+      "openai",
+      "auto",
     ),
     false,
   );

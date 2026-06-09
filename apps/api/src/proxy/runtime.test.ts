@@ -52,6 +52,7 @@ function target(
     enabled: true,
     endpointId: input.endpointId ?? "instance:instance-a",
     model: input.model === undefined ? "chat" : input.model,
+    anthropicDialect: "auto",
     role: "interactive",
     priority: 100,
     resourceGroupId: "cuda:0",

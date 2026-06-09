@@ -39,6 +39,7 @@ function seedTarget(name: string) {
     endpointId: "external:test",
     model: null,
     role: "background",
+    anthropicDialect: "auto",
     priority: 100,
     resourceGroupId: "gpu0",
     preemptible: true,

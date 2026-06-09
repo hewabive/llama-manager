@@ -18,6 +18,7 @@ const target: ApiProxyTargetRecord = {
   endpointId: "instance:instance-a",
   model: "qwen",
   role: "interactive",
+  anthropicDialect: "auto",
   priority: 100,
   resourceGroupId: "cuda:0",
   preemptible: true,

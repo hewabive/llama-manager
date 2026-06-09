@@ -1,5 +1,6 @@
 import type {
   ApiEndpointRecord,
+  ApiLabProbeProfile,
   ApiProxyTargetRecord,
   Instance,
 } from "@llama-manager/core";
@@ -10,6 +11,7 @@ export type ApiProxyTargetResolution = {
   kind: "managed-instance" | "external-api";
   endpointId: string;
   baseUrl: string;
+  profile: ApiLabProbeProfile;
   enabled: boolean;
   instance: Instance | null;
   instanceId: string | null;
@@ -47,6 +49,7 @@ export function resolveApiProxyTarget(
       kind: "external-api",
       endpointId: target.endpointId,
       baseUrl: "http://127.0.0.1",
+      profile: "openai",
       enabled: false,
       instance: null,
       instanceId: null,
@@ -59,6 +62,7 @@ export function resolveApiProxyTarget(
       kind: "external-api",
       endpointId: endpoint.id,
       baseUrl: endpoint.baseUrl,
+      profile: endpoint.profile,
       enabled: false,
       instance: null,
       instanceId: null,
@@ -77,6 +81,7 @@ export function resolveApiProxyTarget(
         : "external-api",
     endpointId: endpoint.id,
     baseUrl: normalizeHttpBaseUrl(endpoint.baseUrl),
+    profile: endpoint.profile,
     enabled:
       endpoint.enabled &&
       (endpoint.kind !== "managed-instance" || Boolean(instance)),
