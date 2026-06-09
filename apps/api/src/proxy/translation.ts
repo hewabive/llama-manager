@@ -1,12 +1,18 @@
 import {
   createAnthropicSseEmitter,
+  mapOpenAiFinishReason,
   serializeAnthropicSseEvents,
   translateAnthropicRequest,
   translateOpenAiError,
   translateOpenAiResponse,
 } from "@llama-manager/anthropic-openai-bridge";
 
-import type { ApiProxyProtocolOperation } from "./protocol.js";
+import { anthropicResumableCodec } from "./anthropic.js";
+import { openAiResumableCodec } from "./openai.js";
+import type {
+  ApiProxyProtocolOperation,
+  ApiProxyResumableCodec,
+} from "./protocol.js";
 
 const llamaServerRequestOptions = {
   namedToolChoice: "filter" as const,
@@ -25,6 +31,28 @@ export function shouldTranslateAnthropicMessages(
 
 export function translateAnthropicForwardBody(body: unknown): unknown {
   return translateAnthropicRequest(body, llamaServerRequestOptions).body;
+}
+
+export function translatedAnthropicResumableCodec(
+  anthropicBody: unknown,
+): ApiProxyResumableCodec {
+  const translated = translateAnthropicForwardBody(anthropicBody);
+  return {
+    upstreamBody: (_originalBody, tail) =>
+      openAiResumableCodec.upstreamBody(translated, tail),
+    parseChunk: openAiResumableCodec.parseChunk,
+    finalResponse: (input) =>
+      anthropicResumableCodec.finalResponse({
+        ...input,
+        finishReason:
+          input.finishReason === null
+            ? null
+            : mapOpenAiFinishReason(
+                input.finishReason,
+                (input.toolCalls ?? []).length > 0,
+              ),
+      }),
+  };
 }
 
 export function translateOpenAiResponseText(text: string): string | null {

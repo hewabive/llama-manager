@@ -66,6 +66,7 @@ import {
   translateAnthropicForwardBody,
   translateOpenAiErrorText,
   translateOpenAiResponseText,
+  translatedAnthropicResumableCodec,
 } from "./translation.js";
 import {
   createUsageMeterStream,
@@ -774,24 +775,31 @@ async function proxyProtocolEndpointInner(
       return c.json(response.body, response.status);
     }
 
+    const translateAnthropic = shouldTranslateAnthropicMessages(
+      operation,
+      targetResolution.instanceId,
+    );
+    const effectiveCodec = translateAnthropic
+      ? translatedAnthropicResumableCodec(route.request.body)
+      : codec;
     const url = apiProxyForwardUrl(
       targetResolution.baseUrl,
-      upstreamPath,
+      translateAnthropic ? "/v1/chat/completions" : upstreamPath,
       new URL(c.req.url).search,
     );
     const instanceId = targetResolution.instanceId;
     const slotSeq =
       instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
     const injectPrefillProgress =
-      operation.protocol === "openai" &&
+      (operation.protocol === "openai" || translateAnthropic) &&
       instanceId !== null &&
       !returnProgressRequested(route.request.body);
     const state = createResumableBufferState();
     const buildBody = (tail: string | null) => {
-      const built = codec.upstreamBody(route.request.body, tail) as Record<
-        string,
-        unknown
-      >;
+      const built = effectiveCodec.upstreamBody(
+        route.request.body,
+        tail,
+      ) as Record<string, unknown>;
       const withModel = decision.target.model
         ? { ...built, model: decision.target.model }
         : built;
@@ -827,7 +835,7 @@ async function proxyProtocolEndpointInner(
           method: c.req.method,
           headers: auth.headers,
           body: buildBody(tail),
-          codec,
+          codec: effectiveCodec,
           state,
           preemptSignal: heldLease.preemptSignal,
           consumerSignal: c.req.raw.signal,
@@ -837,7 +845,7 @@ async function proxyProtocolEndpointInner(
         });
       },
       state,
-      codec,
+      codec: effectiveCodec,
       yieldLease: () => heldLease.yield(),
       wantsStream: route.request.stream,
       onError: (message) => {
