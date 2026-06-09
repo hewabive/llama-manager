@@ -29,6 +29,7 @@ import {
   openAiModelsList,
   openAiProtocolAdapter,
   openAiResponsesUsageCodec,
+  openAiResumableCodec,
 } from "./openai.js";
 import { resolveApiProxyRouteChain } from "./pipeline.js";
 import {
@@ -58,6 +59,14 @@ import { apiProxySlotTracker } from "./slot-tracker.js";
 import { extractRequestApiKey, resolveApiProxySourceByKey } from "./sources.js";
 import { apiProxyStats } from "./stats.js";
 import { resolveApiProxyTarget } from "./targets.js";
+import {
+  anthropicForwardHeaders,
+  createAnthropicTranslationTransform,
+  shouldTranslateAnthropicMessages,
+  translateAnthropicForwardBody,
+  translateOpenAiErrorText,
+  translateOpenAiResponseText,
+} from "./translation.js";
 import {
   createUsageMeterStream,
   includeUsageRequested,
@@ -248,7 +257,8 @@ async function applyServerGenerationTiming(
       completionTokens: timing.completionTokens,
       genMs: Math.round(timing.genMs),
       ratePerSecond: timing.tokensPerSecond,
-      prefillMs: timing.prefillMs === null ? null : Math.round(timing.prefillMs),
+      prefillMs:
+        timing.prefillMs === null ? null : Math.round(timing.prefillMs),
       promptPerSecond: timing.promptPerSecond,
     };
   }
@@ -558,19 +568,33 @@ async function proxyProtocolEndpointInner(
       return c.json(response.body, response.status);
     }
 
-    const streamMeter = route.request.stream
-      ? resolveStreamUsageMeter(operation, adapter, route.request.body)
+    const translateAnthropic = shouldTranslateAnthropicMessages(
+      operation,
+      targetResolution.instanceId,
+    );
+    const upstreamProtocol = translateAnthropic ? "openai" : operation.protocol;
+    const effectiveUpstreamPath = translateAnthropic
+      ? "/v1/chat/completions"
+      : upstreamPath;
+    const requestBody = translateAnthropic
+      ? translateAnthropicForwardBody(route.request.body)
+      : route.request.body;
+
+    const streamMeter: StreamUsageMeter | null = route.request.stream
+      ? translateAnthropic
+        ? { codec: openAiResumableCodec, inject: true, strip: false }
+        : resolveStreamUsageMeter(operation, adapter, route.request.body)
       : null;
     const wantsPrefillProgress =
       streamMeter !== null &&
-      operation.protocol === "openai" &&
-      operation.endpoint === "chat.completions" &&
+      upstreamProtocol === "openai" &&
+      (operation.endpoint === "chat.completions" || translateAnthropic) &&
       targetResolution.instanceId !== null;
     const injectPrefillProgress =
-      wantsPrefillProgress && !returnProgressRequested(route.request.body);
+      wantsPrefillProgress && !returnProgressRequested(requestBody);
     let forwardBody = streamMeter?.inject
-      ? withIncludeUsage(route.request.body)
-      : route.request.body;
+      ? withIncludeUsage(requestBody)
+      : requestBody;
     if (injectPrefillProgress) {
       forwardBody = withReturnProgress(forwardBody);
     }
@@ -593,9 +617,11 @@ async function proxyProtocolEndpointInner(
       const upstream = await forwardApiProxyRequest({
         baseUrl: targetResolution.baseUrl,
         method: c.req.method,
-        upstreamPath,
+        upstreamPath: effectiveUpstreamPath,
         search: new URL(c.req.url).search,
-        headers: c.req.raw.headers,
+        headers: translateAnthropic
+          ? anthropicForwardHeaders(c.req.raw.headers)
+          : c.req.raw.headers,
         body: forwardBody,
         upstreamHeaders: auth.headers,
         modelOverride: decision.target.model,
@@ -608,6 +634,12 @@ async function proxyProtocolEndpointInner(
           trace.errorMessage =
             errorBodyMessage(safeJsonParse(text)) ?? text.slice(0, 500);
         }
+        if (translateAnthropic) {
+          return new Response(translateOpenAiErrorText(upstream.status, text), {
+            status: upstream.status,
+            headers: { "content-type": "application/json" },
+          });
+        }
         return new Response(text, {
           status: upstream.status,
           headers: upstream.headers,
@@ -616,7 +648,7 @@ async function proxyProtocolEndpointInner(
 
       if (!route.request.stream) {
         const text = await upstream.text();
-        const usage = usageFromNonStreamBody(operation.protocol, text);
+        const usage = usageFromNonStreamBody(upstreamProtocol, text);
         if (usage) {
           trace.usage = {
             promptTokens: usage.promptTokens,
@@ -631,6 +663,15 @@ async function proxyProtocolEndpointInner(
         }
         const task = resolveSlot();
         await applyServerGenerationTiming(trace, instanceId, task);
+        if (translateAnthropic) {
+          const translated = translateOpenAiResponseText(text);
+          if (translated !== null) {
+            return new Response(translated, {
+              status: upstream.status,
+              headers: { "content-type": "application/json" },
+            });
+          }
+        }
         return new Response(text, {
           status: upstream.status,
           headers: upstream.headers,
@@ -646,7 +687,7 @@ async function proxyProtocolEndpointInner(
       const meter = createUsageMeterStream({
         codec: streamMeter.codec,
         stripUsageFrames,
-        stripProgressFrames: injectPrefillProgress,
+        stripProgressFrames: translateAnthropic ? false : injectPrefillProgress,
         onFirstToken: markFirstToken,
         onProgress: markProgress,
         onPrefillProgress: markPrefillProgress,
@@ -667,10 +708,16 @@ async function proxyProtocolEndpointInner(
           );
         },
       });
-      metered = new Response(upstream.body.pipeThrough(meter.transform), {
-        status: upstream.status,
-        headers: upstream.headers,
-      });
+      const meteredBody = upstream.body.pipeThrough(meter.transform);
+      metered = new Response(
+        translateAnthropic
+          ? meteredBody.pipeThrough(createAnthropicTranslationTransform())
+          : meteredBody,
+        {
+          status: upstream.status,
+          headers: upstream.headers,
+        },
+      );
       recorder.markDeferred();
       c.req.raw.signal.addEventListener("abort", () => meter.finalize(), {
         once: true,
