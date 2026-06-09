@@ -226,12 +226,14 @@ function makeFetch(frames: string[], options: { hang?: boolean } = {}) {
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 test("translated resumable codec builds openai upstream body with prefill tail", () => {
-  const codec = translatedAnthropicResumableCodec({
-    model: "claude-x",
-    max_tokens: 32,
-    messages: [{ role: "user", content: "hi" }],
-    stream: true,
-  });
+  const codec = translatedAnthropicResumableCodec(
+    translateAnthropicForwardBody({
+      model: "claude-x",
+      max_tokens: 32,
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    }),
+  );
   const resumed = codec.upstreamBody(null, "AB") as Record<string, unknown>;
   const messages = resumed.messages as Array<Record<string, unknown>>;
   assert.equal(resumed.stream, true);
@@ -241,11 +243,13 @@ test("translated resumable codec builds openai upstream body with prefill tail",
 });
 
 test("translated resumable codec maps openai finish reasons in final response", () => {
-  const codec = translatedAnthropicResumableCodec({
-    model: "claude-x",
-    max_tokens: 32,
-    messages: [{ role: "user", content: "hi" }],
-  });
+  const codec = translatedAnthropicResumableCodec(
+    translateAnthropicForwardBody({
+      model: "claude-x",
+      max_tokens: 32,
+      messages: [{ role: "user", content: "hi" }],
+    }),
+  );
   const final = codec.finalResponse({
     text: "Hello",
     id: "cmpl-1",
@@ -263,12 +267,14 @@ test("translated resumable codec maps openai finish reasons in final response", 
 });
 
 test("translated resumable codec survives preemption and resumes openai frames", async () => {
-  const codec = translatedAnthropicResumableCodec({
-    model: "claude-x",
-    max_tokens: 32,
-    messages: [{ role: "user", content: "count" }],
-    stream: true,
-  });
+  const codec = translatedAnthropicResumableCodec(
+    translateAnthropicForwardBody({
+      model: "claude-x",
+      max_tokens: 32,
+      messages: [{ role: "user", content: "count" }],
+      stream: true,
+    }),
+  );
   const state = createResumableBufferState();
   const preempt = new AbortController();
 

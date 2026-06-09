@@ -60,10 +60,9 @@ import { extractRequestApiKey, resolveApiProxySourceByKey } from "./sources.js";
 import { apiProxyStats } from "./stats.js";
 import { resolveApiProxyTarget } from "./targets.js";
 import {
-  anthropicForwardHeaders,
   createAnthropicTranslationTransform,
+  prepareUpstreamExchange,
   shouldTranslateAnthropicMessages,
-  translateAnthropicForwardBody,
   translateOpenAiErrorText,
   translateOpenAiResponseText,
   translatedAnthropicResumableCodec,
@@ -107,6 +106,17 @@ type StreamUsageMeter = {
   inject: boolean;
   strip: boolean;
 };
+
+type UpstreamContext = {
+  baseUrl: string;
+  instanceId: string | null;
+  authHeaders: Record<string, string>;
+  translateAnthropic: boolean;
+};
+
+type UpstreamContextResolution =
+  | { ok: true; context: UpstreamContext }
+  | { ok: false; response: Response };
 
 function resolveStreamUsageMeter(
   operation: ApiProxyProtocolOperation,
@@ -523,23 +533,7 @@ async function proxyProtocolEndpointInner(
       requestedTargetId: decision.target.id,
     });
 
-  const respond = async (): Promise<Response> => {
-    const upstreamPath = adapter.upstreamPath(operation);
-    if (!upstreamPath) {
-      const response = adapter.notImplemented(route.request);
-      return c.json(response.body, response.status);
-    }
-
-    const execution = await makeTargetReady(decision.preview);
-    if (!execution.ok) {
-      trace.errorMessage = execution.diagnostic.message;
-      const response = adapter.diagnosticError(
-        route.request,
-        execution.diagnostic,
-      );
-      return c.json(response.body, response.status);
-    }
-
+  const resolveUpstreamContext = (): UpstreamContextResolution => {
     const instances = listInstances();
     const targetResolution = resolveApiProxyTarget(
       decision.target,
@@ -557,7 +551,7 @@ async function proxyProtocolEndpointInner(
         param: "model",
         message,
       });
-      return c.json(response.body, response.status);
+      return { ok: false, response: c.json(response.body, response.status) };
     }
     const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
     if (!auth.ok) {
@@ -568,21 +562,54 @@ async function proxyProtocolEndpointInner(
         param: "model",
         message: auth.error,
       });
-      return c.json(response.body, response.status);
+      return { ok: false, response: c.json(response.body, response.status) };
     }
-
     const translateAnthropic = shouldTranslateAnthropicMessages(
       operation,
       targetResolution.profile,
     );
     trace.translated = translateAnthropic;
-    const upstreamProtocol = translateAnthropic ? "openai" : operation.protocol;
-    const effectiveUpstreamPath = translateAnthropic
-      ? "/v1/chat/completions"
-      : upstreamPath;
-    const requestBody = translateAnthropic
-      ? translateAnthropicForwardBody(route.request.body)
-      : route.request.body;
+    return {
+      ok: true,
+      context: {
+        baseUrl: targetResolution.baseUrl,
+        instanceId: targetResolution.instanceId,
+        authHeaders: auth.headers,
+        translateAnthropic,
+      },
+    };
+  };
+
+  const respond = async (): Promise<Response> => {
+    const upstreamPath = adapter.upstreamPath(operation);
+    if (!upstreamPath) {
+      const response = adapter.notImplemented(route.request);
+      return c.json(response.body, response.status);
+    }
+
+    const execution = await makeTargetReady(decision.preview);
+    if (!execution.ok) {
+      trace.errorMessage = execution.diagnostic.message;
+      const response = adapter.diagnosticError(
+        route.request,
+        execution.diagnostic,
+      );
+      return c.json(response.body, response.status);
+    }
+
+    const resolved = resolveUpstreamContext();
+    if (!resolved.ok) {
+      return resolved.response;
+    }
+    const { baseUrl, instanceId, authHeaders, translateAnthropic } =
+      resolved.context;
+    const exchange = prepareUpstreamExchange({
+      translate: translateAnthropic,
+      operation,
+      path: upstreamPath,
+      body: route.request.body,
+      headers: c.req.raw.headers,
+    });
 
     const streamMeter: StreamUsageMeter | null = route.request.stream
       ? translateAnthropic
@@ -591,19 +618,18 @@ async function proxyProtocolEndpointInner(
       : null;
     const wantsPrefillProgress =
       streamMeter !== null &&
-      upstreamProtocol === "openai" &&
+      exchange.protocol === "openai" &&
       (operation.endpoint === "chat.completions" || translateAnthropic) &&
-      targetResolution.instanceId !== null;
+      instanceId !== null;
     const injectPrefillProgress =
-      wantsPrefillProgress && !returnProgressRequested(requestBody);
+      wantsPrefillProgress && !returnProgressRequested(exchange.body);
     let forwardBody = streamMeter?.inject
-      ? withIncludeUsage(requestBody)
-      : requestBody;
+      ? withIncludeUsage(exchange.body)
+      : exchange.body;
     if (injectPrefillProgress) {
       forwardBody = withReturnProgress(forwardBody);
     }
 
-    const instanceId = targetResolution.instanceId;
     const slotSeq =
       instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
     const resolveSlot = (): number | null => {
@@ -619,15 +645,13 @@ async function proxyProtocolEndpointInner(
     try {
       markDispatched();
       const upstream = await forwardApiProxyRequest({
-        baseUrl: targetResolution.baseUrl,
+        baseUrl,
         method: c.req.method,
-        upstreamPath: effectiveUpstreamPath,
+        upstreamPath: exchange.path,
         search: new URL(c.req.url).search,
-        headers: translateAnthropic
-          ? anthropicForwardHeaders(c.req.raw.headers)
-          : c.req.raw.headers,
+        headers: exchange.headers,
         body: forwardBody,
-        upstreamHeaders: auth.headers,
+        upstreamHeaders: authHeaders,
         modelOverride: decision.target.model,
         signal: c.req.raw.signal,
       });
@@ -652,7 +676,7 @@ async function proxyProtocolEndpointInner(
 
       if (!route.request.stream) {
         const text = await upstream.text();
-        const usage = usageFromNonStreamBody(upstreamProtocol, text);
+        const usage = usageFromNonStreamBody(exchange.protocol, text);
         if (usage) {
           trace.usage = {
             promptTokens: usage.promptTokens,
@@ -747,51 +771,27 @@ async function proxyProtocolEndpointInner(
     upstreamPath: string,
     codec: NonNullable<typeof adapter.resumable>,
   ): Promise<Response> => {
-    const instances = listInstances();
-    const targetResolution = resolveApiProxyTarget(
-      decision.target,
-      instances,
-      listApiEndpointCatalog(instances),
-    );
-    if (!targetResolution.enabled) {
-      const message =
-        targetResolution.error ??
-        `Proxy target ${decision.target.name} endpoint is unavailable.`;
-      trace.errorMessage = message;
-      const response = adapter.diagnosticError(route.request, {
-        status: 503,
-        code: "llama_manager_proxy_upstream_unavailable",
-        param: "model",
-        message,
-      });
-      return c.json(response.body, response.status);
+    const resolved = resolveUpstreamContext();
+    if (!resolved.ok) {
+      return resolved.response;
     }
-    const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
-    if (!auth.ok) {
-      trace.errorMessage = auth.error;
-      const response = adapter.diagnosticError(route.request, {
-        status: 503,
-        code: "llama_manager_proxy_upstream_unavailable",
-        param: "model",
-        message: auth.error,
-      });
-      return c.json(response.body, response.status);
-    }
-
-    const translateAnthropic = shouldTranslateAnthropicMessages(
+    const { baseUrl, instanceId, authHeaders, translateAnthropic } =
+      resolved.context;
+    const exchange = prepareUpstreamExchange({
+      translate: translateAnthropic,
       operation,
-      targetResolution.profile,
-    );
-    trace.translated = translateAnthropic;
+      path: upstreamPath,
+      body: route.request.body,
+      headers: c.req.raw.headers,
+    });
     const effectiveCodec = translateAnthropic
-      ? translatedAnthropicResumableCodec(route.request.body)
+      ? translatedAnthropicResumableCodec(exchange.body)
       : codec;
     const url = apiProxyForwardUrl(
-      targetResolution.baseUrl,
-      translateAnthropic ? "/v1/chat/completions" : upstreamPath,
+      baseUrl,
+      exchange.path,
       new URL(c.req.url).search,
     );
-    const instanceId = targetResolution.instanceId;
     const slotSeq =
       instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
     const injectPrefillProgress =
@@ -837,7 +837,7 @@ async function proxyProtocolEndpointInner(
         return runResumableUpstreamAttempt({
           url,
           method: c.req.method,
-          headers: auth.headers,
+          headers: authHeaders,
           body: buildBody(tail),
           codec: effectiveCodec,
           state,

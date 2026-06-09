@@ -11,6 +11,7 @@ import {
 import { anthropicResumableCodec } from "./anthropic.js";
 import { openAiResumableCodec } from "./openai.js";
 import type {
+  ApiProxyProtocolId,
   ApiProxyProtocolOperation,
   ApiProxyResumableCodec,
 } from "./protocol.js";
@@ -18,6 +19,8 @@ import type {
 const llamaServerRequestOptions = {
   namedToolChoice: "filter" as const,
 };
+
+const translatedUpstreamPath = "/v1/chat/completions";
 
 export function shouldTranslateAnthropicMessages(
   operation: ApiProxyProtocolOperation,
@@ -34,13 +37,42 @@ export function translateAnthropicForwardBody(body: unknown): unknown {
   return translateAnthropicRequest(body, llamaServerRequestOptions).body;
 }
 
+export type UpstreamExchange = {
+  protocol: ApiProxyProtocolId;
+  path: string;
+  body: unknown;
+  headers: Headers;
+};
+
+export function prepareUpstreamExchange(input: {
+  translate: boolean;
+  operation: ApiProxyProtocolOperation;
+  path: string;
+  body: unknown;
+  headers: Headers;
+}): UpstreamExchange {
+  if (!input.translate) {
+    return {
+      protocol: input.operation.protocol,
+      path: input.path,
+      body: input.body,
+      headers: input.headers,
+    };
+  }
+  return {
+    protocol: "openai",
+    path: translatedUpstreamPath,
+    body: translateAnthropicForwardBody(input.body),
+    headers: anthropicForwardHeaders(input.headers),
+  };
+}
+
 export function translatedAnthropicResumableCodec(
-  anthropicBody: unknown,
+  translatedBody: unknown,
 ): ApiProxyResumableCodec {
-  const translated = translateAnthropicForwardBody(anthropicBody);
   return {
     upstreamBody: (_originalBody, tail) =>
-      openAiResumableCodec.upstreamBody(translated, tail),
+      openAiResumableCodec.upstreamBody(translatedBody, tail),
     parseChunk: openAiResumableCodec.parseChunk,
     finalResponse: (input) =>
       anthropicResumableCodec.finalResponse({
