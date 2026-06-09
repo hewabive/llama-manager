@@ -574,7 +574,6 @@ async function proxyProtocolEndpointInner(
     const translateAnthropic = shouldTranslateAnthropicMessages(
       operation,
       targetResolution.profile,
-      decision.target.anthropicDialect,
     );
     trace.translated = translateAnthropic;
     const upstreamProtocol = translateAnthropic ? "openai" : operation.protocol;
@@ -782,7 +781,6 @@ async function proxyProtocolEndpointInner(
     const translateAnthropic = shouldTranslateAnthropicMessages(
       operation,
       targetResolution.profile,
-      decision.target.anthropicDialect,
     );
     trace.translated = translateAnthropic;
     const effectiveCodec = translateAnthropic

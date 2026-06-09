@@ -491,8 +491,6 @@ export const ApiProxyPipelineNodeTypeSchema = z
   .enum(["save-request", "replace-text"])
   .default("replace-text");
 
-export const ApiProxyAnthropicDialectSchema = z.enum(["auto", "native"]);
-
 export const ApiProxyTargetConfigSchema = z.object({
   id: ApiProxyIdSchema,
   name: ApiProxyTargetNameSchema,
@@ -506,7 +504,6 @@ export const ApiProxyTargetConfigSchema = z.object({
   saveSlotsBeforeUnload: z.boolean().default(false),
   slotIds: ApiProxyTargetSlotIdsSchema.default([]),
   idleUnloadMs: ApiProxyTargetIdleMsSchema.default(null),
-  anthropicDialect: ApiProxyAnthropicDialectSchema.default("auto"),
 });
 
 export const ApiProxyModelConfigSchema = z.object({
@@ -544,7 +541,6 @@ export const ApiProxyTargetUpdateSchema = z.object({
   saveSlotsBeforeUnload: z.boolean().optional(),
   slotIds: ApiProxyTargetSlotIdsSchema.optional(),
   idleUnloadMs: ApiProxyTargetIdleMsSchema.optional(),
-  anthropicDialect: ApiProxyAnthropicDialectSchema.optional(),
 });
 
 export const ApiProxyModelCreateSchema = ApiProxyModelConfigSchema.omit({
@@ -1660,9 +1656,6 @@ export type ApiProxyTextReplacementRule = z.infer<
 export type ApiProxyPipelineStep = z.infer<typeof ApiProxyPipelineStepSchema>;
 export type ApiProxyPipelineNodeType = z.infer<
   typeof ApiProxyPipelineNodeTypeSchema
->;
-export type ApiProxyAnthropicDialect = z.infer<
-  typeof ApiProxyAnthropicDialectSchema
 >;
 export type ApiProxyTargetConfig = z.infer<typeof ApiProxyTargetConfigSchema>;
 export type ApiProxyTargetCreate = z.infer<typeof ApiProxyTargetCreateSchema>;

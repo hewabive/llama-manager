@@ -1,5 +1,4 @@
 import type {
-  ApiProxyAnthropicDialect,
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyPipelineCreate,
@@ -34,7 +33,6 @@ export type TargetDraft = {
   saveSlotsBeforeUnload: boolean;
   slotIds: string;
   idleUnloadMs: number | "";
-  anthropicDialect: ApiProxyAnthropicDialect;
 };
 
 export type ModelDraft = {
@@ -86,7 +84,6 @@ export const emptyTargetDraft: TargetDraft = {
   saveSlotsBeforeUnload: false,
   slotIds: "",
   idleUnloadMs: "",
-  anthropicDialect: "auto",
 };
 
 export const emptyModelDraft: ModelDraft = {
@@ -183,7 +180,6 @@ export function targetDraftFromRecord(
     saveSlotsBeforeUnload: target.saveSlotsBeforeUnload,
     slotIds: slotIdsText(target.slotIds),
     idleUnloadMs: target.idleUnloadMs ?? "",
-    anthropicDialect: target.anthropicDialect,
   };
 }
 
@@ -228,7 +224,6 @@ export function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
     saveSlotsBeforeUnload: draft.saveSlotsBeforeUnload,
     slotIds: slotIdsFromText(draft.slotIds),
     idleUnloadMs: numberOrNull(draft.idleUnloadMs),
-    anthropicDialect: draft.anthropicDialect,
   };
 }
 

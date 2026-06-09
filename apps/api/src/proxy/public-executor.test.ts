@@ -17,7 +17,6 @@ const target: ApiProxyTargetRecord = {
   endpointId: "instance:instance-a",
   model: "chat",
   role: "interactive",
-  anthropicDialect: "auto",
   priority: 100,
   resourceGroupId: null,
   preemptible: true,

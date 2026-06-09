@@ -28,16 +28,15 @@ already rely on, so Anthropic clients get the same telemetry as OpenAI ones.
 ## When translation applies
 
 Decision: `shouldTranslateAnthropicMessages` (`apps/api/src/proxy/translation.ts`).
-Translation is active when all hold:
+Translation is active when both hold:
 
 - inbound operation is Anthropic `messages` (not `count_tokens`);
 - the resolved catalog endpoint's `profile` is not `"anthropic"` (managed
   instances are generated with `profile: "openai"`; external endpoints carry
-  the user-configured profile);
-- the target's `anthropicDialect` is not `"native"` (`"auto"` is the default;
-  set `"native"` in `config/proxy/targets.json` to force untranslated
-  forwarding to the upstream's own `/v1/messages`).
+  the user-configured profile).
 
+Anthropic-profile external endpoints get verbatim pass-through to their own
+`/v1/messages` — that is the only untranslated path.
 `messages.count_tokens` always forwards natively (llama.cpp implements it).
 Traces record `translated: true` and the UI protocol badge shows
 `anthropic → openai`.

@@ -24,26 +24,21 @@ const messagesOperation = {
 
 test("translation applies to anthropic messages on non-anthropic upstreams", () => {
   assert.equal(
-    shouldTranslateAnthropicMessages(messagesOperation, "openai", "auto"),
+    shouldTranslateAnthropicMessages(messagesOperation, "openai"),
     true,
   );
   assert.equal(
-    shouldTranslateAnthropicMessages(messagesOperation, "llama-native", "auto"),
+    shouldTranslateAnthropicMessages(messagesOperation, "llama-native"),
     true,
   );
   assert.equal(
-    shouldTranslateAnthropicMessages(messagesOperation, "anthropic", "auto"),
-    false,
-  );
-  assert.equal(
-    shouldTranslateAnthropicMessages(messagesOperation, "openai", "native"),
+    shouldTranslateAnthropicMessages(messagesOperation, "anthropic"),
     false,
   );
   assert.equal(
     shouldTranslateAnthropicMessages(
       { ...messagesOperation, endpoint: "messages.count_tokens" },
       "openai",
-      "auto",
     ),
     false,
   );
@@ -51,7 +46,6 @@ test("translation applies to anthropic messages on non-anthropic upstreams", () 
     shouldTranslateAnthropicMessages(
       { ...messagesOperation, protocol: "openai" },
       "openai",
-      "auto",
     ),
     false,
   );

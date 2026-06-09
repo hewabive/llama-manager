@@ -79,7 +79,7 @@ export type ApiProxyResumableToolCall = {
   arguments: string;
 };
 
-export type ApiProxyResumablePromptProgress = {
+type ApiProxyResumablePromptProgress = {
   total: number;
   cache: number;
   processed: number;
