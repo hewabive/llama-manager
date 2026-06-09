@@ -7,12 +7,13 @@ import {
 } from "./resumable-forward.js";
 import {
   anthropicForwardHeaders,
-  createAnthropicTranslationTransform,
+  createAnthropicTranslationStream,
   shouldTranslateAnthropicMessages,
   translateAnthropicForwardBody,
   translateOpenAiErrorText,
   translateOpenAiResponseText,
   translatedAnthropicResumableCodec,
+  type AnthropicTranslationStreamCallbacks,
 } from "./translation.js";
 
 const messagesOperation = {
@@ -113,8 +114,11 @@ test("non-stream response and error bodies translate to anthropic shapes", () =>
   });
 });
 
-async function runTransform(frames: string[]): Promise<string> {
-  const transform = createAnthropicTranslationTransform();
+async function runTransform(
+  frames: string[],
+  callbacks: AnthropicTranslationStreamCallbacks = {},
+): Promise<string> {
+  const { transform } = createAnthropicTranslationStream(callbacks);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
@@ -176,6 +180,68 @@ test("translation transform re-emits anthropic SSE from openai stream", async ()
   assert.ok(output.includes('"text":"Hi"'));
   assert.ok(output.includes('"output_tokens":1'));
   assert.ok(output.includes('"input_tokens":5'));
+});
+
+test("translation stream reports telemetry through emitter extensions", async () => {
+  const prefill: Array<{ total: number; processed: number; cache: number }> =
+    [];
+  const firstTokens: Array<number | null> = [];
+  const completions: Array<{
+    promptTokens: number | null;
+    cacheReadTokens: number | null;
+    completionTokens: number;
+    genMs: number;
+  }> = [];
+
+  await runTransform(
+    [
+      `data: ${JSON.stringify({
+        id: "chatcmpl-1",
+        model: "m",
+        choices: [
+          { index: 0, delta: { role: "assistant" }, finish_reason: null },
+        ],
+        prompt_progress: { total: 40, cache: 8, processed: 24 },
+      })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }],
+        timings: { predicted_ms: 250.4 },
+      })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      })}\n\ndata: ${JSON.stringify({
+        choices: [],
+        usage: {
+          prompt_tokens: 40,
+          completion_tokens: 2,
+          prompt_tokens_details: { cached_tokens: 8 },
+        },
+      })}\n\n`,
+      "data: [DONE]\n\n",
+    ],
+    {
+      onPrefillProgress: (progress) => prefill.push(progress),
+      onFirstToken: (promptTokens) => firstTokens.push(promptTokens),
+      onComplete: (usage) =>
+        completions.push({
+          promptTokens: usage.promptTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          completionTokens: usage.completionTokens,
+          genMs: usage.genMs,
+        }),
+    },
+  );
+
+  assert.deepEqual(prefill, [{ total: 40, processed: 24, cache: 8 }]);
+  assert.deepEqual(firstTokens, [null]);
+  assert.deepEqual(completions, [
+    {
+      promptTokens: 40,
+      cacheReadTokens: 8,
+      completionTokens: 2,
+      genMs: 250,
+    },
+  ]);
 });
 
 function openAiFrame(input: { content?: string; finish?: string }) {

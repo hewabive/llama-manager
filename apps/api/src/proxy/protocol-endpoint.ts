@@ -29,7 +29,6 @@ import {
   openAiModelsList,
   openAiProtocolAdapter,
   openAiResponsesUsageCodec,
-  openAiResumableCodec,
 } from "./openai.js";
 import { resolveApiProxyRouteChain } from "./pipeline.js";
 import {
@@ -60,7 +59,7 @@ import { extractRequestApiKey, resolveApiProxySourceByKey } from "./sources.js";
 import { apiProxyStats } from "./stats.js";
 import { resolveApiProxyTarget } from "./targets.js";
 import {
-  createAnthropicTranslationTransform,
+  createAnthropicTranslationStream,
   prepareUpstreamExchange,
   shouldTranslateAnthropicMessages,
   translateOpenAiErrorText,
@@ -75,6 +74,7 @@ import {
   usageFromNonStreamBody,
   withIncludeUsage,
   withReturnProgress,
+  type ProxyUsageCounts,
 } from "./usage-meter.js";
 
 async function safeJsonBody(c: Context) {
@@ -611,19 +611,21 @@ async function proxyProtocolEndpointInner(
       headers: c.req.raw.headers,
     });
 
-    const streamMeter: StreamUsageMeter | null = route.request.stream
-      ? translateAnthropic
-        ? { codec: openAiResumableCodec, inject: true, strip: false }
-        : resolveStreamUsageMeter(operation, adapter, route.request.body)
-      : null;
+    const streamMeter: StreamUsageMeter | null =
+      route.request.stream && !translateAnthropic
+        ? resolveStreamUsageMeter(operation, adapter, route.request.body)
+        : null;
+    const injectUsage = translateAnthropic
+      ? route.request.stream
+      : (streamMeter?.inject ?? false);
     const wantsPrefillProgress =
-      streamMeter !== null &&
-      exchange.protocol === "openai" &&
-      (operation.endpoint === "chat.completions" || translateAnthropic) &&
-      instanceId !== null;
+      instanceId !== null &&
+      (translateAnthropic
+        ? route.request.stream
+        : streamMeter !== null && operation.endpoint === "chat.completions");
     const injectPrefillProgress =
       wantsPrefillProgress && !returnProgressRequested(exchange.body);
-    let forwardBody = streamMeter?.inject
+    let forwardBody = injectUsage
       ? withIncludeUsage(exchange.body)
       : exchange.body;
     if (injectPrefillProgress) {
@@ -706,46 +708,64 @@ async function proxyProtocolEndpointInner(
         });
       }
 
+      let metered: Response | undefined;
+      const onStreamComplete = (usage: ProxyUsageCounts) => {
+        trace.usage = {
+          promptTokens: usage.promptTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          cacheCreationTokens: usage.cacheCreationTokens,
+          completionTokens: usage.completionTokens,
+          genMs: Math.round(usage.genMs),
+          ratePerSecond: ratePerSecondFromUsage(usage),
+          prefillMs: usage.prefillMs,
+          promptPerSecond: usage.promptPerSecond,
+        };
+        const task = resolveSlot();
+        void applyServerGenerationTiming(trace, instanceId, task).finally(() =>
+          recorder.record(metered),
+        );
+      };
+
+      if (translateAnthropic) {
+        const translation = createAnthropicTranslationStream({
+          onFirstToken: markFirstToken,
+          onProgress: markProgress,
+          onPrefillProgress: markPrefillProgress,
+          onComplete: onStreamComplete,
+        });
+        metered = new Response(
+          upstream.body.pipeThrough(translation.transform),
+          {
+            status: upstream.status,
+            headers: upstream.headers,
+          },
+        );
+        recorder.markDeferred();
+        c.req.raw.signal.addEventListener(
+          "abort",
+          () => translation.finalize(),
+          { once: true },
+        );
+        return metered;
+      }
+
       if (!streamMeter) {
         return upstream;
       }
 
-      let metered: Response | undefined;
-      const stripUsageFrames = streamMeter.strip;
       const meter = createUsageMeterStream({
         codec: streamMeter.codec,
-        stripUsageFrames,
-        stripProgressFrames: translateAnthropic ? false : injectPrefillProgress,
+        stripUsageFrames: streamMeter.strip,
+        stripProgressFrames: injectPrefillProgress,
         onFirstToken: markFirstToken,
         onProgress: markProgress,
         onPrefillProgress: markPrefillProgress,
-        onComplete: (usage) => {
-          trace.usage = {
-            promptTokens: usage.promptTokens,
-            cacheReadTokens: usage.cacheReadTokens,
-            cacheCreationTokens: usage.cacheCreationTokens,
-            completionTokens: usage.completionTokens,
-            genMs: Math.round(usage.genMs),
-            ratePerSecond: ratePerSecondFromUsage(usage),
-            prefillMs: usage.prefillMs,
-            promptPerSecond: usage.promptPerSecond,
-          };
-          const task = resolveSlot();
-          void applyServerGenerationTiming(trace, instanceId, task).finally(
-            () => recorder.record(metered),
-          );
-        },
+        onComplete: onStreamComplete,
       });
-      const meteredBody = upstream.body.pipeThrough(meter.transform);
-      metered = new Response(
-        translateAnthropic
-          ? meteredBody.pipeThrough(createAnthropicTranslationTransform())
-          : meteredBody,
-        {
-          status: upstream.status,
-          headers: upstream.headers,
-        },
-      );
+      metered = new Response(upstream.body.pipeThrough(meter.transform), {
+        status: upstream.status,
+        headers: upstream.headers,
+      });
       recorder.markDeferred();
       c.req.raw.signal.addEventListener("abort", () => meter.finalize(), {
         once: true,

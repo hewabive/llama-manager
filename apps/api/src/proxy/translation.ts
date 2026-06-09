@@ -6,6 +6,8 @@ import {
   translateAnthropicRequest,
   translateOpenAiError,
   translateOpenAiResponse,
+  type AnthropicSsePushResult,
+  type AnthropicStreamEvent,
 } from "@llama-manager/anthropic-openai-bridge";
 
 import { anthropicResumableCodec } from "./anthropic.js";
@@ -15,6 +17,16 @@ import type {
   ApiProxyProtocolOperation,
   ApiProxyResumableCodec,
 } from "./protocol.js";
+import { createSseFrameBuffer, sseDataPayloads } from "./sse.js";
+import {
+  openaiCachedTokens,
+  type ProxyPrefillProgress,
+  type ProxyUsageCounts,
+} from "./usage-meter.js";
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 const llamaServerRequestOptions = {
   namedToolChoice: "filter" as const,
@@ -116,55 +128,116 @@ export function anthropicForwardHeaders(headers: Headers): Headers {
   return filtered;
 }
 
-export function createAnthropicTranslationTransform(): TransformStream<
-  Uint8Array,
-  Uint8Array
-> {
+export type AnthropicTranslationStreamCallbacks = {
+  onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onProgress?: ((completionTokens: number) => void) | undefined;
+  onPrefillProgress?: ((progress: ProxyPrefillProgress) => void) | undefined;
+  onComplete?: ((usage: ProxyUsageCounts) => void) | undefined;
+};
+
+export type AnthropicTranslationStream = {
+  transform: TransformStream<Uint8Array, Uint8Array>;
+  finalize: () => void;
+};
+
+function visibleContentStart(event: AnthropicStreamEvent): boolean {
+  return (
+    event.type === "content_block_start" &&
+    event.content_block.type !== "thinking"
+  );
+}
+
+export function createAnthropicTranslationStream(
+  callbacks: AnthropicTranslationStreamCallbacks = {},
+): AnthropicTranslationStream {
   const emitter = createAnthropicSseEmitter();
-  const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let pending = "";
+  const frames = createSseFrameBuffer();
+  let promptTokens: number | null = null;
+  let cacheReadTokens: number | null = null;
+  let completionTokens = 0;
+  let genMs: number | null = null;
+  let firstTokenSeen = false;
+  let done = false;
+
+  const observe = ({ events, extensions }: AnthropicSsePushResult) => {
+    if (extensions.promptProgress) {
+      callbacks.onPrefillProgress?.(extensions.promptProgress);
+    }
+    if (extensions.timings) {
+      const predicted = numberOrNull(extensions.timings.predicted_ms);
+      if (predicted !== null) {
+        genMs = predicted;
+      }
+    }
+    if (extensions.usage) {
+      const completion = numberOrNull(extensions.usage.completion_tokens);
+      if (completion !== null) {
+        completionTokens += completion;
+      }
+      if (promptTokens === null) {
+        promptTokens = numberOrNull(extensions.usage.prompt_tokens);
+      }
+      if (cacheReadTokens === null) {
+        cacheReadTokens = openaiCachedTokens(extensions.usage);
+      }
+    }
+    if (!firstTokenSeen && events.some(visibleContentStart)) {
+      firstTokenSeen = true;
+      callbacks.onFirstToken?.(promptTokens);
+    }
+    callbacks.onProgress?.(completionTokens);
+  };
 
   const handleFrame = (
     frame: string,
     controller: TransformStreamDefaultController<Uint8Array>,
   ) => {
-    for (const line of frame.split("\n")) {
-      const trimmed = line.trimStart();
-      if (!trimmed.startsWith("data:")) {
-        continue;
-      }
-      const data = trimmed.slice("data:".length).trim();
-      if (!data) {
-        continue;
-      }
-      const { events } = emitter.push(data);
-      if (events.length > 0) {
-        controller.enqueue(encoder.encode(serializeAnthropicSseEvents(events)));
+    for (const data of sseDataPayloads(frame)) {
+      const result = emitter.push(data);
+      observe(result);
+      if (result.events.length > 0) {
+        controller.enqueue(
+          encoder.encode(serializeAnthropicSseEvents(result.events)),
+        );
       }
     }
   };
 
-  return new TransformStream<Uint8Array, Uint8Array>({
+  const finalize = () => {
+    if (done) {
+      return;
+    }
+    done = true;
+    callbacks.onComplete?.({
+      promptTokens,
+      cacheReadTokens,
+      cacheCreationTokens: null,
+      completionTokens,
+      genMs: genMs !== null ? Math.round(genMs) : 0,
+      prefillMs: null,
+      promptPerSecond: null,
+    });
+  };
+
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
-      pending += decoder.decode(chunk, { stream: true });
-      let index = pending.indexOf("\n\n");
-      while (index !== -1) {
-        const frame = pending.slice(0, index);
-        pending = pending.slice(index + 2);
+      for (const frame of frames.push(chunk)) {
         handleFrame(frame, controller);
-        index = pending.indexOf("\n\n");
       }
     },
     flush(controller) {
-      pending += decoder.decode();
-      if (pending.trim()) {
-        handleFrame(pending, controller);
+      const tail = frames.flush();
+      if (tail) {
+        handleFrame(tail, controller);
       }
       const events = emitter.finish();
       if (events.length > 0) {
         controller.enqueue(encoder.encode(serializeAnthropicSseEvents(events)));
       }
+      finalize();
     },
   });
+
+  return { transform, finalize };
 }
