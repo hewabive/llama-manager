@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { absoluteUrl } from "../../api/base.js";
 import {
   getApiProxyConfig,
+  listApiProxySources,
   runApiLabProbe,
   streamApiLabProbe,
 } from "../../api/client";
@@ -115,11 +116,23 @@ export function ApiLabView(props: {
   const [baseUrl, setBaseUrl] = useState("");
   const [quickTarget, setQuickTarget] = useState<string | null>(null);
   const [protocol, setProtocol] = useState<ApiLabProbeProfile>("openai");
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const baseUrlTouchedRef = useRef(false);
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
     queryFn: getApiProxyConfig,
   });
+  const sourcesQuery = useQuery({
+    queryKey: ["api-proxy-sources"],
+    queryFn: listApiProxySources,
+  });
+  const sourceOptions = useMemo(
+    () =>
+      (sourcesQuery.data?.data ?? [])
+        .filter((source) => source.enabled && source.keyConfigured)
+        .map((source) => ({ value: source.id, label: source.name })),
+    [sourcesQuery.data?.data],
+  );
 
   const proxyModelOptions = useMemo<ModelOption[]>(
     () =>
@@ -310,6 +323,12 @@ export function ApiLabView(props: {
     }
   }, [protocol, nativeTargetSelected]);
 
+  useEffect(() => {
+    if (sourceId && !sourceOptions.some((option) => option.value === sourceId)) {
+      setSourceId(null);
+    }
+  }, [sourceId, sourceOptions]);
+
   const requestOptions = profileRequestOptions[protocol];
   const baseUrlPlaceholder = "http://127.0.0.1:8080/v1";
 
@@ -370,6 +389,18 @@ export function ApiLabView(props: {
             }
           }}
         />
+        {sourceOptions.length > 0 && (
+          <Select
+            clearable
+            label="Request source"
+            description="Sends the request with this source's API key"
+            data={sourceOptions}
+            value={sourceId}
+            placeholder="Anonymous"
+            onChange={setSourceId}
+            style={{ width: 220 }}
+          />
+        )}
       </Group>
 
       <ApiProbePanel
@@ -390,6 +421,7 @@ export function ApiLabView(props: {
             profile: protocol,
             baseUrl: normalizeBaseUrlForProfile(protocol, baseUrl),
             endpointId: matchedQuickTarget?.endpointId,
+            ...(sourceId ? { sourceId } : {}),
             probe,
           })
         }
@@ -399,6 +431,7 @@ export function ApiLabView(props: {
               profile: protocol,
               baseUrl: normalizeBaseUrlForProfile(protocol, baseUrl),
               endpointId: matchedQuickTarget?.endpointId,
+              ...(sourceId ? { sourceId } : {}),
               probe,
             },
             callbacks,

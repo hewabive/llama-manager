@@ -161,6 +161,10 @@ function assertUniqueKey(
   }
 }
 
+export function getApiProxySourceKey(id: string): string | null {
+  return readSecret(sourceSecretId(id));
+}
+
 export function extractRequestApiKey(headers: Headers): string | null {
   const apiKeyHeader = headers.get("x-api-key");
   if (apiKeyHeader && apiKeyHeader.trim()) {

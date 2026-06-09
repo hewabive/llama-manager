@@ -382,6 +382,7 @@ export const ApiLabProbeTargetRequestSchema = z
     profile: ApiLabProbeProfileSchema,
     baseUrl: z.string().trim().min(1).max(2_000).optional(),
     endpointId: ApiEndpointIdSchema.optional(),
+    sourceId: z.string().trim().min(1).max(80).optional(),
     probe: ApiProbeRequestSchema,
   })
   .superRefine((input, ctx) => {

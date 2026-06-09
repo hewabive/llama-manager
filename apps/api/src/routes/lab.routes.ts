@@ -19,6 +19,7 @@ import {
   apiEndpointAuthHeaders,
   getApiEndpointFromCatalog,
 } from "../proxy/endpoints.js";
+import { getApiProxySource, getApiProxySourceKey } from "../proxy/sources.js";
 import {
   apiVersionBaseUrl,
   normalizeHttpBaseUrl,
@@ -47,12 +48,33 @@ function apiLabProfileHeaders(
   return profile === "anthropic" ? { "anthropic-version": "2023-06-01" } : {};
 }
 
+function sourceAuthHeaders(
+  profile: ApiLabProbeProfile,
+  sourceId: string,
+): Record<string, string> {
+  const source = getApiProxySource(sourceId);
+  if (!source) {
+    throw new Error("request source not found");
+  }
+  const key = getApiProxySourceKey(sourceId);
+  if (!key) {
+    throw new Error(`request source has no API key: ${source.name}`);
+  }
+  return profile === "anthropic"
+    ? { "x-api-key": key }
+    : { authorization: `Bearer ${key}` };
+}
+
 function resolveApiLabEndpoint(input: {
   profile: ApiLabProbeProfile;
   baseUrl?: string | undefined;
   endpointId?: string | undefined;
+  sourceId?: string | undefined;
 }) {
   const profileHeaders = apiLabProfileHeaders(input.profile);
+  const sourceHeaders = input.sourceId
+    ? sourceAuthHeaders(input.profile, input.sourceId)
+    : {};
   if (input.endpointId) {
     const endpoint = getApiEndpointFromCatalog(
       input.endpointId,
@@ -67,7 +89,7 @@ function resolveApiLabEndpoint(input: {
     }
     return {
       baseUrl: normalizeApiLabBaseUrl(input.profile, endpoint.baseUrl),
-      headers: { ...profileHeaders, ...auth.headers },
+      headers: { ...profileHeaders, ...auth.headers, ...sourceHeaders },
     };
   }
 
@@ -76,7 +98,7 @@ function resolveApiLabEndpoint(input: {
   }
   return {
     baseUrl: normalizeApiLabBaseUrl(input.profile, input.baseUrl),
-    headers: profileHeaders,
+    headers: { ...profileHeaders, ...sourceHeaders },
   };
 }
 
@@ -122,6 +144,7 @@ export function registerLabRoutes(app: Hono) {
         profile,
         baseUrl: parsed.data.baseUrl,
         endpointId: parsed.data.endpointId,
+        sourceId: parsed.data.sourceId,
       });
       const data = await requestApiLabProbeBaseUrl(
         profile,
@@ -154,6 +177,7 @@ export function registerLabRoutes(app: Hono) {
         profile: parsed.data.profile,
         baseUrl: parsed.data.baseUrl,
         endpointId: parsed.data.endpointId,
+        sourceId: parsed.data.sourceId,
       });
       target = apiLabProbeTargetFromBaseUrl(
         parsed.data.profile,
