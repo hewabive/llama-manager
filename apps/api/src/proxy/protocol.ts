@@ -79,6 +79,12 @@ export type ApiProxyResumableToolCall = {
   arguments: string;
 };
 
+export type ApiProxyResumablePromptProgress = {
+  total: number;
+  cache: number;
+  processed: number;
+};
+
 type ApiProxyResumableStreamChunk = {
   text: string;
   finishReason: string | null;
@@ -89,6 +95,7 @@ type ApiProxyResumableStreamChunk = {
   genMs?: number | undefined;
   phase?: ApiProxyResumablePhase | undefined;
   toolCall?: ApiProxyResumableToolCallDelta | undefined;
+  promptProgress?: ApiProxyResumablePromptProgress | undefined;
 };
 
 export type ApiProxyResumableFinalResponse = {

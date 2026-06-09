@@ -89,7 +89,12 @@ export function ProxyView() {
   const runtimeQuery = useQuery({
     queryKey: ["api-proxy-runtime"],
     queryFn: getApiProxyRuntime,
-    refetchInterval: 5_000,
+    refetchInterval: (query) =>
+      query.state.data?.data.targets.some(
+        (target) => target.inflight.length > 0,
+      )
+        ? 1_000
+        : 5_000,
   });
   const statsQuery = useQuery({
     queryKey: ["api-proxy-stats"],

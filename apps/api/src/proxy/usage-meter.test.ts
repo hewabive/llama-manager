@@ -6,8 +6,11 @@ import { openAiResponsesUsageCodec, openAiResumableCodec } from "./openai.js";
 import {
   createUsageMeterStream,
   includeUsageRequested,
+  returnProgressRequested,
   usageFromNonStreamBody,
   withIncludeUsage,
+  withReturnProgress,
+  type ProxyPrefillProgress,
   type ProxyUsageCounts,
 } from "./usage-meter.js";
 
@@ -25,7 +28,21 @@ test("usageFromNonStreamBody reads OpenAI usage and timings", () => {
     cacheCreationTokens: null,
     completionTokens: 7,
     genMs: 350,
+    prefillMs: null,
+    promptPerSecond: null,
   });
+});
+
+test("usageFromNonStreamBody reads OpenAI prompt timings", () => {
+  const usage = usageFromNonStreamBody(
+    "openai",
+    JSON.stringify({
+      usage: { prompt_tokens: 11, completion_tokens: 7 },
+      timings: { predicted_ms: 350, prompt_ms: 128.4, prompt_per_second: 85.6 },
+    }),
+  );
+  assert.equal(usage?.prefillMs, 128);
+  assert.equal(usage?.promptPerSecond, 85.6);
 });
 
 test("usageFromNonStreamBody rounds fractional genMs to integer", () => {
@@ -51,6 +68,8 @@ test("usageFromNonStreamBody reads Anthropic usage", () => {
     cacheCreationTokens: null,
     completionTokens: 9,
     genMs: 0,
+    prefillMs: null,
+    promptPerSecond: null,
   });
 });
 
@@ -92,6 +111,8 @@ test("usageFromNonStreamBody reads OpenAI Responses input/output tokens", () => 
     cacheCreationTokens: null,
     completionTokens: 8,
     genMs: 0,
+    prefillMs: null,
+    promptPerSecond: null,
   });
 });
 
@@ -128,6 +149,8 @@ test("usageFromNonStreamBody sums Anthropic cache input tokens", () => {
     cacheCreationTokens: 12,
     completionTokens: 9,
     genMs: 0,
+    prefillMs: null,
+    promptPerSecond: null,
   });
 });
 
@@ -202,6 +225,8 @@ test("createUsageMeterStream strips synthetic usage frame and meters tokens", as
     cacheCreationTokens: null,
     completionTokens: 4,
     genMs: 0,
+    prefillMs: null,
+    promptPerSecond: null,
   });
   assert.equal(Number.isInteger(counted?.genMs), true);
 });
@@ -238,6 +263,8 @@ test("createUsageMeterStream reports upstream predicted_ms as genMs", async () =
     cacheCreationTokens: null,
     completionTokens: 4,
     genMs: 2000,
+    prefillMs: null,
+    promptPerSecond: null,
   });
 });
 
@@ -366,4 +393,81 @@ test("createUsageMeterStream meters OpenAI Responses stream", async () => {
   assert.equal(counted?.promptTokens, 30);
   assert.equal(counted?.cacheReadTokens, 25);
   assert.equal(counted?.completionTokens, 5);
+});
+
+test("returnProgressRequested / withReturnProgress", () => {
+  assert.equal(returnProgressRequested({ return_progress: true }), true);
+  assert.equal(returnProgressRequested({ return_progress: false }), false);
+  assert.equal(returnProgressRequested({}), false);
+  assert.deepEqual(withReturnProgress({ model: "m" }), {
+    model: "m",
+    return_progress: true,
+  });
+});
+
+test("createUsageMeterStream reports prefill progress and strips injected progress frames", async () => {
+  const progress: ProxyPrefillProgress[] = [];
+  const meter = createUsageMeterStream({
+    codec: openAiResumableCodec,
+    stripUsageFrames: true,
+    stripProgressFrames: true,
+    onComplete: () => {},
+    onPrefillProgress: (p) => {
+      progress.push(p);
+    },
+  });
+
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        openAiFrames([
+          `data: ${JSON.stringify({ choices: [{ delta: { role: "assistant", content: null }, finish_reason: null }], prompt_progress: { total: 100, cache: 10, processed: 40 } })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: { role: "assistant", content: null }, finish_reason: null }], prompt_progress: { total: 100, cache: 10, processed: 100 } })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Hi" } }] })}`,
+          `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 1 } })}`,
+          "data: [DONE]",
+        ]),
+      );
+      controller.close();
+    },
+  });
+
+  const out = await drain(input.pipeThrough(meter.transform));
+  assert.deepEqual(progress, [
+    { total: 100, cache: 10, processed: 40 },
+    { total: 100, cache: 10, processed: 100 },
+  ]);
+  assert.equal(out.includes("prompt_progress"), false);
+  assert.equal(out.includes("Hi"), true);
+  assert.equal(out.includes("[DONE]"), true);
+});
+
+test("createUsageMeterStream keeps progress frames when not stripping", async () => {
+  const progress: ProxyPrefillProgress[] = [];
+  const meter = createUsageMeterStream({
+    codec: openAiResumableCodec,
+    stripUsageFrames: false,
+    stripProgressFrames: false,
+    onComplete: () => {},
+    onPrefillProgress: (p) => {
+      progress.push(p);
+    },
+  });
+
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        openAiFrames([
+          `data: ${JSON.stringify({ choices: [{ delta: { role: "assistant", content: null } }], prompt_progress: { total: 50, cache: 0, processed: 25 } })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}`,
+          "data: [DONE]",
+        ]),
+      );
+      controller.close();
+    },
+  });
+
+  const out = await drain(input.pipeThrough(meter.transform));
+  assert.deepEqual(progress, [{ total: 50, cache: 0, processed: 25 }]);
+  assert.equal(out.includes("prompt_progress"), true);
 });

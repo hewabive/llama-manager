@@ -669,6 +669,8 @@ export const ApiProxyTraceUsageSchema = z.object({
   completionTokens: z.number().int().min(0).default(0),
   genMs: z.number().int().min(0).default(0),
   ratePerSecond: z.number().min(0).nullable().default(null),
+  prefillMs: z.number().int().min(0).nullable().default(null),
+  promptPerSecond: z.number().min(0).nullable().default(null),
 });
 
 export const ApiProxyRequestTraceSchema = z.object({
@@ -694,6 +696,8 @@ export const ApiProxyRequestTraceSchema = z.object({
   errorCode: z.string().nullable().default(null),
   errorMessage: z.string().nullable().default(null),
   durationMs: z.number().int().min(0).default(0),
+  queueMs: z.number().int().min(0).nullable().default(null),
+  ttftMs: z.number().int().min(0).nullable().default(null),
 });
 
 export const ApiProxyStatsModelEntrySchema = z.object({
@@ -735,6 +739,28 @@ export const ApiProxyRuntimeMetadataRecordSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const ApiProxyInflightPhaseSchema = z.enum([
+  "queued",
+  "prefilling",
+  "generating",
+]);
+
+export const ApiProxyInflightRequestSchema = z.object({
+  id: z.string(),
+  modelId: z.string(),
+  protocol: z.enum(["openai", "anthropic"]),
+  stream: z.boolean(),
+  phase: ApiProxyInflightPhaseSchema,
+  waitingMs: z.number().int().min(0),
+  prefillMs: z.number().int().min(0).nullable().default(null),
+  generatingMs: z.number().int().min(0).nullable().default(null),
+  promptTokens: z.number().int().min(0).nullable().default(null),
+  completionTokens: z.number().int().min(0).default(0),
+  prefillTotalTokens: z.number().int().min(0).nullable().default(null),
+  prefillProcessedTokens: z.number().int().min(0).nullable().default(null),
+  prefillCachedTokens: z.number().int().min(0).nullable().default(null),
+});
+
 export const ApiProxyTargetRuntimeSchema = z.object({
   targetId: ApiProxyIdSchema,
   kind: ApiProxyTargetKindSchema,
@@ -747,6 +773,7 @@ export const ApiProxyTargetRuntimeSchema = z.object({
   idleSince: z.string().nullable().default(null),
   lastRequestAt: z.string().nullable().default(null),
   savedSlotIds: z.array(z.number().int().min(0)).default([]),
+  inflight: z.array(ApiProxyInflightRequestSchema).default([]),
 });
 
 export const ApiProxyTargetPlanInputSchema = ApiProxyTargetConfigSchema.extend({
@@ -1676,6 +1703,10 @@ export type ApiProxyStatsBucket = z.infer<typeof ApiProxyStatsBucketSchema>;
 export type ApiProxyStatsSnapshot = z.infer<typeof ApiProxyStatsSnapshotSchema>;
 export type ApiProxyRuntimeMetadataRecord = z.infer<
   typeof ApiProxyRuntimeMetadataRecordSchema
+>;
+export type ApiProxyInflightPhase = z.infer<typeof ApiProxyInflightPhaseSchema>;
+export type ApiProxyInflightRequest = z.infer<
+  typeof ApiProxyInflightRequestSchema
 >;
 export type ApiProxyTargetRuntime = z.infer<typeof ApiProxyTargetRuntimeSchema>;
 export type ApiProxyTargetPlanInput = z.infer<

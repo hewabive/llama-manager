@@ -6,6 +6,8 @@ export type ProxyUsageCounts = {
   cacheCreationTokens: number | null;
   completionTokens: number;
   genMs: number;
+  prefillMs: number | null;
+  promptPerSecond: number | null;
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -80,6 +82,9 @@ export function usageFromNonStreamBody(
   }
   const timings = asObject(obj?.timings);
   const predictedMs = timings ? (numberOrNull(timings.predicted_ms) ?? 0) : 0;
+  const promptMs = timings ? numberOrNull(timings.prompt_ms) : null;
+  const promptPerSecond = timings ? numberOrNull(timings.prompt_per_second) : null;
+  const prefillMs = promptMs === null ? null : Math.round(promptMs);
   if (protocol === "anthropic") {
     const completionTokens = numberOrNull(usage.output_tokens);
     if (completionTokens === null) {
@@ -91,6 +96,8 @@ export function usageFromNonStreamBody(
       cacheCreationTokens: anthropicCacheCreationTokens(usage),
       completionTokens,
       genMs: Math.round(predictedMs),
+      prefillMs,
+      promptPerSecond,
     };
   }
   const completionTokens =
@@ -105,6 +112,8 @@ export function usageFromNonStreamBody(
     cacheCreationTokens: null,
     completionTokens,
     genMs: Math.round(predictedMs),
+    prefillMs,
+    promptPerSecond,
   };
 }
 
@@ -125,6 +134,18 @@ export function withIncludeUsage(body: unknown): unknown {
   };
 }
 
+export function returnProgressRequested(body: unknown): boolean {
+  return asObject(body)?.return_progress === true;
+}
+
+export function withReturnProgress(body: unknown): unknown {
+  const obj = asObject(body);
+  if (!obj) {
+    return body;
+  }
+  return { ...obj, return_progress: true };
+}
+
 export function ratePerSecondFromUsage(usage: ProxyUsageCounts): number | null {
   return usage.completionTokens > 0 && usage.genMs > 0
     ? usage.completionTokens / (usage.genMs / 1000)
@@ -136,12 +157,30 @@ export type UsageMeterStream = {
   finalize: () => void;
 };
 
+export type ProxyPrefillProgress = {
+  total: number;
+  processed: number;
+  cache: number;
+};
+
 export function createUsageMeterStream(input: {
   codec: Pick<ApiProxyResumableCodec, "parseChunk">;
   stripUsageFrames: boolean;
+  stripProgressFrames?: boolean;
   onComplete: (usage: ProxyUsageCounts) => void;
+  onFirstToken?: (promptTokens: number | null) => void;
+  onProgress?: (completionTokens: number) => void;
+  onPrefillProgress?: (progress: ProxyPrefillProgress) => void;
 }): UsageMeterStream {
-  const { codec, stripUsageFrames, onComplete } = input;
+  const {
+    codec,
+    stripUsageFrames,
+    stripProgressFrames = false,
+    onComplete,
+    onFirstToken,
+    onProgress,
+    onPrefillProgress,
+  } = input;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let pending = "";
@@ -150,6 +189,7 @@ export function createUsageMeterStream(input: {
   let cacheCreationTokens: number | null = null;
   let completionTokens = 0;
   let upstreamGenMs: number | null = null;
+  let firstTokenSeen = false;
   let done = false;
 
   const observeFrame = (frame: string): boolean => {
@@ -169,6 +209,18 @@ export function createUsageMeterStream(input: {
       }
       if (typeof chunk.genMs === "number") {
         upstreamGenMs = chunk.genMs;
+      }
+      if (chunk.promptProgress) {
+        onPrefillProgress?.(chunk.promptProgress);
+        if (
+          stripProgressFrames &&
+          chunk.text === "" &&
+          !chunk.toolCall &&
+          chunk.finishReason === null &&
+          !chunk.usage
+        ) {
+          keep = false;
+        }
       }
       if (chunk.usage) {
         if (typeof chunk.usage.completionTokens === "number") {
@@ -201,6 +253,11 @@ export function createUsageMeterStream(input: {
           keep = false;
         }
       }
+      if (!firstTokenSeen && (chunk.text !== "" || chunk.toolCall)) {
+        firstTokenSeen = true;
+        onFirstToken?.(promptTokens);
+      }
+      onProgress?.(completionTokens);
     }
     return keep;
   };
@@ -216,12 +273,15 @@ export function createUsageMeterStream(input: {
       cacheCreationTokens,
       completionTokens,
       genMs: upstreamGenMs !== null ? Math.round(upstreamGenMs) : 0,
+      prefillMs: null,
+      promptPerSecond: null,
     });
   };
 
+  const filterFrames = stripUsageFrames || stripProgressFrames;
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
-      if (!stripUsageFrames) {
+      if (!filterFrames) {
         controller.enqueue(chunk);
       }
       pending += decoder.decode(chunk, { stream: true });
@@ -230,7 +290,7 @@ export function createUsageMeterStream(input: {
         const frame = pending.slice(0, index);
         pending = pending.slice(index + 2);
         const keep = observeFrame(frame);
-        if (stripUsageFrames && keep) {
+        if (filterFrames && keep) {
           controller.enqueue(encoder.encode(`${frame}\n\n`));
         }
         index = pending.indexOf("\n\n");
@@ -240,7 +300,7 @@ export function createUsageMeterStream(input: {
       pending += decoder.decode();
       if (pending.trim()) {
         const keep = observeFrame(pending);
-        if (stripUsageFrames && keep) {
+        if (filterFrames && keep) {
           controller.enqueue(encoder.encode(pending));
         }
       }

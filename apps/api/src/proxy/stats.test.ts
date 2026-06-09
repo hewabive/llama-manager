@@ -29,6 +29,8 @@ function trace(
     errorCode: null,
     errorMessage: null,
     durationMs: 0,
+    queueMs: null,
+    ttftMs: null,
     ...over,
   };
 }
@@ -51,6 +53,8 @@ test("aggregates totals, per-model breakdown, rate and error counts", () => {
         completionTokens: 100,
         genMs: 1000,
         ratePerSecond: 100,
+        prefillMs: null,
+        promptPerSecond: null,
       },
     }),
   );
@@ -68,6 +72,8 @@ test("aggregates totals, per-model breakdown, rate and error counts", () => {
         completionTokens: 50,
         genMs: 1000,
         ratePerSecond: 50,
+        prefillMs: null,
+        promptPerSecond: null,
       },
     }),
   );

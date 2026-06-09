@@ -118,6 +118,7 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
       Number.isFinite(timings.predicted_ms)
         ? timings.predicted_ms
         : null;
+    const promptProgress = asObject(event.prompt_progress);
 
     const deltaToolCalls = Array.isArray(delta?.tool_calls)
       ? delta.tool_calls
@@ -156,6 +157,20 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
       ...(phase ? { phase } : {}),
       ...(toolCall ? { toolCall } : {}),
       ...(predictedMs !== null ? { genMs: Math.round(predictedMs) } : {}),
+      ...(promptProgress &&
+      typeof promptProgress.total === "number" &&
+      typeof promptProgress.processed === "number"
+        ? {
+            promptProgress: {
+              total: promptProgress.total,
+              processed: promptProgress.processed,
+              cache:
+                typeof promptProgress.cache === "number"
+                  ? promptProgress.cache
+                  : 0,
+            },
+          }
+        : {}),
       ...(usage
         ? {
             usage: {

@@ -4,6 +4,8 @@ import { supervisor } from "../process/supervisor.js";
 const SELECTION_PATTERN =
   /slot\s+\S+:\s+id\s+(-?\d+)\s+\|\s+task\s+(-?\d+)\s+\|\s+selected slot by\s+(LCP|LRU)/;
 const RESTORE_PATTERN = /found better prompt with/;
+const PROMPT_TIMING_PATTERN =
+  /task\s+(-?\d+)\s+\|\s+prompt eval time\s+=\s+([\d.]+)\s+ms\s+\/\s+(\d+)\s+tokens\s+\(\s*[\d.]+\s+ms per token,\s+([\d.]+)\s+tokens per second\)/;
 const TIMING_PATTERN =
   /task\s+(-?\d+)\s+\|\s+eval time\s+=\s+([\d.]+)\s+ms\s+\/\s+(\d+)\s+tokens\s+\(\s*[\d.]+\s+ms per token,\s+([\d.]+)\s+tokens per second\)/;
 
@@ -22,6 +24,15 @@ export type ApiProxyGenerationTiming = {
   genMs: number;
   completionTokens: number;
   tokensPerSecond: number;
+  prefillMs: number | null;
+  promptTokens: number | null;
+  promptPerSecond: number | null;
+};
+
+type PrefillTiming = {
+  prefillMs: number;
+  promptTokens: number;
+  promptPerSecond: number;
 };
 
 type Selection = {
@@ -42,6 +53,7 @@ export class ApiProxySlotTracker {
     string,
     Map<number, ApiProxyGenerationTiming>
   >();
+  private readonly prefills = new Map<string, Map<number, PrefillTiming>>();
   private readonly waiters = new Map<string, Map<number, TimingWaiter[]>>();
 
   observe(event: ProcessEvent): void {
@@ -83,6 +95,26 @@ export class ApiProxySlotTracker {
       this.restores.set(instanceId, ++this.seq);
       return;
     }
+    const prefill = PROMPT_TIMING_PATTERN.exec(line);
+    if (prefill) {
+      const task = Number(prefill[1]);
+      const prefillMs = Number(prefill[2]);
+      const promptTokens = Number(prefill[3]);
+      const promptPerSecond = Number(prefill[4]);
+      if (
+        Number.isInteger(task) &&
+        Number.isFinite(prefillMs) &&
+        Number.isInteger(promptTokens) &&
+        Number.isFinite(promptPerSecond)
+      ) {
+        this.recordPrefill(instanceId, task, {
+          prefillMs,
+          promptTokens,
+          promptPerSecond,
+        });
+      }
+      return;
+    }
     const timing = TIMING_PATTERN.exec(line);
     if (timing) {
       const task = Number(timing[1]);
@@ -104,11 +136,42 @@ export class ApiProxySlotTracker {
     }
   }
 
+  private recordPrefill(
+    instanceId: string,
+    task: number,
+    prefill: PrefillTiming,
+  ): void {
+    let perInstance = this.prefills.get(instanceId);
+    if (!perInstance) {
+      perInstance = new Map();
+      this.prefills.set(instanceId, perInstance);
+    }
+    perInstance.set(task, prefill);
+    while (perInstance.size > MAX_TIMINGS_PER_INSTANCE) {
+      const oldest = perInstance.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      perInstance.delete(oldest);
+    }
+  }
+
   private recordTiming(
     instanceId: string,
     task: number,
-    timing: ApiProxyGenerationTiming,
+    base: Omit<
+      ApiProxyGenerationTiming,
+      "prefillMs" | "promptTokens" | "promptPerSecond"
+    >,
   ): void {
+    const prefill = this.prefills.get(instanceId)?.get(task) ?? null;
+    this.prefills.get(instanceId)?.delete(task);
+    const timing: ApiProxyGenerationTiming = {
+      ...base,
+      prefillMs: prefill?.prefillMs ?? null,
+      promptTokens: prefill?.promptTokens ?? null,
+      promptPerSecond: prefill?.promptPerSecond ?? null,
+    };
     let perInstance = this.timings.get(instanceId);
     if (!perInstance) {
       perInstance = new Map();

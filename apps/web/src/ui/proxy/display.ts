@@ -1,9 +1,63 @@
 import type {
+  ApiProxyInflightRequest,
   ApiProxyPlanPreview,
   ApiProxyTargetRuntime,
 } from "@llama-manager/core";
 
 import { formatLocalDateTime } from "../utils/time";
+
+function formatMs(ms: number) {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+export function inflightPhaseColor(phase: ApiProxyInflightRequest["phase"]) {
+  switch (phase) {
+    case "queued":
+      return "gray";
+    case "prefilling":
+      return "blue";
+    case "generating":
+      return "teal";
+    default:
+      return "gray";
+  }
+}
+
+export function inflightPrefillPercent(
+  req: ApiProxyInflightRequest,
+): number | null {
+  if (
+    req.phase === "prefilling" &&
+    req.prefillTotalTokens &&
+    req.prefillProcessedTokens !== null
+  ) {
+    return Math.min(
+      100,
+      Math.round((req.prefillProcessedTokens / req.prefillTotalTokens) * 100),
+    );
+  }
+  return null;
+}
+
+export function inflightLabel(req: ApiProxyInflightRequest): string {
+  if (req.phase === "queued") {
+    return `queued ${formatMs(req.waitingMs)}`;
+  }
+  if (req.phase === "prefilling") {
+    if (req.prefillTotalTokens && req.prefillProcessedTokens !== null) {
+      const pct = inflightPrefillPercent(req) ?? 0;
+      return `prefill ${req.prefillProcessedTokens}/${req.prefillTotalTokens} tok (${pct}%)`;
+    }
+    return req.prefillMs !== null
+      ? `prefill ${formatMs(req.prefillMs)}`
+      : "prefill";
+  }
+  const parts = [`gen ${req.completionTokens} tok`];
+  if (req.completionTokens > 0 && req.generatingMs && req.generatingMs > 0) {
+    parts.push(`${(req.completionTokens / (req.generatingMs / 1000)).toFixed(1)} tok/s`);
+  }
+  return parts.join(" · ");
+}
 
 export function targetStatusColor(enabled: boolean) {
   return enabled ? "green" : "gray";

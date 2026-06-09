@@ -22,6 +22,7 @@ import {
 } from "./coordinator.js";
 import { apiEndpointAuthHeaders, listApiEndpointCatalog } from "./endpoints.js";
 import { apiProxyForwardUrl, forwardApiProxyRequest } from "./forwarder.js";
+import { apiProxyInflight, type ApiProxyInflightHandle } from "./inflight.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./gateway.js";
 import { getApiProxyPlanPreview } from "./idle-maintenance.js";
 import {
@@ -61,8 +62,10 @@ import {
   createUsageMeterStream,
   includeUsageRequested,
   ratePerSecondFromUsage,
+  returnProgressRequested,
   usageFromNonStreamBody,
   withIncludeUsage,
+  withReturnProgress,
 } from "./usage-meter.js";
 
 async function safeJsonBody(c: Context) {
@@ -138,12 +141,16 @@ type ProxyTraceAccumulator = {
     completionTokens: number;
     genMs: number;
     ratePerSecond: number | null;
+    prefillMs: number | null;
+    promptPerSecond: number | null;
   } | null;
   status: number;
   ok: boolean;
   errorCode: string | null;
   errorMessage: string | null;
   durationMs: number;
+  queueMs: number | null;
+  ttftMs: number | null;
 };
 
 function createProxyTrace(
@@ -172,6 +179,8 @@ function createProxyTrace(
     errorCode: null,
     errorMessage: null,
     durationMs: 0,
+    queueMs: null,
+    ttftMs: null,
   };
 }
 
@@ -222,14 +231,25 @@ async function applyServerGenerationTiming(
   if (trace.usage) {
     trace.usage.genMs = Math.round(timing.genMs);
     trace.usage.ratePerSecond = timing.tokensPerSecond;
+    if (timing.prefillMs !== null) {
+      trace.usage.prefillMs = Math.round(timing.prefillMs);
+    }
+    if (timing.promptPerSecond !== null) {
+      trace.usage.promptPerSecond = timing.promptPerSecond;
+    }
+    if (trace.usage.promptTokens === null && timing.promptTokens !== null) {
+      trace.usage.promptTokens = timing.promptTokens;
+    }
   } else {
     trace.usage = {
-      promptTokens: null,
+      promptTokens: timing.promptTokens,
       cacheReadTokens: null,
       cacheCreationTokens: null,
       completionTokens: timing.completionTokens,
       genMs: Math.round(timing.genMs),
       ratePerSecond: timing.tokensPerSecond,
+      prefillMs: timing.prefillMs === null ? null : Math.round(timing.prefillMs),
+      promptPerSecond: timing.promptPerSecond,
     };
   }
 }
@@ -248,6 +268,10 @@ async function proxyProtocolEndpoint(
     trace.sourceName = source.name;
   }
   const started = performance.now();
+  const inflight = apiProxyInflight.begin({
+    modelId: "",
+    protocol: operation.protocol,
+  });
   let recorded = false;
   let deferred = false;
   const recorder: ProxyTraceRecorder = {
@@ -256,6 +280,7 @@ async function proxyProtocolEndpoint(
         return;
       }
       recorded = true;
+      inflight.end();
       trace.durationMs = Math.round(performance.now() - started);
       trace.status = response?.status ?? 0;
       trace.ok = response ? response.status < 400 : false;
@@ -273,6 +298,7 @@ async function proxyProtocolEndpoint(
       operation,
       trace,
       recorder,
+      inflight,
     );
     return response;
   } catch (error) {
@@ -293,6 +319,7 @@ async function proxyProtocolEndpointInner(
   operation: ApiProxyProtocolOperation,
   trace: ProxyTraceAccumulator,
   recorder: ProxyTraceRecorder,
+  inflight: ApiProxyInflightHandle,
 ): Promise<Response> {
   const body = await safeJsonBody(c);
   if (body && typeof body === "object" && "model" in body) {
@@ -313,6 +340,7 @@ async function proxyProtocolEndpointInner(
     return c.json(resolution.response.body, resolution.response.status);
   }
   trace.modelId = resolution.request.modelId;
+  inflight.setModel(resolution.request.modelId);
 
   const route = await resolveApiProxyRouteChain({
     request: resolution.request,
@@ -330,6 +358,8 @@ async function proxyProtocolEndpointInner(
   trace.targetId = route.targetId;
   trace.stream = route.request.stream;
   trace.textReplacementCount = route.textReplacementCount;
+  inflight.setTarget(route.targetId);
+  inflight.setStream(route.request.stream);
 
   const decision = await prepareApiProxyProtocolGatewayRequest({
     adapter,
@@ -353,7 +383,14 @@ async function proxyProtocolEndpointInner(
   trace.schedulerActions = decision.preview.plan.actions.map(
     (action) => action.type,
   );
+  inflight.setTarget(decision.target.id);
 
+  const queueStart = performance.now();
+  const markQueueResolved = () => {
+    if (trace.queueMs === null) {
+      trace.queueMs = Math.round(performance.now() - queueStart);
+    }
+  };
   const groupKey = decision.target.resourceGroupId;
   let lease: ResourceLease | null = null;
   if (groupKey) {
@@ -377,6 +414,31 @@ async function proxyProtocolEndpointInner(
       return c.json(response.body, response.status);
     }
   }
+  markQueueResolved();
+
+  let dispatchedAt: number | null = null;
+  const markDispatched = () => {
+    if (dispatchedAt === null) {
+      dispatchedAt = performance.now();
+    }
+    inflight.dispatched();
+  };
+  const markFirstToken = (promptTokens: number | null) => {
+    if (trace.ttftMs === null && dispatchedAt !== null) {
+      trace.ttftMs = Math.round(performance.now() - dispatchedAt);
+    }
+    inflight.firstToken(promptTokens);
+  };
+  const markProgress = (completionTokens: number) => {
+    inflight.setCompletionTokens(completionTokens);
+  };
+  const markPrefillProgress = (progress: {
+    total: number;
+    processed: number;
+    cache: number;
+  }) => {
+    inflight.setPrefillProgress(progress);
+  };
 
   const makeTargetReady = (
     initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
@@ -499,9 +561,19 @@ async function proxyProtocolEndpointInner(
     const streamMeter = route.request.stream
       ? resolveStreamUsageMeter(operation, adapter, route.request.body)
       : null;
-    const forwardBody = streamMeter?.inject
+    const wantsPrefillProgress =
+      streamMeter !== null &&
+      operation.protocol === "openai" &&
+      operation.endpoint === "chat.completions" &&
+      targetResolution.instanceId !== null;
+    const injectPrefillProgress =
+      wantsPrefillProgress && !returnProgressRequested(route.request.body);
+    let forwardBody = streamMeter?.inject
       ? withIncludeUsage(route.request.body)
       : route.request.body;
+    if (injectPrefillProgress) {
+      forwardBody = withReturnProgress(forwardBody);
+    }
 
     const instanceId = targetResolution.instanceId;
     const slotSeq =
@@ -517,6 +589,7 @@ async function proxyProtocolEndpointInner(
     };
 
     try {
+      markDispatched();
       const upstream = await forwardApiProxyRequest({
         baseUrl: targetResolution.baseUrl,
         method: c.req.method,
@@ -552,6 +625,8 @@ async function proxyProtocolEndpointInner(
             completionTokens: usage.completionTokens,
             genMs: usage.genMs,
             ratePerSecond: ratePerSecondFromUsage(usage),
+            prefillMs: usage.prefillMs,
+            promptPerSecond: usage.promptPerSecond,
           };
         }
         const task = resolveSlot();
@@ -571,6 +646,10 @@ async function proxyProtocolEndpointInner(
       const meter = createUsageMeterStream({
         codec: streamMeter.codec,
         stripUsageFrames,
+        stripProgressFrames: injectPrefillProgress,
+        onFirstToken: markFirstToken,
+        onProgress: markProgress,
+        onPrefillProgress: markPrefillProgress,
         onComplete: (usage) => {
           trace.usage = {
             promptTokens: usage.promptTokens,
@@ -579,6 +658,8 @@ async function proxyProtocolEndpointInner(
             completionTokens: usage.completionTokens,
             genMs: Math.round(usage.genMs),
             ratePerSecond: ratePerSecondFromUsage(usage),
+            prefillMs: usage.prefillMs,
+            promptPerSecond: usage.promptPerSecond,
           };
           const task = resolveSlot();
           void applyServerGenerationTiming(trace, instanceId, task).finally(
@@ -654,15 +735,22 @@ async function proxyProtocolEndpointInner(
     const instanceId = targetResolution.instanceId;
     const slotSeq =
       instanceId !== null ? apiProxySlotTracker.mark(instanceId) : null;
+    const injectPrefillProgress =
+      operation.protocol === "openai" &&
+      instanceId !== null &&
+      !returnProgressRequested(route.request.body);
     const state = createResumableBufferState();
     const buildBody = (tail: string | null) => {
       const built = codec.upstreamBody(route.request.body, tail) as Record<
         string,
         unknown
       >;
-      return decision.target.model
+      const withModel = decision.target.model
         ? { ...built, model: decision.target.model }
         : built;
+      return injectPrefillProgress
+        ? { ...withModel, return_progress: true }
+        : withModel;
     };
 
     const final = await runResumableForward({
@@ -685,8 +773,9 @@ async function proxyProtocolEndpointInner(
           },
         };
       },
-      attempt: (tail) =>
-        runResumableUpstreamAttempt({
+      attempt: (tail) => {
+        markDispatched();
+        return runResumableUpstreamAttempt({
           url,
           method: c.req.method,
           headers: auth.headers,
@@ -695,7 +784,11 @@ async function proxyProtocolEndpointInner(
           state,
           preemptSignal: heldLease.preemptSignal,
           consumerSignal: c.req.raw.signal,
-        }),
+          onFirstToken: markFirstToken,
+          onProgress: markProgress,
+          onPrefillProgress: markPrefillProgress,
+        });
+      },
       state,
       codec,
       yieldLease: () => heldLease.yield(),
@@ -726,6 +819,8 @@ async function proxyProtocolEndpointInner(
         state.completionTokens > 0 && state.genMs > 0
           ? state.completionTokens / (state.genMs / 1000)
           : null,
+      prefillMs: null,
+      promptPerSecond: null,
     };
     let task: number | null = null;
     if (instanceId !== null && slotSeq !== null) {

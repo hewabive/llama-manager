@@ -42,11 +42,21 @@ export function createResumableBufferState(): ResumableBufferState {
   };
 }
 
+type FrameMeta = {
+  upstreamGenMs: number | null;
+  firstTokenSeen: boolean;
+  onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onProgress?: ((completionTokens: number) => void) | undefined;
+  onPrefillProgress?:
+    | ((progress: { total: number; processed: number; cache: number }) => void)
+    | undefined;
+};
+
 function applyFrame(
   frame: string,
   codec: ApiProxyResumableCodec,
   state: ResumableBufferState,
-  meta: { upstreamGenMs: number | null },
+  meta: FrameMeta,
 ): "done" | null {
   for (const line of frame.split("\n")) {
     const trimmed = line.trimStart();
@@ -79,6 +89,9 @@ function applyFrame(
     }
     if (typeof chunk.genMs === "number") {
       meta.upstreamGenMs = chunk.genMs;
+    }
+    if (chunk.promptProgress) {
+      meta.onPrefillProgress?.(chunk.promptProgress);
     }
     if (chunk.phase === "tool") {
       state.inToolPhase = true;
@@ -119,6 +132,11 @@ function applyFrame(
         state.cacheCreationTokens = chunk.usage.cacheCreationTokens;
       }
     }
+    if (!meta.firstTokenSeen && (chunk.text !== "" || chunk.toolCall)) {
+      meta.firstTokenSeen = true;
+      meta.onFirstToken?.(state.promptTokens);
+    }
+    meta.onProgress?.(state.completionTokens);
   }
   return null;
 }
@@ -133,6 +151,11 @@ export async function runResumableUpstreamAttempt(input: {
   preemptSignal: AbortSignal;
   consumerSignal?: AbortSignal | undefined;
   fetchImpl?: typeof fetch | undefined;
+  onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onProgress?: ((completionTokens: number) => void) | undefined;
+  onPrefillProgress?:
+    | ((progress: { total: number; processed: number; cache: number }) => void)
+    | undefined;
 }): Promise<ResumableUpstreamOutcome> {
   const { preemptSignal, consumerSignal } = input;
   if (consumerSignal?.aborted) {
@@ -143,7 +166,13 @@ export async function runResumableUpstreamAttempt(input: {
   }
 
   const fetchImpl = input.fetchImpl ?? fetch;
-  const meta: { upstreamGenMs: number | null } = { upstreamGenMs: null };
+  const meta: FrameMeta = {
+    upstreamGenMs: null,
+    firstTokenSeen: false,
+    onFirstToken: input.onFirstToken,
+    onProgress: input.onProgress,
+    onPrefillProgress: input.onPrefillProgress,
+  };
   const controller = new AbortController();
   const onPreempt = () => {
     if (!input.state.inToolPhase) {

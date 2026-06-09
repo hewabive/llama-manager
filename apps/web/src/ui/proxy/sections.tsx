@@ -18,6 +18,7 @@ import {
   Group,
   Loader,
   Paper,
+  Progress,
   Stack,
   Table,
   Text,
@@ -29,6 +30,9 @@ import { TouchSelect } from "../components/TouchCombobox";
 import { formatLocalDateTime, formatLocalHour } from "../utils/time";
 import {
   actionLabels,
+  inflightLabel,
+  inflightPhaseColor,
+  inflightPrefillPercent,
   runtimeDetails,
   runtimeStateColor,
   targetStatusColor,
@@ -354,6 +358,47 @@ type ProxyTargetsSectionProps = {
   onDelete: (id: string) => void;
 };
 
+function InflightRequests({
+  inflight,
+}: {
+  inflight: ApiProxyTargetRuntime["inflight"];
+}) {
+  if (inflight.length === 0) {
+    return null;
+  }
+  return (
+    <Stack gap={4} mt={2}>
+      {inflight.map((req) => {
+        const percent = inflightPrefillPercent(req);
+        return (
+          <Stack key={req.id} gap={2}>
+            <Group gap={6} wrap="nowrap">
+              <Badge
+                size="xs"
+                color={inflightPhaseColor(req.phase)}
+                variant="light"
+              >
+                {req.phase}
+              </Badge>
+              <Text size="xs" c="dimmed">
+                {inflightLabel(req)}
+              </Text>
+            </Group>
+            {percent !== null && (
+              <Progress
+                size="xs"
+                value={percent}
+                color={inflightPhaseColor(req.phase)}
+                aria-label="prefill progress"
+              />
+            )}
+          </Stack>
+        );
+      })}
+    </Stack>
+  );
+}
+
 export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
   return (
     <Paper withBorder p="md" radius="sm">
@@ -472,6 +517,7 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                             {detail}
                           </Text>
                         ))}
+                        {runtime && <InflightRequests inflight={runtime.inflight} />}
                       </Stack>
                     </Table.Td>
                     <Table.Td>{formatLocalDateTime(target.updatedAt)}</Table.Td>

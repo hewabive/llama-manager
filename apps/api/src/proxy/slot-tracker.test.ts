@@ -123,6 +123,9 @@ test("parses eval-time print_timing into a generation timing", async () => {
     genMs: 1606.23,
     completionTokens: 20,
     tokensPerSecond: 12.45,
+    prefillMs: null,
+    promptTokens: null,
+    promptPerSecond: null,
   });
 });
 
@@ -134,6 +137,28 @@ test("awaitTiming resolves when the timing line arrives later", async () => {
     genMs: 1606.23,
     completionTokens: 20,
     tokensPerSecond: 12.45,
+    prefillMs: null,
+    promptTokens: null,
+    promptPerSecond: null,
+  });
+});
+
+test("merges a preceding prompt-eval line into the generation timing", async () => {
+  const tracker = new ApiProxySlotTracker();
+  tracker.observe(
+    event(
+      "inst",
+      "0.04 I slot print_timing: id  0 | task 3 | prompt eval time =     828.70 ms /    23 tokens (   36.03 ms per token,    27.75 tokens per second)\n",
+    ),
+  );
+  tracker.observe(event("inst", EVAL_TIMING_LINE));
+  assert.deepEqual(await tracker.awaitTiming("inst", 3, 0), {
+    genMs: 1606.23,
+    completionTokens: 20,
+    tokensPerSecond: 12.45,
+    prefillMs: 828.7,
+    promptTokens: 23,
+    promptPerSecond: 27.75,
   });
 });
 

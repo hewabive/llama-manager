@@ -1,6 +1,7 @@
 import {
   ApiProxyRuntimeSnapshotSchema,
   type ApiEndpointRecord,
+  type ApiProxyInflightRequest,
   type ApiProxyModelState,
   type ApiProxyRuntimeSnapshot,
   type ApiProxyRuntimeMetadataRecord,
@@ -253,21 +254,24 @@ function deriveApiProxyTargetRuntime(input: {
   health?: InstanceHealthSummary | undefined;
   metadata?: ApiProxyRuntimeMetadataRecord | undefined;
   inFlight?: boolean | undefined;
+  inflight?: ApiProxyInflightRequest[] | undefined;
   checkedAt: string;
 }): ApiProxyTargetRuntime {
+  const inflight = input.endpointEnabled ? (input.inflight ?? []) : [];
   const derived = input.endpointEnabled
     ? deriveState({
         target: input.target,
         instanceId: input.instanceId,
         instance: input.instance,
         health: input.health,
-        inFlight: input.inFlight ?? false,
+        inFlight: (input.inFlight ?? false) || inflight.length > 0,
       })
     : { state: "error" as const, activeRequests: 0 };
+  const activeRequests = Math.max(derived.activeRequests, inflight.length);
   const tracker = updateTracker({
     targetId: input.target.id,
     state: derived.state,
-    activeRequests: derived.activeRequests,
+    activeRequests,
     checkedAt: input.checkedAt,
     metadata: input.metadata,
   });
@@ -280,10 +284,11 @@ function deriveApiProxyTargetRuntime(input: {
     instanceId: input.instanceId,
     model: input.target.model,
     state: derived.state,
-    activeRequests: derived.activeRequests,
+    activeRequests,
     idleSince: tracker.idleSince,
     lastRequestAt: tracker.lastRequestAt,
     savedSlotIds: tracker.savedSlotIds,
+    inflight,
   };
 }
 
@@ -295,6 +300,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
   healthByInstanceId: Map<string, InstanceHealthSummary>;
   metadataByTargetId?: Map<string, ApiProxyRuntimeMetadataRecord> | undefined;
   busyTargetIds?: Set<string> | undefined;
+  inflightByTargetId?: Map<string, ApiProxyInflightRequest[]> | undefined;
 }): ApiProxyRuntimeSnapshot {
   const instanceById = new Map(
     input.instances.map((instance) => [instance.name, instance]),
@@ -331,6 +337,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
           : undefined,
         metadata: input.metadataByTargetId?.get(target.id),
         inFlight: input.busyTargetIds?.has(target.id) ?? false,
+        inflight: input.inflightByTargetId?.get(target.id),
         checkedAt: input.checkedAt,
       });
     }),
