@@ -93,7 +93,10 @@ or more Anthropic events out):
 - upstream `{"error": ...}` frames map to Anthropic `error` events; upstream
   HTTP errors map via `translateOpenAiError` (status → Anthropic error type).
 - `prompt_progress` / `timings` / `usage` raw objects are surfaced through
-  `push().extensions` for host telemetry, never as Anthropic events.
+  `push().extensions` for host telemetry, never as Anthropic events; the
+  proxy's `createAnthropicTranslationStream` meters translated streams from
+  this channel in a single pass instead of stacking a separate usage-meter
+  transform.
 
 ## Resumable path
 

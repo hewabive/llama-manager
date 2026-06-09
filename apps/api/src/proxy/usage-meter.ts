@@ -1,4 +1,6 @@
+import { asObject, numberOrNull } from "./json.js";
 import type { ApiProxyProtocolId, ApiProxyResumableCodec } from "./protocol.js";
+import { createSseFrameBuffer, sseDataPayloads } from "./sse.js";
 
 export type ProxyUsageCounts = {
   promptTokens: number | null;
@@ -9,16 +11,6 @@ export type ProxyUsageCounts = {
   prefillMs: number | null;
   promptPerSecond: number | null;
 };
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 
 export function anthropicPromptTokens(
   usage: Record<string, unknown> | null | undefined,
@@ -183,9 +175,8 @@ export function createUsageMeterStream(input: {
     onProgress,
     onPrefillProgress,
   } = input;
-  const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let pending = "";
+  const frames = createSseFrameBuffer();
   let promptTokens: number | null = null;
   let cacheReadTokens: number | null = null;
   let cacheCreationTokens: number | null = null;
@@ -196,15 +187,7 @@ export function createUsageMeterStream(input: {
 
   const observeFrame = (frame: string): boolean => {
     let keep = true;
-    for (const line of frame.split("\n")) {
-      const trimmed = line.trimStart();
-      if (!trimmed.startsWith("data:")) {
-        continue;
-      }
-      const data = trimmed.slice("data:".length).trim();
-      if (!data) {
-        continue;
-      }
+    for (const data of sseDataPayloads(frame)) {
       const chunk = codec.parseChunk(data);
       if (chunk === "done" || chunk === null) {
         continue;
@@ -286,24 +269,19 @@ export function createUsageMeterStream(input: {
       if (!filterFrames) {
         controller.enqueue(chunk);
       }
-      pending += decoder.decode(chunk, { stream: true });
-      let index = pending.indexOf("\n\n");
-      while (index !== -1) {
-        const frame = pending.slice(0, index);
-        pending = pending.slice(index + 2);
+      for (const frame of frames.push(chunk)) {
         const keep = observeFrame(frame);
         if (filterFrames && keep) {
           controller.enqueue(encoder.encode(`${frame}\n\n`));
         }
-        index = pending.indexOf("\n\n");
       }
     },
     flush(controller) {
-      pending += decoder.decode();
-      if (pending.trim()) {
-        const keep = observeFrame(pending);
+      const tail = frames.flush();
+      if (tail) {
+        const keep = observeFrame(tail);
         if (filterFrames && keep) {
-          controller.enqueue(encoder.encode(pending));
+          controller.enqueue(encoder.encode(tail));
         }
       }
       finalize();

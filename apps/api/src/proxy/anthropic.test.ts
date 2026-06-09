@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   anthropicError,
-  anthropicModelIdFromBody,
   anthropicProtocolAdapter,
   anthropicResumableCodec,
 } from "./anthropic.js";
@@ -14,15 +13,6 @@ const operation = {
   routePath: "/v1/messages",
   transport: "http-json" as const,
 };
-
-test("anthropicModelIdFromBody reads Anthropic model field", () => {
-  assert.equal(
-    anthropicModelIdFromBody({ model: "claude-local" }),
-    "claude-local",
-  );
-  assert.equal(anthropicModelIdFromBody({ model: "   " }), null);
-  assert.equal(anthropicModelIdFromBody(null), null);
-});
 
 test("anthropicError returns Anthropic-compatible error shape", () => {
   assert.deepEqual(

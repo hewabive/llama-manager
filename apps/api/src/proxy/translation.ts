@@ -9,6 +9,7 @@ import {
   type AnthropicStreamEvent,
 } from "@llama-manager/anthropic-openai-bridge";
 
+import { numberOrNull } from "./json.js";
 import { openAiResumableCodec } from "./openai.js";
 import type {
   ApiProxyProtocolId,
@@ -21,10 +22,6 @@ import {
   type ProxyPrefillProgress,
   type ProxyUsageCounts,
 } from "./usage-meter.js";
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 
 const llamaServerRequestOptions = {
   namedToolChoice: "filter" as const,

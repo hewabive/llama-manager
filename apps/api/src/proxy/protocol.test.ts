@@ -5,6 +5,7 @@ import type { ApiProxyModelRecord } from "@llama-manager/core";
 
 import {
   bodyRequestsStreaming,
+  modelIdFromBody,
   resolveApiProxyProtocolModelRequest,
 } from "./protocol.js";
 import { openAiProtocolAdapter } from "./openai.js";
@@ -15,6 +16,12 @@ const operation = {
   routePath: "/v1/chat/completions",
   transport: "http-json" as const,
 };
+
+test("modelIdFromBody reads the model field", () => {
+  assert.equal(modelIdFromBody({ model: "qwen", prompt: "hi" }), "qwen");
+  assert.equal(modelIdFromBody({ model: "   " }), null);
+  assert.equal(modelIdFromBody(null), null);
+});
 
 const model: ApiProxyModelRecord = {
   id: "model-a",

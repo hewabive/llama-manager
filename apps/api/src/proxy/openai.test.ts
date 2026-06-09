@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  modelIdFromBody,
   notImplementedResponse,
   openAiProtocolAdapter,
   openAiModelsList,
@@ -46,12 +45,6 @@ test("openAiModelsList exposes only enabled proxy models", () => {
       },
     ],
   });
-});
-
-test("modelIdFromBody reads OpenAI-compatible model field", () => {
-  assert.equal(modelIdFromBody({ model: "qwen", prompt: "hi" }), "qwen");
-  assert.equal(modelIdFromBody({ model: "   " }), null);
-  assert.equal(modelIdFromBody(null), null);
 });
 
 test("notImplementedResponse returns OpenAI-compatible error shape", () => {

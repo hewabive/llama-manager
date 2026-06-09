@@ -1,10 +1,12 @@
 import type { ApiProxyModelRecord } from "@llama-manager/core";
-import type {
-  ApiProxyProtocolAdapter,
-  ApiProxyProtocolOperation,
-  ApiProxyResumableCodec,
-  ApiProxyResumablePhase,
-  ApiProxyResumableToolCallDelta,
+import { asObject } from "./json.js";
+import {
+  modelIdFromBody,
+  type ApiProxyProtocolAdapter,
+  type ApiProxyProtocolOperation,
+  type ApiProxyResumableCodec,
+  type ApiProxyResumablePhase,
+  type ApiProxyResumableToolCallDelta,
 } from "./protocol.js";
 import { openaiCachedTokens } from "./usage-meter.js";
 
@@ -43,14 +45,6 @@ export function openAiModelsList(models: ApiProxyModelRecord[]) {
   };
 }
 
-export function modelIdFromBody(body: unknown) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return null;
-  }
-  const model = (body as Record<string, unknown>).model;
-  return typeof model === "string" && model.trim() ? model.trim() : null;
-}
-
 export function notImplementedResponse(modelId: string, endpoint: string) {
   return openAiError({
     message: `Model ${modelId} is published by llama-manager, but ${endpoint} forwarding is not implemented yet.`,
@@ -70,12 +64,6 @@ const upstreamPaths: Record<string, string> = {
   embeddings: "/v1/embeddings",
   responses: "/v1/responses",
 };
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 export const openAiResumableCodec: ApiProxyResumableCodec = {
   upstreamBody(originalBody, tail) {

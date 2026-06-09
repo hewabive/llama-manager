@@ -3,6 +3,7 @@ import type {
   ApiProxyResumableFinalResponse,
   ApiProxyResumableToolCall,
 } from "./protocol.js";
+import { createSseFrameBuffer, sseDataPayloads } from "./sse.js";
 
 export type ResumableBufferState = {
   text: string;
@@ -58,15 +59,7 @@ function applyFrame(
   state: ResumableBufferState,
   meta: FrameMeta,
 ): "done" | null {
-  for (const line of frame.split("\n")) {
-    const trimmed = line.trimStart();
-    if (!trimmed.startsWith("data:")) {
-      continue;
-    }
-    const data = trimmed.slice("data:".length).trim();
-    if (!data) {
-      continue;
-    }
+  for (const data of sseDataPayloads(frame)) {
     const chunk = codec.parseChunk(data);
     if (chunk === "done") {
       return "done";
@@ -224,28 +217,23 @@ export async function runResumableUpstreamAttempt(input: {
   }
 
   const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
-  let pending = "";
+  const frames = createSseFrameBuffer();
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) {
         break;
       }
-      pending += decoder.decode(value, { stream: true });
-      let index = pending.indexOf("\n\n");
-      while (index !== -1) {
-        const frame = pending.slice(0, index);
-        pending = pending.slice(index + 2);
+      for (const frame of frames.push(value)) {
         const result = applyFrame(frame, input.codec, input.state, meta);
         if (result === "done") {
           return settle({ type: "completed" });
         }
-        index = pending.indexOf("\n\n");
       }
     }
-    if (pending.trim()) {
-      applyFrame(pending, input.codec, input.state, meta);
+    const tail = frames.flush();
+    if (tail) {
+      applyFrame(tail, input.codec, input.state, meta);
     }
     return settle({ type: "completed" });
   } catch (error) {

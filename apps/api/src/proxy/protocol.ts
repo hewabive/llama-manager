@@ -1,6 +1,8 @@
 import type { ApiProxyModelRecord } from "@llama-manager/core";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+import { asObject } from "./json.js";
+
 export type ApiProxyProtocolId = "openai" | "anthropic";
 
 export type ApiProxyProtocolTransport = "http-json" | "sse" | "websocket";
@@ -144,12 +146,12 @@ export type ApiProxyProtocolAdapter = {
 };
 
 export function bodyRequestsStreaming(body: unknown) {
-  return (
-    Boolean(body) &&
-    typeof body === "object" &&
-    !Array.isArray(body) &&
-    (body as Record<string, unknown>).stream === true
-  );
+  return asObject(body)?.stream === true;
+}
+
+export function modelIdFromBody(body: unknown): string | null {
+  const model = asObject(body)?.model;
+  return typeof model === "string" && model.trim() ? model.trim() : null;
 }
 
 export function resolveApiProxyProtocolModelRequest(input: {

@@ -1,8 +1,10 @@
-import type {
-  ApiProxyProtocolAdapter,
-  ApiProxyProtocolOperation,
-  ApiProxyResumableCodec,
-  ApiProxyResumableToolCall,
+import { asObject } from "./json.js";
+import {
+  modelIdFromBody,
+  type ApiProxyProtocolAdapter,
+  type ApiProxyProtocolOperation,
+  type ApiProxyResumableCodec,
+  type ApiProxyResumableToolCall,
 } from "./protocol.js";
 import {
   anthropicCacheCreationTokens,
@@ -28,14 +30,6 @@ export function anthropicError(input: {
   };
 }
 
-export function anthropicModelIdFromBody(body: unknown) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return null;
-  }
-  const model = (body as Record<string, unknown>).model;
-  return typeof model === "string" && model.trim() ? model.trim() : null;
-}
-
 function endpointLabel(operation: ApiProxyProtocolOperation) {
   return operation.routePath || operation.endpoint;
 }
@@ -44,12 +38,6 @@ const upstreamPaths: Record<string, string> = {
   messages: "/v1/messages",
   "messages.count_tokens": "/v1/messages/count_tokens",
 };
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 function parseToolInput(args: string): unknown {
   if (!args.trim()) {
@@ -345,7 +333,7 @@ export const anthropicProtocolAdapter: ApiProxyProtocolAdapter = {
   id: "anthropic",
   displayName: "Anthropic Messages",
   resumable: anthropicResumableCodec,
-  modelIdFromBody: anthropicModelIdFromBody,
+  modelIdFromBody,
   missingModel: () => ({
     status: 400,
     body: anthropicError({
