@@ -259,7 +259,14 @@ export const openAiResumableCodec: ApiProxyResumableCodec = {
                   role: "assistant",
                   content: messageContent,
                   ...reasoning,
-                  ...(hasToolCalls ? { tool_calls: resolvedToolCalls } : {}),
+                  ...(hasToolCalls
+                    ? {
+                        tool_calls: resolvedToolCalls.map((call, index) => ({
+                          index,
+                          ...call,
+                        })),
+                      }
+                    : {}),
                 },
                 finish_reason: null,
               },

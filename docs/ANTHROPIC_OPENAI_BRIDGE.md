@@ -99,9 +99,11 @@ or more Anthropic events out):
 
 `respondResumable` composes a codec when translating: `upstreamBody` =
 `openAiResumableCodec.upstreamBody` over the once-translated request (resume
-splicing stays in the OpenAI domain), `parseChunk` = OpenAI,
-`finalResponse` = `anthropicResumableCodec.finalResponse` with OpenAI
-`finish_reason` mapped to an Anthropic `stop_reason` first.
+splicing stays in the OpenAI domain), `parseChunk` = OpenAI, and
+`finalResponse` synthesizes the OpenAI final response and translates it at
+the edge — non-stream through `translateOpenAiResponse`, stream by replaying
+the synthesized OpenAI SSE through `createAnthropicSseEmitter` — so resumed
+responses carry the same event shapes as live translated streams.
 
 ## Bridge package boundaries
 

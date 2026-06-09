@@ -332,6 +332,36 @@ test("translated resumable codec maps openai finish reasons in final response", 
   assert.deepEqual(body.usage, { input_tokens: 10, output_tokens: 5 });
 });
 
+test("translated resumable codec replays distinct tool_use blocks per tool call", () => {
+  const codec = translatedAnthropicResumableCodec(
+    translateAnthropicForwardBody({
+      model: "claude-x",
+      max_tokens: 32,
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    }),
+  );
+  const final = codec.finalResponse({
+    text: "",
+    id: "cmpl-1",
+    model: "m",
+    finishReason: "tool_calls",
+    wantsStream: true,
+    completionTokens: 7,
+    promptTokens: 11,
+    toolCalls: [
+      { id: "call_a", name: "get_weather", arguments: '{"city":"Moscow"}' },
+      { id: "call_b", name: "get_time", arguments: "{}" },
+    ],
+  });
+  const starts = [
+    ...final.body.matchAll(/"type":"content_block_start".+?"name":"(\w+)"/g),
+  ].map((match) => match[1]);
+  assert.deepEqual(starts, ["get_weather", "get_time"]);
+  assert.match(final.body, /"partial_json":"{\\"city\\":\\"Moscow\\"}"/);
+  assert.match(final.body, /"stop_reason":"tool_use"/);
+});
+
 test("translated resumable codec survives preemption and resumes openai frames", async () => {
   const codec = translatedAnthropicResumableCodec(
     translateAnthropicForwardBody({

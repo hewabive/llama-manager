@@ -1,7 +1,6 @@
 import type { ApiLabProbeProfile } from "@llama-manager/core";
 import {
   createAnthropicSseEmitter,
-  mapOpenAiFinishReason,
   serializeAnthropicSseEvents,
   translateAnthropicRequest,
   translateOpenAiError,
@@ -10,7 +9,6 @@ import {
   type AnthropicStreamEvent,
 } from "@llama-manager/anthropic-openai-bridge";
 
-import { anthropicResumableCodec } from "./anthropic.js";
 import { openAiResumableCodec } from "./openai.js";
 import type {
   ApiProxyProtocolId,
@@ -86,17 +84,30 @@ export function translatedAnthropicResumableCodec(
     upstreamBody: (_originalBody, tail) =>
       openAiResumableCodec.upstreamBody(translatedBody, tail),
     parseChunk: openAiResumableCodec.parseChunk,
-    finalResponse: (input) =>
-      anthropicResumableCodec.finalResponse({
-        ...input,
-        finishReason:
-          input.finishReason === null
-            ? null
-            : mapOpenAiFinishReason(
-                input.finishReason,
-                (input.toolCalls ?? []).length > 0,
-              ),
-      }),
+    finalResponse: (input) => {
+      const openAiFinal = openAiResumableCodec.finalResponse(input);
+      if (!input.wantsStream) {
+        const translated = translateOpenAiResponseText(openAiFinal.body);
+        return translated === null
+          ? openAiFinal
+          : {
+              status: openAiFinal.status,
+              headers: { "content-type": "application/json" },
+              body: translated,
+            };
+      }
+      const emitter = createAnthropicSseEmitter();
+      let body = "";
+      for (const data of sseDataPayloads(openAiFinal.body)) {
+        body += serializeAnthropicSseEvents(emitter.push(data).events);
+      }
+      body += serializeAnthropicSseEvents(emitter.finish());
+      return {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body,
+      };
+    },
   };
 }
 
