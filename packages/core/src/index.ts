@@ -631,15 +631,7 @@ export const ApiProxyRequestLogRecordSchema = z.object({
   createdAt: z.string(),
 });
 
-const ApiProxySourceNameSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(80)
-  .regex(
-    /^[A-Za-z0-9._-]+$/,
-    "Use letters, digits, dot, underscore or hyphen only",
-  );
+const ApiProxySourceNameSchema = z.string().trim().min(1).max(80);
 
 const ApiProxySourceKeySchema = z.string().trim().max(400).optional();
 

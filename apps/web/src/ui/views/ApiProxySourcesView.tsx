@@ -136,7 +136,10 @@ export function ApiProxySourcesView() {
   }
 
   function generateKey() {
-    const value = crypto.randomUUID().replace(/-/g, "");
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    const value = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+      "",
+    );
     setDraft((current) => ({ ...current, apiKey: `sk-${value}` }));
   }
 
