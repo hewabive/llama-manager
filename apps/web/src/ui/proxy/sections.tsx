@@ -517,7 +517,9 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                             {detail}
                           </Text>
                         ))}
-                        {runtime && <InflightRequests inflight={runtime.inflight} />}
+                        {runtime && (
+                          <InflightRequests inflight={runtime.inflight} />
+                        )}
                       </Stack>
                     </Table.Td>
                     <Table.Td>{formatLocalDateTime(target.updatedAt)}</Table.Td>
@@ -962,7 +964,9 @@ export function StatsSection(props: StatsSectionProps) {
                         color={traceProtocolColor(trace.protocol)}
                         variant="light"
                       >
-                        {trace.protocol}
+                        {trace.translated
+                          ? `${trace.protocol} → openai`
+                          : trace.protocol}
                       </Badge>
                     </Table.Td>
                     <Table.Td>

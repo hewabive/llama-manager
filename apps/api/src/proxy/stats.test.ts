@@ -11,6 +11,7 @@ function trace(
   return {
     id: "t",
     protocol: "openai",
+    translated: false,
     endpoint: "chat.completions",
     routePath: "/v1/chat/completions",
     sourceId: null,

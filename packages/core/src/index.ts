@@ -681,6 +681,7 @@ export const ApiProxyRequestTraceSchema = z.object({
   id: z.string(),
   at: z.string(),
   protocol: z.enum(["openai", "anthropic"]),
+  translated: z.boolean().default(false),
   endpoint: z.string().min(1),
   routePath: z.string().min(1),
   modelId: z.string(),

@@ -131,6 +131,7 @@ type ProxyTraceAccumulator = {
   id: string;
   at: string;
   protocol: ApiProxyProtocolOperation["protocol"];
+  translated: boolean;
   endpoint: string;
   routePath: string;
   modelId: string;
@@ -170,6 +171,7 @@ function createProxyTrace(
     id: newId(),
     at: new Date().toISOString(),
     protocol: operation.protocol,
+    translated: false,
     endpoint: operation.endpoint,
     routePath: operation.routePath,
     modelId: "",
@@ -574,6 +576,7 @@ async function proxyProtocolEndpointInner(
       targetResolution.profile,
       decision.target.anthropicDialect,
     );
+    trace.translated = translateAnthropic;
     const upstreamProtocol = translateAnthropic ? "openai" : operation.protocol;
     const effectiveUpstreamPath = translateAnthropic
       ? "/v1/chat/completions"
@@ -781,6 +784,7 @@ async function proxyProtocolEndpointInner(
       targetResolution.profile,
       decision.target.anthropicDialect,
     );
+    trace.translated = translateAnthropic;
     const effectiveCodec = translateAnthropic
       ? translatedAnthropicResumableCodec(route.request.body)
       : codec;

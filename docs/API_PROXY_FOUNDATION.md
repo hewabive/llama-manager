@@ -97,7 +97,7 @@ At this stage, OpenAI-compatible generation endpoints can start/load/wait for ma
 - `/v1/embeddings`
 - the same endpoints under `/proxy/v1/*`
 
-Unknown or disabled models return the protocol-specific `not_found` error. OpenAI Responses (`/v1/responses`) and Anthropic Messages (`/v1/messages`) are still accepted as public facades, but they return `501` before executor actions because request/response transforms are not implemented yet.
+Unknown or disabled models return the protocol-specific `not_found` error. OpenAI Responses (`/v1/responses`) forwards natively (llama-server implements it). Anthropic Messages (`/v1/messages`) is translated to OpenAI Chat Completions for non-anthropic upstreams via `packages/anthropic-openai-bridge` — see `docs/ANTHROPIC_OPENAI_BRIDGE.md`.
 
 If a known enabled model is not bound to a proxy target, or if the scheduler would need to unload a competing target, save a slot, restore a slot or stop an instance, the public endpoint returns a protocol-specific `503` diagnostic. This means public requests are now connected to the same scheduling model as the admin preview, but the MVP intentionally supports only simple autostart, autoload and forward.
 
