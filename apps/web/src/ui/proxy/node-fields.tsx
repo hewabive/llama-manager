@@ -13,6 +13,7 @@ import {
   Modal,
   NumberInput,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Switch,
@@ -150,6 +151,37 @@ const replacementInputStyles = {
   input: { fontFamily: "monospace" },
 } as const;
 
+const replacementModeOptions = [
+  { value: "text", label: "Text" },
+  { value: "json", label: "JSON" },
+];
+
+function jsonFragmentError(text: string): string | null {
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    JSON.parse(`{${text}}`);
+    return null;
+  } catch {
+    /* not an entries fragment */
+  }
+  try {
+    JSON.parse(`[${text}]`);
+    return null;
+  } catch {
+    return "Not a valid JSON fragment";
+  }
+}
+
+function ruleFieldLabel(base: string, mode: "text" | "json") {
+  return mode === "json" ? `${base} (JSON fragment)` : base;
+}
+
+function ruleFieldError(rule: { mode: "text" | "json" }, value: string) {
+  return rule.mode === "json" ? jsonFragmentError(value) : null;
+}
+
 function ReplaceTextFields(props: {
   node: PipelineNodeDraft;
   ctx: PipelineEditorContext;
@@ -180,14 +212,27 @@ function ReplaceTextFields(props: {
         {rules.map((rule, index) => (
           <Paper key={index} withBorder p="xs" radius="sm">
             <Stack gap={6}>
+              <SegmentedControl
+                size="xs"
+                data={replacementModeOptions}
+                value={rule.mode}
+                onChange={(value) =>
+                  patchRule(index, { mode: value === "json" ? "json" : "text" })
+                }
+              />
               <Textarea
                 size="xs"
-                label="Find"
-                placeholder="text to find"
+                label={ruleFieldLabel("Find", rule.mode)}
+                placeholder={
+                  rule.mode === "json"
+                    ? '{ "role": "system", "content": "..." }'
+                    : "text to find"
+                }
                 autosize
                 minRows={1}
                 maxRows={4}
                 value={rule.find}
+                error={ruleFieldError(rule, rule.find)}
                 styles={replacementInputStyles}
                 onChange={(event) => {
                   const find = event.currentTarget.value;
@@ -196,12 +241,17 @@ function ReplaceTextFields(props: {
               />
               <Textarea
                 size="xs"
-                label="Replace with"
-                placeholder="replacement (empty deletes the match)"
+                label={ruleFieldLabel("Replace with", rule.mode)}
+                placeholder={
+                  rule.mode === "json"
+                    ? "JSON fragment (empty removes the match)"
+                    : "replacement (empty deletes the match)"
+                }
                 autosize
                 minRows={1}
                 maxRows={4}
                 value={rule.replace}
+                error={ruleFieldError(rule, rule.replace)}
                 styles={replacementInputStyles}
                 onChange={(event) => {
                   const replace = event.currentTarget.value;
@@ -248,14 +298,17 @@ function ReplaceTextFields(props: {
           size="xs"
           leftSection={<Plus size={14} />}
           onClick={() =>
-            setRules([...rules, { find: "", replace: "", enabled: true }])
+            setRules([
+              ...rules,
+              { mode: "text", find: "", replace: "", enabled: true },
+            ])
           }
         >
           Add replacement
         </Button>
         <Text c="dimmed" size="xs">
           {
-            'Escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. Real line breaks work too.'
+            'Text rules match inside message strings; escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. JSON rules match whole sections structurally — paste message objects or "key": value entries, formatting does not matter.'
           }
         </Text>
       </Stack>
@@ -276,13 +329,27 @@ function ReplaceTextFields(props: {
       >
         {detailRule && detailIndex !== null && (
           <Stack gap="sm">
+            <SegmentedControl
+              data={replacementModeOptions}
+              value={detailRule.mode}
+              onChange={(value) =>
+                patchRule(detailIndex, {
+                  mode: value === "json" ? "json" : "text",
+                })
+              }
+            />
             <Textarea
-              label="Find"
-              placeholder="text to find"
+              label={ruleFieldLabel("Find", detailRule.mode)}
+              placeholder={
+                detailRule.mode === "json"
+                  ? '{ "role": "system", "content": "..." }'
+                  : "text to find"
+              }
               autosize
               minRows={6}
               maxRows={20}
               value={detailRule.find}
+              error={ruleFieldError(detailRule, detailRule.find)}
               styles={replacementInputStyles}
               onChange={(event) => {
                 const find = event.currentTarget.value;
@@ -290,12 +357,17 @@ function ReplaceTextFields(props: {
               }}
             />
             <Textarea
-              label="Replace with"
-              placeholder="replacement (empty deletes the match)"
+              label={ruleFieldLabel("Replace with", detailRule.mode)}
+              placeholder={
+                detailRule.mode === "json"
+                  ? "JSON fragment (empty removes the match)"
+                  : "replacement (empty deletes the match)"
+              }
               autosize
               minRows={6}
               maxRows={20}
               value={detailRule.replace}
+              error={ruleFieldError(detailRule, detailRule.replace)}
               styles={replacementInputStyles}
               onChange={(event) => {
                 const replace = event.currentTarget.value;
@@ -304,7 +376,7 @@ function ReplaceTextFields(props: {
             />
             <Text c="dimmed" size="xs">
               {
-                'Escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. Real line breaks work too.'
+                'Text rules match inside message strings; escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. JSON rules match whole sections structurally — paste message objects or "key": value entries, formatting does not matter.'
               }
             </Text>
             <Group justify="space-between">

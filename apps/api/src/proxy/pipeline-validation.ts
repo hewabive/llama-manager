@@ -8,6 +8,8 @@ import {
   type ApiProxyRouteTo,
 } from "@llama-manager/core";
 
+import { compileStructuralReplacement } from "./pipeline.js";
+
 export type ApiProxyPipelineGraph = {
   id: string | null;
   name: string;
@@ -127,6 +129,17 @@ export function validateApiProxyPipelineGraph(
   }
 
   for (const node of graph.nodes) {
+    if (node.type === "replace-text") {
+      for (const [index, rule] of node.config.rules.entries()) {
+        if (!rule.enabled || rule.mode !== "json") {
+          continue;
+        }
+        const compiled = compileStructuralReplacement(rule);
+        if (typeof compiled === "string") {
+          return `node ${nodeLabel(node)} rule #${index + 1}: ${compiled}`;
+        }
+      }
+    }
     if (node.type === "condition") {
       const predicate = node.config.predicate;
       if (predicate.type === "text-match" && predicate.regex) {

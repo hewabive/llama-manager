@@ -9,6 +9,7 @@ import {
 
 import type { ApiProxyProtocolModelRequest } from "./protocol.js";
 import {
+  compileStructuralReplacement,
   replaceRequestText,
   resolveApiProxyRouteChain,
   type ApiProxyPipelineRecordRequestInput,
@@ -137,7 +138,14 @@ test("capture-request saves the request as it arrives at the node", async () => 
           name: "",
           type: "replace-text",
           config: {
-            rules: [{ enabled: true, find: "bad text", replace: "good text" }],
+            rules: [
+              {
+                enabled: true,
+                mode: "text",
+                find: "bad text",
+                replace: "good text",
+              },
+            ],
           },
           ports: { next: { type: "node", id: "capture-after" } },
         },
@@ -201,7 +209,14 @@ test("replace-text does not touch the routing model field", async () => {
           name: "",
           type: "replace-text",
           config: {
-            rules: [{ enabled: true, find: "bad text", replace: "good text" }],
+            rules: [
+              {
+                enabled: true,
+                mode: "text",
+                find: "bad text",
+                replace: "good text",
+              },
+            ],
           },
           ports: { next: { type: "target", id: "target-a" } },
         },
@@ -225,7 +240,7 @@ test("replace-text does not touch the routing model field", async () => {
 
 test("replace-text interprets JSON-style escape sequences in find and replace", () => {
   const rule = (find: string, replace: string) => [
-    { enabled: true, find, replace },
+    { enabled: true, mode: "text" as const, find, replace },
   ];
 
   const multiline = replaceRequestText(
@@ -260,6 +275,146 @@ test("replace-text interprets JSON-style escape sequences in find and replace", 
   );
   assert.equal(unknownEscape.count, 1);
   assert.deepEqual(unknownEscape.value, { prompt: "C:drive file" });
+});
+
+test("json-mode rules replace message windows structurally", () => {
+  const body = {
+    model: "public-model",
+    messages: [
+      { role: "system", content: "test system prompt" },
+      { role: "user", content: "test\ntest\ntest" },
+      { role: "assistant", content: "keep me" },
+    ],
+  };
+  const find = `      {
+        "role": "system",
+        "content": "test system prompt"
+      },
+      {
+        "role": "user",
+        "content": "test\\ntest\\ntest"
+      }`;
+  const replace = `{"role":"system","content":"replaced system prompt"},
+    {"role":"user","content":"hello"}`;
+
+  const result = replaceRequestText(body, [
+    { enabled: true, mode: "json", find, replace },
+  ]);
+  assert.equal(result.count, 1);
+  assert.deepEqual(result.value, {
+    model: "public-model",
+    messages: [
+      { role: "system", content: "replaced system prompt" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "keep me" },
+    ],
+  });
+});
+
+test("json-mode rules remove and expand sections", () => {
+  const body = {
+    messages: [
+      { role: "system", content: "drop me" },
+      { role: "user", content: "hi" },
+    ],
+  };
+
+  const removed = replaceRequestText(body, [
+    {
+      enabled: true,
+      mode: "json",
+      find: '{ "role": "system", "content": "drop me" }',
+      replace: "",
+    },
+  ]);
+  assert.equal(removed.count, 1);
+  assert.deepEqual(removed.value, {
+    messages: [{ role: "user", content: "hi" }],
+  });
+
+  const expanded = replaceRequestText(body, [
+    {
+      enabled: true,
+      mode: "json",
+      find: '{ "role": "user", "content": "hi" }',
+      replace:
+        '{ "role": "user", "content": "hi" }, { "role": "assistant", "content": "hello" }',
+    },
+  ]);
+  assert.equal(expanded.count, 1);
+  assert.deepEqual(expanded.value, {
+    messages: [
+      { role: "system", content: "drop me" },
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+    ],
+  });
+});
+
+test("json-mode entry rules edit object keys", () => {
+  const body = {
+    temperature: 0.5,
+    tools: [{ name: "search" }],
+    messages: [{ role: "user", content: "hi" }],
+  };
+
+  const retuned = replaceRequestText(body, [
+    {
+      enabled: true,
+      mode: "json",
+      find: '"temperature": 0.5',
+      replace: '"temperature": 0.9, "top_p": 0.9',
+    },
+  ]);
+  assert.equal(retuned.count, 1);
+  assert.deepEqual(retuned.value, {
+    tools: [{ name: "search" }],
+    messages: [{ role: "user", content: "hi" }],
+    temperature: 0.9,
+    top_p: 0.9,
+  });
+
+  const dropped = replaceRequestText(body, [
+    {
+      enabled: true,
+      mode: "json",
+      find: '"tools": [{ "name": "search" }]',
+      replace: "",
+    },
+  ]);
+  assert.equal(dropped.count, 1);
+  assert.deepEqual(dropped.value, {
+    temperature: 0.5,
+    messages: [{ role: "user", content: "hi" }],
+  });
+});
+
+test("compileStructuralReplacement rejects bad fragments", () => {
+  assert.equal(
+    typeof compileStructuralReplacement({ find: "{ broken", replace: "" }),
+    "string",
+  );
+  assert.equal(
+    typeof compileStructuralReplacement({
+      find: '"key": 1',
+      replace: '{"role": "user"}',
+    }),
+    "string",
+  );
+  assert.equal(
+    typeof compileStructuralReplacement({
+      find: '{"role": "user"}',
+      replace: '"key": 1',
+    }),
+    "string",
+  );
+  assert.notEqual(
+    typeof compileStructuralReplacement({
+      find: '{"role": "user", "content": "hi"}',
+      replace: "",
+    }),
+    "string",
+  );
 });
 
 function conditionPipeline(

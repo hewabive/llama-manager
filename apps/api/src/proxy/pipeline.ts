@@ -87,56 +87,175 @@ export function decodeReplacementEscapes(value: string): string {
   return out;
 }
 
-function decodeRules(
-  rules: ApiProxyTextReplacementRule[],
-): ApiProxyTextReplacementRule[] {
-  return rules.map((rule) => ({
-    ...rule,
-    find: decodeReplacementEscapes(rule.find),
-    replace: decodeReplacementEscapes(rule.replace),
-  }));
+export type StructuralReplacement =
+  | { kind: "entries"; find: Record<string, unknown>; replace: Record<string, unknown> }
+  | { kind: "values"; find: unknown[]; replace: unknown[] };
+
+function parseJsonFragment(
+  text: string,
+): { kind: "entries"; value: Record<string, unknown> } | { kind: "values"; value: unknown[] } | null {
+  try {
+    const entries = JSON.parse(`{${text}}`) as Record<string, unknown>;
+    return { kind: "entries", value: entries };
+  } catch {
+    /* fall through to the array form */
+  }
+  try {
+    const values = JSON.parse(`[${text}]`) as unknown[];
+    return { kind: "values", value: values };
+  } catch {
+    return null;
+  }
 }
 
-function replaceText(
-  value: string,
-  rules: ApiProxyTextReplacementRule[],
-): { value: string; count: number } {
-  let next = value;
-  let count = 0;
-
-  for (const rule of rules) {
-    if (!rule.enabled || !rule.find) {
-      continue;
+export function compileStructuralReplacement(rule: {
+  find: string;
+  replace: string;
+}): StructuralReplacement | string {
+  const find = parseJsonFragment(rule.find);
+  if (!find) {
+    return "find is not a valid JSON fragment (expected values like {...}, {...} or entries like \"key\": ...)";
+  }
+  if (find.kind === "values" && find.value.length === 0) {
+    return "find fragment is empty";
+  }
+  if (find.kind === "entries" && Object.keys(find.value).length === 0) {
+    return "find fragment is empty";
+  }
+  if (rule.replace.trim() === "") {
+    return find.kind === "entries"
+      ? { kind: "entries", find: find.value, replace: {} }
+      : { kind: "values", find: find.value, replace: [] };
+  }
+  const replace = parseJsonFragment(rule.replace);
+  if (!replace) {
+    return "replace is not a valid JSON fragment";
+  }
+  if (find.kind === "entries") {
+    if (replace.kind !== "entries") {
+      return 'find is a set of "key": value entries, so replace must be entries too (or empty)';
     }
+    return { kind: "entries", find: find.value, replace: replace.value };
+  }
+  if (replace.kind !== "values") {
+    return "find is a list of values, so replace must be values too (or empty)";
+  }
+  return { kind: "values", find: find.value, replace: replace.value };
+}
 
-    const parts = next.split(rule.find);
-    if (parts.length <= 1) {
-      continue;
+function deepJsonEqual(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((item, index) => deepJsonEqual(item, right[index]))
+    );
+  }
+  if (
+    left &&
+    right &&
+    typeof left === "object" &&
+    typeof right === "object" &&
+    !Array.isArray(left) &&
+    !Array.isArray(right)
+  ) {
+    const leftEntries = Object.entries(left);
+    if (leftEntries.length !== Object.keys(right).length) {
+      return false;
     }
+    return leftEntries.every(
+      ([key, item]) =>
+        key in right && deepJsonEqual(item, (right as Record<string, unknown>)[key]),
+    );
+  }
+  return false;
+}
 
-    count += parts.length - 1;
-    next = parts.join(rule.replace);
+function applyStructuralReplacement(
+  value: unknown,
+  rule: StructuralReplacement,
+): ReplacementResult {
+  if (Array.isArray(value)) {
+    let count = 0;
+    const items: unknown[] = [];
+    for (const item of value) {
+      const result = applyStructuralReplacement(item, rule);
+      count += result.count;
+      items.push(result.value);
+    }
+    if (rule.kind === "values") {
+      const window = rule.find.length;
+      for (let index = 0; index + window <= items.length; ) {
+        const matched = rule.find.every((findItem, offset) =>
+          deepJsonEqual(items[index + offset], findItem),
+        );
+        if (matched) {
+          items.splice(index, window, ...rule.replace);
+          count += 1;
+          index += rule.replace.length;
+          continue;
+        }
+        index += 1;
+      }
+    }
+    return { value: items, count };
   }
 
-  return { value: next, count };
+  if (value && typeof value === "object") {
+    let count = 0;
+    const next: Record<string, unknown> = {};
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      const result = applyStructuralReplacement(entryValue, rule);
+      count += result.count;
+      next[entryKey] = result.value;
+    }
+    if (rule.kind === "entries") {
+      const matched = Object.entries(rule.find).every(
+        ([key, findValue]) => key in next && deepJsonEqual(next[key], findValue),
+      );
+      if (matched) {
+        for (const key of Object.keys(rule.find)) {
+          delete next[key];
+        }
+        Object.assign(next, structuredClone(rule.replace));
+        count += 1;
+      }
+    }
+    return { value: next, count };
+  }
+
+  if (rule.kind === "values" && rule.find.length === 1) {
+    if (deepJsonEqual(value, rule.find[0]) && rule.replace.length === 1) {
+      return { value: structuredClone(rule.replace[0]), count: 1 };
+    }
+  }
+
+  return { value, count: 0 };
 }
 
-function replaceDecodedRequestText(
+function applyTextReplacement(
   value: unknown,
-  rules: ApiProxyTextReplacementRule[],
+  find: string,
+  replace: string,
   key: string | null,
 ): ReplacementResult {
   if (typeof value === "string") {
     if (key && replacementExcludedKeys.has(key)) {
       return { value, count: 0 };
     }
-    return replaceText(value, rules);
+    const parts = value.split(find);
+    if (parts.length <= 1) {
+      return { value, count: 0 };
+    }
+    return { value: parts.join(replace), count: parts.length - 1 };
   }
 
   if (Array.isArray(value)) {
     let count = 0;
     const next = value.map((item) => {
-      const result = replaceDecodedRequestText(item, rules, null);
+      const result = applyTextReplacement(item, find, replace, null);
       count += result.count;
       return result.value;
     });
@@ -147,7 +266,7 @@ function replaceDecodedRequestText(
     let count = 0;
     const next: Record<string, unknown> = {};
     for (const [entryKey, entryValue] of Object.entries(value)) {
-      const result = replaceDecodedRequestText(entryValue, rules, entryKey);
+      const result = applyTextReplacement(entryValue, find, replace, entryKey);
       count += result.count;
       next[entryKey] = result.value;
     }
@@ -162,7 +281,32 @@ export function replaceRequestText(
   rules: ApiProxyTextReplacementRule[],
   key: string | null = null,
 ): ReplacementResult {
-  return replaceDecodedRequestText(value, decodeRules(rules), key);
+  let current = value;
+  let count = 0;
+  for (const rule of rules) {
+    if (!rule.enabled || !rule.find) {
+      continue;
+    }
+    if (rule.mode === "json") {
+      const compiled = compileStructuralReplacement(rule);
+      if (typeof compiled === "string") {
+        continue;
+      }
+      const result = applyStructuralReplacement(current, compiled);
+      current = result.value;
+      count += result.count;
+      continue;
+    }
+    const result = applyTextReplacement(
+      current,
+      decodeReplacementEscapes(rule.find),
+      decodeReplacementEscapes(rule.replace),
+      key,
+    );
+    current = result.value;
+    count += result.count;
+  }
+  return { value: current, count };
 }
 
 function legacyModelRouteTo(request: ApiProxyProtocolModelRequest) {
