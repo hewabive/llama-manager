@@ -107,8 +107,8 @@ llama-server --model /models/model.gguf --dry-multiplier 0.7 --dry-base 1.5
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: проверка `dry_base >= 1.0f` в CLI.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `dry_base = 1.75f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: передача `dry_base` в `llama_sampler_init_dry`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: HTTP fallback для `dry_base < 1.0f`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: формула DRY penalty.
+- `llama.cpp/common/arg.cpp`: проверка `dry_base >= 1.0f` в CLI.
+- `llama.cpp/common/common.h`: default `dry_base = 1.75f`.
+- `llama.cpp/common/sampling.cpp`: передача `dry_base` в `llama_sampler_init_dry`.
+- `llama.cpp/tools/server/server-task.cpp`: HTTP fallback для `dry_base < 1.0f`.
+- `llama.cpp/tools/server/README.md`: формула DRY penalty.

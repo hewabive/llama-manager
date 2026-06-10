@@ -114,6 +114,6 @@ llama-server --vision-gemma-4b-default --ctx-size 32768 --image-max-tokens 1024
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--vision-gemma-4b-default`, help `--hf-repo`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router multimodal capability detection.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: multimodal API note и built-in preset help.
+- `llama.cpp/common/arg.cpp`: handler `--vision-gemma-4b-default`, help `--hf-repo`.
+- `llama.cpp/tools/server/server-models.cpp`: router multimodal capability detection.
+- `llama.cpp/tools/server/README.md`: multimodal API note и built-in preset help.

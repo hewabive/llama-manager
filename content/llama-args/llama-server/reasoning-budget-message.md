@@ -84,7 +84,7 @@ llama-server --model /models/reasoning.gguf --reasoning on --reasoning-budget 12
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--reasoning-budget-message`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: передача message вместе с tags.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: tokenization `message + end_tag`.
-- `/home/maxim/llama/llama.cpp/common/reasoning-budget.cpp`: forced sequence logic.
+- `llama.cpp/common/arg.cpp`: `--reasoning-budget-message`.
+- `llama.cpp/tools/server/server-common.cpp`: передача message вместе с tags.
+- `llama.cpp/tools/server/server-task.cpp`: tokenization `message + end_tag`.
+- `llama.cpp/common/reasoning-budget.cpp`: forced sequence logic.

@@ -115,7 +115,7 @@ llama-server --fim-qwen-14b-spec --spec-draft-ngl auto
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-14b-spec`.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`: speculative config selection.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: target/draft context loading.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--fim-qwen-14b-spec`.
+- `llama.cpp/common/speculative.cpp`: speculative config selection.
+- `llama.cpp/tools/server/server-context.cpp`: target/draft context loading.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.

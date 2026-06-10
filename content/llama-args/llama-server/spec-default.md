@@ -116,7 +116,7 @@ llama-server --model /srv/models/model.gguf --spec-type ngram-mod --spec-ngram-m
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--spec-default`, `--spec-type`, `--spec-ngram-mod-*`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default speculative type list.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`: selection of active speculative configs.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help `--spec-default`.
+- `llama.cpp/common/arg.cpp`: handler `--spec-default`, `--spec-type`, `--spec-ngram-mod-*`.
+- `llama.cpp/common/common.h`: default speculative type list.
+- `llama.cpp/common/speculative.cpp`: selection of active speculative configs.
+- `llama.cpp/tools/server/README.md`: help `--spec-default`.

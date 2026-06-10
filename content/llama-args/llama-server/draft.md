@@ -102,6 +102,6 @@ llama-server --model /models/target.gguf --spec-type ngram-mod --spec-ngram-mod-
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - removed stub для `--draft`, `--draft-n`, `--draft-max`, env `LLAMA_ARG_DRAFT_MAX` и `arg_removed()`.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp` - выбор draft/ngram speculative implementations.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка removed аргумента.
+- `llama.cpp/common/arg.cpp` - removed stub для `--draft`, `--draft-n`, `--draft-max`, env `LLAMA_ARG_DRAFT_MAX` и `arg_removed()`.
+- `llama.cpp/common/speculative.cpp` - выбор draft/ngram speculative implementations.
+- `llama.cpp/tools/server/README.md` - help-строка removed аргумента.

@@ -91,6 +91,6 @@ curl http://127.0.0.1:8080/v1/chat/completions -H "Authorization: Bearer key-one
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server-http.cpp`
+- `llama.cpp/tools/server/server-models.cpp`

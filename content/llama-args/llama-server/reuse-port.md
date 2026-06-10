@@ -80,6 +80,6 @@ llama-server --model /models/a.gguf --host 0.0.0.0 --port 8080 --reuse-port
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-http.cpp`

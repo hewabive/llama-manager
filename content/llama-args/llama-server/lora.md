@@ -114,8 +114,8 @@ llama-server --model /srv/models/base.gguf --lora /srv/loras/a.gguf,/srv/loras/b
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/server-common.cpp`
+- `llama.cpp/tools/server/README.md`

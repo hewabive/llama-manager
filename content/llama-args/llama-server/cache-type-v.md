@@ -155,12 +155,12 @@ llama-server --model /models/model.gguf --flash-attn on --cache-type-k q8_0 --ca
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-kv-cache.cpp`
-- `/home/maxim/llama/llama.cpp/docs/multi-gpu.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/src/llama-context.cpp`
+- `llama.cpp/src/llama-kv-cache.cpp`
+- `llama.cpp/docs/multi-gpu.md`
 - <https://arxiv.org/abs/2402.02750>
 - <https://arxiv.org/abs/2502.15075>
 - <https://huggingface.co/docs/transformers/v4.56.1/en/kv_cache>

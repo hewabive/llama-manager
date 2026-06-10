@@ -97,7 +97,7 @@ threads-http = 8
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--threads-http` и поле `params.n_threads_http`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - значение по умолчанию `n_threads_http = -1`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp` - автоматическая формула и создание `httplib::ThreadPool`.
-- `/home/maxim/llama/llama.cpp/tools/server/README-dev.md` - перечень операций, выполняемых в HTTP worker threads.
+- `llama.cpp/common/arg.cpp` - объявление `--threads-http` и поле `params.n_threads_http`.
+- `llama.cpp/common/common.h` - значение по умолчанию `n_threads_http = -1`.
+- `llama.cpp/tools/server/server-http.cpp` - автоматическая формула и создание `httplib::ThreadPool`.
+- `llama.cpp/tools/server/README-dev.md` - перечень операций, выполняемых в HTTP worker threads.

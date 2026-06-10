@@ -125,7 +125,7 @@ llama-server --models-preset /srv/llama/gpt-oss.ini --models-max 1 --no-models-a
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--gpt-oss-120b-default`.
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: логика `--hf-repo`/`--hf-file`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router autoload и limits.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--gpt-oss-120b-default`.
+- `llama.cpp/common/arg.cpp`: логика `--hf-repo`/`--hf-file`.
+- `llama.cpp/tools/server/server-models.cpp`: router autoload и limits.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.

@@ -103,6 +103,6 @@ llama-server --hf-repo owner/text-GGUF:Q4_K_M --model-vocoder /srv/models/vocode
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/README.md`

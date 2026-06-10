@@ -106,8 +106,8 @@ llama-server --model /models/model.gguf --sampler-seq kpmta --adaptive-target 0.
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/sampling.cpp`
+- `llama.cpp/tools/server/server-task.cpp`
+- `llama.cpp/tools/server/README.md`

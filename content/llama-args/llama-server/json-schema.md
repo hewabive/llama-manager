@@ -159,9 +159,9 @@ OpenAI-compatible `response_format`:
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `-j`/`--json-schema` и CLI conversion.
-- `/home/maxim/llama/llama.cpp/common/json-schema-to-grammar.cpp`: converter и llguidance/GBNF paths.
-- `/home/maxim/llama/llama.cpp/tests/test-json-schema-to-grammar.cpp`: покрытые schema features.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: request поле `json_schema` и conversion diagnostics.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: `response_format` и конфликт `json_schema` с `grammar`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.
+- `llama.cpp/common/arg.cpp`: объявление `-j`/`--json-schema` и CLI conversion.
+- `llama.cpp/common/json-schema-to-grammar.cpp`: converter и llguidance/GBNF paths.
+- `llama.cpp/tests/test-json-schema-to-grammar.cpp`: покрытые schema features.
+- `llama.cpp/tools/server/server-task.cpp`: request поле `json_schema` и conversion diagnostics.
+- `llama.cpp/tools/server/server-common.cpp`: `response_format` и конфликт `json_schema` с `grammar`.
+- `llama.cpp/tools/server/README.md`: CLI help и request docs.

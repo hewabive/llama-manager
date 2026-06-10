@@ -129,8 +129,8 @@ llama-server --model /models/model.gguf -l 15043+1 -l 2-100
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: CLI parser `-l`/`--logit-bias`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: поля `logit_bias` и `logit_bias_eog`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: добавление `llama_sampler_init_logit_bias`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: HTTP formats для `logit_bias` и взаимодействие с `ignore_eos`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание JSON `logit_bias`.
+- `llama.cpp/common/arg.cpp`: CLI parser `-l`/`--logit-bias`.
+- `llama.cpp/common/common.h`: поля `logit_bias` и `logit_bias_eog`.
+- `llama.cpp/common/sampling.cpp`: добавление `llama_sampler_init_logit_bias`.
+- `llama.cpp/tools/server/server-task.cpp`: HTTP formats для `logit_bias` и взаимодействие с `ignore_eos`.
+- `llama.cpp/tools/server/README.md`: описание JSON `logit_bias`.

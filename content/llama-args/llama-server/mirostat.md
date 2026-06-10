@@ -118,8 +118,8 @@ llama-server --model /models/model.gguf --mirostat 2 --mirostat-ent 5.0 --mirost
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--mirostat`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `mirostat = 0`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: ветки Mirostat v1/v2 и обычной sampler chain.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.
+- `llama.cpp/common/arg.cpp`: объявление `--mirostat`.
+- `llama.cpp/common/common.h`: default `mirostat = 0`.
+- `llama.cpp/common/sampling.cpp`: ветки Mirostat v1/v2 и обычной sampler chain.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat`.
+- `llama.cpp/tools/server/README.md`: CLI help и request docs.

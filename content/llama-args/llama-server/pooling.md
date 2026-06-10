@@ -101,7 +101,7 @@ llama-server --model /models/reranker.gguf --embedding --pooling rank
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: parsing `--pooling`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: передача `pooling_type` в context и rerank warnings.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: embedding/rerank route checks.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: embedding и reranking endpoints.
+- `llama.cpp/common/arg.cpp`: parsing `--pooling`.
+- `llama.cpp/common/common.cpp`: передача `pooling_type` в context и rerank warnings.
+- `llama.cpp/tools/server/server-context.cpp`: embedding/rerank route checks.
+- `llama.cpp/tools/server/README.md`: embedding и reranking endpoints.

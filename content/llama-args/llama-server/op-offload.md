@@ -97,8 +97,8 @@ llama-server --model /models/model.gguf --no-op-offload
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-backend.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/src/llama-context.cpp`
+- `llama.cpp/ggml/src/ggml-backend.cpp`
+- `llama.cpp/tools/server/README.md`

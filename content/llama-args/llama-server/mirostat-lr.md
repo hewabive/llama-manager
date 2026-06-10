@@ -101,8 +101,8 @@ llama-server --model /models/model.gguf --mirostat 2 --mirostat-lr 0.05
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--mirostat-lr`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `mirostat_eta = 0.10f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: передача `mirostat_eta` в Mirostat samplers.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat_eta`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание `mirostat_eta`.
+- `llama.cpp/common/arg.cpp`: объявление `--mirostat-lr`.
+- `llama.cpp/common/common.h`: default `mirostat_eta = 0.10f`.
+- `llama.cpp/common/sampling.cpp`: передача `mirostat_eta` в Mirostat samplers.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat_eta`.
+- `llama.cpp/tools/server/README.md`: описание `mirostat_eta`.

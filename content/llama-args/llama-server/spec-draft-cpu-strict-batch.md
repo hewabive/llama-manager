@@ -94,8 +94,8 @@ cpu-strict-batch-draft = 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-strict-batch`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - postprocess CPU-профилей.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - strict CPU placement.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.
+- `llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-strict-batch`.
+- `llama.cpp/common/common.cpp` - postprocess CPU-профилей.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - strict CPU placement.
+- `llama.cpp/tools/server/README.md` - help-строка.

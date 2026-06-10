@@ -114,6 +114,6 @@ llama-server --models-preset /srv/llama/coders.ini --models-autoload
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-3b-default`.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: flag в INI.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--fim-qwen-3b-default`.
+- `llama.cpp/common/preset.cpp`: flag в INI.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.

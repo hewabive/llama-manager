@@ -82,6 +82,6 @@ curl http://127.0.0.1:8080/llama/v1/models
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server-http.cpp`
+- `llama.cpp/tools/server/server.cpp`

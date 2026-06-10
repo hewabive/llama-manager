@@ -108,8 +108,8 @@ llama-server --model /models/model.gguf --repeat-last-n 128 --repeat-penalty 1.0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--repeat-penalty` и запись в `penalty_repeat`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `penalty_repeat = 1.00f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_penalties`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `repeat_penalty`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI и request-документация sampling-параметров.
+- `llama.cpp/common/arg.cpp`: объявление `--repeat-penalty` и запись в `penalty_repeat`.
+- `llama.cpp/common/common.h`: default `penalty_repeat = 1.00f`.
+- `llama.cpp/common/sampling.cpp`: `llama_sampler_init_penalties`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `repeat_penalty`.
+- `llama.cpp/tools/server/README.md`: CLI и request-документация sampling-параметров.

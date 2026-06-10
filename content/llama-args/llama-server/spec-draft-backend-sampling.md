@@ -100,7 +100,7 @@ llama-server --model /models/target-with-mtp.gguf --spec-type draft-mtp --spec-d
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/speculative.cpp`
+- `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/README.md`

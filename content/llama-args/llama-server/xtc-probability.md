@@ -98,9 +98,9 @@ llama-server --model /models/model.gguf --xtc-probability 0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/sampling.cpp`
+- `llama.cpp/src/llama-sampler.cpp`
+- `llama.cpp/tools/server/server-task.cpp`

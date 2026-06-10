@@ -103,8 +103,8 @@ llama-server --model /models/model.gguf --mirostat 2 --mirostat-ent 4.5 --mirost
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--mirostat-ent`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `mirostat_tau = 5.00f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: передача `mirostat_tau` в Mirostat samplers.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat_tau`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание `mirostat_tau`.
+- `llama.cpp/common/arg.cpp`: объявление `--mirostat-ent`.
+- `llama.cpp/common/common.h`: default `mirostat_tau = 5.00f`.
+- `llama.cpp/common/sampling.cpp`: передача `mirostat_tau` в Mirostat samplers.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `mirostat_tau`.
+- `llama.cpp/tools/server/README.md`: описание `mirostat_tau`.

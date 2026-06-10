@@ -82,8 +82,8 @@ curl http://127.0.0.1:8080/v1/chat/completions -d '{"messages":[{"role":"user","
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_security.py`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server-common.cpp`
+- `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/tests/unit/test_security.py`
+- `llama.cpp/tools/server/README.md`

@@ -102,7 +102,7 @@ llama-server --model /models/model.gguf --jinja --chat-template "{{ bos_token }}
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--chat-template`, проверка `common_chat_verify_template()`.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: `common_chat_templates_init()`, Jinja/autoparser и pure content parser.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: инициализация chat templates и `/props`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: актуальная таблица аргументов server.
+- `llama.cpp/common/arg.cpp`: объявление `--chat-template`, проверка `common_chat_verify_template()`.
+- `llama.cpp/common/chat.cpp`: `common_chat_templates_init()`, Jinja/autoparser и pure content parser.
+- `llama.cpp/tools/server/server-context.cpp`: инициализация chat templates и `/props`.
+- `llama.cpp/tools/server/README.md`: актуальная таблица аргументов server.

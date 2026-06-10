@@ -83,7 +83,7 @@ llama-server --model /models/model.gguf --no-ui-mcp-proxy
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.h`
-- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_proxy.py`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server.cpp`
+- `llama.cpp/tools/server/server-models.h`
+- `llama.cpp/tools/server/tests/unit/test_proxy.py`

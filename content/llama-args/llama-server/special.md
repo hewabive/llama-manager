@@ -91,7 +91,7 @@ llama-server --model /models/model.gguf --special --verbose
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--special`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::special`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: detokenization helpers.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: token output path.
+- `llama.cpp/common/arg.cpp`: `--special`.
+- `llama.cpp/common/common.h`: `common_params::special`.
+- `llama.cpp/common/common.cpp`: detokenization helpers.
+- `llama.cpp/tools/server/server-context.cpp`: token output path.

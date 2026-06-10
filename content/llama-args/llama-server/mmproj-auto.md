@@ -109,7 +109,7 @@ llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0 --no-mmproj
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/download.cpp`
+- `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/README.md`

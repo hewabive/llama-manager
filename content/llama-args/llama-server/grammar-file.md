@@ -104,8 +104,8 @@ root ::= "yes" | "no"
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--grammar-file` и helper `read_file`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `COMMON_GRAMMAR_TYPE_USER`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: создание grammar sampler.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и invalid grammar response.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: sampling args в presets.
+- `llama.cpp/common/arg.cpp`: объявление `--grammar-file` и helper `read_file`.
+- `llama.cpp/common/common.h`: `COMMON_GRAMMAR_TYPE_USER`.
+- `llama.cpp/common/sampling.cpp`: создание grammar sampler.
+- `llama.cpp/tools/server/README.md`: CLI help и invalid grammar response.
+- `llama.cpp/common/preset.cpp`: sampling args в presets.

@@ -128,7 +128,7 @@ curl "http://127.0.0.1:8080/props?model=coder&autoload=false"
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--models-autoload` и `--no-models-autoload`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `models_autoload = true`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: `is_autoload`, `router_validate_model`, `ensure_model_ready`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: `Routing requests`.
+- `llama.cpp/common/arg.cpp`: объявление `--models-autoload` и `--no-models-autoload`.
+- `llama.cpp/common/common.h`: default `models_autoload = true`.
+- `llama.cpp/tools/server/server-models.cpp`: `is_autoload`, `router_validate_model`, `ensure_model_ready`.
+- `llama.cpp/tools/server/README.md`: `Routing requests`.

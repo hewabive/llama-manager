@@ -97,7 +97,7 @@ llama-server --model /models/model.gguf --fit on --fit-ctx 8192 --fit-target 204
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/fit.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/fit.cpp`
+- `llama.cpp/tools/server/README.md`

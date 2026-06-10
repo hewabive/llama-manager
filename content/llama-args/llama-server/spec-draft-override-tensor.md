@@ -89,6 +89,6 @@ llama-server --model /models/target.gguf --spec-draft-model /models/draft.gguf -
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-context.cpp`

@@ -91,7 +91,7 @@ llama-server --model /models/model.gguf --reverse-prompt "### User:"
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--reverse-prompt`, escape post-processing.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::antiprompt`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: defaults и request `stop`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server argument table.
+- `llama.cpp/common/arg.cpp`: `--reverse-prompt`, escape post-processing.
+- `llama.cpp/common/common.h`: `common_params::antiprompt`.
+- `llama.cpp/tools/server/server-task.cpp`: defaults и request `stop`.
+- `llama.cpp/tools/server/README.md`: server argument table.

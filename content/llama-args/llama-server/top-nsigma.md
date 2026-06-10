@@ -96,8 +96,8 @@ llama-server --model /models/model.gguf --samplers "penalties;dry;top_n_sigma;to
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--top-nsigma`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - дефолт `top_n_sigma = -1.00f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp` - порядок цепочки.
-- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp` - расчет mean/std и маска.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - HTTP-поле `top_n_sigma`.
+- `llama.cpp/common/arg.cpp` - объявление `--top-nsigma`.
+- `llama.cpp/common/common.h` - дефолт `top_n_sigma = -1.00f`.
+- `llama.cpp/common/sampling.cpp` - порядок цепочки.
+- `llama.cpp/src/llama-sampler.cpp` - расчет mean/std и маска.
+- `llama.cpp/tools/server/server-task.cpp` - HTTP-поле `top_n_sigma`.

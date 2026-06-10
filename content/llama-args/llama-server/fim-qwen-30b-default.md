@@ -115,6 +115,6 @@ llama-server --models-preset /srv/llama/coders.ini --no-models-autoload
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-30b-default`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router autoload/LRU.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--fim-qwen-30b-default`.
+- `llama.cpp/tools/server/server-models.cpp`: router autoload/LRU.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.

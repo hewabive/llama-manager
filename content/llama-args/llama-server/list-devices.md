@@ -88,6 +88,6 @@ llama-server --model /models/model.gguf --device CUDA0 --gpu-layers auto
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/tools/server/README.md`

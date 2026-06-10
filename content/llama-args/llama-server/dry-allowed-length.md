@@ -104,8 +104,8 @@ llama-server --model /models/model.gguf --dry-multiplier 0.8 --dry-allowed-lengt
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--dry-allowed-length`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `dry_allowed_length = 2`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `dry_allowed_length`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание формулы DRY.
+- `llama.cpp/common/arg.cpp`: объявление `--dry-allowed-length`.
+- `llama.cpp/common/common.h`: default `dry_allowed_length = 2`.
+- `llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `dry_allowed_length`.
+- `llama.cpp/tools/server/README.md`: описание формулы DRY.

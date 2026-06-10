@@ -93,8 +93,8 @@ llama-server --model /models/model.gguf --check-tensors --no-mmap
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/src/llama-model-loader.cpp`
+- `llama.cpp/tools/server/README.md`

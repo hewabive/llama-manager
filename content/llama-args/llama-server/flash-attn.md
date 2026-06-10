@@ -105,8 +105,8 @@ llama-server --model /models/model.gguf --flash-attn off
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
-- `/home/maxim/llama/llama.cpp/include/llama.h`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/src/llama-context.cpp`
+- `llama.cpp/include/llama.h`
+- `llama.cpp/tools/server/README.md`

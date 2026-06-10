@@ -107,9 +107,9 @@ llama-server --model /models/model.gguf --top-k 1 --temp 0.8
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--top-k`, env и user sampling bit.
-- `/home/maxim/llama/llama.cpp/common/common.h` - дефолт `top_k = 40`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - чтение `general.sampling.top_k`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp` - место `top_k` в цепочке.
-- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp` - `llama_sampler_init_top_k`, `k <= 0` как empty sampler.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - HTTP-поле `top_k`.
+- `llama.cpp/common/arg.cpp` - объявление `--top-k`, env и user sampling bit.
+- `llama.cpp/common/common.h` - дефолт `top_k = 40`.
+- `llama.cpp/common/common.cpp` - чтение `general.sampling.top_k`.
+- `llama.cpp/common/sampling.cpp` - место `top_k` в цепочке.
+- `llama.cpp/src/llama-sampler.cpp` - `llama_sampler_init_top_k`, `k <= 0` как empty sampler.
+- `llama.cpp/tools/server/server-task.cpp` - HTTP-поле `top_k`.

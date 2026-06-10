@@ -117,9 +117,9 @@ llama-server --model /models/qwen.gguf --device CUDA0,CUDA1 --split-mode layer -
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/fit.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-model.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/fit.cpp`
+- `llama.cpp/src/llama-model.cpp`
+- `llama.cpp/tools/server/README.md`

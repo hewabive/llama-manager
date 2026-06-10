@@ -1,13 +1,11 @@
 # Общий промпт для агентов: Engineering help по аргументам llama-server
 
-Ты работаешь над подробной инженерной справкой llama-manager для аргументов `llama-server`. Основной продукт находится в:
-
-- `/home/maxim/llama/llama-manager`
+Ты работаешь над подробной инженерной справкой llama-manager для аргументов `llama-server`. Основной продукт — корень этого репозитория (llama-manager).
 
 Актуальный локальный checkout llama.cpp для сверки:
 
-- `/home/maxim/llama/llama.cpp`
-- commit смотри через `pnpm --filter @llama-manager/api args:docs:source-sync` или `git -C /home/maxim/llama/llama.cpp rev-parse HEAD`
+- путь настроен в `data/config/settings.json` → `llamaSource.repoPath`
+- commit смотри через `pnpm --filter @llama-manager/api args:docs:source-sync` или `git -C <repoPath> rev-parse HEAD`
 
 ## Задача
 
@@ -26,18 +24,20 @@
 
 Используй первичные локальные источники. Не выдумывай поведение аргумента.
 
+Пути к файлам llama.cpp в документах (включая раздел «Источники») пиши начиная с папки `llama.cpp/` — например `llama.cpp/common/arg.cpp`, без абсолютных путей файловой системы.
+
 Основные файлы:
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление аргументов, обработчики, значения по умолчанию, env-переменные, deprecated/removed варианты.
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/preset.cpp` - правила INI-пресетов.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
-- `/home/maxim/llama/llama.cpp/common/fit.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/*.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/*.h`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
-- `/home/maxim/llama/llama.cpp/tools/server/tests`
+- `llama.cpp/common/arg.cpp` - объявление аргументов, обработчики, значения по умолчанию, env-переменные, deprecated/removed варианты.
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/preset.cpp` - правила INI-пресетов.
+- `llama.cpp/common/speculative.cpp`
+- `llama.cpp/common/fit.cpp`
+- `llama.cpp/tools/server/*.cpp`
+- `llama.cpp/tools/server/*.h`
+- `llama.cpp/tools/server/README.md`
+- `llama.cpp/tools/server/tests`
 
 Можно использовать `llama-server --help`, если на машине есть подходящий бинарник. Если запускаешь команды, держи их точечными и быстрыми.
 

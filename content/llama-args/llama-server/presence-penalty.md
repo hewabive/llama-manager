@@ -107,8 +107,8 @@ llama-server --model /models/model.gguf --repeat-last-n 256 --presence-penalty 0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--presence-penalty`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `penalty_present = 0.00f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: применение через `llama_sampler_init_penalties`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `presence_penalty`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание request-параметра.
+- `llama.cpp/common/arg.cpp`: объявление `--presence-penalty`.
+- `llama.cpp/common/common.h`: default `penalty_present = 0.00f`.
+- `llama.cpp/common/sampling.cpp`: применение через `llama_sampler_init_penalties`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `presence_penalty`.
+- `llama.cpp/tools/server/README.md`: описание request-параметра.

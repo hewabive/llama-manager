@@ -114,8 +114,8 @@ llama-server --model /models/model.gguf --dry-multiplier 0.8 --dry-base 1.75 --d
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--dry-multiplier`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: defaults DRY и default `samplers`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поля `dry_*`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: формула и request-параметры DRY.
+- `llama.cpp/common/arg.cpp`: объявление `--dry-multiplier`.
+- `llama.cpp/common/common.h`: defaults DRY и default `samplers`.
+- `llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поля `dry_*`.
+- `llama.cpp/tools/server/README.md`: формула и request-параметры DRY.

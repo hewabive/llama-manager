@@ -90,9 +90,9 @@ prio-draft = 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление, диапазон `0..3` и запись в `params.speculative.draft.cpuparams.priority`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - enum/поле CPU priority.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - перенос CPU params в ggml threadpool params.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования draft CPU-профиля.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - platform-specific thread priority.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.
+- `llama.cpp/common/arg.cpp` - объявление, диапазон `0..3` и запись в `params.speculative.draft.cpuparams.priority`.
+- `llama.cpp/common/common.h` - enum/поле CPU priority.
+- `llama.cpp/common/common.cpp` - перенос CPU params в ggml threadpool params.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования draft CPU-профиля.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - platform-specific thread priority.
+- `llama.cpp/tools/server/README.md` - help-строка.

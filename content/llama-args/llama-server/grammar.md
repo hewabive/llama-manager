@@ -115,8 +115,8 @@ llama-server --model /models/model.gguf --grammar 'root ::= "yes" | "no"'
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--grammar`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `common_grammar`, типы grammar и `common_grammar_needs_prefill`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: создание grammar sampler, llguidance path, prefill logic и incompatibility с backend sampling.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `grammar`, `grammar_lazy`, triggers и диагностика.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и пример ошибки invalid grammar.
+- `llama.cpp/common/arg.cpp`: объявление `--grammar`.
+- `llama.cpp/common/common.h`: `common_grammar`, типы grammar и `common_grammar_needs_prefill`.
+- `llama.cpp/common/sampling.cpp`: создание grammar sampler, llguidance path, prefill logic и incompatibility с backend sampling.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `grammar`, `grammar_lazy`, triggers и диагностика.
+- `llama.cpp/tools/server/README.md`: CLI help и пример ошибки invalid grammar.

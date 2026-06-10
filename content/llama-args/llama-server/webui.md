@@ -78,6 +78,6 @@ llama-server --model /models/model.gguf --no-ui
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server-http.cpp`
+- `llama.cpp/tools/server/server-context.cpp`

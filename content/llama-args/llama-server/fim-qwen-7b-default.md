@@ -117,6 +117,6 @@ llama-server --models-preset /srv/llama/coders.ini --models-max 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-7b-default`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router загрузка и `--models-max`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--fim-qwen-7b-default`.
+- `llama.cpp/tools/server/server-models.cpp`: router загрузка и `--models-max`.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.

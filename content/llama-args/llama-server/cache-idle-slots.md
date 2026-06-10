@@ -95,8 +95,8 @@ llama-server --model /models/model.gguf --no-cache-idle-slots
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/README.md`
 - https://github.com/ggml-org/llama.cpp/pull/24190

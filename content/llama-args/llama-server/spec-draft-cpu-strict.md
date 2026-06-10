@@ -91,8 +91,8 @@ cpu-strict-draft = 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-strict`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - постобработка CPU-профилей.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и текущий перенос только thread counts.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - `ggml_thread_cpumask_next()` и применение affinity.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.
+- `llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-strict`.
+- `llama.cpp/common/common.cpp` - постобработка CPU-профилей.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и текущий перенос только thread counts.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - `ggml_thread_cpumask_next()` и применение affinity.
+- `llama.cpp/tools/server/README.md` - help-строка.

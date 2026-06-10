@@ -103,7 +103,7 @@ llama-server --model /models/model.gguf --device CUDA2,CUDA3 --split-mode none -
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama.cpp`
-- `/home/maxim/llama/llama.cpp/include/llama.h`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/src/llama.cpp`
+- `llama.cpp/include/llama.h`
+- `llama.cpp/tools/server/README.md`

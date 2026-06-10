@@ -101,9 +101,9 @@ llama-server --model /models/model.gguf --spec-type ngram-mod --spec-ngram-mod-n
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
-- `/home/maxim/llama/llama.cpp/common/ngram-mod.h`
-- `/home/maxim/llama/llama.cpp/common/ngram-mod.cpp`
-- `/home/maxim/llama/llama.cpp/docs/speculative.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/speculative.cpp`
+- `llama.cpp/common/ngram-mod.h`
+- `llama.cpp/common/ngram-mod.cpp`
+- `llama.cpp/docs/speculative.md`

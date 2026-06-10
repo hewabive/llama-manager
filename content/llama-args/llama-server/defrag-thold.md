@@ -78,5 +78,5 @@ llama-server --model /models/model.gguf --ctx-size 32768 --kv-unified
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/README.md`

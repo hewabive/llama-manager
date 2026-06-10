@@ -104,7 +104,7 @@ llama-server --model /models/reasoning.gguf --reasoning-format none
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--reasoning-format`.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: `common_reasoning_format_from_name()`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: parser params и streaming deltas.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание форматов.
+- `llama.cpp/common/arg.cpp`: объявление `--reasoning-format`.
+- `llama.cpp/common/chat.cpp`: `common_reasoning_format_from_name()`.
+- `llama.cpp/tools/server/server-task.cpp`: parser params и streaming deltas.
+- `llama.cpp/tools/server/README.md`: описание форматов.

@@ -107,9 +107,9 @@ llama-server --model /models/model.gguf --top-p 1.0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--top-p`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - дефолт `top_p = 0.95f`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - metadata `general.sampling.top_p`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp` - порядок sampler-цепочки.
-- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp` - реализация `llama_sampler_init_top_p`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - HTTP-поле `top_p`.
+- `llama.cpp/common/arg.cpp` - объявление `--top-p`.
+- `llama.cpp/common/common.h` - дефолт `top_p = 0.95f`.
+- `llama.cpp/common/common.cpp` - metadata `general.sampling.top_p`.
+- `llama.cpp/common/sampling.cpp` - порядок sampler-цепочки.
+- `llama.cpp/src/llama-sampler.cpp` - реализация `llama_sampler_init_top_p`.
+- `llama.cpp/tools/server/server-task.cpp` - HTTP-поле `top_p`.

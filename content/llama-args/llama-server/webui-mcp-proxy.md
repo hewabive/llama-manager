@@ -79,6 +79,6 @@ llama-server --model /models/model.gguf --ui-mcp-proxy --api-key local-secret
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_proxy.py`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server.cpp`
+- `llama.cpp/tools/server/tests/unit/test_proxy.py`

@@ -95,8 +95,8 @@ cpu-range-draft = 0-3
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-range`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - `parse_cpu_range()` и `postprocess_cpu_params()`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование draft thread counts.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - runtime-механика CPU affinity в ggml threadpool.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.
+- `llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-cpu-range`.
+- `llama.cpp/common/common.cpp` - `parse_cpu_range()` и `postprocess_cpu_params()`.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование draft thread counts.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - runtime-механика CPU affinity в ggml threadpool.
+- `llama.cpp/tools/server/README.md` - help-строка.

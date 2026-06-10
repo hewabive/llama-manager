@@ -119,8 +119,8 @@ llama-server --model /models/model.gguf --ctx-size 8192 --repeat-last-n -1 --rep
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--repeat-last-n`, проверка CLI и `set_sampling()`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `penalty_last_n = 64` и default цепочка `samplers`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: создание `llama_sampler_init_penalties` и печать sampler params.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `repeat_last_n`, проверка `>= -1`, замена `-1` на `n_ctx_slot`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и описание request-параметра `repeat_last_n`.
+- `llama.cpp/common/arg.cpp`: объявление `--repeat-last-n`, проверка CLI и `set_sampling()`.
+- `llama.cpp/common/common.h`: default `penalty_last_n = 64` и default цепочка `samplers`.
+- `llama.cpp/common/sampling.cpp`: создание `llama_sampler_init_penalties` и печать sampler params.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `repeat_last_n`, проверка `>= -1`, замена `-1` на `n_ctx_slot`.
+- `llama.cpp/tools/server/README.md`: CLI help и описание request-параметра `repeat_last_n`.

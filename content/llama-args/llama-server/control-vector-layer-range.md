@@ -104,6 +104,6 @@ llama-server --model /srv/models/base.gguf --control-vector-scaled /srv/cvec/hel
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/common.h`

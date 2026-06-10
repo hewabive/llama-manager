@@ -107,8 +107,8 @@ llama-server --model /models/model.gguf --repeat-last-n 256 --frequency-penalty 
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--frequency-penalty`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `penalty_freq = 0.00f`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_penalties`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `frequency_penalty`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.
+- `llama.cpp/common/arg.cpp`: объявление `--frequency-penalty`.
+- `llama.cpp/common/common.h`: default `penalty_freq = 0.00f`.
+- `llama.cpp/common/sampling.cpp`: `llama_sampler_init_penalties`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `frequency_penalty`.
+- `llama.cpp/tools/server/README.md`: CLI help и request docs.

@@ -126,7 +126,7 @@ llama-server --fim-qwen-7b-spec --spec-draft-ngl all --ctx-size 32768
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-7b-spec`, `--spec-type`, draft args.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`: automatic draft-simple enable и speculative init.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: загрузка draft context.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--fim-qwen-7b-spec`, `--spec-type`, draft args.
+- `llama.cpp/common/speculative.cpp`: automatic draft-simple enable и speculative init.
+- `llama.cpp/tools/server/server-context.cpp`: загрузка draft context.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.

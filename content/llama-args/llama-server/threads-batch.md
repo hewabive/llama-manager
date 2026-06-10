@@ -99,8 +99,8 @@ threads-batch = 12
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление аргумента, help-текст, обработчик CLI и env.
-- `/home/maxim/llama/llama.cpp/common/common.h` - поля `common_params` и `common_cpu_params`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - постобработка CPU-параметров, парсинг CPU mask/range, перенос в `llama_context_params` и `ggml_threadpool_params`.
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp` и `tools/server/server-context.cpp` - применение параметров при старте `llama-server` и загрузке модели.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity, strict CPU placement, thread priority и polling в CPU backend.
+- `llama.cpp/common/arg.cpp` - объявление аргумента, help-текст, обработчик CLI и env.
+- `llama.cpp/common/common.h` - поля `common_params` и `common_cpu_params`.
+- `llama.cpp/common/common.cpp` - постобработка CPU-параметров, парсинг CPU mask/range, перенос в `llama_context_params` и `ggml_threadpool_params`.
+- `llama.cpp/tools/server/server.cpp` и `tools/server/server-context.cpp` - применение параметров при старте `llama-server` и загрузке модели.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity, strict CPU placement, thread priority и polling в CPU backend.

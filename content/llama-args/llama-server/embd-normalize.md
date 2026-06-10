@@ -91,7 +91,7 @@ llama-server --model /models/embed.gguf --embedding --pooling mean --embd-normal
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--embd-normalize`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: `common_embd_normalize()`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: request override и pooling check.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: endpoint `/embedding` option `embd_normalize`.
+- `llama.cpp/common/arg.cpp`: `--embd-normalize`.
+- `llama.cpp/common/common.cpp`: `common_embd_normalize()`.
+- `llama.cpp/tools/server/server-context.cpp`: request override и pooling check.
+- `llama.cpp/tools/server/README.md`: endpoint `/embedding` option `embd_normalize`.

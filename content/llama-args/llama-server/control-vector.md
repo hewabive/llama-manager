@@ -108,7 +108,7 @@ llama-server --model /srv/models/base.gguf --control-vector /srv/cvec/a.gguf,/sr
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/README.md`

@@ -106,8 +106,8 @@ llama-server --model /models/model.gguf --ctx-size 8192 --dry-multiplier 0.8 --d
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление и CLI-проверка `--dry-penalty-last-n`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `dry_penalty_last_n = -1`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле, проверка и замена `-1` на `n_ctx_slot`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание request-параметра.
+- `llama.cpp/common/arg.cpp`: объявление и CLI-проверка `--dry-penalty-last-n`.
+- `llama.cpp/common/common.h`: default `dry_penalty_last_n = -1`.
+- `llama.cpp/common/sampling.cpp`: `llama_sampler_init_dry`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле, проверка и замена `-1` на `n_ctx_slot`.
+- `llama.cpp/tools/server/README.md`: описание request-параметра.

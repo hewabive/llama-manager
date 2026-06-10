@@ -106,7 +106,7 @@ numa = isolate
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--numa` и допустимые значения.
-- `/home/maxim/llama/llama.cpp/common/common.h` - default `GGML_NUMA_STRATEGY_DISABLED`.
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp` - вызов `llama_numa_init(params.numa)`.
-- `/home/maxim/llama/llama.cpp/src/llama.cpp` и `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - передача NUMA-стратегии в CPU backend и применение affinity.
+- `llama.cpp/common/arg.cpp` - объявление `--numa` и допустимые значения.
+- `llama.cpp/common/common.h` - default `GGML_NUMA_STRATEGY_DISABLED`.
+- `llama.cpp/tools/server/server.cpp` - вызов `llama_numa_init(params.numa)`.
+- `llama.cpp/src/llama.cpp` и `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - передача NUMA-стратегии в CPU backend и применение affinity.

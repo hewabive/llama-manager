@@ -101,8 +101,8 @@ threads-batch-draft = 8
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--spec-draft-threads-batch`, обработчик CLI и постобработка CPU-профилей.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - `postprocess_cpu_params()` и `common_context_params_to_llama()`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - копирование draft `n_threads` и `n_threads_batch` при загрузке draft-модели.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp` - инициализация speculative decoding.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - актуальная help-строка.
+- `llama.cpp/common/arg.cpp` - объявление `--spec-draft-threads-batch`, обработчик CLI и постобработка CPU-профилей.
+- `llama.cpp/common/common.cpp` - `postprocess_cpu_params()` и `common_context_params_to_llama()`.
+- `llama.cpp/tools/server/server-context.cpp` - копирование draft `n_threads` и `n_threads_batch` при загрузке draft-модели.
+- `llama.cpp/common/speculative.cpp` - инициализация speculative decoding.
+- `llama.cpp/tools/server/README.md` - актуальная help-строка.

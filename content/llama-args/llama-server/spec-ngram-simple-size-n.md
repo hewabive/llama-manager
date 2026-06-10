@@ -93,8 +93,8 @@ llama-server --model /models/model.gguf --spec-type ngram-simple --spec-ngram-si
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp`
-- `/home/maxim/llama/llama.cpp/common/ngram-map.cpp`
-- `/home/maxim/llama/llama.cpp/docs/speculative.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/speculative.cpp`
+- `llama.cpp/common/ngram-map.cpp`
+- `llama.cpp/docs/speculative.md`

@@ -94,9 +94,9 @@ prio-batch-draft = 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление, диапазон `0..3` и обработчик `--spec-draft-prio-batch`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - CPU priority fields.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - перенос CPU params в threadpool params.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение thread priority.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.
+- `llama.cpp/common/arg.cpp` - объявление, диапазон `0..3` и обработчик `--spec-draft-prio-batch`.
+- `llama.cpp/common/common.h` - CPU priority fields.
+- `llama.cpp/common/common.cpp` - перенос CPU params в threadpool params.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение thread priority.
+- `llama.cpp/tools/server/README.md` - help-строка.

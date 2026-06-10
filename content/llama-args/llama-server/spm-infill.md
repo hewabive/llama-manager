@@ -90,7 +90,7 @@ llama-server --model /models/qwen-infill.gguf --spm-infill
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--spm-infill`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::spm_infill`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: `format_prompt_infill()`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: `/infill` prompt pattern.
+- `llama.cpp/common/arg.cpp`: `--spm-infill`.
+- `llama.cpp/common/common.h`: `common_params::spm_infill`.
+- `llama.cpp/tools/server/server-common.cpp`: `format_prompt_infill()`.
+- `llama.cpp/tools/server/README.md`: `/infill` prompt pattern.

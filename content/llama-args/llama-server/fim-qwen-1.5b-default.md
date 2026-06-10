@@ -117,6 +117,6 @@ llama-server --models-preset /srv/llama/coders.ini --models-max 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--fim-qwen-1.5b-default`.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: использование shortcut в INI.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: список встроенных пресетов.
+- `llama.cpp/common/arg.cpp`: handler `--fim-qwen-1.5b-default`.
+- `llama.cpp/common/preset.cpp`: использование shortcut в INI.
+- `llama.cpp/tools/server/README.md`: список встроенных пресетов.

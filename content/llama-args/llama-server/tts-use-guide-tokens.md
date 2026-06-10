@@ -87,7 +87,7 @@ llama-server --model /models/tts.gguf --model-vocoder /models/vocoder.gguf --tts
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--tts-use-guide-tokens`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params_vocoder::use_guide_tokens`.
-- `/home/maxim/llama/llama.cpp/tools/tts/tts.cpp`: `prepare_guide_tokens()` usage in TTS prompt construction.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server help table includes TTS-facing argument.
+- `llama.cpp/common/arg.cpp`: `--tts-use-guide-tokens`.
+- `llama.cpp/common/common.h`: `common_params_vocoder::use_guide_tokens`.
+- `llama.cpp/tools/tts/tts.cpp`: `prepare_guide_tokens()` usage in TTS prompt construction.
+- `llama.cpp/tools/server/README.md`: server help table includes TTS-facing argument.

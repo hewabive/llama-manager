@@ -107,7 +107,7 @@ llama-server --models-preset /srv/llama/models.ini --models-max 0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--models-max`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `models_max = 4`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: LRU unload, проверка лимита, startup autoload.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: router mode и preset-only `load-on-startup`.
+- `llama.cpp/common/arg.cpp`: объявление `--models-max`.
+- `llama.cpp/common/common.h`: default `models_max = 4`.
+- `llama.cpp/tools/server/server-models.cpp`: LRU unload, проверка лимита, startup autoload.
+- `llama.cpp/tools/server/README.md`: router mode и preset-only `load-on-startup`.

@@ -104,6 +104,6 @@ llama-server --model /srv/models/vision.gguf --mmproj /srv/models/mmproj-F16.ggu
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-context.cpp`

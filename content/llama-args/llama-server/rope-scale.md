@@ -105,8 +105,8 @@ LLAMA_ARG_ROPE_SCALE=2 llama-server --model /models/model.gguf --ctx-size 16384
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-model.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/src/llama-context.cpp`
+- `llama.cpp/src/llama-model.cpp`
+- `llama.cpp/tools/server/README.md`

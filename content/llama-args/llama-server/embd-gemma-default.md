@@ -126,7 +126,7 @@ llama-server --models-preset /srv/llama/embeddings.ini --models-max 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--embd-gemma-default`.
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`: проверка batch для embeddings.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: boolean flag в INI и рендеринг `to_args`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help-строка встроенного пресета.
+- `llama.cpp/common/arg.cpp`: handler `--embd-gemma-default`.
+- `llama.cpp/tools/server/server.cpp`: проверка batch для embeddings.
+- `llama.cpp/common/preset.cpp`: boolean flag в INI и рендеринг `to_args`.
+- `llama.cpp/tools/server/README.md`: help-строка встроенного пресета.

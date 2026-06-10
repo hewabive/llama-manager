@@ -75,6 +75,6 @@ llama-server --model /models/model.gguf --spec-type ngram-mod --spec-ngram-mod-n
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/docs/speculative.md`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/docs/speculative.md`
+- `llama.cpp/tools/server/README.md`

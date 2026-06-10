@@ -97,7 +97,7 @@ llama-server --model /models/model.gguf --no-jinja --chat-template chatml
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--jinja`, `--no-jinja`.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: Jinja path, legacy route, template capabilities.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: startup инициализация chat templates.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: справка server.
+- `llama.cpp/common/arg.cpp`: `--jinja`, `--no-jinja`.
+- `llama.cpp/common/chat.cpp`: Jinja path, legacy route, template capabilities.
+- `llama.cpp/tools/server/server-context.cpp`: startup инициализация chat templates.
+- `llama.cpp/tools/server/README.md`: справка server.

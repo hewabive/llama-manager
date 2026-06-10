@@ -90,8 +90,8 @@ perf = true
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - обработчик `--perf`/`--no-perf`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - поля `params.no_perf` и `params.sampling.no_perf`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - перенос в `llama_context_params.no_perf`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp` - использование `no_perf` в sampler timings.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - описание performance information в ответах сервера.
+- `llama.cpp/common/arg.cpp` - обработчик `--perf`/`--no-perf`.
+- `llama.cpp/common/common.h` - поля `params.no_perf` и `params.sampling.no_perf`.
+- `llama.cpp/common/common.cpp` - перенос в `llama_context_params.no_perf`.
+- `llama.cpp/common/sampling.cpp` - использование `no_perf` в sampler timings.
+- `llama.cpp/tools/server/README.md` - описание performance information в ответах сервера.

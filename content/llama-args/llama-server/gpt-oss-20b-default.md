@@ -124,6 +124,6 @@ llama-server --models-preset /srv/llama/gpt-oss.ini --no-models-autoload
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--gpt-oss-20b-default`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help встроенного пресета.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: INI shortcut handling.
+- `llama.cpp/common/arg.cpp`: handler `--gpt-oss-20b-default`.
+- `llama.cpp/tools/server/README.md`: help встроенного пресета.
+- `llama.cpp/common/preset.cpp`: INI shortcut handling.

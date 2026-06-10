@@ -96,8 +96,8 @@ llama-server --model /models/reasoning.gguf --reasoning on --reasoning-budget 0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: validation и env `LLAMA_ARG_THINK_BUDGET`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: передача budget в task.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: токенизация start/end/forced sequence.
-- `/home/maxim/llama/llama.cpp/common/reasoning-budget.cpp`: состояние sampler.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: подключение sampler и warning про backend sampling.
+- `llama.cpp/common/arg.cpp`: validation и env `LLAMA_ARG_THINK_BUDGET`.
+- `llama.cpp/tools/server/server-common.cpp`: передача budget в task.
+- `llama.cpp/tools/server/server-task.cpp`: токенизация start/end/forced sequence.
+- `llama.cpp/common/reasoning-budget.cpp`: состояние sampler.
+- `llama.cpp/common/sampling.cpp`: подключение sampler и warning про backend sampling.

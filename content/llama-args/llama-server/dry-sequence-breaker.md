@@ -118,8 +118,8 @@ llama-server --model /models/model.gguf --dry-multiplier 0.8 --dry-sequence-brea
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: CLI-семантика очистки default breakers и `none`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: default `dry_sequence_breakers`.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: передача breakers в `llama_sampler_init_dry`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`: JSON-поле `dry_sequence_breakers` и запрет пустого массива.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание CLI и request-поля.
+- `llama.cpp/common/arg.cpp`: CLI-семантика очистки default breakers и `none`.
+- `llama.cpp/common/common.h`: default `dry_sequence_breakers`.
+- `llama.cpp/common/sampling.cpp`: передача breakers в `llama_sampler_init_dry`.
+- `llama.cpp/tools/server/server-task.cpp`: JSON-поле `dry_sequence_breakers` и запрет пустого массива.
+- `llama.cpp/tools/server/README.md`: описание CLI и request-поля.

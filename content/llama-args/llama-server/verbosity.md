@@ -100,7 +100,7 @@ verbosity = 3
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - обработчик `--verbosity`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - default `verbosity = 3`.
-- `/home/maxim/llama/llama.cpp/common/log.h` и `/home/maxim/llama/llama.cpp/common/log.cpp` - уровни логирования и threshold filtering.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - связь `verbosity > 9` с `__verbose`.
+- `llama.cpp/common/arg.cpp` - обработчик `--verbosity`.
+- `llama.cpp/common/common.h` - default `verbosity = 3`.
+- `llama.cpp/common/log.h` и `llama.cpp/common/log.cpp` - уровни логирования и threshold filtering.
+- `llama.cpp/tools/server/server-task.cpp` - связь `verbosity > 9` с `__verbose`.

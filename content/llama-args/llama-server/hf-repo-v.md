@@ -107,7 +107,7 @@ llama-server --hf-repo owner/text-GGUF:Q4_K_M --hf-repo-v owner/vocoder-GGUF --h
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/download.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/download.cpp`
+- `llama.cpp/tools/server/README.md`

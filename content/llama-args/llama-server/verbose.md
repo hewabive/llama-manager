@@ -90,7 +90,7 @@ verbose = true
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - обработчик `--verbose`.
-- `/home/maxim/llama/llama.cpp/common/log.h` и `/home/maxim/llama/llama.cpp/common/log.cpp` - log levels и threshold.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - включение `__verbose` при `verbosity > 9`.
-- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_chat_completion.py` - тесты ответов с `__verbose`.
+- `llama.cpp/common/arg.cpp` - обработчик `--verbose`.
+- `llama.cpp/common/log.h` и `llama.cpp/common/log.cpp` - log levels и threshold.
+- `llama.cpp/tools/server/server-task.cpp` - включение `__verbose` при `verbosity > 9`.
+- `llama.cpp/tools/server/tests/unit/test_chat_completion.py` - тесты ответов с `__verbose`.

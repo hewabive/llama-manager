@@ -105,9 +105,9 @@ LLAMA_ARG_CPU_MOE=1 llama-server --model /models/moe.gguf --gpu-layers 99
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/common/fit.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-model-loader.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/common/fit.cpp`
+- `llama.cpp/src/llama-model-loader.cpp`
+- `llama.cpp/tools/server/README.md`

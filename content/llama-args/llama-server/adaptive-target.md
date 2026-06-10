@@ -92,9 +92,9 @@ llama-server --model /models/model.gguf --samplers "top_k;top_p;min_p;temperatur
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp`
-- `/home/maxim/llama/llama.cpp/include/llama.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/common/sampling.cpp`
+- `llama.cpp/src/llama-sampler.cpp`
+- `llama.cpp/include/llama.h`
+- `llama.cpp/tools/server/server-task.cpp`

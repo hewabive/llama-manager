@@ -99,7 +99,7 @@ llama-server --model /models/model.gguf --reasoning off --chat-template-kwargs '
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: JSON parsing и warning для `enable_thinking`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: merge CLI kwargs с request kwargs.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: добавление kwargs в Jinja `extra_context`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server help table.
+- `llama.cpp/common/arg.cpp`: JSON parsing и warning для `enable_thinking`.
+- `llama.cpp/tools/server/server-common.cpp`: merge CLI kwargs с request kwargs.
+- `llama.cpp/common/chat.cpp`: добавление kwargs в Jinja `extra_context`.
+- `llama.cpp/tools/server/README.md`: server help table.

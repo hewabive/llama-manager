@@ -95,7 +95,7 @@ llama-server --model /models/model.gguf --no-prefill-assistant
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--prefill-assistant`, `--no-prefill-assistant`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: continuation heuristic.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: `continue_final_message` handling.
-- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_chat_completion.py`: coverage для continuation/prefill behavior.
+- `llama.cpp/common/arg.cpp`: `--prefill-assistant`, `--no-prefill-assistant`.
+- `llama.cpp/tools/server/server-common.cpp`: continuation heuristic.
+- `llama.cpp/common/chat.cpp`: `continue_final_message` handling.
+- `llama.cpp/tools/server/tests/unit/test_chat_completion.py`: coverage для continuation/prefill behavior.

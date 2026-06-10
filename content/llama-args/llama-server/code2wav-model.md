@@ -75,7 +75,7 @@ llama-server --model /models/qwen3-omni/thinker.gguf \
 
 ## Источники
 
-- `/home/maxim/llama.cpp/tools/server/README.md` — строка справки (HELP-блок).
+- `llama.cpp/tools/server/README.md` — строка справки (HELP-блок).
 - [PR #23865](https://github.com/ggml-org/llama.cpp/pull/23865) — регенерация README, через которую протекла строка.
 - [PR #19441](https://github.com/ggml-org/llama.cpp/pull/19441) — влитый аудио-вход qwen3-omni.
 - [Discussion #18273](https://github.com/ggml-org/llama.cpp/discussions/18273) — обсуждение запуска qwen3-omni с talker/code2wav.

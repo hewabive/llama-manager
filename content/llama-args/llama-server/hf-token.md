@@ -97,6 +97,6 @@ llama-server --hf-token hf_xxx --hf-repo owner/private-GGUF --hf-file model-Q4_K
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.h`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/download.cpp`
+- `llama.cpp/common/download.h`

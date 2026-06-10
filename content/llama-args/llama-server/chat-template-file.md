@@ -94,7 +94,7 @@ llama-server --model /models/model.gguf --jinja --chat-template-file /srv/llama/
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: обработчик `--chat-template-file`, `read_file(value)`.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: применение Jinja template и parser generation.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: логирование `example_format` и `/props`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание server аргумента.
+- `llama.cpp/common/arg.cpp`: обработчик `--chat-template-file`, `read_file(value)`.
+- `llama.cpp/common/chat.cpp`: применение Jinja template и parser generation.
+- `llama.cpp/tools/server/server-context.cpp`: логирование `example_format` и `/props`.
+- `llama.cpp/tools/server/README.md`: описание server аргумента.

@@ -100,7 +100,7 @@ llama-server --model /models/bge-reranker.gguf --embedding --pooling rank
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--rerank`, `--reranking`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: rank pooling startup checks.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: `/reranking` route.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: reranking endpoint.
+- `llama.cpp/common/arg.cpp`: `--rerank`, `--reranking`.
+- `llama.cpp/common/common.cpp`: rank pooling startup checks.
+- `llama.cpp/tools/server/server-context.cpp`: `/reranking` route.
+- `llama.cpp/tools/server/README.md`: reranking endpoint.

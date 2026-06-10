@@ -95,7 +95,7 @@ llama-server --model /models/model.gguf --no-skip-chat-parsing
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `force_pure_content_parser`.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: branch `inputs.force_pure_content`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: передача в `chat_params`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: описание аргумента.
+- `llama.cpp/common/arg.cpp`: `force_pure_content_parser`.
+- `llama.cpp/common/chat.cpp`: branch `inputs.force_pure_content`.
+- `llama.cpp/tools/server/server-context.cpp`: передача в `chat_params`.
+- `llama.cpp/tools/server/README.md`: описание аргумента.

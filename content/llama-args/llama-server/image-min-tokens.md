@@ -93,6 +93,6 @@ llama-server --hf-repo ggml-org/gemma-3-4b-it-GGUF:Q8_0 --image-min-tokens 256
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-context.cpp`

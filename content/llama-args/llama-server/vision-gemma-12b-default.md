@@ -113,6 +113,6 @@ llama-server --models-preset /srv/llama/vision.ini --models-max 1 --no-models-au
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: handler `--vision-gemma-12b-default`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: multimodal capability в router metadata.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: multimodal behavior и built-in preset help.
+- `llama.cpp/common/arg.cpp`: handler `--vision-gemma-12b-default`.
+- `llama.cpp/tools/server/server-models.cpp`: multimodal capability в router metadata.
+- `llama.cpp/tools/server/README.md`: multimodal behavior и built-in preset help.

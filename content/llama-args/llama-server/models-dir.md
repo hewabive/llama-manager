@@ -146,7 +146,7 @@ curl http://127.0.0.1:8080/models
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--models-dir`, env `LLAMA_ARG_MODELS_DIR`.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: `load_from_models_dir`, правила имен, `mmproj`, multi-shard.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: объединение источников, reload и запуск дочерних серверов.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: раздел `Using multiple models`.
+- `llama.cpp/common/arg.cpp`: объявление `--models-dir`, env `LLAMA_ARG_MODELS_DIR`.
+- `llama.cpp/common/preset.cpp`: `load_from_models_dir`, правила имен, `mmproj`, multi-shard.
+- `llama.cpp/tools/server/server-models.cpp`: объединение источников, reload и запуск дочерних серверов.
+- `llama.cpp/tools/server/README.md`: раздел `Using multiple models`.

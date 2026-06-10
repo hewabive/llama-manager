@@ -90,6 +90,6 @@ llama-server --model /models/model.gguf --no-warmup
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--warmup`, `--no-warmup`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: warmup encode/decode, memory clear, perf reset.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: server help table.
+- `llama.cpp/common/arg.cpp`: `--warmup`, `--no-warmup`.
+- `llama.cpp/common/common.cpp`: warmup encode/decode, memory clear, perf reset.
+- `llama.cpp/tools/server/README.md`: server help table.

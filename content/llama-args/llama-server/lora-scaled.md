@@ -108,6 +108,6 @@ llama-server --model /srv/models/base.gguf --lora-scaled /srv/loras/a.gguf:0.5,/
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.cpp`
+- `llama.cpp/tools/server/README.md`

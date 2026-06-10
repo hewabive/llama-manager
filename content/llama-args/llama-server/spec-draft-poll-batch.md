@@ -93,9 +93,9 @@ poll-batch-draft = 0
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-poll-batch`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - поле `common_cpu_params.poll`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - CPU postprocess и threadpool params.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - polling loop.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - help-строка.
+- `llama.cpp/common/arg.cpp` - объявление и обработчик `--spec-draft-poll-batch`.
+- `llama.cpp/common/common.h` - поле `common_cpu_params.poll`.
+- `llama.cpp/common/common.cpp` - CPU postprocess и threadpool params.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и ограничение копирования CPU-профиля.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - polling loop.
+- `llama.cpp/tools/server/README.md` - help-строка.

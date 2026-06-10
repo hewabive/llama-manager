@@ -88,6 +88,6 @@ llama-server --model /models/model.gguf --no-escape --reverse-prompt "\n### User
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--escape`, `--no-escape`, post-processing строк.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: `string_process_escapes()`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `common_params::escape`.
+- `llama.cpp/common/arg.cpp`: `--escape`, `--no-escape`, post-processing строк.
+- `llama.cpp/common/common.cpp`: `string_process_escapes()`.
+- `llama.cpp/common/common.h`: `common_params::escape`.

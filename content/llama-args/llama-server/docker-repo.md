@@ -115,6 +115,6 @@ ctx-size = 4096
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.h`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/download.cpp`
+- `llama.cpp/common/download.h`

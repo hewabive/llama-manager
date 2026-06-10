@@ -110,7 +110,7 @@ model-url = https://example.org/releases/model.gguf
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.cpp`
-- `/home/maxim/llama/llama.cpp/common/download.h`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/download.cpp`
+- `llama.cpp/common/download.h`
+- `llama.cpp/tools/server/README.md`

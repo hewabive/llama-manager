@@ -94,8 +94,8 @@ llama-server --model /models/swa-model.gguf --swa-full --fit on --fit-target 204
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
-- `/home/maxim/llama/llama.cpp/src/llama-context.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/src/llama-context.cpp`
+- `llama.cpp/tools/server/README.md`

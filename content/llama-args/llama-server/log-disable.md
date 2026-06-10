@@ -84,7 +84,7 @@ log-disable = true
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--log-disable` и обработчик CLI/env.
-- `/home/maxim/llama/llama.cpp/common/log.h` - log levels, prefix/timestamp format и публичные функции logger.
-- `/home/maxim/llama/llama.cpp/common/log.cpp` - worker thread logger, file output, colors, pause/resume и threshold filtering.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - `common_init()` включает prefix/timestamps и подключает callback libllama.
+- `llama.cpp/common/arg.cpp` - объявление `--log-disable` и обработчик CLI/env.
+- `llama.cpp/common/log.h` - log levels, prefix/timestamp format и публичные функции logger.
+- `llama.cpp/common/log.cpp` - worker thread logger, file output, colors, pause/resume и threshold filtering.
+- `llama.cpp/common/common.cpp` - `common_init()` включает prefix/timestamps и подключает callback libllama.

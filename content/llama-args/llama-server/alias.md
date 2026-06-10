@@ -129,8 +129,8 @@ curl -s http://127.0.0.1:8080/models
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: парсинг `--alias`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `model_alias`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: выбор `model_name`, поля `/models`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: router aliases, conflict validation, lookup.
-- `/home/maxim/llama/llama.cpp/tools/server/tests/unit/test_basic.py`: проверка aliases/tags и порядка `id`.
+- `llama.cpp/common/arg.cpp`: парсинг `--alias`.
+- `llama.cpp/common/common.h`: `model_alias`.
+- `llama.cpp/tools/server/server-context.cpp`: выбор `model_name`, поля `/models`.
+- `llama.cpp/tools/server/server-models.cpp`: router aliases, conflict validation, lookup.
+- `llama.cpp/tools/server/tests/unit/test_basic.py`: проверка aliases/tags и порядка `id`.

@@ -115,9 +115,9 @@ llama-server --model /models/model.gguf --temp 0.8 --dynatemp-range 0.2 --dynate
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--temp`, clamp CLI-значения и user sampling bit.
-- `/home/maxim/llama/llama.cpp/common/common.h` - дефолт `common_params_sampling::temp = 0.80f`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - чтение `general.sampling.temperature` из metadata модели.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp` - построение sampler-цепочки.
-- `/home/maxim/llama/llama.cpp/src/llama-sampler.cpp` - реализация `llama_sampler_init_temp_ext` и greedy-ветка `temp <= 0`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-task.cpp` - HTTP-поле `temperature`.
+- `llama.cpp/common/arg.cpp` - объявление `--temp`, clamp CLI-значения и user sampling bit.
+- `llama.cpp/common/common.h` - дефолт `common_params_sampling::temp = 0.80f`.
+- `llama.cpp/common/common.cpp` - чтение `general.sampling.temperature` из metadata модели.
+- `llama.cpp/common/sampling.cpp` - построение sampler-цепочки.
+- `llama.cpp/src/llama-sampler.cpp` - реализация `llama_sampler_init_temp_ext` и greedy-ветка `temp <= 0`.
+- `llama.cpp/tools/server/server-task.cpp` - HTTP-поле `temperature`.

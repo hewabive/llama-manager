@@ -104,9 +104,9 @@ threads-draft = 4
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление `--spec-draft-threads`, обработчик CLI и постобработка CPU-профилей.
-- `/home/maxim/llama/llama.cpp/common/common.h` - `common_cpu_params` и поля `common_params_speculative`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - `postprocess_cpu_params()` и перенос thread counts в `llama_context_params`.
-- `/home/maxim/llama/llama.cpp/common/speculative.cpp` - инициализация speculative implementations.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование draft thread counts.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - актуальная строка help и пример `model-draft` в presets.
+- `llama.cpp/common/arg.cpp` - объявление `--spec-draft-threads`, обработчик CLI и постобработка CPU-профилей.
+- `llama.cpp/common/common.h` - `common_cpu_params` и поля `common_params_speculative`.
+- `llama.cpp/common/common.cpp` - `postprocess_cpu_params()` и перенос thread counts в `llama_context_params`.
+- `llama.cpp/common/speculative.cpp` - инициализация speculative implementations.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование draft thread counts.
+- `llama.cpp/tools/server/README.md` - актуальная строка help и пример `model-draft` в presets.

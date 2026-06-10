@@ -126,8 +126,8 @@ llama-server --models-preset /srv/llama/models.ini --models-max 1
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `common_params_add_preset_options()`
-- `/home/maxim/llama/llama.cpp/common/arg.h`: pseudo-env `COMMON_ARG_PRESET_LOAD_ON_STARTUP`
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: `common_preset::to_args()` пропускает preset-only options
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: выбор моделей для startup load
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: раздел Model presets
+- `llama.cpp/common/arg.cpp`: `common_params_add_preset_options()`
+- `llama.cpp/common/arg.h`: pseudo-env `COMMON_ARG_PRESET_LOAD_ON_STARTUP`
+- `llama.cpp/common/preset.cpp`: `common_preset::to_args()` пропускает preset-only options
+- `llama.cpp/tools/server/server-models.cpp`: выбор моделей для startup load
+- `llama.cpp/tools/server/README.md`: раздел Model presets

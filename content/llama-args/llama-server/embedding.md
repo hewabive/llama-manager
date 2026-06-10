@@ -102,7 +102,7 @@ llama-server --model /models/embed.gguf --embedding --batch-size 2048 --ubatch-s
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `--embedding`, `--embeddings`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp`: `cparams.embeddings`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: embedding routes and result extraction.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: `/embedding`, `/v1/embeddings`.
+- `llama.cpp/common/arg.cpp`: `--embedding`, `--embeddings`.
+- `llama.cpp/common/common.cpp`: `cparams.embeddings`.
+- `llama.cpp/tools/server/server-context.cpp`: embedding routes and result extraction.
+- `llama.cpp/tools/server/README.md`: `/embedding`, `/v1/embeddings`.

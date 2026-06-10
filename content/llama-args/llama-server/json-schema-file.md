@@ -127,9 +127,9 @@ llama-server --model /models/model.gguf --json-schema-file /srv/llama/schemas/an
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `-jf`/`--json-schema-file`, чтение файла и conversion.
-- `/home/maxim/llama/llama.cpp/common/json-schema-to-grammar.cpp`: converter schema в grammar.
-- `/home/maxim/llama/llama.cpp/tests/test-json-schema-to-grammar.cpp`: покрытые schema features.
-- `/home/maxim/llama/llama.cpp/common/sampling.cpp`: применение output-format grammar sampler.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: CLI help и request docs.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: sampling args в presets.
+- `llama.cpp/common/arg.cpp`: объявление `-jf`/`--json-schema-file`, чтение файла и conversion.
+- `llama.cpp/common/json-schema-to-grammar.cpp`: converter schema в grammar.
+- `llama.cpp/tests/test-json-schema-to-grammar.cpp`: покрытые schema features.
+- `llama.cpp/common/sampling.cpp`: применение output-format grammar sampler.
+- `llama.cpp/tools/server/README.md`: CLI help и request docs.
+- `llama.cpp/common/preset.cpp`: sampling args в presets.

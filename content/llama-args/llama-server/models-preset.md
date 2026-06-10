@@ -154,7 +154,7 @@ curl -X POST http://127.0.0.1:8080/models/load \
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: объявление `--models-preset`, preset-only ключи.
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: INI parser, `to_args`, merge/cascade, поддержка env/short keys.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: приоритеты, reserved args, reload, `/models`.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: разделы `Model presets` и `Routing requests`.
+- `llama.cpp/common/arg.cpp`: объявление `--models-preset`, preset-only ключи.
+- `llama.cpp/common/preset.cpp`: INI parser, `to_args`, merge/cascade, поддержка env/short keys.
+- `llama.cpp/tools/server/server-models.cpp`: приоритеты, reserved args, reload, `/models`.
+- `llama.cpp/tools/server/README.md`: разделы `Model presets` и `Routing requests`.

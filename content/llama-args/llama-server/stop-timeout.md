@@ -135,8 +135,8 @@ llama-server --models-preset /srv/llama/models.ini --models-max 1 --no-models-au
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: `common_params_add_preset_options()`
-- `/home/maxim/llama/llama.cpp/common/arg.h`: pseudo-env `COMMON_ARG_PRESET_STOP_TIMEOUT`
-- `/home/maxim/llama/llama.cpp/common/preset.cpp`: `common_preset::to_args()` пропускает preset-only options
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: `apply_stop_timeout()` и force-kill monitoring
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: раздел Model presets
+- `llama.cpp/common/arg.cpp`: `common_params_add_preset_options()`
+- `llama.cpp/common/arg.h`: pseudo-env `COMMON_ARG_PRESET_STOP_TIMEOUT`
+- `llama.cpp/common/preset.cpp`: `common_preset::to_args()` пропускает preset-only options
+- `llama.cpp/tools/server/server-models.cpp`: `apply_stop_timeout()` и force-kill monitoring
+- `llama.cpp/tools/server/README.md`: раздел Model presets

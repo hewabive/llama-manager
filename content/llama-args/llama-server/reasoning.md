@@ -102,7 +102,7 @@ llama-server --model /models/reasoning.gguf --reasoning off
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: parsing `--reasoning`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: вычисление `chat template, thinking`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-common.cpp`: request-level kwargs и `enable_thinking`.
-- `/home/maxim/llama/llama.cpp/common/chat.cpp`: Jinja variable `enable_thinking`.
+- `llama.cpp/common/arg.cpp`: parsing `--reasoning`.
+- `llama.cpp/tools/server/server-context.cpp`: вычисление `chat template, thinking`.
+- `llama.cpp/tools/server/server-common.cpp`: request-level kwargs и `enable_thinking`.
+- `llama.cpp/common/chat.cpp`: Jinja variable `enable_thinking`.

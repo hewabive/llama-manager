@@ -99,9 +99,9 @@ cpu-mask-draft = 0x0f
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp` - объявление, aliases и обработчик `--spec-draft-cpu-mask`.
-- `/home/maxim/llama/llama.cpp/common/common.cpp` - `parse_cpu_mask()`, `postprocess_cpu_params()` и `ggml_threadpool_params_from_cpu_params()`.
-- `/home/maxim/llama/llama.cpp/common/common.h` - `common_cpu_params`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование только thread counts.
-- `/home/maxim/llama/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity в ggml threadpool.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md` - актуальная help-строка.
+- `llama.cpp/common/arg.cpp` - объявление, aliases и обработчик `--spec-draft-cpu-mask`.
+- `llama.cpp/common/common.cpp` - `parse_cpu_mask()`, `postprocess_cpu_params()` и `ggml_threadpool_params_from_cpu_params()`.
+- `llama.cpp/common/common.h` - `common_cpu_params`.
+- `llama.cpp/tools/server/server-context.cpp` - загрузка draft-модели и копирование только thread counts.
+- `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` - применение affinity в ggml threadpool.
+- `llama.cpp/tools/server/README.md` - актуальная help-строка.

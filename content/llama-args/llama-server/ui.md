@@ -87,7 +87,7 @@ llama-server --model /models/model.gguf --ui --api-prefix /llama
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/common/common.h`
-- `/home/maxim/llama/llama.cpp/tools/server/server-http.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/common.h`
+- `llama.cpp/tools/server/server-http.cpp`
+- `llama.cpp/tools/server/server-context.cpp`

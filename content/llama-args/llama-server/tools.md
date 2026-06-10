@@ -98,8 +98,8 @@ curl -X POST http://127.0.0.1:8080/tools -H "Authorization: Bearer local-secret"
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/server-tools.cpp`
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`
-- `/home/maxim/llama/llama.cpp/tools/server/README-dev.md`
+- `llama.cpp/common/arg.cpp`
+- `llama.cpp/tools/server/server.cpp`
+- `llama.cpp/tools/server/server-tools.cpp`
+- `llama.cpp/tools/server/README.md`
+- `llama.cpp/tools/server/README-dev.md`

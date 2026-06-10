@@ -118,8 +118,8 @@ curl -s http://127.0.0.1:8080/models
 
 ## Источники
 
-- `/home/maxim/llama/llama.cpp/common/arg.cpp`: парсинг `--tags`.
-- `/home/maxim/llama/llama.cpp/common/common.h`: `model_tags`.
-- `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`: tags в metadata single-model server.
-- `/home/maxim/llama/llama.cpp/tools/server/server-models.cpp`: tags в router metadata и reload.
-- `/home/maxim/llama/llama.cpp/tools/server/README.md`: help-строка и `/models`.
+- `llama.cpp/common/arg.cpp`: парсинг `--tags`.
+- `llama.cpp/common/common.h`: `model_tags`.
+- `llama.cpp/tools/server/server-context.cpp`: tags в metadata single-model server.
+- `llama.cpp/tools/server/server-models.cpp`: tags в router metadata и reload.
+- `llama.cpp/tools/server/README.md`: help-строка и `/models`.
