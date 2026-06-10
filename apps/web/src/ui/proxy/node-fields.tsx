@@ -6,14 +6,18 @@ import {
   type ApiProxyTargetRecord,
 } from "@llama-manager/core";
 import {
+  ActionIcon,
+  Button,
   Group,
   NumberInput,
+  Paper,
   Select,
+  Stack,
   Switch,
   Text,
-  Textarea,
   TextInput,
 } from "@mantine/core";
+import { Plus, Trash2 } from "lucide-react";
 
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "./forms";
 import { unboundTargetValue } from "./forms";
@@ -137,19 +141,89 @@ export function PipelineNodeFields(props: {
     ctx.updateNode(node.id, patch);
 
   if (node.type === "replace-text") {
+    const rules = node.replacements;
+    const setRules = (next: PipelineNodeDraft["replacements"]) =>
+      update({ replacements: next });
     return (
       <>
-        <Textarea
-          autosize
-          minRows={2}
-          label="Text replacements"
-          placeholder={"old text => new text\nremove me =>"}
-          value={node.textReplacements}
-          onChange={(event) => {
-            const textReplacements = event.currentTarget.value;
-            update({ textReplacements });
-          }}
-        />
+        <Stack gap="xs">
+          {rules.length === 0 && (
+            <Text c="dimmed" size="sm">
+              No replacements yet. Each rule rewrites matching text in the
+              request before routing.
+            </Text>
+          )}
+          {rules.map((rule, index) => (
+            <Paper key={index} withBorder p="xs" radius="sm">
+              <Stack gap={6}>
+                <TextInput
+                  size="xs"
+                  label="Find"
+                  placeholder="text to find"
+                  value={rule.find}
+                  onChange={(event) => {
+                    const find = event.currentTarget.value;
+                    setRules(
+                      rules.map((item, i) =>
+                        i === index ? { ...item, find } : item,
+                      ),
+                    );
+                  }}
+                />
+                <TextInput
+                  size="xs"
+                  label="Replace with"
+                  placeholder="replacement (empty deletes the match)"
+                  value={rule.replace}
+                  onChange={(event) => {
+                    const replace = event.currentTarget.value;
+                    setRules(
+                      rules.map((item, i) =>
+                        i === index ? { ...item, replace } : item,
+                      ),
+                    );
+                  }}
+                />
+                <Group justify="space-between">
+                  <Switch
+                    size="xs"
+                    label="Enabled"
+                    checked={rule.enabled}
+                    onChange={(event) => {
+                      const enabled = event.currentTarget.checked;
+                      setRules(
+                        rules.map((item, i) =>
+                          i === index ? { ...item, enabled } : item,
+                        ),
+                      );
+                    }}
+                  />
+                  <ActionIcon
+                    aria-label="Remove replacement rule"
+                    variant="subtle"
+                    color="red"
+                    size="sm"
+                    onClick={() =>
+                      setRules(rules.filter((_, i) => i !== index))
+                    }
+                  >
+                    <Trash2 size={14} />
+                  </ActionIcon>
+                </Group>
+              </Stack>
+            </Paper>
+          ))}
+          <Button
+            variant="light"
+            size="xs"
+            leftSection={<Plus size={14} />}
+            onClick={() =>
+              setRules([...rules, { find: "", replace: "", enabled: true }])
+            }
+          >
+            Add replacement
+          </Button>
+        </Stack>
         <PortSelect
           label="Next"
           ctx={ctx}

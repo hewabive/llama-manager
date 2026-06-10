@@ -110,6 +110,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
       exitNamesByNodeId,
       highlight,
       previousPositions: positionsRef.current,
+      selectedNodeId,
     });
     setRfNodes(graph.nodes);
     setRfEdges(graph.edges);
@@ -120,6 +121,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     draft,
     exitNamesByNodeId,
     highlight,
+    selectedNodeId,
     props.ctx.targets,
     props.ctx.pipelines,
     props.ctx.sources,
@@ -216,6 +218,12 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     }
   };
 
+  const handleNodeClick = (_event: unknown, node: Node) => {
+    setSelectedNodeId(
+      draft.nodes.some((item) => item.id === node.id) ? node.id : null,
+    );
+  };
+
   const selectedNode =
     draft.nodes.find((node) => node.id === selectedNodeId) ?? null;
 
@@ -255,14 +263,9 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             onEdgesDelete={handleEdgesDelete}
             onNodesDelete={handleNodesDelete}
             onNodeDragStop={handleNodeDragStop}
+            onNodeClick={handleNodeClick}
             onNodeDoubleClick={handleNodeDoubleClick}
-            onSelectionChange={(selection) =>
-              setSelectedNodeId(
-                selection.nodes.find((node) =>
-                  draft.nodes.some((item) => item.id === node.id),
-                )?.id ?? null,
-              )
-            }
+            onPaneClick={() => setSelectedNodeId(null)}
           >
             <Background gap={20} />
             <Controls showInteractive={false} />

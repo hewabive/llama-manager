@@ -48,11 +48,17 @@ export type ModelDraft = {
 
 export type PortValue = string | null;
 
+export type ReplacementRuleDraft = {
+  find: string;
+  replace: string;
+  enabled: boolean;
+};
+
 export type PipelineNodeDraft = {
   id: string;
   name: string;
   type: ApiProxyPipelineNode["type"];
-  textReplacements: string;
+  replacements: ReplacementRuleDraft[];
   includeTransformedBody: boolean;
   predicateType: ApiProxyConditionPredicate["type"];
   scope: ApiProxyConditionScope;
@@ -135,7 +141,7 @@ export function emptyPipelineNodeDraft(
     id,
     name: "",
     type,
-    textReplacements: "",
+    replacements: [],
     includeTransformedBody: true,
     predicateType: "text-match",
     scope: "any-message",
@@ -264,34 +270,6 @@ export function portRefFromValue(value: PortValue): ApiProxyPortRef | null {
   return null;
 }
 
-function replacementLines(
-  rules: Array<{ enabled: boolean; find: string; replace: string }>,
-) {
-  return rules
-    .filter((rule) => rule.enabled)
-    .map((rule) => `${rule.find} => ${rule.replace}`)
-    .join("\n");
-}
-
-function replacementsFromText(value: string) {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separator = line.indexOf("=>");
-      if (separator < 0) {
-        return { enabled: true, find: line, replace: "" };
-      }
-      return {
-        enabled: true,
-        find: line.slice(0, separator).trim(),
-        replace: line.slice(separator + 2).trim(),
-      };
-    })
-    .filter((rule) => rule.find);
-}
-
 export function targetDraftFromRecord(
   target: ApiProxyTargetRecord,
 ): TargetDraft {
@@ -329,7 +307,11 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
   draft.layout = node.layout ?? null;
   switch (node.type) {
     case "replace-text":
-      draft.textReplacements = replacementLines(node.config.rules);
+      draft.replacements = node.config.rules.map((rule) => ({
+        find: rule.find,
+        replace: rule.replace,
+        enabled: rule.enabled,
+      }));
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "capture-request":
@@ -414,7 +396,15 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
       return {
         ...base,
         type: "replace-text",
-        config: { rules: replacementsFromText(draft.textReplacements) },
+        config: {
+          rules: draft.replacements
+            .filter((rule) => rule.find.length > 0)
+            .map((rule) => ({
+              enabled: rule.enabled,
+              find: rule.find,
+              replace: rule.replace,
+            })),
+        },
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "capture-request":

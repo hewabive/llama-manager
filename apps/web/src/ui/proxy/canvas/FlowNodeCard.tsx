@@ -28,13 +28,23 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
   const { data, selected } = props;
   const accent = kindColors[data.kind];
   const compact = data.kind === "entry" || data.kind.startsWith("ref-");
+  const edgeColor = selected
+    ? "var(--mantine-color-blue-5)"
+    : "var(--mantine-color-default-border)";
 
   return (
     <div
       style={{
         background: "var(--mantine-color-body)",
-        border: `1px solid ${selected ? "var(--mantine-color-blue-5)" : "var(--mantine-color-default-border)"}`,
-        borderLeft: `3px solid ${accent}`,
+        borderStyle: "solid",
+        borderTopWidth: 1,
+        borderRightWidth: 1,
+        borderBottomWidth: 1,
+        borderLeftWidth: 3,
+        borderTopColor: edgeColor,
+        borderRightColor: edgeColor,
+        borderBottomColor: edgeColor,
+        borderLeftColor: accent,
         borderRadius: 6,
         boxShadow: data.highlighted
           ? "0 0 0 2px var(--mantine-color-teal-5)"

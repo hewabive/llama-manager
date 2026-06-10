@@ -114,10 +114,6 @@ export function draftNodePorts(
   }
 }
 
-function replacementRuleCount(text: string): number {
-  return text.split("\n").filter((line) => line.trim()).length;
-}
-
 export function nodeSummary(
   node: PipelineNodeDraft,
   context: {
@@ -126,8 +122,12 @@ export function nodeSummary(
   },
 ): string {
   switch (node.type) {
-    case "replace-text":
-      return `${replacementRuleCount(node.textReplacements)} rule(s)`;
+    case "replace-text": {
+      const count = node.replacements.filter(
+        (rule) => rule.enabled && rule.find.length > 0,
+      ).length;
+      return `${count} rule(s)`;
+    }
     case "capture-request":
       return node.includeTransformedBody
         ? "with transformed body"
@@ -164,6 +164,7 @@ type BuildInput = {
   exitNamesByNodeId: Map<string, string[]>;
   highlight: FlowHighlight | null;
   previousPositions: Map<string, { x: number; y: number }>;
+  selectedNodeId: string | null;
 };
 
 const columnWidth = 300;
@@ -325,6 +326,7 @@ export function buildFlowGraph(input: BuildInput): {
       id: node.id,
       type: "pipeline-flow",
       position,
+      selected: node.id === input.selectedNodeId,
       data: {
         kind: node.type,
         title: node.name || node.id,
