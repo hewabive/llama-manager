@@ -253,6 +253,11 @@ function ReplaceTextFields(props: {
         >
           Add replacement
         </Button>
+        <Text c="dimmed" size="xs">
+          {
+            'Escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. Real line breaks work too.'
+          }
+        </Text>
       </Stack>
       <PortSelect
         label="Next"
@@ -297,6 +302,11 @@ function ReplaceTextFields(props: {
                 patchRule(detailIndex, { replace });
               }}
             />
+            <Text c="dimmed" size="xs">
+              {
+                'Escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. Real line breaks work too.'
+              }
+            </Text>
             <Group justify="space-between">
               <Switch
                 label="Enabled"

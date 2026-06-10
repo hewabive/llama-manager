@@ -9,6 +9,7 @@ import {
 
 import type { ApiProxyProtocolModelRequest } from "./protocol.js";
 import {
+  replaceRequestText,
   resolveApiProxyRouteChain,
   type ApiProxyPipelineRecordRequestInput,
 } from "./pipeline.js";
@@ -220,6 +221,45 @@ test("replace-text does not touch the routing model field", async () => {
       prompt: "good text",
     });
   }
+});
+
+test("replace-text interprets JSON-style escape sequences in find and replace", () => {
+  const rule = (find: string, replace: string) => [
+    { enabled: true, find, replace },
+  ];
+
+  const multiline = replaceRequestText(
+    { prompt: "say:\ntest\ntest\ntest\nbye" },
+    rule("test\\ntest\\ntest", "hello"),
+  );
+  assert.equal(multiline.count, 1);
+  assert.deepEqual(multiline.value, { prompt: "say:\nhello\nbye" });
+
+  const literalBackslash = replaceRequestText(
+    { prompt: "raw \\n marker" },
+    rule("\\\\n", "newline"),
+  );
+  assert.equal(literalBackslash.count, 1);
+  assert.deepEqual(literalBackslash.value, { prompt: "raw newline marker" });
+
+  const replacementEscapes = replaceRequestText(
+    { prompt: "one two" },
+    rule(" ", "\\n"),
+  );
+  assert.deepEqual(replacementEscapes.value, { prompt: "one\ntwo" });
+
+  const unicode = replaceRequestText(
+    { prompt: "dash" },
+    rule("dash", "\\u2014"),
+  );
+  assert.deepEqual(unicode.value, { prompt: "—" });
+
+  const unknownEscape = replaceRequestText(
+    { prompt: "C:\\x file" },
+    rule("\\x", "drive"),
+  );
+  assert.equal(unknownEscape.count, 1);
+  assert.deepEqual(unknownEscape.value, { prompt: "C:drive file" });
 });
 
 function conditionPipeline(

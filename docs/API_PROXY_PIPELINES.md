@@ -59,7 +59,7 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 
 | type              | config                                                                                                      | ports                         |
 | ----------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| `replace-text`    | `rules: [{enabled, find, replace}]` (literal substring rules; the routing `model` field is never rewritten) | `next`                        |
+| `replace-text`    | `rules: [{enabled, find, replace}]` (substring rules; JSON-style escapes `\n` `\t` `\"` `\\` `\uXXXX` in `find`/`replace` are decoded before matching, so text copied from a capture file matches as-is; the routing `model` field is never rewritten) | `next`                        |
 | `capture-request` | — (no options)                                                                                              | `next`                        |
 | `condition`       | `predicate` (see below)                                                                                     | `true`, `false`               |
 | `call`            | `pipelineId`                                                                                                | one port per callee exit name |
