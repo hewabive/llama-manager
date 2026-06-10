@@ -24,6 +24,7 @@ import {
 import { Maximize2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { EditRequestFields } from "./edit-request-fields";
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "./forms";
 import { unboundTargetValue } from "./forms";
 import { TouchSelect } from "../components/TouchCombobox";
@@ -41,6 +42,7 @@ export type PipelineEditorContext = {
 const nodeTypeLabels: Record<ApiProxyPipelineNode["type"], string> = {
   "replace-text": "Replace text",
   "capture-request": "Save request",
+  "edit-request": "Edit request",
   condition: "Condition",
   call: "Pipeline",
   exit: "Exit",
@@ -52,6 +54,7 @@ export const pipelineNodeTypeOptions: Array<{
 }> = [
   { value: "replace-text", label: nodeTypeLabels["replace-text"] },
   { value: "capture-request", label: nodeTypeLabels["capture-request"] },
+  { value: "edit-request", label: nodeTypeLabels["edit-request"] },
   { value: "condition", label: nodeTypeLabels.condition },
   { value: "exit", label: nodeTypeLabels.exit },
 ];
@@ -261,8 +264,8 @@ function ReplaceTextFields(props: {
       <Stack gap="xs">
         {rules.length === 0 && (
           <Text c="dimmed" size="sm">
-            No replacements yet. Each rule rewrites matching text in the
-            request before routing.
+            No replacements yet. Each rule rewrites matching text in the request
+            before routing.
           </Text>
         )}
         {rules.length > 0 && (
@@ -354,9 +357,7 @@ function ReplaceTextFields(props: {
         ctx={ctx}
         node={node}
         value={node.portNext}
-        onChange={(portNext) =>
-          ctx.updateNode(node.id, { portNext })
-        }
+        onChange={(portNext) => ctx.updateNode(node.id, { portNext })}
       />
       <Modal
         opened={detailRule !== null}
@@ -437,6 +438,21 @@ export function PipelineNodeFields(props: {
           Saves the request exactly as it arrives at this node, including
           changes made by earlier nodes.
         </Text>
+        <PortSelect
+          label="Next"
+          ctx={ctx}
+          node={node}
+          value={node.portNext}
+          onChange={(portNext) => update({ portNext })}
+        />
+      </>
+    );
+  }
+
+  if (node.type === "edit-request") {
+    return (
+      <>
+        <EditRequestFields node={node} updateNode={ctx.updateNode} />
         <PortSelect
           label="Next"
           ctx={ctx}

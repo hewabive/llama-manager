@@ -57,13 +57,38 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 
 ## Node types
 
-| type              | config                                                                                                      | ports                         |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| type              | config                                                                                                                                                                                                                                                                                                                                               | ports                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | `replace-text`    | `rules: [{enabled, find, replace}]` — literal substring rules over decoded string values of the parsed body (stored text is matched as-is, no escape interpretation; the routing `model` field is never rewritten). The web editor offers a display toggle that shows/accepts rules in `\n`-escaped form and converts to literal text before saving. | `next`                        |
-| `capture-request` | — (no options)                                                                                              | `next`                        |
-| `condition`       | `predicate` (see below)                                                                                     | `true`, `false`               |
-| `call`            | `pipelineId`                                                                                                | one port per callee exit name |
-| `exit`            | `exitName` (default `done`)                                                                                 | —                             |
+| `capture-request` | — (no options)                                                                                                                                                                                                                                                                                                                                       | `next`                        |
+| `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request `tools` array (see below)                                                                                                                                                                                                                                                       | `next`                        |
+| `condition`       | `predicate` (see below)                                                                                                                                                                                                                                                                                                                              | `true`, `false`               |
+| `call`            | `pipelineId`                                                                                                                                                                                                                                                                                                                                         | one port per callee exit name |
+| `exit`            | `exitName` (default `done`)                                                                                                                                                                                                                                                                                                                          | —                             |
+
+### Edit-request operations
+
+Structural edits of the parsed body, applied in order by
+`applyApiProxyRequestEdits` (`@llama-manager/core` — shared by the runtime
+walker and the web editor's live preview, one implementation):
+
+- `remove-tool {toolName}` — drops every entry of the top-level `tools` array
+  whose name matches. `*` in `toolName` matches any character run
+  (`mcp__*`); otherwise the match is exact. Tool names are read from both
+  protocol shapes (`tool.function.name` for OpenAI, `tool.name` for
+  Anthropic). When `tools` ends up empty the key is deleted; an object
+  `tool_choice` naming a removed tool is deleted too.
+- `replace-tool {toolName, value}` — replaces every matching entry with
+  `value` (a full tool JSON object).
+- `add-tool {value}` — appends `value` to `tools`, creating the array.
+
+Every operation reports an outcome (`removed 2 tool(s): a, b` /
+`no tool matches "x"`) joined into the node's `routeTrace` detail, so a
+non-matching rule is visible in the test bench and request traces instead of
+failing silently. The web editor's **block editor** modal previews operations
+against a pasted sample request: sample tools render as blocks with
+removed/replaced badges, and Remove/Replace/Add buttons on the blocks generate
+operations.
 
 ### Condition predicates
 

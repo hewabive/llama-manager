@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   ApiProxyPipelineRecordSchema,
+  applyApiProxyRequestEdits,
+  type ApiProxyEditRequestOperation,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
 } from "@llama-manager/core";
@@ -248,6 +250,155 @@ test("replace-text matches literally, including real line breaks", () => {
   );
   assert.equal(noEscapeDecoding.count, 0);
   assert.deepEqual(noEscapeDecoding.value, { prompt: "one\ntwo" });
+});
+
+function openaiTool(name: string): Record<string, unknown> {
+  return { type: "function", function: { name, parameters: {} } };
+}
+
+test("edit-request remove-tool drops matching tools and dangling tool_choice", () => {
+  const body = {
+    model: "public-model",
+    tools: [openaiTool("Bash"), openaiTool("Read"), openaiTool("Write")],
+    tool_choice: { type: "function", function: { name: "Bash" } },
+  };
+
+  const result = applyApiProxyRequestEdits(body, [
+    { kind: "remove-tool", enabled: true, toolName: "Bash" },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, {
+    model: "public-model",
+    tools: [openaiTool("Read"), openaiTool("Write")],
+  });
+  assert.equal(result.outcomes[0]?.matched, 1);
+  assert.match(result.outcomes[0]?.detail ?? "", /removed 1 tool\(s\): Bash/);
+  assert.match(result.outcomes[0]?.detail ?? "", /dropped tool_choice "Bash"/);
+  assert.deepEqual(body.tools.length, 3);
+});
+
+test("edit-request remove-tool wildcard matches anthropic-shaped tools and drops empty tools key", () => {
+  const body = {
+    model: "public-model",
+    tools: [
+      { name: "mcp__browser_search", input_schema: {} },
+      { name: "mcp__browser_fetch", input_schema: {} },
+    ],
+  };
+
+  const result = applyApiProxyRequestEdits(body, [
+    { kind: "remove-tool", enabled: true, toolName: "mcp__*" },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, { model: "public-model" });
+  assert.equal(result.outcomes[0]?.matched, 2);
+  assert.deepEqual(result.outcomes[0]?.toolNames, [
+    "mcp__browser_search",
+    "mcp__browser_fetch",
+  ]);
+});
+
+test("edit-request replace-tool and add-tool rewrite the tools array", () => {
+  const custom = { name: "custom_tool", input_schema: { type: "object" } };
+  const body = { model: "public-model", tools: [openaiTool("Bash")] };
+
+  const result = applyApiProxyRequestEdits(body, [
+    { kind: "replace-tool", enabled: true, toolName: "Bash", value: custom },
+    { kind: "add-tool", enabled: true, value: { name: "extra_tool" } },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, {
+    model: "public-model",
+    tools: [custom, { name: "extra_tool" }],
+  });
+  assert.match(
+    result.outcomes[0]?.detail ?? "",
+    /replaced 1 tool\(s\) Bash with "custom_tool"/,
+  );
+  assert.match(result.outcomes[1]?.detail ?? "", /added tool "extra_tool"/);
+});
+
+test("edit-request add-tool creates the tools array when missing", () => {
+  const result = applyApiProxyRequestEdits({ model: "public-model" }, [
+    { kind: "add-tool", enabled: true, value: { name: "only_tool" } },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, {
+    model: "public-model",
+    tools: [{ name: "only_tool" }],
+  });
+});
+
+test("edit-request reports no-match and skips disabled operations without changing the body", () => {
+  const body = { model: "public-model", tools: [openaiTool("Bash")] };
+  const operations: ApiProxyEditRequestOperation[] = [
+    { kind: "remove-tool", enabled: true, toolName: "missing_tool" },
+    { kind: "remove-tool", enabled: false, toolName: "Bash" },
+  ];
+
+  const result = applyApiProxyRequestEdits(body, operations);
+
+  assert.equal(result.changed, false);
+  assert.equal(result.body, body);
+  assert.equal(result.outcomes.length, 1);
+  assert.equal(result.outcomes[0]?.matched, 0);
+  assert.match(
+    result.outcomes[0]?.detail ?? "",
+    /no tool matches "missing_tool"/,
+  );
+});
+
+test("edit-request node edits the body mid-route and traces operation outcomes", async () => {
+  const pipelines = [
+    pipelineRecord({
+      id: "pipeline-a",
+      entry: { type: "node", id: "edit" },
+      nodes: [
+        {
+          id: "edit",
+          name: "",
+          type: "edit-request",
+          config: {
+            operations: [
+              { kind: "remove-tool", enabled: true, toolName: "Bash" },
+              { kind: "remove-tool", enabled: true, toolName: "ghost" },
+            ],
+          },
+          ports: { next: { type: "target", id: "target-a" } },
+        },
+      ],
+    }),
+  ];
+
+  const result = await resolveApiProxyRouteChain({
+    request: request({
+      body: {
+        model: "public-model",
+        messages: [{ role: "user", content: "hi" }],
+        tools: [openaiTool("Bash"), openaiTool("Read")],
+      },
+    }),
+    getPipeline: getPipelineFrom(pipelines),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.targetId, "target-a");
+    assert.deepEqual(result.request.body, {
+      model: "public-model",
+      messages: [{ role: "user", content: "hi" }],
+      tools: [openaiTool("Read")],
+    });
+    assert.equal(result.routeTrace[1]?.kind, "edit-request");
+    assert.equal(
+      result.routeTrace[1]?.detail,
+      'removed 1 tool(s): Bash; no tool matches "ghost"',
+    );
+  }
 });
 
 function conditionPipeline(

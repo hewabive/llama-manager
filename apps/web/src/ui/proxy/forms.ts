@@ -1,6 +1,7 @@
 import type {
   ApiProxyConditionPredicate,
   ApiProxyConditionScope,
+  ApiProxyEditRequestOperation,
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyPipelineCreate,
@@ -54,11 +55,19 @@ export type ReplacementRuleDraft = {
   enabled: boolean;
 };
 
+export type EditOperationDraft = {
+  kind: ApiProxyEditRequestOperation["kind"];
+  toolName: string;
+  valueText: string;
+  enabled: boolean;
+};
+
 export type PipelineNodeDraft = {
   id: string;
   name: string;
   type: ApiProxyPipelineNode["type"];
   replacements: ReplacementRuleDraft[];
+  editOperations: EditOperationDraft[];
   predicateType: ApiProxyConditionPredicate["type"];
   scope: ApiProxyConditionScope;
   pattern: string;
@@ -145,6 +154,7 @@ export function emptyPipelineNodeDraft(
     name: "",
     type,
     replacements: [],
+    editOperations: [],
     predicateType: "text-match",
     scope: "any-message",
     pattern: "",
@@ -333,6 +343,16 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
     case "capture-request":
       draft.portNext = portRefToValue(node.ports.next);
       break;
+    case "edit-request":
+      draft.editOperations = node.config.operations.map((operation) => ({
+        kind: operation.kind,
+        toolName: "toolName" in operation ? operation.toolName : "",
+        valueText:
+          "value" in operation ? JSON.stringify(operation.value, null, 2) : "",
+        enabled: operation.enabled,
+      }));
+      draft.portNext = portRefToValue(node.ports.next);
+      break;
     case "condition": {
       const predicate = node.config.predicate;
       draft.predicateType = predicate.type;
@@ -379,6 +399,97 @@ export function pipelineDraftFromRecord(
     bindModelIds: [],
     unbindModelIds: [],
   };
+}
+
+export function parseEditOperationValue(
+  valueText: string,
+):
+  | { value: Record<string, unknown>; error: null }
+  | { value: null; error: string } {
+  const trimmed = valueText.trim();
+  if (!trimmed) {
+    return { value: null, error: "tool JSON is empty" };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    return { value: null, error: `invalid JSON: ${(error as Error).message}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { value: null, error: "tool JSON must be a JSON object" };
+  }
+  return { value: parsed as Record<string, unknown>, error: null };
+}
+
+export function editOperationFromDraft(
+  draft: EditOperationDraft,
+):
+  | { operation: ApiProxyEditRequestOperation; error: null }
+  | { operation: null; error: string } {
+  const toolName = draft.toolName.trim();
+  if (draft.kind === "remove-tool") {
+    if (!toolName) {
+      return { operation: null, error: "tool name is empty" };
+    }
+    return {
+      operation: { kind: "remove-tool", enabled: draft.enabled, toolName },
+      error: null,
+    };
+  }
+  const parsed = parseEditOperationValue(draft.valueText);
+  if (draft.kind === "replace-tool") {
+    if (!toolName) {
+      return { operation: null, error: "tool name is empty" };
+    }
+    if (parsed.error !== null) {
+      return { operation: null, error: parsed.error };
+    }
+    return {
+      operation: {
+        kind: "replace-tool",
+        enabled: draft.enabled,
+        toolName,
+        value: parsed.value,
+      },
+      error: null,
+    };
+  }
+  if (parsed.error !== null) {
+    return { operation: null, error: parsed.error };
+  }
+  return {
+    operation: {
+      kind: "add-tool",
+      enabled: draft.enabled,
+      value: parsed.value,
+    },
+    error: null,
+  };
+}
+
+function editOperationsFromDrafts(
+  drafts: EditOperationDraft[],
+): ApiProxyEditRequestOperation[] {
+  const operations: ApiProxyEditRequestOperation[] = [];
+  for (const draft of drafts) {
+    const blank = !draft.toolName.trim() && !draft.valueText.trim();
+    if (blank) {
+      continue;
+    }
+    const result = editOperationFromDraft(draft);
+    if (result.operation) {
+      operations.push(result.operation);
+      continue;
+    }
+    operations.push({
+      kind: draft.kind,
+      enabled: draft.enabled,
+      toolName: draft.toolName,
+      value: draft.valueText,
+    } as unknown as ApiProxyEditRequestOperation);
+  }
+  return operations;
 }
 
 function predicateFromDraft(
@@ -429,6 +540,13 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
         ...base,
         type: "capture-request",
         config: {},
+        ports: { next: portRefFromValue(draft.portNext) },
+      };
+    case "edit-request":
+      return {
+        ...base,
+        type: "edit-request",
+        config: { operations: editOperationsFromDrafts(draft.editOperations) },
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "condition":

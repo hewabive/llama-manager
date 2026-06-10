@@ -5,6 +5,7 @@ import type { FlowNode, FlowNodeKind } from "./canvas-model";
 const kindLabels: Record<FlowNodeKind, string> = {
   "replace-text": "REPLACE",
   "capture-request": "CAPTURE",
+  "edit-request": "EDIT",
   condition: "CONDITION",
   call: "PIPELINE",
   exit: "EXIT",
@@ -17,6 +18,7 @@ const kindLabels: Record<FlowNodeKind, string> = {
 const kindColors: Record<FlowNodeKind, string> = {
   "replace-text": "var(--mantine-color-blue-5)",
   "capture-request": "var(--mantine-color-gray-5)",
+  "edit-request": "var(--mantine-color-violet-5)",
   condition: "var(--mantine-color-yellow-6)",
   call: "var(--mantine-color-indigo-5)",
   exit: "var(--mantine-color-orange-5)",

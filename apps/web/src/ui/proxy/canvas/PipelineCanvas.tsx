@@ -69,6 +69,7 @@ function portPatch(
   switch (node.type) {
     case "replace-text":
     case "capture-request":
+    case "edit-request":
       return port === "next" ? { portNext: value } : null;
     case "condition":
       if (port === "true") {

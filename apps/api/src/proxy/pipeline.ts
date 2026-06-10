@@ -1,11 +1,12 @@
-import type {
-  ApiProxyPipelineNode,
-  ApiProxyPipelineRecord,
-  ApiProxyPortRef,
-  ApiProxyRequestLogRecord,
-  ApiProxyRouteTo,
-  ApiProxyRouteTraceStep,
-  ApiProxyTextReplacementRule,
+import {
+  applyApiProxyRequestEdits,
+  type ApiProxyPipelineNode,
+  type ApiProxyPipelineRecord,
+  type ApiProxyPortRef,
+  type ApiProxyRequestLogRecord,
+  type ApiProxyRouteTo,
+  type ApiProxyRouteTraceStep,
+  type ApiProxyTextReplacementRule,
 } from "@llama-manager/core";
 
 import { evaluateApiProxyCondition } from "./condition.js";
@@ -316,6 +317,31 @@ export async function resolveApiProxyRouteChain(input: {
           nodeStep(pipeline, node, {
             port: "next",
             detail: `${replacement.count} replacement(s)`,
+          }),
+        );
+        ref = node.ports.next;
+        break;
+      }
+      case "edit-request": {
+        const edit = applyApiProxyRequestEdits(
+          state.request.body,
+          node.config.operations,
+        );
+        if (edit.changed) {
+          state.request = {
+            ...state.request,
+            body: edit.body,
+            stream: bodyRequestsStreaming(edit.body),
+          };
+          tokenEstimate = null;
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: "next",
+            detail:
+              edit.outcomes.length > 0
+                ? edit.outcomes.map((outcome) => outcome.detail).join("; ")
+                : "no operations",
           }),
         );
         ref = node.ports.next;

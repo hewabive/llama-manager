@@ -473,6 +473,32 @@ export const ApiProxyReplaceTextConfigSchema = z.object({
   rules: z.array(ApiProxyTextReplacementRuleSchema).max(50).default([]),
 });
 
+const ApiProxyToolNamePatternSchema = z.string().trim().min(1).max(200);
+const ApiProxyToolValueSchema = z.record(z.string(), z.unknown());
+
+export const ApiProxyEditRequestOperationSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("remove-tool"),
+    enabled: z.boolean().default(true),
+    toolName: ApiProxyToolNamePatternSchema,
+  }),
+  z.object({
+    kind: z.literal("replace-tool"),
+    enabled: z.boolean().default(true),
+    toolName: ApiProxyToolNamePatternSchema,
+    value: ApiProxyToolValueSchema,
+  }),
+  z.object({
+    kind: z.literal("add-tool"),
+    enabled: z.boolean().default(true),
+    value: ApiProxyToolValueSchema,
+  }),
+]);
+
+export const ApiProxyEditRequestConfigSchema = z.object({
+  operations: z.array(ApiProxyEditRequestOperationSchema).max(50).default([]),
+});
+
 export const ApiProxyConditionScopeSchema = z.enum([
   "last-user-message",
   "any-message",
@@ -518,6 +544,11 @@ export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
   ApiProxyPipelineNodeBaseSchema.extend({
     type: z.literal("capture-request"),
     config: ApiProxyCaptureRequestConfigSchema,
+    ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
+  }),
+  ApiProxyPipelineNodeBaseSchema.extend({
+    type: z.literal("edit-request"),
+    config: ApiProxyEditRequestConfigSchema,
     ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
   }),
   ApiProxyPipelineNodeBaseSchema.extend({
@@ -656,6 +687,7 @@ export function apiProxyPipelineNodePorts(
   switch (node.type) {
     case "replace-text":
     case "capture-request":
+    case "edit-request":
       return node.ports.next ? [{ port: "next", ref: node.ports.next }] : [];
     case "condition": {
       const refs: Array<{
@@ -675,6 +707,188 @@ export function apiProxyPipelineNodePorts(
     case "exit":
       return [];
   }
+}
+
+export type ApiProxyEditRequestOperation = z.infer<
+  typeof ApiProxyEditRequestOperationSchema
+>;
+
+export type ApiProxyRequestEditOutcome = {
+  index: number;
+  kind: ApiProxyEditRequestOperation["kind"];
+  matched: number;
+  toolNames: string[];
+  detail: string;
+};
+
+export type ApiProxyRequestEditResult = {
+  body: unknown;
+  outcomes: ApiProxyRequestEditOutcome[];
+  changed: boolean;
+};
+
+function namedRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+export function apiProxyRequestToolName(tool: unknown): string | null {
+  const record = namedRecord(tool);
+  if (!record) {
+    return null;
+  }
+  const fn = namedRecord(record.function);
+  if (fn && typeof fn.name === "string" && fn.name) {
+    return fn.name;
+  }
+  return typeof record.name === "string" && record.name ? record.name : null;
+}
+
+function escapeToolNamePattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function apiProxyToolNameMatcher(
+  pattern: string,
+): (name: string) => boolean {
+  if (!pattern.includes("*")) {
+    return (name) => name === pattern;
+  }
+  const regex = new RegExp(
+    `^${pattern.split("*").map(escapeToolNamePattern).join(".*")}$`,
+  );
+  return (name) => regex.test(name);
+}
+
+export function applyApiProxyRequestEdits(
+  body: unknown,
+  operations: ApiProxyEditRequestOperation[],
+): ApiProxyRequestEditResult {
+  const outcomes: ApiProxyRequestEditOutcome[] = [];
+  const active = operations
+    .map((operation, index) => ({ operation, index }))
+    .filter((item) => item.operation.enabled);
+  if (active.length === 0) {
+    return { body, outcomes, changed: false };
+  }
+
+  const record = namedRecord(body);
+  if (!record) {
+    for (const { operation, index } of active) {
+      outcomes.push({
+        index,
+        kind: operation.kind,
+        matched: 0,
+        toolNames: [],
+        detail: "request body is not a JSON object",
+      });
+    }
+    return { body, outcomes, changed: false };
+  }
+
+  const next: Record<string, unknown> = { ...record };
+  let changed = false;
+
+  for (const { operation, index } of active) {
+    const outcome = (
+      matched: number,
+      toolNames: string[],
+      detail: string,
+    ): void => {
+      outcomes.push({
+        index,
+        kind: operation.kind,
+        matched,
+        toolNames,
+        detail,
+      });
+    };
+    const tools = next.tools;
+
+    if (operation.kind === "add-tool") {
+      if (tools !== undefined && !Array.isArray(tools)) {
+        outcome(0, [], "tools is not an array");
+        continue;
+      }
+      const name = apiProxyRequestToolName(operation.value);
+      next.tools = [...(Array.isArray(tools) ? tools : []), operation.value];
+      changed = true;
+      outcome(
+        1,
+        name ? [name] : [],
+        name ? `added tool "${name}"` : "added 1 tool",
+      );
+      continue;
+    }
+
+    if (!Array.isArray(tools)) {
+      outcome(
+        0,
+        [],
+        tools === undefined
+          ? "request has no tools array"
+          : "tools is not an array",
+      );
+      continue;
+    }
+    const matches = apiProxyToolNameMatcher(operation.toolName);
+
+    if (operation.kind === "remove-tool") {
+      const removed: string[] = [];
+      const kept = tools.filter((tool) => {
+        const name = apiProxyRequestToolName(tool);
+        if (name !== null && matches(name)) {
+          removed.push(name);
+          return false;
+        }
+        return true;
+      });
+      if (removed.length === 0) {
+        outcome(0, [], `no tool matches "${operation.toolName}"`);
+        continue;
+      }
+      if (kept.length > 0) {
+        next.tools = kept;
+      } else {
+        delete next.tools;
+      }
+      changed = true;
+      let detail = `removed ${removed.length} tool(s): ${removed.join(", ")}`;
+      const choiceName = apiProxyRequestToolName(next.tool_choice);
+      if (choiceName !== null && removed.includes(choiceName)) {
+        delete next.tool_choice;
+        detail += `; dropped tool_choice "${choiceName}"`;
+      }
+      outcome(removed.length, removed, detail);
+      continue;
+    }
+
+    const replaced: string[] = [];
+    const mapped = tools.map((tool) => {
+      const name = apiProxyRequestToolName(tool);
+      if (name !== null && matches(name)) {
+        replaced.push(name);
+        return operation.value;
+      }
+      return tool;
+    });
+    if (replaced.length === 0) {
+      outcome(0, [], `no tool matches "${operation.toolName}"`);
+      continue;
+    }
+    next.tools = mapped;
+    changed = true;
+    const newName = apiProxyRequestToolName(operation.value);
+    outcome(
+      replaced.length,
+      replaced,
+      `replaced ${replaced.length} tool(s) ${replaced.join(", ")}${newName ? ` with "${newName}"` : ""}`,
+    );
+  }
+
+  return { body: changed ? next : body, outcomes, changed };
 }
 
 export function collectApiProxyPipelineExitNames(
@@ -767,6 +981,7 @@ export function collectApiProxyRouteHoles(
     switch (node.type) {
       case "replace-text":
       case "capture-request":
+      case "edit-request":
         visit(node.ports.next, pipeline, stack, {
           nodeId: node.id,
           where: `port "next" of node ${label(node)}`,
@@ -1039,6 +1254,7 @@ export const ApiProxyRouteTraceStepSchema = z.object({
     "enter-pipeline",
     "replace-text",
     "capture-request",
+    "edit-request",
     "condition",
     "call",
     "exit",

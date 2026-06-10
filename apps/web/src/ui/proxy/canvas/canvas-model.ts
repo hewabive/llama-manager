@@ -170,6 +170,7 @@ export function draftNodePorts(
   switch (node.type) {
     case "replace-text":
     case "capture-request":
+    case "edit-request":
       return [{ port: "next", value: node.portNext }];
     case "condition":
       return [
@@ -202,6 +203,12 @@ export function nodeSummary(
     }
     case "capture-request":
       return "saves request as-is";
+    case "edit-request": {
+      const count = node.editOperations.filter(
+        (operation) => operation.enabled,
+      ).length;
+      return `${count} operation(s)`;
+    }
     case "condition": {
       if (node.predicateType === "token-estimate") {
         return `≥ ${node.minTokens || "?"} tokens (est.)`;
