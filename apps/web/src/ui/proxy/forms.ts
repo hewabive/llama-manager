@@ -49,7 +49,6 @@ export type ModelDraft = {
 export type PortValue = string | null;
 
 export type ReplacementRuleDraft = {
-  mode: "text" | "json";
   find: string;
   replace: string;
   enabled: boolean;
@@ -325,7 +324,6 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
   switch (node.type) {
     case "replace-text":
       draft.replacements = node.config.rules.map((rule) => ({
-        mode: rule.mode,
         find: rule.find,
         replace: rule.replace,
         enabled: rule.enabled,
@@ -420,7 +418,6 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
             .filter((rule) => rule.find.length > 0)
             .map((rule) => ({
               enabled: rule.enabled,
-              mode: rule.mode,
               find: rule.find,
               replace: rule.replace,
             })),

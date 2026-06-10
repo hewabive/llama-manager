@@ -452,11 +452,8 @@ export const ApiProxyRouteToSchema = z.object({
   id: ApiProxyIdSchema,
 });
 
-export const ApiProxyTextReplacementModeSchema = z.enum(["text", "json"]);
-
 export const ApiProxyTextReplacementRuleSchema = z.object({
   enabled: z.boolean().default(true),
-  mode: ApiProxyTextReplacementModeSchema.default("text"),
   find: z.string().min(1),
   replace: ApiProxyReplacementTextSchema.default(""),
 });
