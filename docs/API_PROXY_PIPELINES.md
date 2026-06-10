@@ -157,8 +157,34 @@ recent-request traces. `#/routing` (Routing) is construction: the topology map
 (what each model can reach, dangling refs, unreachable pipelines), the
 model/pipeline/target tables, a full-page pipeline editor addressed as
 `#/routing/<pipelineId>` (`#/routing/new` to create), and the route test bench
-(the explain endpoint with body presets). The planned canvas editor replaces
-the form inside the same page and data model.
+(the explain endpoint with body presets).
+
+## Canvas editor
+
+The pipeline editor defaults to a React Flow canvas (`@xyflow/react`,
+`apps/web/src/ui/proxy/canvas/`); the node-card form stays available behind
+the Canvas/Form toggle and shares the same draft model and per-type field
+components (`node-fields.tsx`). One canvas per pipeline — a pipeline is a
+function body; call nodes stay collapsed and double-click navigates into the
+callee (hash sub-route, browser back works). Canvas semantics:
+
+- Real nodes carry their ports as labeled source handles (condition:
+  `true`/`false`; call: one handle per reachable callee exit). Edges derive
+  from port refs; dragging a new connection from a handle _replaces_ that
+  port's wiring; deleting an edge or node clears the affected ports.
+- Targets and jumped-to pipelines appear as terminal pseudo-nodes
+  (`ref:target:<id>` / `ref:pipeline:<id>`), created lazily from refs; the
+  entry marker is a pseudo-node whose single edge sets `entry`.
+- Selecting a node opens the inspector panel (same forms as the card editor);
+  port selects there are an alternative to dragging edges.
+- Positions persist via the optional per-node `layout {x, y}` field
+  (`ApiProxyNodeLayoutSchema`, additive) written on drag stop and saved with
+  the pipeline; nodes without `layout` get a layered auto-layout (BFS depth
+  from entry). Pseudo-node positions are session-only.
+- A test-bench Explain run highlights the traversed path on the canvas: nodes
+  and ports of the current pipeline from `routeTrace`, including the caller's
+  call-node exit port, which is reconstructed by replaying the trace's
+  call/exit nesting (`highlightFromTrace`).
 
 ## Validation lifecycle
 

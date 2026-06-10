@@ -2,6 +2,7 @@ import type {
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyPipelineCreate,
+  ApiProxyRouteExplainResult,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
 } from "@llama-manager/core";
@@ -69,6 +70,8 @@ export function RoutingView() {
   const [pipelineDraftState, setPipelineDraftState] =
     useState<PipelineDraft>(emptyPipelineDraft);
   const [pipelineDraftFor, setPipelineDraftFor] = useState<string | null>(null);
+  const [explainResult, setExplainResult] =
+    useState<ApiProxyRouteExplainResult | null>(null);
 
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
@@ -456,9 +459,11 @@ export function RoutingView() {
           pipelines={pipelines}
           sources={sources}
           busy={pipelineBusy}
+          explainTrace={explainResult?.routeTrace ?? null}
           onBack={() => setSubpath("")}
           onSave={savePipeline}
           onDraftChange={setPipelineDraftState}
+          onOpenPipeline={(pipelineId) => setSubpath(pipelineId)}
         />
       )}
 
@@ -472,7 +477,11 @@ export function RoutingView() {
         </Stack>
       )}
 
-      <TestBench models={models} sources={sources} />
+      <TestBench
+        models={models}
+        sources={sources}
+        onResult={setExplainResult}
+      />
 
       <ModelEditorModal
         editor={modelEditor}

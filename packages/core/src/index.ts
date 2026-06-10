@@ -500,9 +500,15 @@ export const ApiProxyConditionPredicateSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const ApiProxyNodeLayoutSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
 const ApiProxyPipelineNodeBaseSchema = z.object({
   id: ApiProxyIdSchema,
   name: ApiProxyNodeNameSchema,
+  layout: ApiProxyNodeLayoutSchema.optional(),
 });
 
 export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
@@ -1889,6 +1895,7 @@ export type ApiProxyConditionPredicate = z.infer<
   typeof ApiProxyConditionPredicateSchema
 >;
 export type ApiProxyPipelineNode = z.infer<typeof ApiProxyPipelineNodeSchema>;
+export type ApiProxyNodeLayout = z.infer<typeof ApiProxyNodeLayoutSchema>;
 export type ApiProxyRouteTraceStep = z.infer<
   typeof ApiProxyRouteTraceStepSchema
 >;

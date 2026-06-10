@@ -67,6 +67,7 @@ export type PipelineNodeDraft = {
   portNext: PortValue;
   portTrue: PortValue;
   portFalse: PortValue;
+  layout: { x: number; y: number } | null;
 };
 
 export type PipelineDraft = {
@@ -149,6 +150,7 @@ export function emptyPipelineNodeDraft(
     portNext: null,
     portTrue: null,
     portFalse: null,
+    layout: null,
   };
 }
 
@@ -158,6 +160,53 @@ export function nextPipelineNodeId(nodes: PipelineNodeDraft[]): string {
     index += 1;
   }
   return `node-${index}`;
+}
+
+export function addNodeToDraft(
+  draft: PipelineDraft,
+  type: ApiProxyPipelineNode["type"],
+): PipelineDraft {
+  const id = nextPipelineNodeId(draft.nodes);
+  const node = emptyPipelineNodeDraft(id, type);
+  node.layout = {
+    x: 80 + (draft.nodes.length % 3) * 80,
+    y: 80 + draft.nodes.length * 60,
+  };
+  return {
+    ...draft,
+    entryValue:
+      draft.nodes.length === 0 && !draft.entryValue
+        ? `node:${id}`
+        : draft.entryValue,
+    nodes: [...draft.nodes, node],
+  };
+}
+
+export function removeNodeFromDraft(
+  draft: PipelineDraft,
+  nodeId: string,
+): PipelineDraft {
+  const removedValue = `node:${nodeId}`;
+  const clearPort = (value: PortValue) =>
+    value === removedValue ? null : value;
+  return {
+    ...draft,
+    entryValue: clearPort(draft.entryValue),
+    nodes: draft.nodes
+      .filter((node) => node.id !== nodeId)
+      .map((node) => ({
+        ...node,
+        portNext: clearPort(node.portNext),
+        portTrue: clearPort(node.portTrue),
+        portFalse: clearPort(node.portFalse),
+        callPorts: Object.fromEntries(
+          Object.entries(node.callPorts).map(([port, value]) => [
+            port,
+            clearPort(value),
+          ]),
+        ),
+      })),
+  };
 }
 
 function numberOrNull(value: number | "") {
@@ -277,6 +326,7 @@ export function modelDraftFromRecord(model: ApiProxyModelRecord): ModelDraft {
 function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
   const draft = emptyPipelineNodeDraft(node.id, node.type);
   draft.name = node.name;
+  draft.layout = node.layout ?? null;
   switch (node.type) {
     case "replace-text":
       draft.textReplacements = replacementLines(node.config.rules);
@@ -354,7 +404,11 @@ function predicateFromDraft(
 }
 
 function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
-  const base = { id: draft.id, name: draft.name.trim() };
+  const base = {
+    id: draft.id,
+    name: draft.name.trim(),
+    ...(draft.layout ? { layout: draft.layout } : {}),
+  };
   switch (draft.type) {
     case "replace-text":
       return {

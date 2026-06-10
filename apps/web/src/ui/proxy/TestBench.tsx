@@ -26,6 +26,7 @@ import { TouchSelect } from "../components/TouchCombobox";
 type TestBenchProps = {
   models: ApiProxyModelRecord[];
   sources: ApiProxySourceRecord[];
+  onResult?: (result: ApiProxyRouteExplainResult) => void;
 };
 
 const anonymousSourceValue = "__anonymous__";
@@ -79,6 +80,9 @@ export function TestBench(props: TestBenchProps) {
 
   const explainMutation = useMutation({
     mutationFn: explainApiProxyRoute,
+    onSuccess: (response) => {
+      props.onResult?.(response.data);
+    },
   });
   const result = explainMutation.data?.data;
 

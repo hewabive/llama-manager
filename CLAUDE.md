@@ -29,7 +29,7 @@ pnpm workspace, Node 24+, ESM throughout. **Relative imports use `.js` extension
 
 - `packages/core` — the contract layer. All request/response shapes and shared types are Zod schemas exported from `src/index.ts` (e.g. `InstanceCreateSchema`, `ApiProxyTargetConfig`, `RuntimeState`). Both api and web import from `@llama-manager/core`; treat this as the single source of truth and add new shapes here first.
 - `apps/api` — Hono server on `@hono/node-server`. `src/index.ts` is the entrypoint (migrate DB → reconcile process runs → serve, with graceful SIGINT/SIGTERM shutdown of supervised children). `src/http.ts` defines every route. Persistence is SQLite via Drizzle + `better-sqlite3`. Logging via `pino`.
-- `apps/web` — React 19 + Vite + Mantine UI, server state via TanStack Query. `src/ui/views/*` are top-level pages; `src/api/client.ts` is the typed fetch layer.
+- `apps/web` — React 19 + Vite + Mantine UI, server state via TanStack Query; `@xyflow/react` powers the Routing pipeline canvas (`src/ui/proxy/canvas/`). `src/ui/views/*` are top-level pages; `src/api/client.ts` is the typed fetch layer.
 
 ### API route conventions (`apps/api/src/http.ts`)
 
