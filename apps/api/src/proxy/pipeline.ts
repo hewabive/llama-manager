@@ -3,7 +3,6 @@ import {
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
   type ApiProxyPortRef,
-  type ApiProxyRequestLogRecord,
   type ApiProxyRouteTo,
   type ApiProxyRouteTraceStep,
   type ApiProxyTextReplacementRule,
@@ -18,7 +17,9 @@ import {
 import { estimateRequestTokens } from "./token-estimate.js";
 
 export type ApiProxyPipelineRecordRequestInput = {
-  protocol: ApiProxyRequestLogRecord["protocol"];
+  kind: string;
+  nodeName: string | null;
+  protocol: "openai" | "anthropic";
   endpoint: string;
   routePath: string;
   modelId: string;
@@ -178,7 +179,7 @@ export async function resolveApiProxyRouteChain(input: {
   sourceId?: string | null | undefined;
   recordRequest?: (
     request: ApiProxyPipelineRecordRequestInput,
-  ) => ApiProxyRequestLogRecord | Promise<ApiProxyRequestLogRecord>;
+  ) => void | Promise<void>;
   maxVisitedNodes?: number | undefined;
   maxCallDepth?: number | undefined;
 }): Promise<ApiProxyRouteChainResult> {
@@ -350,6 +351,8 @@ export async function resolveApiProxyRouteChain(input: {
       case "capture-request": {
         if (input.recordRequest) {
           await input.recordRequest({
+            kind: node.type,
+            nodeName: node.name || null,
             protocol: input.request.operation.protocol,
             endpoint: input.request.operation.endpoint,
             routePath: input.request.operation.routePath,

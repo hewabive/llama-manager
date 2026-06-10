@@ -1,6 +1,7 @@
 import {
   ApiProxyRequestTraceSchema,
   type ApiProxyRouteTraceStep,
+  type ApiProxyTraceFile,
 } from "@llama-manager/core";
 import type { Context, Hono } from "hono";
 
@@ -50,8 +51,8 @@ import {
   getApiProxyTarget,
   listApiProxyModels,
   removeApiProxySavedSlotId,
-  saveApiProxyRequestLog,
 } from "./repository.js";
+import { saveApiProxyRequestFile } from "./request-files.js";
 import {
   createResumableBufferState,
   runResumableForward,
@@ -158,6 +159,7 @@ type ProxyTraceAccumulator = {
   cacheOrigin: "live" | "restored" | "fresh" | null;
   textReplacementCount: number;
   routeTrace: ApiProxyRouteTraceStep[];
+  files: ApiProxyTraceFile[];
   schedulerActions: string[];
   usage: {
     promptTokens: number | null;
@@ -199,6 +201,7 @@ function createProxyTrace(
     cacheOrigin: null,
     textReplacementCount: 0,
     routeTrace: [],
+    files: [],
     schedulerActions: [],
     usage: null,
     status: 0,
@@ -374,7 +377,21 @@ async function proxyProtocolEndpointInner(
     request: resolution.request,
     getPipeline: getApiProxyPipeline,
     sourceId: trace.sourceId,
-    recordRequest: saveApiProxyRequestLog,
+    recordRequest: (request) => {
+      trace.files.push(
+        saveApiProxyRequestFile({
+          traceId: trace.id,
+          traceAt: trace.at,
+          kind: request.kind,
+          label: request.nodeName,
+          protocol: request.protocol,
+          endpoint: request.endpoint,
+          routePath: request.routePath,
+          modelId: request.modelId,
+          data: request.requestBody,
+        }),
+      );
+    },
   });
   trace.routeTrace = route.routeTrace;
   if (!route.ok) {

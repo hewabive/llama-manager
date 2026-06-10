@@ -7,6 +7,7 @@ import type {
   ApiProxyStatsSnapshot,
   ApiProxyTargetRecord,
   ApiProxyTargetRuntime,
+  ApiProxyTraceFile,
   ApiProxyTraceUsage,
 } from "@llama-manager/core";
 import {
@@ -17,16 +18,21 @@ import {
   Code,
   Group,
   Loader,
+  Menu,
+  Modal,
   Paper,
   Progress,
+  ScrollArea,
   Stack,
   Table,
   Text,
   Tooltip,
 } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   BarChart3,
+  FileText,
   Pencil,
   Play,
   Plus,
@@ -34,8 +40,11 @@ import {
   Trash2,
   Workflow,
 } from "lucide-react";
+import { useState } from "react";
 
+import { getApiProxyRequestFile } from "../../api/client";
 import { TouchSelect } from "../components/TouchCombobox";
+import { formatBytes } from "../utils/models";
 import { formatLocalDateTime, formatLocalHour } from "../utils/time";
 import {
   actionLabels,
@@ -890,6 +899,89 @@ function SlotCell(props: { trace: ApiProxyRequestTrace }) {
   );
 }
 
+function TraceFilesCell(props: {
+  trace: ApiProxyRequestTrace;
+  onOpen: (file: ApiProxyTraceFile) => void;
+}) {
+  const files = props.trace.files;
+  if (files.length === 0) {
+    return <>—</>;
+  }
+  return (
+    <Menu position="bottom-start" shadow="md" withinPortal>
+      <Menu.Target>
+        <Button
+          size="compact-xs"
+          variant="light"
+          leftSection={<FileText size={12} />}
+        >
+          {files.length}
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {files.map((file) => (
+          <Menu.Item key={file.path} onClick={() => props.onOpen(file)}>
+            <Stack gap={0}>
+              <Text size="xs">{file.label || file.kind}</Text>
+              <Text size="xs" c="dimmed">
+                {file.name} · {formatBytes(file.bytes)}
+              </Text>
+            </Stack>
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+function TraceFileModal(props: {
+  file: ApiProxyTraceFile | null;
+  onClose: () => void;
+}) {
+  const path = props.file?.path ?? "";
+  const fileQuery = useQuery({
+    queryKey: ["api-proxy-request-file", path],
+    queryFn: () => getApiProxyRequestFile(path),
+    enabled: path !== "",
+  });
+  const record = fileQuery.data?.data;
+  return (
+    <Modal
+      opened={props.file !== null}
+      onClose={props.onClose}
+      title={
+        props.file ? `${props.file.label || props.file.kind} — ${props.file.name}` : ""
+      }
+      size="xl"
+    >
+      {fileQuery.isLoading && <Loader size="sm" />}
+      {fileQuery.isError && (
+        <Text size="sm" c="red">
+          {(fileQuery.error as Error).message}
+        </Text>
+      )}
+      {record && (
+        <Stack gap="xs">
+          <Group gap="xs" wrap="wrap">
+            <Badge variant="light">{record.kind}</Badge>
+            <Badge color="gray" variant="light">
+              {record.protocol}
+            </Badge>
+            <Text size="xs" c="dimmed">
+              {record.modelId} · {formatLocalDateTime(record.createdAt)}
+            </Text>
+          </Group>
+          <ScrollArea.Autosize mah="65vh">
+            <Code block style={{ whiteSpace: "pre-wrap" }}>
+              {JSON.stringify(record.data, null, 2)}
+            </Code>
+          </ScrollArea.Autosize>
+        </Stack>
+      )}
+    </Modal>
+  );
+}
+
 function TwoLineHeader(props: { title: string; hint: string }) {
   return (
     <Stack gap={0}>
@@ -943,6 +1035,7 @@ export function StatsSection(props: StatsSectionProps) {
   const snapshot = props.snapshot;
   const totals = snapshot?.totals;
   const hasData = Boolean(totals && totals.requests > 0);
+  const [viewedFile, setViewedFile] = useState<ApiProxyTraceFile | null>(null);
 
   return (
     <Paper withBorder p="md" radius="sm">
@@ -1029,6 +1122,7 @@ export function StatsSection(props: StatsSectionProps) {
                     <Table.Th>Model</Table.Th>
                     <Table.Th>Target</Table.Th>
                     <Table.Th>Route</Table.Th>
+                    <Table.Th>Files</Table.Th>
                     <Table.Th>Slot</Table.Th>
                     <Table.Th>Actions</Table.Th>
                     <Table.Th>
@@ -1092,6 +1186,9 @@ export function StatsSection(props: StatsSectionProps) {
                         <RouteTraceCell trace={trace} />
                       </Table.Td>
                       <Table.Td>
+                        <TraceFilesCell trace={trace} onOpen={setViewedFile} />
+                      </Table.Td>
+                      <Table.Td>
                         <SlotCell trace={trace} />
                       </Table.Td>
                       <Table.Td>
@@ -1150,6 +1247,7 @@ export function StatsSection(props: StatsSectionProps) {
           </Stack>
         )}
       </Stack>
+      <TraceFileModal file={viewedFile} onClose={() => setViewedFile(null)} />
     </Paper>
   );
 }

@@ -14,7 +14,7 @@ import type {
   ApiProxyPipelineUpdate,
   ApiProxyRouteExplainRequest,
   ApiProxyRouteExplainResult,
-  ApiProxyRequestLogRecord,
+  ApiProxyRequestFileRecord,
   ApiProxyRequestTrace,
   ApiProxySourceCreate,
   ApiProxySourceRecord,
@@ -311,6 +311,13 @@ export async function getApiProxyTraces(limit = 50) {
   const params = new URLSearchParams({ limit: String(limit) });
   return request<{ data: ApiProxyRequestTrace[] }>(
     `/api/proxy/traces?${params.toString()}`,
+  );
+}
+
+export async function getApiProxyRequestFile(path: string) {
+  const params = new URLSearchParams({ path });
+  return request<{ data: ApiProxyRequestFileRecord }>(
+    `/api/proxy/request-file?${params.toString()}`,
   );
 }
 

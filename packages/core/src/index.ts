@@ -1197,15 +1197,25 @@ export const ApiProxyTargetModelCatalogSchema = z.object({
   groups: z.array(ApiProxyTargetModelGroupSchema).default([]),
 });
 
-export const ApiProxyRequestLogRecordSchema = z.object({
-  id: z.string(),
-  filePath: z.string().min(1).nullable().default(null),
+export const ApiProxyTraceFileSchema = z.object({
+  name: z.string().min(1),
+  path: z.string().min(1),
+  kind: z.string().min(1),
+  label: z.string().nullable().default(null),
+  bytes: z.number().int().min(0).default(0),
+  createdAt: z.string(),
+});
+
+export const ApiProxyRequestFileRecordSchema = z.object({
+  traceId: z.string(),
+  kind: z.string().min(1),
+  label: z.string().nullable().default(null),
   protocol: z.enum(["openai", "anthropic"]),
   endpoint: z.string().min(1),
   routePath: z.string().min(1),
   modelId: ApiProxyModelIdSchema,
-  requestBody: z.unknown(),
   createdAt: z.string(),
+  data: z.unknown(),
 });
 
 const ApiProxySourceNameSchema = z.string().trim().min(1).max(80);
@@ -1310,6 +1320,7 @@ export const ApiProxyRequestTraceSchema = z.object({
   cacheOrigin: z.enum(["live", "restored", "fresh"]).nullable().default(null),
   textReplacementCount: z.number().int().min(0).default(0),
   routeTrace: z.array(ApiProxyRouteTraceStepSchema).default([]),
+  files: z.array(ApiProxyTraceFileSchema).default([]),
   schedulerActions: z.array(z.string()).default([]),
   usage: ApiProxyTraceUsageSchema.nullable().default(null),
   status: z.number().int().min(0).default(0),
@@ -2335,8 +2346,9 @@ export type ApiProxyTargetModelGroup = z.infer<
 export type ApiProxyTargetModelCatalog = z.infer<
   typeof ApiProxyTargetModelCatalogSchema
 >;
-export type ApiProxyRequestLogRecord = z.infer<
-  typeof ApiProxyRequestLogRecordSchema
+export type ApiProxyTraceFile = z.infer<typeof ApiProxyTraceFileSchema>;
+export type ApiProxyRequestFileRecord = z.infer<
+  typeof ApiProxyRequestFileRecordSchema
 >;
 export type ApiProxySourceConfig = z.infer<typeof ApiProxySourceConfigSchema>;
 export type ApiProxySourceCreate = z.infer<typeof ApiProxySourceCreateSchema>;

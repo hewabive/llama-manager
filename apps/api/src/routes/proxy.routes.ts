@@ -10,10 +10,8 @@ import { listInstances } from "../instances/repository.js";
 import { listApiEndpointCatalog } from "../proxy/endpoints.js";
 import { getApiProxyPlanPreview } from "../proxy/idle-maintenance.js";
 import { explainApiProxyRoute } from "../proxy/route-explain.js";
-import {
-  getApiProxyConfig,
-  listApiProxyRequestLogs,
-} from "../proxy/repository.js";
+import { getApiProxyConfig } from "../proxy/repository.js";
+import { readApiProxyRequestFile } from "../proxy/request-files.js";
 import { getApiProxyRuntimeSnapshot } from "../proxy/runtime-snapshot.js";
 import {
   createApiProxySource,
@@ -41,11 +39,13 @@ export function registerProxyRoutes(app: Hono) {
     });
   });
 
-  app.get("/api/proxy/requests", (c) => {
-    const limit = Number(c.req.query("limit") ?? 100);
-    return c.json({
-      data: listApiProxyRequestLogs(Number.isFinite(limit) ? limit : 100),
-    });
+  app.get("/api/proxy/request-file", (c) => {
+    const path = c.req.query("path") ?? "";
+    const record = readApiProxyRequestFile(path);
+    if (!record) {
+      return c.json({ error: "request file not found" }, 404);
+    }
+    return c.json({ data: record });
   });
 
   app.get("/api/proxy/stats", (c) => {

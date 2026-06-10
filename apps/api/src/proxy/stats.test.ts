@@ -24,6 +24,7 @@ function trace(
     cacheOrigin: null,
     textReplacementCount: 0,
     routeTrace: [],
+    files: [],
     schedulerActions: [],
     usage: null,
     status: 200,

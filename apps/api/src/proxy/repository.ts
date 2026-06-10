@@ -8,7 +8,6 @@ import {
   ApiProxyPipelineConfigSchema,
   ApiProxyPipelineRecordSchema,
   ApiProxyPipelineUpdateSchema,
-  ApiProxyRequestLogRecordSchema,
   ApiProxyTargetConfigSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetRecordSchema,
@@ -20,21 +19,10 @@ import {
   type ApiProxyPipelineCreate,
   type ApiProxyPipelineRecord,
   type ApiProxyPipelineUpdate,
-  type ApiProxyRequestLogRecord,
   type ApiProxyTargetCreate,
   type ApiProxyTargetRecord,
   type ApiProxyTargetUpdate,
 } from "@llama-manager/core";
-import {
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-
-import { config } from "../config.js";
 import { newId } from "../utils/id.js";
 import { readCollection, writeCollection } from "./config-files.js";
 import { deleteApiProxyRuntimeMetadata } from "./runtime-metadata-store.js";
@@ -55,52 +43,6 @@ export const PIPELINES_FILE = "pipelines.json";
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-const requestLogsDir = resolve(config.dataDir, "proxy-requests");
-
-function requestLogFilePath(id: string, createdAt: string) {
-  const day = createdAt.slice(0, 10);
-  const timestamp = createdAt.replace(/[:.]/g, "-");
-  return resolve(requestLogsDir, day, `${timestamp}-${id}.json`);
-}
-
-function readRequestLogFile(path: string) {
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    return ApiProxyRequestLogRecordSchema.parse({
-      ...(parsed && typeof parsed === "object" ? parsed : {}),
-      filePath: path,
-    });
-  } catch {
-    return null;
-  }
-}
-
-function listApiProxyRequestLogFiles() {
-  try {
-    const records: ApiProxyRequestLogRecord[] = [];
-    for (const day of readdirSync(requestLogsDir)) {
-      const dayDir = join(requestLogsDir, day);
-      if (!statSync(dayDir).isDirectory()) {
-        continue;
-      }
-      for (const file of readdirSync(dayDir)) {
-        if (!file.endsWith(".json")) {
-          continue;
-        }
-        const record = readRequestLogFile(join(dayDir, file));
-        if (record) {
-          records.push(record);
-        }
-      }
-    }
-    return records.sort((left, right) =>
-      right.createdAt.localeCompare(left.createdAt),
-    );
-  } catch {
-    return [];
-  }
 }
 
 function readTargets(): ApiProxyTargetRecord[] {
@@ -132,13 +74,6 @@ export function listApiProxyPipelines(): ApiProxyPipelineRecord[] {
   return [...readPipelines()].sort((left, right) =>
     left.name.localeCompare(right.name),
   );
-}
-
-export function listApiProxyRequestLogs(
-  limit = 100,
-): ApiProxyRequestLogRecord[] {
-  const safeLimit = Math.max(0, Math.min(limit, 500));
-  return listApiProxyRequestLogFiles().slice(0, safeLimit);
 }
 
 export function getApiProxyTarget(id: string): ApiProxyTargetRecord | null {
@@ -384,28 +319,3 @@ export function deleteApiProxyPipeline(id: string): boolean {
   return true;
 }
 
-export function saveApiProxyRequestLog(input: {
-  protocol: ApiProxyRequestLogRecord["protocol"];
-  endpoint: string;
-  routePath: string;
-  modelId: string;
-  requestBody: unknown;
-}): ApiProxyRequestLogRecord {
-  const id = newId();
-  const timestamp = nowIso();
-  const filePath = requestLogFilePath(id, timestamp);
-  const record = ApiProxyRequestLogRecordSchema.parse({
-    id,
-    filePath,
-    protocol: input.protocol,
-    endpoint: input.endpoint,
-    routePath: input.routePath,
-    modelId: input.modelId,
-    requestBody: input.requestBody,
-    createdAt: timestamp,
-  });
-
-  mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
-  return record;
-}

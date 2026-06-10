@@ -159,12 +159,6 @@ test("capture-request saves the request as it arrives at the node", async () => 
     getPipeline: getPipelineFrom(pipelines),
     recordRequest: async (log) => {
       saved.push(log);
-      return {
-        id: `log-${saved.length}`,
-        filePath: `/tmp/log-${saved.length}.json`,
-        ...log,
-        createdAt: "2026-05-30T10:00:00.000Z",
-      };
     },
   });
 

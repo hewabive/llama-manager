@@ -154,10 +154,22 @@ port named by `exitName`. This means:
 
 ## Capture semantics
 
-`capture-request` writes a log file (`data/proxy-requests/`) **at the moment
-the walk passes the node**, containing exactly the request body as it arrived
-there — changes made by earlier nodes are included, later changes are not.
-Each capture node visit writes its own record.
+`capture-request` writes a file **at the moment the walk passes the node**,
+containing exactly the request body as it arrived there — changes made by
+earlier nodes are included, later changes are not. Each capture node visit
+writes its own file.
+
+All files saved for one proxied request share a per-request directory
+`data/proxy-requests/<YYYY-MM-DD>/<timestamp>-<traceId>/`, named
+`<NN>-<node-kind>.json` in visit order; future nodes that persist other
+per-request artifacts write into the same directory. Each file is an
+`ApiProxyRequestFileRecord` envelope (`traceId`, `kind`, node `label`,
+protocol/endpoint/model context, `data` payload). The saving side appends
+file metadata (`ApiProxyTraceFile`: name, root-relative path, kind, label,
+bytes) to `trace.files`, which the Recent requests table renders as a Files
+button — pick a file from its menu to view the content, fetched via
+`GET /api/proxy/request-file?path=<relative path>` (admin, path-confined to
+`data/proxy-requests/`).
 
 ## Observability
 
