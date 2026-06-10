@@ -24,7 +24,15 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Activity, BarChart3, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Pencil,
+  Play,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 
 import { TouchSelect } from "../components/TouchCombobox";
 import { formatLocalDateTime, formatLocalHour } from "../utils/time";
@@ -58,7 +66,7 @@ export function ProxyHeader(props: ProxyHeaderProps) {
       <Group justify="space-between" align="flex-start" wrap="wrap">
         <Group gap="xs" wrap="wrap">
           <Badge variant="light">{props.modelsCount} models</Badge>
-          <Badge variant="light">{props.pipelinesCount} nodes</Badge>
+          <Badge variant="light">{props.pipelinesCount} pipelines</Badge>
           <Badge variant="light">{props.targetsCount} targets</Badge>
           <Badge color="gray" variant="outline">
             guarded forwarding
@@ -77,7 +85,7 @@ export function ProxyHeader(props: ProxyHeaderProps) {
             leftSection={<Plus size={16} />}
             onClick={props.onAddPipeline}
           >
-            Add node
+            Add pipeline
           </Button>
           <Button
             variant="light"
@@ -350,7 +358,7 @@ export function PipelinesSection(props: PipelinesSectionProps) {
                 <Table.Tr>
                   <Table.Td colSpan={6}>
                     <Text c="dimmed" ta="center" py="lg">
-                      No processing nodes configured
+                      No pipelines configured
                     </Text>
                   </Table.Td>
                 </Table.Tr>
@@ -369,9 +377,9 @@ type ProxyTargetsSectionProps = {
   instanceOptions: SelectOption[];
   runtimeByTargetId: Map<string, ApiProxyTargetRuntime>;
   runtimeRefreshing: boolean;
-  deletePending: boolean;
-  onEdit: (target: ApiProxyTargetRecord) => void;
-  onDelete: (id: string) => void;
+  deletePending?: boolean;
+  onEdit?: (target: ApiProxyTargetRecord) => void;
+  onDelete?: (id: string) => void;
 };
 
 function InflightRequests({
@@ -541,26 +549,42 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                     <Table.Td>{formatLocalDateTime(target.updatedAt)}</Table.Td>
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        <Tooltip label="Edit target">
-                          <ActionIcon
-                            aria-label="Edit proxy target"
-                            variant="subtle"
-                            onClick={() => props.onEdit(target)}
-                          >
-                            <Pencil size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Delete target">
-                          <ActionIcon
-                            aria-label="Delete proxy target"
-                            variant="subtle"
-                            color="red"
-                            loading={props.deletePending}
-                            onClick={() => props.onDelete(target.id)}
-                          >
-                            <Trash2 size={16} />
-                          </ActionIcon>
-                        </Tooltip>
+                        {props.onEdit && (
+                          <Tooltip label="Edit target">
+                            <ActionIcon
+                              aria-label="Edit proxy target"
+                              variant="subtle"
+                              onClick={() => props.onEdit?.(target)}
+                            >
+                              <Pencil size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {props.onDelete && (
+                          <Tooltip label="Delete target">
+                            <ActionIcon
+                              aria-label="Delete proxy target"
+                              variant="subtle"
+                              color="red"
+                              loading={props.deletePending ?? false}
+                              onClick={() => props.onDelete?.(target.id)}
+                            >
+                              <Trash2 size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {!props.onEdit && (
+                          <Tooltip label="Configure on Routing">
+                            <ActionIcon
+                              aria-label="Configure target on Routing"
+                              variant="subtle"
+                              component="a"
+                              href="#/routing"
+                            >
+                              <SlidersHorizontal size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>

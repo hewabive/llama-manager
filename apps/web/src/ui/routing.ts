@@ -8,6 +8,7 @@ export type AppRoute =
   | "paths"
   | "endpoints"
   | "proxy"
+  | "routing"
   | "sources"
   | "api-lab"
   | "models"
@@ -62,8 +63,14 @@ export const appRoutes: {
     id: "proxy",
     label: "Proxy",
     title: "API Proxy",
+    description: "Live proxy health: target runtime, scheduler plans, stats",
+  },
+  {
+    id: "routing",
+    label: "Routing",
+    title: "Request Routing",
     description:
-      "Publish API models and guard forwarding through scheduler plans",
+      "Publish API models and build pipeline graphs that route them to targets",
   },
   {
     id: "sources",
@@ -127,12 +134,34 @@ export function useHashRoute() {
   }, []);
 
   function setRoute(nextRoute: AppRoute) {
-    if (route === nextRoute) {
-      return;
-    }
     window.location.hash = `/${nextRoute}`;
     setRouteState(nextRoute);
   }
 
   return [route, setRoute] as const;
+}
+
+function subpathFromHash(route: AppRoute): string {
+  const routePath =
+    window.location.hash.replace(/^#\/?/, "").split("?")[0] ?? "";
+  const segments = routePath.split("/");
+  return segments[0] === route ? segments.slice(1).join("/") : "";
+}
+
+export function useHashSubpath(route: AppRoute) {
+  const [subpath, setSubpathState] = useState(() => subpathFromHash(route));
+
+  useEffect(() => {
+    const onHashChange = () => setSubpathState(subpathFromHash(route));
+    onHashChange();
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [route]);
+
+  function setSubpath(next: string) {
+    window.location.hash = next ? `/${route}/${next}` : `/${route}`;
+    setSubpathState(subpathFromHash(route));
+  }
+
+  return [subpath, setSubpath] as const;
 }

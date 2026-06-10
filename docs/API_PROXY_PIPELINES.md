@@ -149,6 +149,17 @@ a single record; the last visited node's `includeTransformedBody` wins.
 tokenEstimate, transformedBody}`. Capture nodes do not write logs in explain
   mode.
 
+## Web UI split
+
+Two pages share the proxy domain. `#/proxy` (Proxy) is operations: target
+runtime with inflight/prefill progress, scheduler plan check, stats and the
+recent-request traces. `#/routing` (Routing) is construction: the topology map
+(what each model can reach, dangling refs, unreachable pipelines), the
+model/pipeline/target tables, a full-page pipeline editor addressed as
+`#/routing/<pipelineId>` (`#/routing/new` to create), and the route test bench
+(the explain endpoint with body presets). The planned canvas editor replaces
+the form inside the same page and data model.
+
 ## Validation lifecycle
 
 - **Save time** (`POST/PATCH /api/proxy/pipelines`): full graph validation —

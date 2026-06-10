@@ -40,6 +40,7 @@ import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
 import { ProxyView } from "./views/ProxyView";
 import { PublicStatusView } from "./views/PublicStatusView";
+import { RoutingView } from "./views/RoutingView";
 import { SourceSyncView } from "./views/SourceSyncView";
 
 export function App() {
@@ -302,6 +303,8 @@ export function App() {
           {canUseAdmin && route === "endpoints" && <ApiEndpointsView />}
 
           {canUseAdmin && route === "proxy" && <ProxyView />}
+
+          {canUseAdmin && route === "routing" && <RoutingView />}
 
           {canUseAdmin && route === "sources" && <ApiProxySourcesView />}
 
