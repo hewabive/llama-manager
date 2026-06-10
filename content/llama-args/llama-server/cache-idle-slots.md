@@ -2,7 +2,7 @@
 schema: 1
 primaryName: "--cache-idle-slots"
 title: "--cache-idle-slots"
-summary: "Сохраняет idle slots в RAM prompt cache и очищает их при новой задаче. Работает только вместе с `--kv-unified` и включенным `--cache-ram`."
+summary: "Сохраняет idle slots в RAM prompt cache при старте новой задачи; при `--kv-unified` дополнительно очищает их KV. Требует включенный `--cache-ram`."
 category: "Параметры llama-server"
 valueType: "boolean"
 valueHint: null
@@ -23,14 +23,14 @@ related:
 
 ## Кратко
 
-`--cache-idle-slots` задает `common_params::cache_idle_slots`. При запуске новой задачи сервер может сохранить prompt idle slot в RAM prompt cache и очистить slot KV, чтобы освободить общий unified KV.
+`--cache-idle-slots` задает `common_params::cache_idle_slots`. При запуске новой задачи сервер сохраняет prompt каждого idle slot в RAM prompt cache. Если включен `--kv-unified`, slot KV после сохранения очищается, чтобы освободить общий unified KV; без unified KV очистка не освобождает переиспользуемое место, поэтому slot сохраняет свой KV в VRAM, а в prompt cache публикуется только RAM-копия.
 
-По умолчанию включено, но автоматически отключается, если нет `--kv-unified` или `--cache-ram 0`.
+По умолчанию включено, но автоматически отключается при `--cache-ram 0`. `--kv-unified` больше не обязателен (изменено в [PR #24190](https://github.com/ggml-org/llama.cpp/pull/24190)).
 
 ## Оригинальная справка llama.cpp
 
 ```text
-save and clear idle slots on new task (default: enabled, requires unified KV and cache-ram)
+save idle slots to the prompt cache on new task, and clear them when using unified KV (default: enabled, requires cache-ram)
 ```
 
 ## Паспорт аргумента
@@ -44,9 +44,9 @@ save and clear idle slots on new task (default: enabled, requires unified KV and
 
 ## Что меняет в llama-server
 
-На `init()` сервер проверяет условия. Если `--kv-unified` выключен, пишет `--cache-idle-slots requires --kv-unified, disabling`. Если `--cache-ram 0`, пишет `--cache-idle-slots requires --cache-ram, disabling`.
+На `init()` сервер проверяет единственное условие: при `--cache-ram 0` пишет `--cache-idle-slots requires --cache-ram, disabling` и отключает флаг. Затем логирует выбранный режим: с unified KV — `idle slots will be saved to prompt cache and cleared upon starting a new task`, без него — `idle slots will be saved to prompt cache upon starting a new task`.
 
-Когда включено, при запуске задач idle slots сохраняются через `prompt_save()` в `server_prompt_cache` и очищаются, чтобы освободить место в unified KV.
+Когда включено, при запуске задач idle slots сохраняются через `prompt_save()` в `server_prompt_cache`; при `--kv-unified` после сохранения вызывается `prompt_clear()`, освобождая место в unified KV.
 
 ## Значения и формат
 
@@ -56,16 +56,16 @@ save and clear idle slots on new task (default: enabled, requires unified KV and
 
 ## Когда использовать
 
-Оставляйте включенным для `--kv-unified` серверов с несколькими слотами и длинными prompts. Выключайте, если RAM-cache слишком дорог или если нужно, чтобы idle slots не сериализовались.
+Оставляйте включенным для серверов с несколькими слотами и длинными prompts: с `--kv-unified` это освобождает общий KV, без него — заранее публикует RAM-копии состояний для последующего restore. Выключайте, если RAM-cache слишком дорог или если нужно, чтобы idle slots не сериализовались.
 
 ## Влияние на производительность и память
 
-Снижает давление на unified KV-cache, но переносит часть состояния в RAM. Новая задача может стартовать быстрее, чем полный prompt replay, если state удачно восстановлен из prompt cache.
+С unified KV снижает давление на общий KV-cache, перенося часть состояния в RAM; без unified KV память KV не освобождается, добавляется только RAM-копия. Новая задача может стартовать быстрее, чем полный prompt replay, если state удачно восстановлен из prompt cache.
 
 ## Взаимодействие с другими аргументами
 
-- `--kv-unified`: обязательное условие.
-- `--cache-ram`: должен быть не `0`.
+- `--cache-ram`: обязательное условие, должен быть не `0`.
+- `--kv-unified`: не обязателен; определяет, очищается ли KV idle slot после сохранения.
 - `--parallel`: чем больше слотов, тем чаще есть idle states для сохранения.
 - `--cache-prompt`: влияет на reuse восстановленного состояния.
 
@@ -75,8 +75,8 @@ save and clear idle slots on new task (default: enabled, requires unified KV and
 
 ## Типовые проблемы и диагностика
 
-- Ищите лог `idle slots will be saved to prompt cache and cleared upon starting a new task`.
-- При отключении из-за условий сервер пишет явное warning.
+- Ищите лог `idle slots will be saved to prompt cache and cleared upon starting a new task` (с unified KV) или `idle slots will be saved to prompt cache upon starting a new task` (без него).
+- При `--cache-ram 0` сервер пишет warning `--cache-idle-slots requires --cache-ram, disabling`.
 - При нехватке RAM смотрите `cache state` и уменьшайте `--cache-ram`.
 
 ## Примеры
@@ -86,7 +86,11 @@ llama-server --model /models/model.gguf --kv-unified --cache-ram 4096 --cache-id
 ```
 
 ```bash
-llama-server --model /models/model.gguf --kv-unified --no-cache-idle-slots
+llama-server --model /models/model.gguf --parallel 4 --cache-ram 8192
+```
+
+```bash
+llama-server --model /models/model.gguf --no-cache-idle-slots
 ```
 
 ## Источники
@@ -95,3 +99,4 @@ llama-server --model /models/model.gguf --kv-unified --no-cache-idle-slots
 - `/home/maxim/llama/llama.cpp/common/common.h`
 - `/home/maxim/llama/llama.cpp/tools/server/server-context.cpp`
 - `/home/maxim/llama/llama.cpp/tools/server/README.md`
+- https://github.com/ggml-org/llama.cpp/pull/24190
