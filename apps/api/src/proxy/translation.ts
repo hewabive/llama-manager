@@ -9,6 +9,7 @@ import {
   type AnthropicStreamEvent,
 } from "@llama-manager/anthropic-openai-bridge";
 
+import { sanitizeClaudeCodeAttribution } from "./attribution.js";
 import { numberOrNull } from "./json.js";
 import { openAiResumableCodec } from "./openai.js";
 import type {
@@ -41,7 +42,10 @@ export function shouldTranslateAnthropicMessages(
 }
 
 export function translateAnthropicForwardBody(body: unknown): unknown {
-  return translateAnthropicRequest(body, llamaServerRequestOptions).body;
+  return translateAnthropicRequest(
+    sanitizeClaudeCodeAttribution(body),
+    llamaServerRequestOptions,
+  ).body;
 }
 
 export type UpstreamExchange = {

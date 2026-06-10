@@ -41,6 +41,38 @@ Anthropic-profile external endpoints get verbatim pass-through to their own
 Traces record `translated: true` and the UI protocol badge shows
 `anthropic → openai`.
 
+## Claude Code attribution sanitation (`apps/api/src/proxy/attribution.ts`)
+
+Claude Code ≥ 2.1.29 injects a dedicated `system` text block
+`x-anthropic-billing-header: cc_version=…; cc_entrypoint=…; cch=<hex>;` whose
+`cch` hash changes on every request (random since ~2.1.36). Concatenated into
+the OpenAI system message, it diverges the llama.cpp KV prefix cache at the
+very start of the prompt, forcing a full prompt re-process per request. The
+CLI additionally find-and-replaces the session's previous `cch` hash across
+historical message content (anthropics/claude-code#40652), so tool results
+that captured the header keep mutating between requests.
+
+`sanitizeClaudeCodeAttribution` runs inside `translateAnthropicForwardBody`,
+i.e. only on the translate path — anthropic-profile pass-through stays
+verbatim (the header is Anthropic's own billing mechanism). Two transforms:
+
+- `system` (string or blocks): lines containing `x-anthropic-billing-header:`
+  are removed; a block (or the whole `system` key) left empty is dropped.
+- message content (text blocks, `tool_result` string/nested text content): the
+  `cch=<hex>` value is pinned to `cch=0`, but only inside a full
+  `x-anthropic-billing-header:` line — bare `cch=` occurrences in unrelated
+  content are never touched, so legitimate text is preserved byte-for-byte
+  apart from the volatile hash.
+
+Bodies without a match are returned by reference, untouched. The sanitizer
+lives in the consumer, not the bridge package, because it is a
+client-specific (Claude Code) quirk, not an OpenAI-dialect concern.
+
+Client-side alternative: `CLAUDE_CODE_ATTRIBUTION_HEADER=0` in the `env`
+section of `~/.claude/settings.json` stops the injection at the source (a
+shell env var is ignored when `ANTHROPIC_BASE_URL` routing is used). The
+server-side sanitizer makes the proxy robust regardless of client settings.
+
 ## Request mapping (`request.ts`)
 
 | Anthropic                                      | OpenAI                                                                                                                                                                             |
