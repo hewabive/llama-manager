@@ -192,6 +192,20 @@ export function addNodeToDraft(
   };
 }
 
+export function addPipelineNodeToDraft(
+  draft: PipelineDraft,
+  pipelineId: string,
+): PipelineDraft {
+  const addedId = nextPipelineNodeId(draft.nodes);
+  const next = addNodeToDraft(draft, "call");
+  return {
+    ...next,
+    nodes: next.nodes.map((node) =>
+      node.id === addedId ? { ...node, callPipelineId: pipelineId } : node,
+    ),
+  };
+}
+
 export function removeNodeFromDraft(
   draft: PipelineDraft,
   nodeId: string,

@@ -44,7 +44,11 @@ import {
 } from "./canvas-model";
 import { FlowNodeCard } from "./FlowNodeCard";
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "../forms";
-import { pipelinePayload, removeNodeFromDraft } from "../forms";
+import {
+  addPipelineNodeToDraft,
+  pipelinePayload,
+  removeNodeFromDraft,
+} from "../forms";
 import {
   PipelineNodeFields,
   editorCallExitNames,
@@ -341,8 +345,9 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
   };
 
   const placeTarget = (targetId: string) => placeRef(`target:${targetId}`);
-  const placePipelineRef = (pipelineId: string) =>
-    placeRef(`pipeline:${pipelineId}`);
+
+  const addPipelineNode = (pipelineId: string) =>
+    props.onDraftChange(addPipelineNodeToDraft(draft, pipelineId));
 
   const otherPipelines = props.ctx.pipelines.filter(
     (pipeline) => pipeline.id !== props.ctx.pipelineId,
@@ -500,7 +505,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             {otherPipelines.map((pipeline) => (
               <Menu.Item
                 key={pipeline.id}
-                onClick={() => placePipelineRef(pipeline.id)}
+                onClick={() => addPipelineNode(pipeline.id)}
               >
                 {pipeline.name}
               </Menu.Item>
@@ -700,8 +705,8 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
               <Text c="dimmed" size="sm">
                 Select a node to edit its configuration. Click the entry node to
                 manage which models route into this pipeline. Drag from a port
-                to wire it to another node, a target or a pipeline. Double-click
-                a call or pipeline node to open it.
+                to wire it to another node or a target. Double-click a pipeline
+                node to open the nested pipeline.
               </Text>
             </Stack>
           )}

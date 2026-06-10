@@ -34,15 +34,22 @@ export type PipelineEditorContext = {
   updateNode: (nodeId: string, patch: Partial<PipelineNodeDraft>) => void;
 };
 
+const nodeTypeLabels: Record<ApiProxyPipelineNode["type"], string> = {
+  "replace-text": "Replace text",
+  "capture-request": "Save request",
+  condition: "Condition",
+  call: "Pipeline",
+  exit: "Exit",
+};
+
 export const pipelineNodeTypeOptions: Array<{
   value: ApiProxyPipelineNode["type"];
   label: string;
 }> = [
-  { value: "replace-text", label: "Replace text" },
-  { value: "capture-request", label: "Save request" },
-  { value: "condition", label: "Condition" },
-  { value: "call", label: "Call pipeline" },
-  { value: "exit", label: "Exit" },
+  { value: "replace-text", label: nodeTypeLabels["replace-text"] },
+  { value: "capture-request", label: nodeTypeLabels["capture-request"] },
+  { value: "condition", label: nodeTypeLabels.condition },
+  { value: "exit", label: nodeTypeLabels.exit },
 ];
 
 const conditionScopeOptions = [
@@ -61,10 +68,7 @@ const predicateTypeOptions = [
 const anonymousSourceValue = "__anonymous__";
 
 export function pipelineNodeTypeLabel(type: ApiProxyPipelineNode["type"]) {
-  return (
-    pipelineNodeTypeOptions.find((option) => option.value === type)?.label ??
-    type
-  );
+  return nodeTypeLabels[type] ?? type;
 }
 
 export function editorOtherPipelines(ctx: PipelineEditorContext) {
@@ -74,6 +78,7 @@ export function editorOtherPipelines(ctx: PipelineEditorContext) {
 export function editorPortOptions(
   ctx: PipelineEditorContext,
   excludeNodeId: string | null,
+  options?: { includePipelines?: boolean },
 ) {
   return [
     { value: unboundTargetValue, label: "Unbound" },
@@ -87,10 +92,12 @@ export function editorPortOptions(
       value: `target:${target.id}`,
       label: `Target: ${target.name}`,
     })),
-    ...editorOtherPipelines(ctx).map((pipeline) => ({
-      value: `pipeline:${pipeline.id}`,
-      label: `Pipeline: ${pipeline.name}`,
-    })),
+    ...((options?.includePipelines ?? true)
+      ? editorOtherPipelines(ctx).map((pipeline) => ({
+          value: `pipeline:${pipeline.id}`,
+          label: `Pipeline: ${pipeline.name}`,
+        }))
+      : []),
   ];
 }
 
@@ -124,7 +131,9 @@ function PortSelect(props: {
   return (
     <TouchSelect
       label={props.label}
-      data={editorPortOptions(props.ctx, props.node.id)}
+      data={editorPortOptions(props.ctx, props.node.id, {
+        includePipelines: false,
+      })}
       value={props.value ?? unboundTargetValue}
       searchable
       onChange={(next) =>

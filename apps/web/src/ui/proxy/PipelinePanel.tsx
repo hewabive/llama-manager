@@ -11,6 +11,7 @@ import {
   Button,
   Code,
   Group,
+  Menu,
   Paper,
   SegmentedControl,
   Stack,
@@ -25,6 +26,7 @@ import { PipelineCanvas } from "./canvas/PipelineCanvas";
 import type { PipelineDraft, PipelineNodeDraft } from "./forms";
 import {
   addNodeToDraft,
+  addPipelineNodeToDraft,
   removeNodeFromDraft,
   unboundTargetValue,
 } from "./forms";
@@ -77,6 +79,10 @@ export function PipelinePanel(props: PipelinePanelProps) {
   const addNode = (type: PipelineNodeDraft["type"]) => {
     props.onDraftChange(addNodeToDraft(props.draft, type));
   };
+
+  const otherPipelines = props.pipelines.filter(
+    (pipeline) => pipeline.id !== props.pipelineId,
+  );
 
   return (
     <Paper withBorder p="md" radius="sm">
@@ -207,6 +213,33 @@ export function PipelinePanel(props: PipelinePanelProps) {
                   {option.label}
                 </Button>
               ))}
+              <Menu position="bottom-start" withinPortal>
+                <Menu.Target>
+                  <Button
+                    variant="light"
+                    color="indigo"
+                    size="xs"
+                    leftSection={<Plus size={14} />}
+                    disabled={otherPipelines.length === 0}
+                  >
+                    Pipeline
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  {otherPipelines.map((pipeline) => (
+                    <Menu.Item
+                      key={pipeline.id}
+                      onClick={() =>
+                        props.onDraftChange(
+                          addPipelineNodeToDraft(props.draft, pipeline.id),
+                        )
+                      }
+                    >
+                      {pipeline.name}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
             </Group>
           </>
         )}
