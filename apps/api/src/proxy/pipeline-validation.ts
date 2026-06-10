@@ -1,8 +1,11 @@
 import {
   apiProxyPipelineNodePorts,
   collectApiProxyPipelineExitNames,
+  collectApiProxyRouteHoles,
   type ApiProxyPipelineNode,
   type ApiProxyPortRef,
+  type ApiProxyRoutePipelineShape,
+  type ApiProxyRouteTo,
 } from "@llama-manager/core";
 
 export type ApiProxyPipelineGraph = {
@@ -154,6 +157,107 @@ export function validateApiProxyPipelineGraph(
     }
   }
 
+  return null;
+}
+
+export type ApiProxyRouteModelBinding = {
+  modelId: string;
+  routeTo: ApiProxyRouteTo | null;
+};
+
+function describeRouteHoles(
+  headPipelineId: string,
+  getPipeline: (id: string) => ApiProxyRoutePipelineShape | null,
+): string | null {
+  const holes = collectApiProxyRouteHoles(headPipelineId, getPipeline);
+  if (holes.length === 0) {
+    return null;
+  }
+  return holes.map((hole) => hole.message).join("; ");
+}
+
+export function validateApiProxyModelRouteBinding(input: {
+  routeTo: ApiProxyRouteTo | null | undefined;
+  getPipeline: (id: string) => ApiProxyRoutePipelineShape | null;
+}): string | null {
+  if (input.routeTo?.type !== "pipeline") {
+    return null;
+  }
+  const head = input.getPipeline(input.routeTo.id);
+  if (!head) {
+    return null;
+  }
+  const detail = describeRouteHoles(head.id, input.getPipeline);
+  if (!detail) {
+    return null;
+  }
+  return `pipeline "${head.name}" cannot serve a model until every path ends at a target: ${detail}`;
+}
+
+function routeClosureIncludes(
+  headPipelineId: string,
+  pipelineId: string,
+  getPipeline: (id: string) => ApiProxyRoutePipelineShape | null,
+): boolean {
+  const visited = new Set<string>();
+  const queue = [headPipelineId];
+  while (queue.length > 0) {
+    const id = queue.pop();
+    if (!id || visited.has(id)) {
+      continue;
+    }
+    visited.add(id);
+    if (id === pipelineId) {
+      return true;
+    }
+    const pipeline = getPipeline(id);
+    if (!pipeline) {
+      continue;
+    }
+    queue.push(
+      ...collectApiProxyPipelineRefs({
+        entry: pipeline.entry,
+        nodes: pipeline.nodes,
+      }).pipelineIds,
+    );
+  }
+  return false;
+}
+
+export function validateApiProxyPipelineRouteCompleteness(input: {
+  candidate: ApiProxyRoutePipelineShape;
+  models: ApiProxyRouteModelBinding[];
+  getPipeline: (id: string) => ApiProxyRoutePipelineShape | null;
+}): string | null {
+  const resolve = (id: string) =>
+    id === input.candidate.id ? input.candidate : input.getPipeline(id);
+  const modelsByHead = new Map<string, string[]>();
+  for (const model of input.models) {
+    if (model.routeTo?.type !== "pipeline") {
+      continue;
+    }
+    const list = modelsByHead.get(model.routeTo.id) ?? [];
+    list.push(model.modelId);
+    modelsByHead.set(model.routeTo.id, list);
+  }
+  for (const [headId, modelIds] of modelsByHead) {
+    if (
+      headId !== input.candidate.id &&
+      !routeClosureIncludes(headId, input.candidate.id, resolve)
+    ) {
+      continue;
+    }
+    const detail = describeRouteHoles(headId, resolve);
+    if (!detail) {
+      continue;
+    }
+    const models = modelIds.map((id) => `"${id}"`).join(", ");
+    if (headId === input.candidate.id) {
+      return `pipeline serves model(s) ${models} and must route every path to a target: ${detail}`;
+    }
+    const head = resolve(headId);
+    return `saving would break the route of model(s) ${models} through pipeline "${head?.name ?? headId}": ${detail}`;
+  }
   return null;
 }
 

@@ -81,6 +81,8 @@ export type PipelineDraft = {
   enabled: boolean;
   entryValue: PortValue;
   nodes: PipelineNodeDraft[];
+  bindModelIds: string[];
+  unbindModelIds: string[];
 };
 
 export const targetModelSeparator = "\u001f";
@@ -131,6 +133,8 @@ export const emptyPipelineDraft: PipelineDraft = {
   enabled: true,
   entryValue: null,
   nodes: [],
+  bindModelIds: [],
+  unbindModelIds: [],
 };
 
 export function emptyPipelineNodeDraft(
@@ -361,6 +365,8 @@ export function pipelineDraftFromRecord(
     enabled: pipeline.enabled,
     entryValue: portRefToValue(pipeline.entry),
     nodes: pipeline.nodes.map(nodeDraftFromRecord),
+    bindModelIds: [],
+    unbindModelIds: [],
   };
 }
 

@@ -1,8 +1,10 @@
-import type {
-  ApiProxyPipelineRecord,
-  ApiProxyRouteTraceStep,
-  ApiProxySourceRecord,
-  ApiProxyTargetRecord,
+import {
+  apiProxyPipelineNodePorts,
+  type ApiProxyModelRecord,
+  type ApiProxyPipelineRecord,
+  type ApiProxyRouteTraceStep,
+  type ApiProxySourceRecord,
+  type ApiProxyTargetRecord,
 } from "@llama-manager/core";
 import type { Edge, Node } from "@xyflow/react";
 
@@ -12,7 +14,8 @@ export type FlowNodeKind =
   | PipelineNodeDraft["type"]
   | "entry"
   | "ref-target"
-  | "ref-pipeline";
+  | "ref-pipeline"
+  | "ref-model";
 
 export type FlowNodeData = {
   kind: FlowNodeKind;
@@ -21,6 +24,7 @@ export type FlowNodeData = {
   sourcePorts: string[];
   hasInput: boolean;
   highlighted: boolean;
+  invalid: boolean;
   [key: string]: unknown;
 };
 
@@ -28,6 +32,74 @@ export type FlowNode = Node<FlowNodeData>;
 
 export const entryNodeId = "__entry__";
 export const entryPortName = "start";
+export const referrerFlowPrefix = "in:";
+export const referrerPipelineFlowPrefix = "in:pipeline:";
+export const referrerPortName = "out";
+
+export type PipelineReferrer = {
+  flowId: string;
+  kind: "ref-model" | "ref-pipeline";
+  title: string;
+  summary: string;
+};
+
+export function collectPipelineReferrers(input: {
+  pipelineId: string | null;
+  models: ApiProxyModelRecord[];
+  pipelines: ApiProxyPipelineRecord[];
+  bindModelIds: string[];
+  unbindModelIds: string[];
+}): PipelineReferrer[] {
+  const referrers: PipelineReferrer[] = [];
+  const staged = new Set(input.bindModelIds);
+  for (const model of input.models) {
+    const bound =
+      input.pipelineId !== null &&
+      model.routeTo?.type === "pipeline" &&
+      model.routeTo.id === input.pipelineId &&
+      !input.unbindModelIds.includes(model.id);
+    if (!bound && !staged.has(model.id)) {
+      continue;
+    }
+    referrers.push({
+      flowId: `in:model:${model.id}`,
+      kind: "ref-model",
+      title: model.modelId,
+      summary: staged.has(model.id) ? "model · unsaved" : "model",
+    });
+  }
+  if (input.pipelineId === null) {
+    return referrers;
+  }
+  for (const pipeline of input.pipelines) {
+    if (pipeline.id === input.pipelineId) {
+      continue;
+    }
+    const calls = pipeline.nodes.some(
+      (node) =>
+        node.type === "call" && node.config.pipelineId === input.pipelineId,
+    );
+    const jumpRefs = [
+      ...(pipeline.entry ? [pipeline.entry] : []),
+      ...pipeline.nodes.flatMap((node) =>
+        apiProxyPipelineNodePorts(node).map((port) => port.ref),
+      ),
+    ];
+    const jumps = jumpRefs.some(
+      (ref) => ref.type === "pipeline" && ref.id === input.pipelineId,
+    );
+    if (!calls && !jumps) {
+      continue;
+    }
+    referrers.push({
+      flowId: `${referrerPipelineFlowPrefix}${pipeline.id}`,
+      kind: "ref-pipeline",
+      title: pipeline.name,
+      summary: calls && jumps ? "call · jump" : calls ? "call" : "jump",
+    });
+  }
+  return referrers;
+}
 
 export function refNodeId(value: string) {
   return `ref:${value}`;
@@ -165,6 +237,9 @@ type BuildInput = {
   highlight: FlowHighlight | null;
   previousPositions: Map<string, { x: number; y: number }>;
   selectedNodeId: string | null;
+  referrers: PipelineReferrer[];
+  entryInvalid: boolean;
+  invalidNodeIds: Set<string>;
 };
 
 const columnWidth = 300;
@@ -276,6 +351,7 @@ export function buildFlowGraph(input: BuildInput): {
             sourcePorts: [],
             hasInput: true,
             highlighted: false,
+            invalid: false,
           },
         });
       }
@@ -307,14 +383,43 @@ export function buildFlowGraph(input: BuildInput): {
     type: "pipeline-flow",
     position: entryPosition,
     deletable: false,
+    selected: input.selectedNodeId === entryNodeId,
     data: {
       kind: "entry",
       title: "entry",
       summary: "",
       sourcePorts: [entryPortName],
-      hasInput: false,
+      hasInput: input.referrers.length > 0,
       highlighted: highlight?.nodes.has(entryNodeId) ?? false,
+      invalid: input.entryInvalid,
     },
+  });
+
+  input.referrers.forEach((referrer, index) => {
+    nodes.push({
+      id: referrer.flowId,
+      type: "pipeline-flow",
+      position: resolvePosition(referrer.flowId, {
+        x: entryPosition.x - columnWidth,
+        y: entryPosition.y + index * 110,
+      }),
+      deletable: false,
+      data: {
+        kind: referrer.kind,
+        title: referrer.title,
+        summary: referrer.summary,
+        sourcePorts: [referrerPortName],
+        hasInput: false,
+        highlighted: false,
+        invalid: false,
+      },
+    });
+    edges.push({
+      id: `e:${referrer.flowId}`,
+      source: referrer.flowId,
+      sourceHandle: referrerPortName,
+      target: entryNodeId,
+    });
   });
 
   for (const node of input.draft.nodes) {
@@ -337,6 +442,7 @@ export function buildFlowGraph(input: BuildInput): {
         ).map((item) => item.port),
         hasInput: true,
         highlighted: highlight?.nodes.has(node.id) ?? false,
+        invalid: input.invalidNodeIds.has(node.id),
       },
     });
   }

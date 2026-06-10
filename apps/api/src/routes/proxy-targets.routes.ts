@@ -13,7 +13,9 @@ import { getInstance, listInstances } from "../instances/repository.js";
 import { getApiEndpointFromCatalog } from "../proxy/endpoints.js";
 import {
   collectApiProxyPipelineRefs,
+  validateApiProxyModelRouteBinding,
   validateApiProxyPipelineGraph,
+  validateApiProxyPipelineRouteCompleteness,
   type ApiProxyPipelineGraph,
 } from "../proxy/pipeline-validation.js";
 import {
@@ -98,7 +100,14 @@ function validateApiProxyModelRefs(input: {
   if (input.targetId && !getApiProxyTarget(input.targetId)) {
     return "proxy model target not found";
   }
-  return validateApiProxyRouteToRef(input);
+  const refError = validateApiProxyRouteToRef(input);
+  if (refError) {
+    return refError;
+  }
+  return validateApiProxyModelRouteBinding({
+    routeTo: input.routeTo,
+    getPipeline: (id) => getApiProxyPipeline(id),
+  });
 }
 
 const pipelineGraphContext = {
@@ -200,15 +209,24 @@ export function registerProxyTargetRoutes(app: Hono) {
     if (!current) {
       return c.json({ error: "proxy pipeline not found" }, 404);
     }
-    const graphError = validateApiProxyPipelineGraphInput({
+    const candidate = {
       id: current.id,
       name: parsed.data.name ?? current.name,
       entry:
         parsed.data.entry !== undefined ? parsed.data.entry : current.entry,
       nodes: parsed.data.nodes ?? current.nodes,
-    });
+    };
+    const graphError = validateApiProxyPipelineGraphInput(candidate);
     if (graphError) {
       return c.json({ error: graphError }, 400);
+    }
+    const completenessError = validateApiProxyPipelineRouteCompleteness({
+      candidate,
+      models: listApiProxyModels(),
+      getPipeline: (id) => getApiProxyPipeline(id),
+    });
+    if (completenessError) {
+      return c.json({ error: completenessError }, 400);
     }
 
     try {

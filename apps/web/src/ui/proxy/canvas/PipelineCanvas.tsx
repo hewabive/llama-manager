@@ -1,5 +1,9 @@
-import type { ApiProxyRouteTraceStep } from "@llama-manager/core";
 import {
+  collectApiProxyRouteHoles,
+  type ApiProxyRouteTraceStep,
+} from "@llama-manager/core";
+import {
+  ActionIcon,
   Badge,
   Button,
   Code,
@@ -22,19 +26,22 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildFlowGraph,
+  collectPipelineReferrers,
   entryNodeId,
   highlightFromTrace,
   portValueFromFlowId,
+  referrerFlowPrefix,
+  referrerPipelineFlowPrefix,
   type FlowNode,
 } from "./canvas-model";
 import { FlowNodeCard } from "./FlowNodeCard";
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "../forms";
-import { removeNodeFromDraft } from "../forms";
+import { pipelinePayload, removeNodeFromDraft } from "../forms";
 import {
   PipelineNodeFields,
   editorCallExitNames,
@@ -42,8 +49,10 @@ import {
   pipelineNodeTypeOptions,
   type PipelineEditorContext,
 } from "../node-fields";
+import { TouchSelect } from "../../components/TouchCombobox";
 
 const nodeTypes = { "pipeline-flow": FlowNodeCard };
+const draftCandidateId = "__draft__";
 
 function portPatch(
   node: PipelineNodeDraft,
@@ -101,6 +110,79 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     [draft.nodes, props.ctx],
   );
 
+  const boundModels = useMemo(() => {
+    const saved = props.ctx.models
+      .filter(
+        (model) =>
+          props.ctx.pipelineId !== null &&
+          model.routeTo?.type === "pipeline" &&
+          model.routeTo.id === props.ctx.pipelineId &&
+          !draft.unbindModelIds.includes(model.id),
+      )
+      .map((model) => ({ model, staged: false }));
+    const stagedModels = draft.bindModelIds.flatMap((id) => {
+      const model = props.ctx.models.find((item) => item.id === id);
+      return model ? [{ model, staged: true }] : [];
+    });
+    return [...saved, ...stagedModels];
+  }, [
+    props.ctx.models,
+    props.ctx.pipelineId,
+    draft.bindModelIds,
+    draft.unbindModelIds,
+  ]);
+
+  const referrers = useMemo(
+    () =>
+      collectPipelineReferrers({
+        pipelineId: props.ctx.pipelineId,
+        models: props.ctx.models,
+        pipelines: props.ctx.pipelines,
+        bindModelIds: draft.bindModelIds,
+        unbindModelIds: draft.unbindModelIds,
+      }),
+    [
+      props.ctx.pipelineId,
+      props.ctx.models,
+      props.ctx.pipelines,
+      draft.bindModelIds,
+      draft.unbindModelIds,
+    ],
+  );
+
+  const candidateGraph = useMemo(() => {
+    const payload = pipelinePayload(draft);
+    return {
+      id: props.ctx.pipelineId ?? draftCandidateId,
+      name: payload.name || "this pipeline",
+      entry: payload.entry,
+      nodes: payload.nodes,
+    };
+  }, [draft, props.ctx.pipelineId]);
+
+  const routeHoles = useMemo(() => {
+    if (boundModels.length === 0) {
+      return [];
+    }
+    return collectApiProxyRouteHoles(candidateGraph.id, (id) =>
+      id === candidateGraph.id
+        ? candidateGraph
+        : (props.ctx.pipelines.find((pipeline) => pipeline.id === id) ?? null),
+    );
+  }, [boundModels.length, candidateGraph, props.ctx.pipelines]);
+
+  const invalidNodeIds = useMemo(
+    () =>
+      new Set(
+        routeHoles.flatMap((hole) =>
+          hole.pipelineId === candidateGraph.id && hole.nodeId
+            ? [hole.nodeId]
+            : [],
+        ),
+      ),
+    [routeHoles, candidateGraph.id],
+  );
+
   useEffect(() => {
     const graph = buildFlowGraph({
       draft,
@@ -111,6 +193,9 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
       highlight,
       previousPositions: positionsRef.current,
       selectedNodeId,
+      referrers,
+      entryInvalid: routeHoles.length > 0,
+      invalidNodeIds,
     });
     setRfNodes(graph.nodes);
     setRfEdges(graph.edges);
@@ -122,6 +207,9 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     exitNamesByNodeId,
     highlight,
     selectedNodeId,
+    referrers,
+    routeHoles,
+    invalidNodeIds,
     props.ctx.targets,
     props.ctx.pipelines,
     props.ctx.sources,
@@ -143,6 +231,13 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
       return;
     }
     if (connection.source === connection.target) {
+      return;
+    }
+    if (
+      connection.target === entryNodeId ||
+      connection.target.startsWith(referrerFlowPrefix) ||
+      connection.source.startsWith(referrerFlowPrefix)
+    ) {
       return;
     }
     const value = portValueFromFlowId(connection.target);
@@ -212,6 +307,10 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
       props.onOpenPipeline(node.id.slice("ref:pipeline:".length));
       return;
     }
+    if (node.id.startsWith(referrerPipelineFlowPrefix)) {
+      props.onOpenPipeline(node.id.slice(referrerPipelineFlowPrefix.length));
+      return;
+    }
     const draftNode = draft.nodes.find((item) => item.id === node.id);
     if (draftNode?.type === "call" && draftNode.callPipelineId) {
       props.onOpenPipeline(draftNode.callPipelineId);
@@ -219,13 +318,79 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
   };
 
   const handleNodeClick = (_event: unknown, node: Node) => {
+    if (node.id === entryNodeId || node.id.startsWith(referrerFlowPrefix)) {
+      setSelectedNodeId(entryNodeId);
+      return;
+    }
     setSelectedNodeId(
       draft.nodes.some((item) => item.id === node.id) ? node.id : null,
     );
   };
 
+  const attachModel = (modelId: string | null) => {
+    if (!modelId) {
+      return;
+    }
+    if (draft.unbindModelIds.includes(modelId)) {
+      props.onDraftChange({
+        ...draft,
+        unbindModelIds: draft.unbindModelIds.filter((id) => id !== modelId),
+      });
+      return;
+    }
+    if (!draft.bindModelIds.includes(modelId)) {
+      props.onDraftChange({
+        ...draft,
+        bindModelIds: [...draft.bindModelIds, modelId],
+      });
+    }
+  };
+
+  const detachModel = (modelId: string) => {
+    if (draft.bindModelIds.includes(modelId)) {
+      props.onDraftChange({
+        ...draft,
+        bindModelIds: draft.bindModelIds.filter((id) => id !== modelId),
+      });
+      return;
+    }
+    if (!draft.unbindModelIds.includes(modelId)) {
+      props.onDraftChange({
+        ...draft,
+        unbindModelIds: [...draft.unbindModelIds, modelId],
+      });
+    }
+  };
+
+  const freeModelOptions = useMemo(
+    () =>
+      props.ctx.models
+        .filter(
+          (model) =>
+            !model.routeTo &&
+            !model.targetId &&
+            !draft.bindModelIds.includes(model.id),
+        )
+        .map((model) => ({ value: model.id, label: model.modelId })),
+    [props.ctx.models, draft.bindModelIds],
+  );
+
+  const stagedDetachedModels = useMemo(
+    () =>
+      draft.unbindModelIds.flatMap((id) => {
+        const model = props.ctx.models.find((item) => item.id === id);
+        return model ? [model] : [];
+      }),
+    [draft.unbindModelIds, props.ctx.models],
+  );
+
+  const pipelineReferrers = referrers.filter(
+    (referrer) => referrer.kind === "ref-pipeline",
+  );
+
   const selectedNode =
     draft.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const entrySelected = selectedNodeId === entryNodeId;
 
   return (
     <Stack gap="xs">
@@ -282,7 +447,117 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             overflow: "auto",
           }}
         >
-          {selectedNode ? (
+          {entrySelected ? (
+            <Stack gap="xs">
+              <Group gap="xs">
+                <Badge variant="light" color="green">
+                  Entry
+                </Badge>
+              </Group>
+              <Text fw={600} size="sm">
+                Routed models
+              </Text>
+              {boundModels.length === 0 &&
+                stagedDetachedModels.length === 0 && (
+                  <Text c="dimmed" size="sm">
+                    No models route into this pipeline. Attach an unbound model
+                    to serve it directly.
+                  </Text>
+                )}
+              {boundModels.map(({ model, staged }) => (
+                <Group key={model.id} justify="space-between" wrap="nowrap">
+                  <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                    <Text size="sm" truncate>
+                      {model.modelId}
+                    </Text>
+                    {staged && (
+                      <Badge size="xs" variant="light" color="yellow">
+                        unsaved
+                      </Badge>
+                    )}
+                  </Group>
+                  <ActionIcon
+                    aria-label="Detach model"
+                    variant="subtle"
+                    color="red"
+                    size="sm"
+                    onClick={() => detachModel(model.id)}
+                  >
+                    <Trash2 size={14} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              {stagedDetachedModels.map((model) => (
+                <Group key={model.id} justify="space-between" wrap="nowrap">
+                  <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                    <Text size="sm" c="dimmed" td="line-through" truncate>
+                      {model.modelId}
+                    </Text>
+                    <Badge size="xs" variant="light" color="yellow">
+                      detached · unsaved
+                    </Badge>
+                  </Group>
+                  <ActionIcon
+                    aria-label="Undo detach"
+                    variant="subtle"
+                    size="sm"
+                    onClick={() => attachModel(model.id)}
+                  >
+                    <Undo2 size={14} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              <TouchSelect
+                placeholder="Attach a model"
+                data={freeModelOptions}
+                value={null}
+                searchable
+                onChange={(value) => attachModel(value)}
+              />
+              <Text fw={600} size="sm">
+                Referenced by
+              </Text>
+              {pipelineReferrers.length === 0 ? (
+                <Text c="dimmed" size="sm">
+                  Not called or jumped to by other pipelines.
+                </Text>
+              ) : (
+                pipelineReferrers.map((referrer) => (
+                  <Text size="sm" key={referrer.flowId}>
+                    {referrer.title}{" "}
+                    <Text span c="dimmed" size="sm">
+                      — {referrer.summary}
+                    </Text>
+                  </Text>
+                ))
+              )}
+              {boundModels.length > 0 &&
+                (routeHoles.length > 0 ? (
+                  <>
+                    <Text fw={600} size="sm" c="red">
+                      Route holes
+                    </Text>
+                    {routeHoles.map((hole) => (
+                      <Text
+                        size="xs"
+                        c="red"
+                        key={`${hole.pipelineId}:${hole.nodeId}:${hole.message}`}
+                      >
+                        {hole.message}
+                      </Text>
+                    ))}
+                    <Text c="dimmed" size="xs">
+                      A pipeline that serves a model must route every path to a
+                      target. Saving is blocked until the holes are wired.
+                    </Text>
+                  </>
+                ) : (
+                  <Text size="sm" c="teal">
+                    Route complete — every path ends at a target.
+                  </Text>
+                ))}
+            </Stack>
+          ) : selectedNode ? (
             <Stack gap="xs">
               <Group justify="space-between" wrap="nowrap">
                 <Group gap="xs" wrap="wrap">
@@ -323,9 +598,10 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
                 Inspector
               </Text>
               <Text c="dimmed" size="sm">
-                Select a node to edit its configuration. Drag from a port to
-                wire it to another node, a target or a pipeline. Double-click a
-                call node to open the called pipeline.
+                Select a node to edit its configuration. Click the entry node to
+                manage which models route into this pipeline. Drag from a port
+                to wire it to another node, a target or a pipeline. Double-click
+                a call node to open the called pipeline.
               </Text>
             </Stack>
           )}

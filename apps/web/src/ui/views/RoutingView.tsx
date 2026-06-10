@@ -365,13 +365,57 @@ export function RoutingView() {
     createTargetMutation.mutate(input);
   }
 
-  function savePipeline() {
-    const input = pipelinePayload(pipelineDraftState);
-    if (subpath && subpath !== newPipelineSubpath) {
-      updatePipelineMutation.mutate({ id: subpath, input });
+  async function applyStagedModelBindings(pipelineId: string) {
+    const bind = pipelineDraftState.bindModelIds;
+    const unbind = pipelineDraftState.unbindModelIds;
+    if (bind.length === 0 && unbind.length === 0) {
       return;
     }
-    createPipelineMutation.mutate(input);
+    try {
+      for (const id of unbind) {
+        await updateApiProxyModel(id, { routeTo: null, targetId: null });
+      }
+      for (const id of bind) {
+        await updateApiProxyModel(id, {
+          routeTo: { type: "pipeline", id: pipelineId },
+          targetId: null,
+        });
+      }
+      setPipelineDraftState((prev) => ({
+        ...prev,
+        bindModelIds: [],
+        unbindModelIds: [],
+      }));
+      notifications.show({
+        title: "Routed models updated",
+        message: "Model bindings were saved.",
+      });
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Model binding failed",
+        message: (error as Error).message,
+      });
+    } finally {
+      await invalidateProxy();
+    }
+  }
+
+  async function savePipeline() {
+    const input = pipelinePayload(pipelineDraftState);
+    let pipelineId: string;
+    try {
+      if (subpath && subpath !== newPipelineSubpath) {
+        await updatePipelineMutation.mutateAsync({ id: subpath, input });
+        pipelineId = subpath;
+      } else {
+        const result = await createPipelineMutation.mutateAsync(input);
+        pipelineId = result.data.id;
+      }
+    } catch {
+      return;
+    }
+    await applyStagedModelBindings(pipelineId);
   }
 
   const editorPipeline =
@@ -458,6 +502,7 @@ export function RoutingView() {
           targets={targets}
           pipelines={pipelines}
           sources={sources}
+          models={models}
           busy={pipelineBusy}
           explainTrace={explainResult?.routeTrace ?? null}
           onBack={() => setSubpath("")}

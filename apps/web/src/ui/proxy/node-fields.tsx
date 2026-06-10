@@ -1,5 +1,6 @@
 import {
   collectApiProxyPipelineExitNames,
+  type ApiProxyModelRecord,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
   type ApiProxySourceRecord,
@@ -29,6 +30,7 @@ export type PipelineEditorContext = {
   targets: ApiProxyTargetRecord[];
   pipelines: ApiProxyPipelineRecord[];
   sources: ApiProxySourceRecord[];
+  models: ApiProxyModelRecord[];
   updateNode: (nodeId: string, patch: Partial<PipelineNodeDraft>) => void;
 };
 

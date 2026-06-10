@@ -1,4 +1,5 @@
 import type {
+  ApiProxyModelRecord,
   ApiProxyPipelineRecord,
   ApiProxyRouteTraceStep,
   ApiProxySourceRecord,
@@ -43,6 +44,7 @@ export type PipelinePanelProps = {
   targets: ApiProxyTargetRecord[];
   pipelines: ApiProxyPipelineRecord[];
   sources: ApiProxySourceRecord[];
+  models: ApiProxyModelRecord[];
   busy: boolean;
   explainTrace: ApiProxyRouteTraceStep[] | null;
   onBack: () => void;
@@ -60,6 +62,7 @@ export function PipelinePanel(props: PipelinePanelProps) {
     targets: props.targets,
     pipelines: props.pipelines,
     sources: props.sources,
+    models: props.models,
     updateNode: (nodeId, patch) => {
       props.onDraftChange({
         ...props.draft,

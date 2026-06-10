@@ -11,6 +11,7 @@ const kindLabels: Record<FlowNodeKind, string> = {
   entry: "ENTRY",
   "ref-target": "TARGET",
   "ref-pipeline": "PIPELINE",
+  "ref-model": "MODEL",
 };
 
 const kindColors: Record<FlowNodeKind, string> = {
@@ -22,6 +23,7 @@ const kindColors: Record<FlowNodeKind, string> = {
   entry: "var(--mantine-color-green-6)",
   "ref-target": "var(--mantine-color-teal-5)",
   "ref-pipeline": "var(--mantine-color-indigo-5)",
+  "ref-model": "var(--mantine-color-pink-5)",
 };
 
 export function FlowNodeCard(props: NodeProps<FlowNode>) {
@@ -30,7 +32,9 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
   const compact = data.kind === "entry" || data.kind.startsWith("ref-");
   const edgeColor = selected
     ? "var(--mantine-color-blue-5)"
-    : "var(--mantine-color-default-border)";
+    : data.invalid
+      ? "var(--mantine-color-red-6)"
+      : "var(--mantine-color-default-border)";
 
   return (
     <div
@@ -101,7 +105,9 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
                 textAlign: "right",
               }}
             >
-              {data.kind === "entry" ? "" : port}
+              {data.kind === "entry" || data.kind.startsWith("ref-")
+                ? ""
+                : port}
               <Handle
                 type="source"
                 position={Position.Right}

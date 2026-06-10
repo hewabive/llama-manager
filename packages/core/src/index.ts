@@ -715,6 +715,181 @@ export function collectApiProxyPipelineExitNames(
   return names;
 }
 
+export type ApiProxyRoutePipelineShape = ApiProxyPipelineGraphShape & {
+  id: string;
+  name: string;
+};
+
+export type ApiProxyRouteHole = {
+  pipelineId: string | null;
+  nodeId: string | null;
+  message: string;
+};
+
+const routeHoleVisitBudget = 4096;
+
+export function collectApiProxyRouteHoles(
+  rootPipelineId: string,
+  getPipeline: (id: string) => ApiProxyRoutePipelineShape | null,
+): ApiProxyRouteHole[] {
+  type PipelineNode = z.infer<typeof ApiProxyPipelineNodeSchema>;
+  type PortRef = z.infer<typeof ApiProxyPortRefSchema>;
+  type CallFrame = {
+    pipeline: ApiProxyRoutePipelineShape;
+    node: Extract<PipelineNode, { type: "call" }>;
+  };
+
+  const holes = new Map<string, ApiProxyRouteHole>();
+  const visited = new Set<string>();
+  let budget = routeHoleVisitBudget;
+
+  const addHole = (
+    pipelineId: string | null,
+    nodeId: string | null,
+    message: string,
+  ) => {
+    holes.set(`${pipelineId}|${nodeId}|${message}`, {
+      pipelineId,
+      nodeId,
+      message,
+    });
+  };
+
+  const label = (node: PipelineNode) =>
+    node.name ? `${node.name} (${node.id})` : node.id;
+
+  const stackKey = (stack: CallFrame[]) =>
+    stack.map((frame) => `${frame.pipeline.id}/${frame.node.id}`).join(",");
+
+  const visitNode = (
+    node: PipelineNode,
+    pipeline: ApiProxyRoutePipelineShape,
+    stack: CallFrame[],
+  ): void => {
+    switch (node.type) {
+      case "replace-text":
+      case "capture-request":
+        visit(node.ports.next, pipeline, stack, {
+          nodeId: node.id,
+          where: `port "next" of node ${label(node)}`,
+        });
+        return;
+      case "condition":
+        visit(node.ports.true, pipeline, stack, {
+          nodeId: node.id,
+          where: `port "true" of node ${label(node)}`,
+        });
+        visit(node.ports.false, pipeline, stack, {
+          nodeId: node.id,
+          where: `port "false" of node ${label(node)}`,
+        });
+        return;
+      case "call": {
+        const callee = getPipeline(node.config.pipelineId);
+        if (!callee) {
+          addHole(
+            pipeline.id,
+            node.id,
+            `call node ${label(node)} in pipeline "${pipeline.name}" calls missing pipeline "${node.config.pipelineId}"`,
+          );
+          return;
+        }
+        visit(callee.entry, callee, [...stack, { pipeline, node }], {
+          nodeId: null,
+          where: "entry",
+        });
+        return;
+      }
+      case "exit": {
+        const exitName = node.config.exitName;
+        const frame = stack[stack.length - 1];
+        if (!frame) {
+          addHole(
+            pipeline.id,
+            node.id,
+            `exit "${exitName}" in pipeline "${pipeline.name}" escapes the route (reached without a call) — wire it from a call node or end at a target`,
+          );
+          return;
+        }
+        const continuation = frame.node.ports[exitName];
+        if (!continuation) {
+          addHole(
+            frame.pipeline.id,
+            frame.node.id,
+            `call node ${label(frame.node)} in pipeline "${frame.pipeline.name}" has no wiring for exit "${exitName}"`,
+          );
+          return;
+        }
+        visit(continuation, frame.pipeline, stack.slice(0, -1), {
+          nodeId: frame.node.id,
+          where: `exit "${exitName}" of call node ${label(frame.node)}`,
+        });
+        return;
+      }
+    }
+  };
+
+  const visit = (
+    ref: PortRef | null,
+    pipeline: ApiProxyRoutePipelineShape,
+    stack: CallFrame[],
+    holeAt: { nodeId: string | null; where: string },
+  ): void => {
+    if (budget <= 0) {
+      return;
+    }
+    budget -= 1;
+    if (!ref) {
+      addHole(
+        pipeline.id,
+        holeAt.nodeId,
+        `${holeAt.where} in pipeline "${pipeline.name}" is unwired`,
+      );
+      return;
+    }
+    const key = `${ref.type}:${ref.id}@${pipeline.id}#${stackKey(stack)}`;
+    if (visited.has(key)) {
+      return;
+    }
+    visited.add(key);
+    if (ref.type === "target") {
+      return;
+    }
+    if (ref.type === "pipeline") {
+      const next = getPipeline(ref.id);
+      if (!next) {
+        addHole(
+          pipeline.id,
+          holeAt.nodeId,
+          `${holeAt.where} in pipeline "${pipeline.name}" references missing pipeline "${ref.id}"`,
+        );
+        return;
+      }
+      visit(next.entry, next, stack, { nodeId: null, where: "entry" });
+      return;
+    }
+    const nodeId = ref.id;
+    const node = pipeline.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      addHole(
+        pipeline.id,
+        holeAt.nodeId,
+        `${holeAt.where} in pipeline "${pipeline.name}" references missing node "${nodeId}"`,
+      );
+      return;
+    }
+    visitNode(node, pipeline, stack);
+  };
+
+  const root = getPipeline(rootPipelineId);
+  if (!root) {
+    addHole(null, null, `route pipeline "${rootPipelineId}" not found`);
+    return [...holes.values()];
+  }
+  visit(root.entry, root, [], { nodeId: null, where: "entry" });
+  return [...holes.values()];
+}
+
 export const ApiProxyTargetCreateSchema = ApiProxyTargetConfigSchema.omit({
   id: true,
 });
