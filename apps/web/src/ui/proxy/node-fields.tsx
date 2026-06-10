@@ -13,6 +13,7 @@ import {
   Modal,
   NumberInput,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Switch,
@@ -21,7 +22,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { Maximize2, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "./forms";
 import { unboundTargetValue } from "./forms";
@@ -150,12 +151,99 @@ const replacementInputStyles = {
   input: { fontFamily: "monospace" },
 } as const;
 
+type ReplacementView = "raw" | "escaped";
+
+const replacementViewOptions = [
+  { value: "raw", label: "Line breaks" },
+  { value: "escaped", label: "\\n escapes" },
+];
+
+function escapeRuleDisplay(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\t", "\\t");
+}
+
+const displayEscapes: Record<string, string> = {
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  "\\": "\\",
+};
+
+function unescapeRuleDisplay(value: string): string {
+  let out = "";
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index] as string;
+    if (char !== "\\" || index + 1 >= value.length) {
+      out += char;
+      index += 1;
+      continue;
+    }
+    const decoded = displayEscapes[value[index + 1] as string];
+    if (decoded !== undefined) {
+      out += decoded;
+      index += 2;
+      continue;
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
+function RuleTextarea(props: {
+  view: ReplacementView;
+  value: string;
+  onValueChange: (value: string) => void;
+  label: string;
+  placeholder: string;
+  size: "xs" | "sm";
+  minRows: number;
+  maxRows: number;
+}) {
+  const display =
+    props.view === "escaped" ? escapeRuleDisplay(props.value) : props.value;
+  const [text, setText] = useState(display);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) {
+      setText(display);
+    }
+  }, [display, focused]);
+  return (
+    <Textarea
+      size={props.size}
+      label={props.label}
+      placeholder={props.placeholder}
+      autosize
+      minRows={props.minRows}
+      maxRows={props.maxRows}
+      value={text}
+      styles={replacementInputStyles}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(event) => {
+        const next = event.currentTarget.value;
+        setText(next);
+        props.onValueChange(
+          props.view === "escaped" ? unescapeRuleDisplay(next) : next,
+        );
+      }}
+    />
+  );
+}
+
 function ReplaceTextFields(props: {
   node: PipelineNodeDraft;
   ctx: PipelineEditorContext;
 }) {
   const { node, ctx } = props;
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
+  const [view, setView] = useState<ReplacementView>("raw");
   const rules = node.replacements;
   const setRules = (next: PipelineNodeDraft["replacements"]) =>
     ctx.updateNode(node.id, { replacements: next });
@@ -177,36 +265,38 @@ function ReplaceTextFields(props: {
             request before routing.
           </Text>
         )}
+        {rules.length > 0 && (
+          <SegmentedControl
+            size="xs"
+            data={replacementViewOptions}
+            value={view}
+            onChange={(value) =>
+              setView(value === "escaped" ? "escaped" : "raw")
+            }
+          />
+        )}
         {rules.map((rule, index) => (
           <Paper key={index} withBorder p="xs" radius="sm">
             <Stack gap={6}>
-              <Textarea
+              <RuleTextarea
+                view={view}
                 size="xs"
                 label="Find"
                 placeholder="text to find"
-                autosize
                 minRows={1}
                 maxRows={4}
                 value={rule.find}
-                styles={replacementInputStyles}
-                onChange={(event) => {
-                  const find = event.currentTarget.value;
-                  patchRule(index, { find });
-                }}
+                onValueChange={(find) => patchRule(index, { find })}
               />
-              <Textarea
+              <RuleTextarea
+                view={view}
                 size="xs"
                 label="Replace with"
                 placeholder="replacement (empty deletes the match)"
-                autosize
                 minRows={1}
                 maxRows={4}
                 value={rule.replace}
-                styles={replacementInputStyles}
-                onChange={(event) => {
-                  const replace = event.currentTarget.value;
-                  patchRule(index, { replace });
-                }}
+                onValueChange={(replace) => patchRule(index, { replace })}
               />
               <Group justify="space-between">
                 <Switch
@@ -255,7 +345,7 @@ function ReplaceTextFields(props: {
         </Button>
         <Text c="dimmed" size="xs">
           {
-            'Escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. Real line breaks work too.'
+            'Rules match literal text inside request string fields. The toggle only changes how rules are displayed and typed: in the "\\n escapes" view line breaks, tabs and backslashes read \\n \\t \\\\ — paste text copied from a saved request file there.'
           }
         </Text>
       </Stack>
@@ -276,35 +366,36 @@ function ReplaceTextFields(props: {
       >
         {detailRule && detailIndex !== null && (
           <Stack gap="sm">
-            <Textarea
+            <SegmentedControl
+              data={replacementViewOptions}
+              value={view}
+              onChange={(value) =>
+                setView(value === "escaped" ? "escaped" : "raw")
+              }
+            />
+            <RuleTextarea
+              view={view}
+              size="sm"
               label="Find"
               placeholder="text to find"
-              autosize
               minRows={6}
               maxRows={20}
               value={detailRule.find}
-              styles={replacementInputStyles}
-              onChange={(event) => {
-                const find = event.currentTarget.value;
-                patchRule(detailIndex, { find });
-              }}
+              onValueChange={(find) => patchRule(detailIndex, { find })}
             />
-            <Textarea
+            <RuleTextarea
+              view={view}
+              size="sm"
               label="Replace with"
               placeholder="replacement (empty deletes the match)"
-              autosize
               minRows={6}
               maxRows={20}
               value={detailRule.replace}
-              styles={replacementInputStyles}
-              onChange={(event) => {
-                const replace = event.currentTarget.value;
-                patchRule(detailIndex, { replace });
-              }}
+              onValueChange={(replace) => patchRule(detailIndex, { replace })}
             />
             <Text c="dimmed" size="xs">
               {
-                'Escape sequences \\n \\t \\" \\\\ \\uXXXX are interpreted, so text copied from a saved request file matches as-is. Real line breaks work too.'
+                'Rules match literal text inside request string fields. The toggle only changes how rules are displayed and typed: in the "\\n escapes" view line breaks, tabs and backslashes read \\n \\t \\\\ — paste text copied from a saved request file there.'
               }
             </Text>
             <Group justify="space-between">

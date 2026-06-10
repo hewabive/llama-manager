@@ -45,58 +45,6 @@ type ReplacementResult = {
 
 const replacementExcludedKeys = new Set(["model"]);
 
-const simpleEscapes: Record<string, string> = {
-  n: "\n",
-  r: "\r",
-  t: "\t",
-  b: "\b",
-  f: "\f",
-  "\\": "\\",
-  '"': '"',
-  "/": "/",
-};
-
-export function decodeReplacementEscapes(value: string): string {
-  let out = "";
-  let index = 0;
-  while (index < value.length) {
-    const char = value[index] as string;
-    if (char !== "\\" || index + 1 >= value.length) {
-      out += char;
-      index += 1;
-      continue;
-    }
-    const next = value[index + 1] as string;
-    const simple = simpleEscapes[next];
-    if (simple !== undefined) {
-      out += simple;
-      index += 2;
-      continue;
-    }
-    if (next === "u") {
-      const hex = value.slice(index + 2, index + 6);
-      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
-        out += String.fromCharCode(Number.parseInt(hex, 16));
-        index += 6;
-        continue;
-      }
-    }
-    out += char;
-    index += 1;
-  }
-  return out;
-}
-
-function decodeRules(
-  rules: ApiProxyTextReplacementRule[],
-): ApiProxyTextReplacementRule[] {
-  return rules.map((rule) => ({
-    ...rule,
-    find: decodeReplacementEscapes(rule.find),
-    replace: decodeReplacementEscapes(rule.replace),
-  }));
-}
-
 function replaceText(
   value: string,
   rules: ApiProxyTextReplacementRule[],
@@ -121,10 +69,10 @@ function replaceText(
   return { value: next, count };
 }
 
-function replaceDecodedRequestText(
+export function replaceRequestText(
   value: unknown,
   rules: ApiProxyTextReplacementRule[],
-  key: string | null,
+  key: string | null = null,
 ): ReplacementResult {
   if (typeof value === "string") {
     if (key && replacementExcludedKeys.has(key)) {
@@ -136,7 +84,7 @@ function replaceDecodedRequestText(
   if (Array.isArray(value)) {
     let count = 0;
     const next = value.map((item) => {
-      const result = replaceDecodedRequestText(item, rules, null);
+      const result = replaceRequestText(item, rules);
       count += result.count;
       return result.value;
     });
@@ -147,7 +95,7 @@ function replaceDecodedRequestText(
     let count = 0;
     const next: Record<string, unknown> = {};
     for (const [entryKey, entryValue] of Object.entries(value)) {
-      const result = replaceDecodedRequestText(entryValue, rules, entryKey);
+      const result = replaceRequestText(entryValue, rules, entryKey);
       count += result.count;
       next[entryKey] = result.value;
     }
@@ -155,14 +103,6 @@ function replaceDecodedRequestText(
   }
 
   return { value, count: 0 };
-}
-
-export function replaceRequestText(
-  value: unknown,
-  rules: ApiProxyTextReplacementRule[],
-  key: string | null = null,
-): ReplacementResult {
-  return replaceDecodedRequestText(value, decodeRules(rules), key);
 }
 
 function legacyModelRouteTo(request: ApiProxyProtocolModelRequest) {

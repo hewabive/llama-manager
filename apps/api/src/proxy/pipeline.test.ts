@@ -223,43 +223,31 @@ test("replace-text does not touch the routing model field", async () => {
   }
 });
 
-test("replace-text interprets JSON-style escape sequences in find and replace", () => {
+test("replace-text matches literally, including real line breaks", () => {
   const rule = (find: string, replace: string) => [
     { enabled: true, find, replace },
   ];
 
   const multiline = replaceRequestText(
     { prompt: "say:\ntest\ntest\ntest\nbye" },
-    rule("test\\ntest\\ntest", "hello"),
+    rule("test\ntest\ntest", "hello"),
   );
   assert.equal(multiline.count, 1);
   assert.deepEqual(multiline.value, { prompt: "say:\nhello\nbye" });
 
   const literalBackslash = replaceRequestText(
     { prompt: "raw \\n marker" },
-    rule("\\\\n", "newline"),
+    rule("\\n", "newline"),
   );
   assert.equal(literalBackslash.count, 1);
   assert.deepEqual(literalBackslash.value, { prompt: "raw newline marker" });
 
-  const replacementEscapes = replaceRequestText(
-    { prompt: "one two" },
-    rule(" ", "\\n"),
+  const noEscapeDecoding = replaceRequestText(
+    { prompt: "one\ntwo" },
+    rule("\\n", "space"),
   );
-  assert.deepEqual(replacementEscapes.value, { prompt: "one\ntwo" });
-
-  const unicode = replaceRequestText(
-    { prompt: "dash" },
-    rule("dash", "\\u2014"),
-  );
-  assert.deepEqual(unicode.value, { prompt: "—" });
-
-  const unknownEscape = replaceRequestText(
-    { prompt: "C:\\x file" },
-    rule("\\x", "drive"),
-  );
-  assert.equal(unknownEscape.count, 1);
-  assert.deepEqual(unknownEscape.value, { prompt: "C:drive file" });
+  assert.equal(noEscapeDecoding.count, 0);
+  assert.deepEqual(noEscapeDecoding.value, { prompt: "one\ntwo" });
 });
 
 function conditionPipeline(
