@@ -389,10 +389,7 @@ export function saveApiProxyRequestLog(input: {
   endpoint: string;
   routePath: string;
   modelId: string;
-  targetId: string | null;
   requestBody: unknown;
-  transformedBody: unknown;
-  textReplacementCount: number;
 }): ApiProxyRequestLogRecord {
   const id = newId();
   const timestamp = nowIso();
@@ -404,10 +401,7 @@ export function saveApiProxyRequestLog(input: {
     endpoint: input.endpoint,
     routePath: input.routePath,
     modelId: input.modelId,
-    targetId: input.targetId,
     requestBody: input.requestBody,
-    transformedBody: input.transformedBody,
-    textReplacementCount: input.textReplacementCount,
     createdAt: timestamp,
   });
 

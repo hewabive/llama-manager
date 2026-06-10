@@ -332,14 +332,10 @@ export function PipelineNodeFields(props: {
   if (node.type === "capture-request") {
     return (
       <>
-        <Switch
-          label="Include transformed body"
-          checked={node.includeTransformedBody}
-          onChange={(event) => {
-            const includeTransformedBody = event.currentTarget.checked;
-            update({ includeTransformedBody });
-          }}
-        />
+        <Text c="dimmed" size="sm">
+          Saves the request exactly as it arrives at this node, including
+          changes made by earlier nodes.
+        </Text>
         <PortSelect
           label="Next"
           ctx={ctx}

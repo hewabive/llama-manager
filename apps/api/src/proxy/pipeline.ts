@@ -21,10 +21,7 @@ export type ApiProxyPipelineRecordRequestInput = {
   endpoint: string;
   routePath: string;
   modelId: string;
-  targetId: string | null;
   requestBody: unknown;
-  transformedBody: unknown;
-  textReplacementCount: number;
 };
 
 export type ApiProxyRouteChainResult =
@@ -131,7 +128,6 @@ type CallFrame = {
 type RouteWalkState = {
   request: ApiProxyProtocolModelRequest;
   textReplacementCount: number;
-  capture: { includeTransformedBody: boolean } | null;
   routeTrace: ApiProxyRouteTraceStep[];
 };
 
@@ -192,7 +188,6 @@ export async function resolveApiProxyRouteChain(input: {
   const state: RouteWalkState = {
     request: input.request,
     textReplacementCount: 0,
-    capture: null,
     routeTrace: [],
   };
 
@@ -204,26 +199,7 @@ export async function resolveApiProxyRouteChain(input: {
   let currentPipeline: ApiProxyPipelineRecord | null = null;
   let visitedNodes = 0;
 
-  const finishCapture = async (targetId: string | null) => {
-    if (!state.capture || !input.recordRequest) {
-      return;
-    }
-    await input.recordRequest({
-      protocol: input.request.operation.protocol,
-      endpoint: input.request.operation.endpoint,
-      routePath: input.request.operation.routePath,
-      modelId: input.request.modelId,
-      targetId,
-      requestBody: input.request.body,
-      transformedBody: state.capture.includeTransformedBody
-        ? state.request.body
-        : null,
-      textReplacementCount: state.textReplacementCount,
-    });
-  };
-
-  const fail = async (diagnostic: ApiProxyProtocolDiagnostic) => {
-    await finishCapture(null);
+  const fail = (diagnostic: ApiProxyProtocolDiagnostic) => {
     return { ok: false as const, diagnostic, routeTrace: state.routeTrace };
   };
 
@@ -246,7 +222,6 @@ export async function resolveApiProxyRouteChain(input: {
     }
 
     if (ref.type === "target") {
-      await finishCapture(ref.id);
       return {
         ok: true,
         request: state.request,
@@ -347,10 +322,21 @@ export async function resolveApiProxyRouteChain(input: {
         break;
       }
       case "capture-request": {
-        state.capture = {
-          includeTransformedBody: node.config.includeTransformedBody,
-        };
-        state.routeTrace.push(nodeStep(pipeline, node, { port: "next" }));
+        if (input.recordRequest) {
+          await input.recordRequest({
+            protocol: input.request.operation.protocol,
+            endpoint: input.request.operation.endpoint,
+            routePath: input.request.operation.routePath,
+            modelId: input.request.modelId,
+            requestBody: state.request.body,
+          });
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: "next",
+            detail: input.recordRequest ? "saved" : "skipped (dry run)",
+          }),
+        );
         ref = node.ports.next;
         break;
       }

@@ -467,9 +467,7 @@ const ApiProxyNodePortSchema = ApiProxyPortRefSchema.nullable().default(null);
 const ApiProxyNodeNameSchema = z.string().trim().max(80).default("");
 const ApiProxyExitNameSchema = z.string().trim().min(1).max(80);
 
-export const ApiProxyCaptureRequestConfigSchema = z.object({
-  includeTransformedBody: z.boolean().default(true),
-});
+export const ApiProxyCaptureRequestConfigSchema = z.object({});
 
 export const ApiProxyReplaceTextConfigSchema = z.object({
   rules: z.array(ApiProxyTextReplacementRuleSchema).max(50).default([]),
@@ -991,10 +989,7 @@ export const ApiProxyRequestLogRecordSchema = z.object({
   endpoint: z.string().min(1),
   routePath: z.string().min(1),
   modelId: ApiProxyModelIdSchema,
-  targetId: ApiProxyIdSchema.nullable(),
   requestBody: z.unknown(),
-  transformedBody: z.unknown(),
-  textReplacementCount: z.number().int().min(0),
   createdAt: z.string(),
 });
 

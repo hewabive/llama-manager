@@ -117,18 +117,18 @@ test("legacy pipeline record upgrades steps and routeTo to a node graph", () => 
   assert.ok(!("nodeType" in record));
 });
 
-test("resolves transform nodes, records capture with the final target id", async () => {
+test("capture-request saves the request as it arrives at the node", async () => {
   const saved: ApiProxyPipelineRecordRequestInput[] = [];
   const pipelines = [
     pipelineRecord({
       id: "pipeline-a",
-      entry: { type: "node", id: "capture" },
+      entry: { type: "node", id: "capture-before" },
       nodes: [
         {
-          id: "capture",
+          id: "capture-before",
           name: "",
           type: "capture-request",
-          config: { includeTransformedBody: true },
+          config: {},
           ports: { next: { type: "node", id: "replace" } },
         },
         {
@@ -138,6 +138,13 @@ test("resolves transform nodes, records capture with the final target id", async
           config: {
             rules: [{ enabled: true, find: "bad text", replace: "good text" }],
           },
+          ports: { next: { type: "node", id: "capture-after" } },
+        },
+        {
+          id: "capture-after",
+          name: "",
+          type: "capture-request",
+          config: {},
           ports: { next: { type: "target", id: "target-a" } },
         },
       ],
@@ -150,8 +157,8 @@ test("resolves transform nodes, records capture with the final target id", async
     recordRequest: async (log) => {
       saved.push(log);
       return {
-        id: "log-a",
-        filePath: "/tmp/log-a.json",
+        id: `log-${saved.length}`,
+        filePath: `/tmp/log-${saved.length}.json`,
         ...log,
         createdAt: "2026-05-30T10:00:00.000Z",
       };
@@ -168,17 +175,15 @@ test("resolves transform nodes, records capture with the final target id", async
     });
     assert.deepEqual(
       result.routeTrace.map((step) => step.kind),
-      ["enter-pipeline", "capture-request", "replace-text"],
+      ["enter-pipeline", "capture-request", "replace-text", "capture-request"],
     );
   }
-  assert.equal(saved.length, 1);
-  assert.equal(saved[0]?.targetId, "target-a");
-  assert.equal(saved[0]?.textReplacementCount, 1);
+  assert.equal(saved.length, 2);
   assert.deepEqual(saved[0]?.requestBody, {
     model: "public-model",
     messages: [{ role: "user", content: "hello bad text" }],
   });
-  assert.deepEqual(saved[0]?.transformedBody, {
+  assert.deepEqual(saved[1]?.requestBody, {
     model: "public-model",
     messages: [{ role: "user", content: "hello good text" }],
   });

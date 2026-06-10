@@ -201,9 +201,7 @@ export function nodeSummary(
       return `${count} rule(s)`;
     }
     case "capture-request":
-      return node.includeTransformedBody
-        ? "with transformed body"
-        : "original body only";
+      return "saves request as-is";
     case "condition": {
       if (node.predicateType === "token-estimate") {
         return `≥ ${node.minTokens || "?"} tokens (est.)`;

@@ -59,7 +59,6 @@ export type PipelineNodeDraft = {
   name: string;
   type: ApiProxyPipelineNode["type"];
   replacements: ReplacementRuleDraft[];
-  includeTransformedBody: boolean;
   predicateType: ApiProxyConditionPredicate["type"];
   scope: ApiProxyConditionScope;
   pattern: string;
@@ -146,7 +145,6 @@ export function emptyPipelineNodeDraft(
     name: "",
     type,
     replacements: [],
-    includeTransformedBody: true,
     predicateType: "text-match",
     scope: "any-message",
     pattern: "",
@@ -333,7 +331,6 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "capture-request":
-      draft.includeTransformedBody = node.config.includeTransformedBody;
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "condition": {
@@ -431,7 +428,7 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
       return {
         ...base,
         type: "capture-request",
-        config: { includeTransformedBody: draft.includeTransformedBody },
+        config: {},
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "condition":

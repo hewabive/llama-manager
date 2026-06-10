@@ -60,7 +60,7 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 | type              | config                                                                                                      | ports                         |
 | ----------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | `replace-text`    | `rules: [{enabled, find, replace}]` (literal substring rules; the routing `model` field is never rewritten) | `next`                        |
-| `capture-request` | `includeTransformedBody`                                                                                    | `next`                        |
+| `capture-request` | — (no options)                                                                                              | `next`                        |
 | `condition`       | `predicate` (see below)                                                                                     | `true`, `false`               |
 | `call`            | `pipelineId`                                                                                                | one port per callee exit name |
 | `exit`            | `exitName` (default `done`)                                                                                 | —                             |
@@ -129,12 +129,10 @@ port named by `exitName`. This means:
 
 ## Capture semantics
 
-`capture-request` marks the resolution for recording; the log
-(`data/proxy-requests/`) is written **once per request at the end of
-resolution** (success or failure), with the original body, the final
-transformed body (when `includeTransformedBody`), the total replacement count
-and the resolved target id. Multiple capture nodes on one route still produce
-a single record; the last visited node's `includeTransformedBody` wins.
+`capture-request` writes a log file (`data/proxy-requests/`) **at the moment
+the walk passes the node**, containing exactly the request body as it arrived
+there — changes made by earlier nodes are included, later changes are not.
+Each capture node visit writes its own record.
 
 ## Observability
 
