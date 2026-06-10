@@ -24,6 +24,7 @@ import {
   getApiProxyStats,
   getApiProxyTargetModels,
   getApiProxyTraces,
+  listApiProxySources,
   listInstances,
   previewApiProxyPlan,
   updateApiProxyModel,
@@ -109,6 +110,11 @@ export function ProxyView() {
   const targetModelsQuery = useQuery({
     queryKey: ["api-proxy-target-models"],
     queryFn: getApiProxyTargetModels,
+    staleTime: 10_000,
+  });
+  const sourcesQuery = useQuery({
+    queryKey: ["api-proxy-sources"],
+    queryFn: listApiProxySources,
     staleTime: 10_000,
   });
 
@@ -403,10 +409,7 @@ export function ProxyView() {
 
   function openCreatePipeline() {
     setPipelineEditor({ mode: "create", pipeline: null });
-    setPipelineDraftState({
-      ...emptyPipelineDraft,
-      routeToValue: targets[0] ? `target:${targets[0].id}` : null,
-    });
+    setPipelineDraftState(emptyPipelineDraft);
   }
 
   function openEditPipeline(pipeline: ApiProxyPipelineRecord) {
@@ -533,7 +536,9 @@ export function ProxyView() {
       <PipelineEditorModal
         editor={pipelineEditor}
         draft={pipelineDraftState}
-        routeToOptions={routeToOptions}
+        targets={targets}
+        pipelines={pipelines}
+        sources={sourcesQuery.data?.data ?? []}
         busy={pipelineBusy}
         onClose={closePipelineEditor}
         onSave={savePipeline}

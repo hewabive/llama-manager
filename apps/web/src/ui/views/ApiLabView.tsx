@@ -324,7 +324,10 @@ export function ApiLabView(props: {
   }, [protocol, nativeTargetSelected]);
 
   useEffect(() => {
-    if (sourceId && !sourceOptions.some((option) => option.value === sourceId)) {
+    if (
+      sourceId &&
+      !sourceOptions.some((option) => option.value === sourceId)
+    ) {
       setSourceId(null);
     }
   }, [sourceId, sourceOptions]);

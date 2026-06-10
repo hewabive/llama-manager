@@ -1,5 +1,6 @@
 import {
   ApiProxyPlanPreviewRequestSchema,
+  ApiProxyRouteExplainRequestSchema,
   ApiProxySourceCreateSchema,
   ApiProxySourceUpdateSchema,
 } from "@llama-manager/core";
@@ -8,6 +9,7 @@ import type { Hono } from "hono";
 import { listInstances } from "../instances/repository.js";
 import { listApiEndpointCatalog } from "../proxy/endpoints.js";
 import { getApiProxyPlanPreview } from "../proxy/idle-maintenance.js";
+import { explainApiProxyRoute } from "../proxy/route-explain.js";
 import {
   getApiProxyConfig,
   listApiProxyRequestLogs,
@@ -105,6 +107,20 @@ export function registerProxyRoutes(app: Hono) {
     try {
       const runtime = await getApiProxyRuntimeSnapshot();
       return c.json({ data: runtime.snapshot });
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+  });
+
+  app.post("/api/proxy/route-explain", async (c) => {
+    const parsed = ApiProxyRouteExplainRequestSchema.safeParse(
+      await c.req.json(),
+    );
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    try {
+      return c.json({ data: await explainApiProxyRoute(parsed.data) });
     } catch (error) {
       return c.json({ error: (error as Error).message }, 400);
     }

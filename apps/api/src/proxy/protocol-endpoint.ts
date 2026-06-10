@@ -1,4 +1,7 @@
-import { ApiProxyRequestTraceSchema } from "@llama-manager/core";
+import {
+  ApiProxyRequestTraceSchema,
+  type ApiProxyRouteTraceStep,
+} from "@llama-manager/core";
 import type { Context, Hono } from "hono";
 
 import { getInstance, listInstances } from "../instances/repository.js";
@@ -154,6 +157,7 @@ type ProxyTraceAccumulator = {
   slotId: number | null;
   cacheOrigin: "live" | "restored" | "fresh" | null;
   textReplacementCount: number;
+  routeTrace: ApiProxyRouteTraceStep[];
   schedulerActions: string[];
   usage: {
     promptTokens: number | null;
@@ -194,6 +198,7 @@ function createProxyTrace(
     slotId: null,
     cacheOrigin: null,
     textReplacementCount: 0,
+    routeTrace: [],
     schedulerActions: [],
     usage: null,
     status: 0,
@@ -368,8 +373,10 @@ async function proxyProtocolEndpointInner(
   const route = await resolveApiProxyRouteChain({
     request: resolution.request,
     getPipeline: getApiProxyPipeline,
+    sourceId: trace.sourceId,
     recordRequest: saveApiProxyRequestLog,
   });
+  trace.routeTrace = route.routeTrace;
   if (!route.ok) {
     trace.errorMessage = route.diagnostic.message;
     const response = adapter.diagnosticError(

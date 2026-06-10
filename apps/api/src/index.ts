@@ -9,6 +9,11 @@ import { migrate } from "./db/index.js";
 import { app, startApiProxyIdleMaintenanceLoop } from "./http.js";
 import { ensureConfigScaffold } from "./proxy/config-files.js";
 import { migrateProxyConfigToFiles } from "./proxy/legacy-migration.js";
+import { collectApiProxyPipelineGraphWarnings } from "./proxy/pipeline-validation.js";
+import {
+  getApiProxyTarget,
+  listApiProxyPipelines,
+} from "./proxy/repository.js";
 import { migrateApiProxyRuntimeMetadataToFile } from "./proxy/runtime-metadata-migration.js";
 import { migratePathCatalogToFile } from "./path-catalog/migration.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
@@ -33,6 +38,13 @@ const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const prunedModelCache = pruneMissingCachedModels();
 const reconciliation = reconcileProcessRuns();
 const prunedProcessRuns = pruneProcessRunHistory();
+
+for (const warning of collectApiProxyPipelineGraphWarnings({
+  pipelines: listApiProxyPipelines(),
+  hasTarget: (id) => Boolean(getApiProxyTarget(id)),
+})) {
+  logger.warn(warning, "api proxy pipeline graph is invalid");
+}
 
 const server = serve(
   {

@@ -23,6 +23,7 @@ function trace(
     slotId: null,
     cacheOrigin: null,
     textReplacementCount: 0,
+    routeTrace: [],
     schedulerActions: [],
     usage: null,
     status: 200,

@@ -29,6 +29,7 @@ type ApiProxyProtocolDiagnosticCode =
   | "llama_manager_proxy_pipeline_disabled"
   | "llama_manager_proxy_pipeline_cycle"
   | "llama_manager_proxy_route_unbound"
+  | "llama_manager_proxy_route_invalid"
   | "llama_manager_proxy_action_unsupported"
   | "llama_manager_proxy_instance_not_found"
   | "llama_manager_proxy_upstream_unavailable"

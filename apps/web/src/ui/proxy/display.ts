@@ -54,7 +54,9 @@ export function inflightLabel(req: ApiProxyInflightRequest): string {
   }
   const parts = [`gen ${req.completionTokens} tok`];
   if (req.completionTokens > 0 && req.generatingMs && req.generatingMs > 0) {
-    parts.push(`${(req.completionTokens / (req.generatingMs / 1000)).toFixed(1)} tok/s`);
+    parts.push(
+      `${(req.completionTokens / (req.generatingMs / 1000)).toFixed(1)} tok/s`,
+    );
   }
   return parts.join(" · ");
 }

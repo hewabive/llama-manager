@@ -1,16 +1,20 @@
 import type {
+  ApiProxyPipelineNode,
   ApiProxyPipelineRecord,
-  ApiProxyPipelineStep,
+  ApiProxyPortRef,
   ApiProxyRequestLogRecord,
   ApiProxyRouteTo,
+  ApiProxyRouteTraceStep,
   ApiProxyTextReplacementRule,
 } from "@llama-manager/core";
 
+import { evaluateApiProxyCondition } from "./condition.js";
 import {
   bodyRequestsStreaming,
   type ApiProxyProtocolDiagnostic,
   type ApiProxyProtocolModelRequest,
 } from "./protocol.js";
+import { estimateRequestTokens } from "./token-estimate.js";
 
 export type ApiProxyPipelineRecordRequestInput = {
   protocol: ApiProxyRequestLogRecord["protocol"];
@@ -23,29 +27,19 @@ export type ApiProxyPipelineRecordRequestInput = {
   textReplacementCount: number;
 };
 
-export type ApiProxyPipelineResult = {
-  request: ApiProxyProtocolModelRequest;
-  textReplacementCount: number;
-};
-
 export type ApiProxyRouteChainResult =
   | {
       ok: true;
       request: ApiProxyProtocolModelRequest;
       targetId: string;
       textReplacementCount: number;
+      routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
       ok: false;
       diagnostic: ApiProxyProtocolDiagnostic;
+      routeTrace: ApiProxyRouteTraceStep[];
     };
-
-type ApiProxyPipelineState = {
-  request: ApiProxyProtocolModelRequest;
-  textReplacementCount: number;
-  captureRequest: boolean;
-  includeTransformedBody: boolean;
-};
 
 type ReplacementResult = {
   value: unknown;
@@ -78,7 +72,7 @@ function replaceText(
   return { value: next, count };
 }
 
-function replaceRequestText(
+export function replaceRequestText(
   value: unknown,
   rules: ApiProxyTextReplacementRule[],
   key: string | null = null,
@@ -114,65 +108,6 @@ function replaceRequestText(
   return { value, count: 0 };
 }
 
-export async function runApiProxyRequestPipeline(input: {
-  request: ApiProxyProtocolModelRequest;
-  steps?: ApiProxyPipelineStep[] | undefined;
-  recordRequest?: (
-    request: ApiProxyPipelineRecordRequestInput,
-  ) => ApiProxyRequestLogRecord | Promise<ApiProxyRequestLogRecord>;
-}): Promise<ApiProxyPipelineResult> {
-  const state: ApiProxyPipelineState = {
-    request: input.request,
-    textReplacementCount: 0,
-    captureRequest: false,
-    includeTransformedBody: true,
-  };
-
-  for (const step of input.steps ?? []) {
-    if (!step.enabled) {
-      continue;
-    }
-
-    switch (step.type) {
-      case "capture-request":
-        state.captureRequest = true;
-        state.includeTransformedBody = step.config.includeTransformedBody;
-        break;
-      case "replace-text": {
-        const replacement = replaceRequestText(
-          state.request.body,
-          step.config.rules,
-        );
-        state.request = {
-          ...state.request,
-          body: replacement.value,
-          stream: bodyRequestsStreaming(replacement.value),
-        };
-        state.textReplacementCount += replacement.count;
-        break;
-      }
-    }
-  }
-
-  if (state.captureRequest && input.recordRequest) {
-    await input.recordRequest({
-      protocol: input.request.operation.protocol,
-      endpoint: input.request.operation.endpoint,
-      routePath: input.request.operation.routePath,
-      modelId: input.request.modelId,
-      targetId: null,
-      requestBody: input.request.body,
-      transformedBody: state.includeTransformedBody ? state.request.body : null,
-      textReplacementCount: state.textReplacementCount,
-    });
-  }
-
-  return {
-    request: state.request,
-    textReplacementCount: state.textReplacementCount,
-  };
-}
-
 function legacyModelRouteTo(request: ApiProxyProtocolModelRequest) {
   return (
     request.model.routeTo ??
@@ -185,96 +120,354 @@ function legacyModelRouteTo(request: ApiProxyProtocolModelRequest) {
   );
 }
 
-function routeUnboundDiagnostic(request: ApiProxyProtocolModelRequest) {
+type CallNode = Extract<ApiProxyPipelineNode, { type: "call" }>;
+
+type CallFrame = {
+  ownerPipeline: ApiProxyPipelineRecord;
+  node: CallNode;
+  calleeId: string;
+};
+
+type RouteWalkState = {
+  request: ApiProxyProtocolModelRequest;
+  textReplacementCount: number;
+  capture: { includeTransformedBody: boolean } | null;
+  routeTrace: ApiProxyRouteTraceStep[];
+};
+
+const defaultMaxVisitedNodes = 256;
+const defaultMaxCallDepth = 8;
+
+function traceStep(
+  step: Partial<ApiProxyRouteTraceStep> & Pick<ApiProxyRouteTraceStep, "kind">,
+): ApiProxyRouteTraceStep {
   return {
-    status: 503,
-    code: "llama_manager_proxy_route_unbound",
-    param: "model",
-    message: `Model ${request.modelId} is not routed to a pipeline or target.`,
-  } satisfies ApiProxyProtocolDiagnostic;
+    pipelineId: null,
+    pipelineName: null,
+    nodeId: null,
+    nodeName: null,
+    port: null,
+    detail: null,
+    ...step,
+  };
+}
+
+function nodeStep(
+  pipeline: ApiProxyPipelineRecord,
+  node: ApiProxyPipelineNode,
+  extra: Partial<ApiProxyRouteTraceStep> = {},
+): ApiProxyRouteTraceStep {
+  return traceStep({
+    kind: node.type,
+    pipelineId: pipeline.id,
+    pipelineName: pipeline.name,
+    nodeId: node.id,
+    nodeName: node.name || null,
+    ...extra,
+  });
+}
+
+function routeDiagnostic(
+  status: 503,
+  code: ApiProxyProtocolDiagnostic["code"],
+  message: string,
+): ApiProxyProtocolDiagnostic {
+  return { status, code, param: "model", message };
 }
 
 export async function resolveApiProxyRouteChain(input: {
   request: ApiProxyProtocolModelRequest;
   getPipeline: (pipelineId: string) => ApiProxyPipelineRecord | null;
+  sourceId?: string | null | undefined;
   recordRequest?: (
     request: ApiProxyPipelineRecordRequestInput,
   ) => ApiProxyRequestLogRecord | Promise<ApiProxyRequestLogRecord>;
-  maxDepth?: number | undefined;
+  maxVisitedNodes?: number | undefined;
+  maxCallDepth?: number | undefined;
 }): Promise<ApiProxyRouteChainResult> {
-  const maxDepth = input.maxDepth ?? 16;
-  const seen = new Set<string>();
-  let routeTo = legacyModelRouteTo(input.request);
-  let request = input.request;
-  let textReplacementCount = 0;
+  const maxVisitedNodes = input.maxVisitedNodes ?? defaultMaxVisitedNodes;
+  const maxCallDepth = input.maxCallDepth ?? defaultMaxCallDepth;
+  const sourceId = input.sourceId ?? null;
 
-  for (let depth = 0; depth < maxDepth; depth += 1) {
-    if (!routeTo) {
-      return { ok: false, diagnostic: routeUnboundDiagnostic(request) };
-    }
-
-    if (routeTo.type === "target") {
-      return { ok: true, request, targetId: routeTo.id, textReplacementCount };
-    }
-
-    const nodeKey = `${routeTo.type}:${routeTo.id}`;
-    if (seen.has(nodeKey)) {
-      return {
-        ok: false,
-        diagnostic: {
-          status: 503,
-          code: "llama_manager_proxy_pipeline_cycle",
-          param: "model",
-          message: `Proxy route for model ${request.modelId} contains a cycle at pipeline ${routeTo.id}.`,
-        },
-      };
-    }
-    seen.add(nodeKey);
-
-    const pipeline = input.getPipeline(routeTo.id);
-    if (!pipeline) {
-      return {
-        ok: false,
-        diagnostic: {
-          status: 503,
-          code: "llama_manager_proxy_pipeline_not_found",
-          param: "model",
-          message: `Proxy route for model ${request.modelId} points to missing pipeline ${routeTo.id}.`,
-        },
-      };
-    }
-    if (!pipeline.enabled) {
-      return {
-        ok: false,
-        diagnostic: {
-          status: 503,
-          code: "llama_manager_proxy_pipeline_disabled",
-          param: "model",
-          message: `Proxy route for model ${request.modelId} points to disabled pipeline ${pipeline.name}.`,
-        },
-      };
-    }
-
-    const pipelineInput: Parameters<typeof runApiProxyRequestPipeline>[0] = {
-      request,
-      steps: pipeline.steps,
-    };
-    if (input.recordRequest) {
-      pipelineInput.recordRequest = input.recordRequest;
-    }
-    const result = await runApiProxyRequestPipeline(pipelineInput);
-    request = result.request;
-    textReplacementCount += result.textReplacementCount;
-    routeTo = pipeline.routeTo;
-  }
-
-  return {
-    ok: false,
-    diagnostic: {
-      status: 503,
-      code: "llama_manager_proxy_pipeline_cycle",
-      param: "model",
-      message: `Proxy route for model ${request.modelId} exceeded ${maxDepth} routing nodes.`,
-    },
+  const state: RouteWalkState = {
+    request: input.request,
+    textReplacementCount: 0,
+    capture: null,
+    routeTrace: [],
   };
+
+  let tokenEstimate: number | null = null;
+  const estimateTokens = () =>
+    (tokenEstimate ??= estimateRequestTokens(state.request.body));
+
+  const callStack: CallFrame[] = [];
+  let currentPipeline: ApiProxyPipelineRecord | null = null;
+  let visitedNodes = 0;
+
+  const finishCapture = async (targetId: string | null) => {
+    if (!state.capture || !input.recordRequest) {
+      return;
+    }
+    await input.recordRequest({
+      protocol: input.request.operation.protocol,
+      endpoint: input.request.operation.endpoint,
+      routePath: input.request.operation.routePath,
+      modelId: input.request.modelId,
+      targetId,
+      requestBody: input.request.body,
+      transformedBody: state.capture.includeTransformedBody
+        ? state.request.body
+        : null,
+      textReplacementCount: state.textReplacementCount,
+    });
+  };
+
+  const fail = async (diagnostic: ApiProxyProtocolDiagnostic) => {
+    await finishCapture(null);
+    return { ok: false as const, diagnostic, routeTrace: state.routeTrace };
+  };
+
+  const modelId = input.request.modelId;
+  let ref: ApiProxyPortRef | ApiProxyRouteTo | null = legacyModelRouteTo(
+    input.request,
+  );
+
+  while (true) {
+    if (!ref) {
+      return fail(
+        routeDiagnostic(
+          503,
+          "llama_manager_proxy_route_unbound",
+          currentPipeline
+            ? `Proxy route for model ${modelId} ends at an unwired port in pipeline ${currentPipeline.name}.`
+            : `Model ${modelId} is not routed to a pipeline or target.`,
+        ),
+      );
+    }
+
+    if (ref.type === "target") {
+      await finishCapture(ref.id);
+      return {
+        ok: true,
+        request: state.request,
+        targetId: ref.id,
+        textReplacementCount: state.textReplacementCount,
+        routeTrace: state.routeTrace,
+      };
+    }
+
+    if (ref.type === "pipeline") {
+      const pipeline = input.getPipeline(ref.id);
+      if (!pipeline) {
+        return fail(
+          routeDiagnostic(
+            503,
+            "llama_manager_proxy_pipeline_not_found",
+            `Proxy route for model ${modelId} points to missing pipeline ${ref.id}.`,
+          ),
+        );
+      }
+      if (!pipeline.enabled) {
+        return fail(
+          routeDiagnostic(
+            503,
+            "llama_manager_proxy_pipeline_disabled",
+            `Proxy route for model ${modelId} points to disabled pipeline ${pipeline.name}.`,
+          ),
+        );
+      }
+      currentPipeline = pipeline;
+      state.routeTrace.push(
+        traceStep({
+          kind: "enter-pipeline",
+          pipelineId: pipeline.id,
+          pipelineName: pipeline.name,
+        }),
+      );
+      ref = pipeline.entry;
+      continue;
+    }
+
+    if (!currentPipeline) {
+      return fail(
+        routeDiagnostic(
+          503,
+          "llama_manager_proxy_route_invalid",
+          `Proxy route for model ${modelId} references node ${ref.id} outside of a pipeline.`,
+        ),
+      );
+    }
+
+    const pipeline = currentPipeline;
+    const nodeId = ref.id;
+    const node = pipeline.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return fail(
+        routeDiagnostic(
+          503,
+          "llama_manager_proxy_route_invalid",
+          `Pipeline ${pipeline.name} has no node ${nodeId} (route for model ${modelId}).`,
+        ),
+      );
+    }
+
+    visitedNodes += 1;
+    if (visitedNodes > maxVisitedNodes) {
+      return fail(
+        routeDiagnostic(
+          503,
+          "llama_manager_proxy_pipeline_cycle",
+          `Proxy route for model ${modelId} exceeded ${maxVisitedNodes} routing nodes (possible cycle).`,
+        ),
+      );
+    }
+
+    switch (node.type) {
+      case "replace-text": {
+        const replacement = replaceRequestText(
+          state.request.body,
+          node.config.rules,
+        );
+        if (replacement.count > 0) {
+          state.request = {
+            ...state.request,
+            body: replacement.value,
+            stream: bodyRequestsStreaming(replacement.value),
+          };
+          state.textReplacementCount += replacement.count;
+          tokenEstimate = null;
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: "next",
+            detail: `${replacement.count} replacement(s)`,
+          }),
+        );
+        ref = node.ports.next;
+        break;
+      }
+      case "capture-request": {
+        state.capture = {
+          includeTransformedBody: node.config.includeTransformedBody,
+        };
+        state.routeTrace.push(nodeStep(pipeline, node, { port: "next" }));
+        ref = node.ports.next;
+        break;
+      }
+      case "condition": {
+        const outcome = evaluateApiProxyCondition(node.config.predicate, {
+          body: state.request.body,
+          sourceId,
+          estimateTokens,
+        });
+        if (!outcome.ok) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_route_invalid",
+              `Condition node ${node.name || node.id} in pipeline ${pipeline.name} failed: ${outcome.error}`,
+            ),
+          );
+        }
+        const port = outcome.value ? "true" : "false";
+        state.routeTrace.push(
+          nodeStep(pipeline, node, { port, detail: outcome.detail }),
+        );
+        ref = outcome.value ? node.ports.true : node.ports.false;
+        break;
+      }
+      case "call": {
+        const callee = input.getPipeline(node.config.pipelineId);
+        if (!callee) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_pipeline_not_found",
+              `Call node ${node.name || node.id} in pipeline ${pipeline.name} points to missing pipeline ${node.config.pipelineId}.`,
+            ),
+          );
+        }
+        if (!callee.enabled) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_pipeline_disabled",
+              `Call node ${node.name || node.id} in pipeline ${pipeline.name} points to disabled pipeline ${callee.name}.`,
+            ),
+          );
+        }
+        if (
+          callee.id === pipeline.id ||
+          callStack.some((frame) => frame.calleeId === callee.id)
+        ) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_pipeline_cycle",
+              `Call node ${node.name || node.id} in pipeline ${pipeline.name} calls pipeline ${callee.name} recursively.`,
+            ),
+          );
+        }
+        if (callStack.length >= maxCallDepth) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_pipeline_cycle",
+              `Proxy route for model ${modelId} exceeded call depth ${maxCallDepth}.`,
+            ),
+          );
+        }
+        callStack.push({
+          ownerPipeline: pipeline,
+          node,
+          calleeId: callee.id,
+        });
+        state.routeTrace.push(
+          nodeStep(pipeline, node, { detail: `call ${callee.name}` }),
+        );
+        currentPipeline = callee;
+        state.routeTrace.push(
+          traceStep({
+            kind: "enter-pipeline",
+            pipelineId: callee.id,
+            pipelineName: callee.name,
+          }),
+        );
+        ref = callee.entry;
+        break;
+      }
+      case "exit": {
+        const exitName = node.config.exitName;
+        const frame = callStack.pop();
+        if (!frame) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_route_invalid",
+              `Pipeline ${pipeline.name} exits via "${exitName}" without a calling pipeline (route for model ${modelId}).`,
+            ),
+          );
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: exitName,
+            detail: `return to ${frame.ownerPipeline.name}`,
+          }),
+        );
+        const continuation = frame.node.ports[exitName];
+        if (!continuation) {
+          return fail(
+            routeDiagnostic(
+              503,
+              "llama_manager_proxy_route_unbound",
+              `Call node ${frame.node.name || frame.node.id} in pipeline ${frame.ownerPipeline.name} has no wiring for exit "${exitName}".`,
+            ),
+          );
+        }
+        currentPipeline = frame.ownerPipeline;
+        ref = continuation;
+        break;
+      }
+    }
+  }
 }

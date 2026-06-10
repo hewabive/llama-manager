@@ -20,7 +20,10 @@ function sanitizeSystem(value: unknown): Sanitized {
     if (cleaned === value) {
       return { value, changed: false };
     }
-    return { value: cleaned.trim() === "" ? undefined : cleaned, changed: true };
+    return {
+      value: cleaned.trim() === "" ? undefined : cleaned,
+      changed: true,
+    };
   }
   if (!Array.isArray(value)) {
     return { value, changed: false };

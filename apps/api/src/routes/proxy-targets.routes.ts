@@ -5,11 +5,17 @@ import {
   ApiProxyPipelineUpdateSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetUpdateSchema,
+  type ApiProxyPipelineRecord,
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 
 import { getInstance, listInstances } from "../instances/repository.js";
 import { getApiEndpointFromCatalog } from "../proxy/endpoints.js";
+import {
+  collectApiProxyPipelineRefs,
+  validateApiProxyPipelineGraph,
+  type ApiProxyPipelineGraph,
+} from "../proxy/pipeline-validation.js";
 import {
   createApiProxyModel,
   createApiProxyPipeline,
@@ -95,10 +101,24 @@ function validateApiProxyModelRefs(input: {
   return validateApiProxyRouteToRef(input);
 }
 
-function validateApiProxyPipelineRefs(input: {
-  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
-}) {
-  return validateApiProxyRouteToRef(input);
+const pipelineGraphContext = {
+  getPipeline: (id: string) => getApiProxyPipeline(id),
+  hasTarget: (id: string) => Boolean(getApiProxyTarget(id)),
+};
+
+function validateApiProxyPipelineGraphInput(graph: ApiProxyPipelineGraph) {
+  return validateApiProxyPipelineGraph(graph, pipelineGraphContext);
+}
+
+function pipelineRefersToPipeline(
+  pipeline: ApiProxyPipelineRecord,
+  id: string,
+) {
+  return collectApiProxyPipelineRefs(pipeline).pipelineIds.has(id);
+}
+
+function pipelineRefersToTarget(pipeline: ApiProxyPipelineRecord, id: string) {
+  return collectApiProxyPipelineRefs(pipeline).targetIds.has(id);
 }
 
 export function registerProxyTargetRoutes(app: Hono) {
@@ -154,9 +174,14 @@ export function registerProxyTargetRoutes(app: Hono) {
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
-    const refError = validateApiProxyPipelineRefs(parsed.data);
-    if (refError) {
-      return c.json({ error: refError }, 400);
+    const graphError = validateApiProxyPipelineGraphInput({
+      id: null,
+      name: parsed.data.name,
+      entry: parsed.data.entry,
+      nodes: parsed.data.nodes,
+    });
+    if (graphError) {
+      return c.json({ error: graphError }, 400);
     }
 
     try {
@@ -171,13 +196,23 @@ export function registerProxyTargetRoutes(app: Hono) {
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
-    const refError = validateApiProxyPipelineRefs(parsed.data);
-    if (refError) {
-      return c.json({ error: refError }, 400);
+    const current = getApiProxyPipeline(c.req.param("id"));
+    if (!current) {
+      return c.json({ error: "proxy pipeline not found" }, 404);
+    }
+    const graphError = validateApiProxyPipelineGraphInput({
+      id: current.id,
+      name: parsed.data.name ?? current.name,
+      entry:
+        parsed.data.entry !== undefined ? parsed.data.entry : current.entry,
+      nodes: parsed.data.nodes ?? current.nodes,
+    });
+    if (graphError) {
+      return c.json({ error: graphError }, 400);
     }
 
     try {
-      const pipeline = updateApiProxyPipeline(c.req.param("id"), parsed.data);
+      const pipeline = updateApiProxyPipeline(current.id, parsed.data);
       if (!pipeline) {
         return c.json({ error: "proxy pipeline not found" }, 404);
       }
@@ -194,7 +229,7 @@ export function registerProxyTargetRoutes(app: Hono) {
     );
     const usedByPipelines = listApiProxyPipelines().filter(
       (pipeline) =>
-        pipeline.routeTo?.type === "pipeline" && pipeline.routeTo.id === id,
+        pipeline.id !== id && pipelineRefersToPipeline(pipeline, id),
     );
     if (usedByModels.length + usedByPipelines.length > 0) {
       return c.json(
@@ -267,9 +302,8 @@ export function registerProxyTargetRoutes(app: Hono) {
         model.targetId === id ||
         (model.routeTo?.type === "target" && model.routeTo.id === id),
     );
-    const usedByPipelines = listApiProxyPipelines().filter(
-      (pipeline) =>
-        pipeline.routeTo?.type === "target" && pipeline.routeTo.id === id,
+    const usedByPipelines = listApiProxyPipelines().filter((pipeline) =>
+      pipelineRefersToTarget(pipeline, id),
     );
     const usedCount = usedByModels.length + usedByPipelines.length;
     if (usedCount > 0) {

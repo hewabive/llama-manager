@@ -228,9 +228,25 @@ function routeToLabel(
   return pipelineById.get(routeTo.id)?.name ?? routeTo.id;
 }
 
-function pipelineNodeTypeLabel(pipeline: ApiProxyPipelineRecord) {
-  if (pipeline.nodeType === "save-request") return "save request";
-  return "replacement";
+function pipelineEntryLabel(
+  entry: ApiProxyPipelineRecord["entry"],
+  targetById: Map<string, ApiProxyTargetRecord>,
+  pipelineById: Map<string, ApiProxyPipelineRecord>,
+) {
+  if (!entry) {
+    return (
+      <Text c="dimmed" size="sm">
+        unbound
+      </Text>
+    );
+  }
+  if (entry.type === "node") {
+    return `node ${entry.id}`;
+  }
+  if (entry.type === "target") {
+    return targetById.get(entry.id)?.name ?? entry.id;
+  }
+  return pipelineById.get(entry.id)?.name ?? entry.id;
 }
 
 type PipelinesSectionProps = {
@@ -247,9 +263,10 @@ export function PipelinesSection(props: PipelinesSectionProps) {
     <Paper withBorder p="md" radius="sm">
       <Stack gap="sm">
         <Group justify="space-between" align="center" wrap="wrap">
-          <Text fw={600}>Processing nodes</Text>
+          <Text fw={600}>Pipelines</Text>
           <Text c="dimmed" size="sm">
-            Nodes process requests and route them to the next node.
+            Node graphs that transform and conditionally route requests to
+            targets.
           </Text>
         </Group>
         <Table.ScrollContainer minWidth={860}>
@@ -257,9 +274,8 @@ export function PipelinesSection(props: PipelinesSectionProps) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Config</Table.Th>
-                <Table.Th>Route to</Table.Th>
+                <Table.Th>Nodes</Table.Th>
+                <Table.Th>Entry</Table.Th>
                 <Table.Th>Updated</Table.Th>
                 <Table.Th />
               </Table.Tr>
@@ -276,20 +292,20 @@ export function PipelinesSection(props: PipelinesSectionProps) {
                       >
                         {pipeline.enabled ? "enabled" : "disabled"}
                       </Badge>
-                      <Badge variant="outline">
-                        {pipelineNodeTypeLabel(pipeline)}
-                      </Badge>
                     </Group>
                   </Table.Td>
-                  <Table.Td>{pipelineNodeTypeLabel(pipeline)}</Table.Td>
                   <Table.Td>
                     <Group gap={6} wrap="wrap">
-                      {pipeline.steps.map((step) => (
-                        <Badge key={step.id} variant="outline">
-                          {step.type}
+                      {pipeline.nodes.map((node) => (
+                        <Badge key={node.id} variant="outline">
+                          {node.type === "call"
+                            ? `call: ${props.pipelineById.get(node.config.pipelineId)?.name ?? node.config.pipelineId}`
+                            : node.type === "exit"
+                              ? `exit: ${node.config.exitName}`
+                              : node.type}
                         </Badge>
                       ))}
-                      {pipeline.steps.length === 0 && (
+                      {pipeline.nodes.length === 0 && (
                         <Text c="dimmed" size="sm">
                           none
                         </Text>
@@ -297,8 +313,8 @@ export function PipelinesSection(props: PipelinesSectionProps) {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    {routeToLabel(
-                      pipeline.routeTo,
+                    {pipelineEntryLabel(
+                      pipeline.entry,
                       props.targetById,
                       props.pipelineById,
                     )}
@@ -771,6 +787,42 @@ const CACHE_ORIGIN_HINTS: Record<
   fresh: "no cache reuse — prompt processed from scratch",
 };
 
+function routeTraceStepLine(step: ApiProxyRequestTrace["routeTrace"][number]) {
+  if (step.kind === "enter-pipeline") {
+    return `▸ ${step.pipelineName ?? step.pipelineId ?? "?"}`;
+  }
+  const label = step.nodeName || step.nodeId || step.kind;
+  const port = step.port ? ` → ${step.port}` : "";
+  const detail = step.detail ? ` (${step.detail})` : "";
+  return `${step.kind}: ${label}${port}${detail}`;
+}
+
+function RouteTraceCell(props: { trace: ApiProxyRequestTrace }) {
+  if (props.trace.routeTrace.length === 0) {
+    return <>—</>;
+  }
+  return (
+    <Tooltip
+      multiline
+      maw={480}
+      withArrow
+      label={
+        <Stack gap={2}>
+          {props.trace.routeTrace.map((step, index) => (
+            <Text key={index} size="xs">
+              {routeTraceStepLine(step)}
+            </Text>
+          ))}
+        </Stack>
+      }
+    >
+      <Text size="xs" style={{ cursor: "help" }}>
+        {props.trace.routeTrace.length}
+      </Text>
+    </Tooltip>
+  );
+}
+
 function SlotCell(props: { trace: ApiProxyRequestTrace }) {
   const { slotId, cacheOrigin } = props.trace;
   if (slotId === null) {
@@ -931,6 +983,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Stream</Table.Th>
                   <Table.Th>Model</Table.Th>
                   <Table.Th>Target</Table.Th>
+                  <Table.Th>Route</Table.Th>
                   <Table.Th>Slot</Table.Th>
                   <Table.Th>Actions</Table.Th>
                   <Table.Th>
@@ -990,6 +1043,9 @@ export function StatsSection(props: StatsSectionProps) {
                     </Table.Td>
                     <Table.Td>{trace.modelId || "—"}</Table.Td>
                     <Table.Td>{trace.targetName ?? "—"}</Table.Td>
+                    <Table.Td>
+                      <RouteTraceCell trace={trace} />
+                    </Table.Td>
                     <Table.Td>
                       <SlotCell trace={trace} />
                     </Table.Td>
