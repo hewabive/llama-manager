@@ -59,6 +59,8 @@ CLI-форма флаговая:
 - `--kv-offload`: включить.
 - `--no-kv-offload`: выключить.
 
+Через окружение: `LLAMA_ARG_KV_OFFLOAD=true` (также `1`, `on`, `enabled`) включает, `false` (также `0`, `off`, `disabled`) выключает.
+
 ## Когда использовать
 
 Оставляйте включенным для GPU-сервера, если KV помещается в VRAM. Выключайте при VRAM OOM, если готовы платить latency/throughput, или для диагностики различий CPU/GPU KV.
@@ -66,6 +68,8 @@ CLI-форма флаговая:
 ## Влияние на производительность и память
 
 Включение обычно ускоряет attention path, но увеличивает device memory. Выключение переносит давление в RAM и шину CPU/GPU, поэтому длинный контекст и много слотов могут стать заметно медленнее.
+
+На multi-GPU с layer split выключение бьет еще и по pipeline parallelism: условие его включения в `llama-context` требует `cparams.offload_kqv`, так что `--no-kv-offload` отключает pipeline parallel целиком.
 
 ## Взаимодействие с другими аргументами
 
@@ -83,6 +87,7 @@ CLI-форма флаговая:
 - При VRAM OOM сравните `--no-kv-offload` и/или квантованные `--cache-type-*`.
 - В логах backend/KV смотрите размеры KV buffers и имя backend buffer.
 - Если скорость резко упала после выключения, это ожидаемая цена host KV.
+- Известный дефект: авторазрешение `--flash-attn auto` работает некорректно в сочетании с `--no-kv-offload` (в `llama-context` есть FIXME `fa_device_mismatch logic is wrong for --no-kv-offload`); при странных решениях auto задавайте `--flash-attn on`/`off` явно.
 
 ## Примеры
 
@@ -99,4 +104,5 @@ llama-server --model /models/model.gguf --no-kv-offload --cache-type-k q8_0 --ca
 - `llama.cpp/common/arg.cpp`
 - `llama.cpp/common/common.h`
 - `llama.cpp/common/common.cpp`
+- `llama.cpp/src/llama-context.cpp`
 - `llama.cpp/tools/server/README.md`

@@ -81,11 +81,12 @@ Values в attention - это сохраненное содержимое, кот
 
 ## Главное ограничение V-cache
 
-Квантованный V-cache требует Flash Attention. Если указать `--cache-type-v q8_0`, `q5_0`, `q4_0` и т.п. при отключенном Flash Attention, llama.cpp завершит старт ошибкой `V cache quantization requires flash_attn`.
+Квантованный V-cache требует Flash Attention. Если указать `--cache-type-v q8_0`, `q5_0`, `q4_0` и т.п. при явно отключенном Flash Attention (`--flash-attn off`), llama.cpp завершит старт ошибкой `V cache quantization requires flash_attn`. При `--flash-attn auto` FA может авторазрешиться в off (device mismatch при пробной сборке графа), и старт тоже упадет, но уже с другим сообщением: `quantized V cache was requested, but this requires Flash Attention` — то есть `auto` квантованный V не гарантирует.
 
 Практически:
 
-- Оставляйте `--flash-attn auto` или явно включайте `--flash-attn on`.
+- Явно включайте `--flash-attn on`; `--flash-attn auto` — не гарантия: если backend не потянет FA, старт все равно упадет.
+- Для архитектуры Grok Flash Attention принудительно выключается (`flash_attn is not compatible with Grok - forcing off`), поэтому квантованный V-cache там невозможен.
 - При `--split-mode tensor` quantized KV-cache сейчас не поддерживается; используйте `f16`, `bf16` или `f32`.
 - Для квантованных V-типов block size должен делить `n_embd_head_v`; иначе сервер завершится ошибкой на старте.
 
@@ -124,6 +125,7 @@ Values в attention - это сохраненное содержимое, кот
 - `--kv-offload`: влияет на размещение KV/KQV на device или host.
 - `--flash-attn`: обязателен для квантованного V-cache.
 - `--split-mode tensor`: несовместим с quantized KV-cache.
+- `--spec-draft-type-v` (`-ctvd`, `--cache-type-v-draft`; env `LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_V`): отдельный тип V-cache draft-модели speculative decoding; основной `--cache-type-v` на draft-модель не действует.
 
 Актуальная реализация KV-cache может создавать Hadamard rotation tensors для quantized K/V при подходящей размерности head. Это не меняет список допустимых значений, но влияет на то, какой fast path реально используется backend.
 
@@ -134,7 +136,7 @@ Values в attention - это сохраненное содержимое, кот
 ## Типовые проблемы и диагностика
 
 - Смотрите лог `llama_kv_cache` или `llama-kv-cache`: там должна быть строка `V (...): ... MiB`.
-- При ошибке `V cache quantization requires flash_attn` включите `--flash-attn on`/`auto` или верните V на `f16`.
+- При ошибке `V cache quantization requires flash_attn` (явный `--flash-attn off`) или `quantized V cache was requested, but this requires Flash Attention` (`auto` разрешился в off) включите `--flash-attn on` или верните V на `f16`.
 - При compute errors или падении качества вернитесь на `f16` и меняйте только один из `--cache-type-k`/`--cache-type-v` за раз.
 - При резком замедлении проверьте, не оказалась ли выбранная mixed-пара без fast-path на вашем backend.
 - Если память почти не изменилась, проверьте, что изменили оба типа или что OOM был не в KV-cache.
@@ -146,7 +148,7 @@ llama-server --model /models/model.gguf --ctx-size 65536 --cache-type-k q8_0 --c
 ```
 
 ```bash
-llama-server --model /models/model.gguf --cache-type-k f16 --cache-type-v q4_0
+llama-server --model /models/model.gguf --flash-attn on --cache-type-k f16 --cache-type-v q4_0
 ```
 
 ```bash

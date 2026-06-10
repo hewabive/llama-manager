@@ -138,10 +138,11 @@ allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1
 - `--kv-offload`: определяет, будет ли KV/KQV offload использовать device buffers.
 - `--flash-attn`: квантованный V-cache требует Flash Attention; для K это тоже важный фактор совместимости и скорости.
 - `--split-mode tensor`: требует Flash Attention, но в llama.cpp одновременно не поддерживает quantized KV-cache; используйте `f16`, `bf16` или `f32`.
+- `--spec-draft-type-k` (`-ctkd`, `--cache-type-k-draft`; env `LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_K`): у draft-модели speculative decoding собственный тип K-cache, основной `--cache-type-k` на нее не действует; для V есть парный `-ctvd`/`--cache-type-v-draft` (`LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_V`).
 
-Для квантованных K/V llama.cpp также проверяет, что block size типа делит `n_embd_head_k`/`n_embd_head_v`. Если не делит, сервер завершится ошибкой на старте.
+Для квантованных K/V llama.cpp также проверяет, что block size типа делит `n_embd_head_k`/`n_embd_head_v`, и при нарушении сервер завершится ошибкой на старте — но только при `flash_attn_type != DISABLED`: квантованный K при явно выключенном Flash Attention эту проверку обходит.
 
-В актуальных исходниках KV-cache дополнительно может создавать Hadamard rotation tensors для quantized K/V, когда размерность head подходит под этот путь. Для DeepSeek V3.2 DSA lightning indexer rotation для K включается принудительно отдельной веткой, поэтому на таких моделях особенно важно проверять фактические логи backend и скорость, а не только расчет памяти.
+В актуальных исходниках KV-cache дополнительно может создавать Hadamard rotation tensors для quantized K/V при условии `n_embd_head % 64 == 0`; путь принудительно выключается переменной окружения `LLAMA_ATTN_ROT_DISABLE`. Для DeepSeek V3.2 DSA lightning indexer rotation для K включается принудительно отдельной веткой, поэтому на таких моделях особенно важно проверять фактические логи backend и скорость, а не только расчет памяти.
 
 На CUDA сборочный параметр `GGML_CUDA_FA_ALL_QUANTS` расширяет поддержку комбинаций KV quantization для Flash Attention kernels, но заметно увеличивает время компиляции. Без него некоторые смешанные или редкие пары могут быть медленными или не теми, что вы ожидали.
 

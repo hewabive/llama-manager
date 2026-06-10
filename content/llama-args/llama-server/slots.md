@@ -44,9 +44,11 @@ expose slots monitoring endpoint (default: enabled)
 
 ## Что меняет в llama-server
 
-`GET /slots` ставит high-priority задачу `SERVER_TASK_TYPE_METRICS` и возвращает массив с состоянием каждого слота: `id`, `id_task`, `n_ctx`, `is_processing`, sampling params, next token state и другую диагностическую информацию.
+`GET /slots` ставит high-priority задачу `SERVER_TASK_TYPE_METRICS` и возвращает массив с состоянием каждого слота: всегда присутствуют `id`, `n_ctx`, `speculative`, `is_processing`; если у слота есть текущая или предыдущая задача, добавляются `id_task`, `n_prompt_tokens`, `n_prompt_tokens_processed`, `n_prompt_tokens_cache`, `params` и `next_token`.
 
-Если query `fail_on_no_slot` непустой и нет idle slots, обработчик возвращает `no slot available` со статусом unavailable.
+По умолчанию `/slots` не раскрывает текст промпта и сгенерированный текст: ответ собирается через `slot.to_json(only_metrics = slots_debug == 0)`, и поля `prompt`/`generated` включаются только при ненулевой переменной окружения `LLAMA_SERVER_SLOTS_DEBUG`.
+
+Если query `fail_on_no_slot` непустой и нет idle slots, обработчик возвращает `no slot available` (`ERROR_TYPE_UNAVAILABLE`, HTTP 503).
 
 ## Значения и формат
 
@@ -54,7 +56,7 @@ expose slots monitoring endpoint (default: enabled)
 
 ## Когда использовать
 
-Оставляйте включенным на локальном или защищенном сервере для диагностики очередей, зависших запросов и распределения нагрузки. Отключайте на публичных endpoints, если не хотите раскрывать внутренние параметры генерации и состояние слотов.
+Оставляйте включенным на локальном или защищенном сервере для диагностики очередей, зависших запросов и распределения нагрузки. Отключайте на публичных endpoints, если не хотите раскрывать sampling-параметры и счетчики токенов; текст промптов и генерации по умолчанию скрыт и появляется только при включенной `LLAMA_SERVER_SLOTS_DEBUG`.
 
 ## Влияние на производительность и память
 
@@ -69,12 +71,12 @@ expose slots monitoring endpoint (default: enabled)
 
 ## INI-пресеты и router-режим
 
-В INI: `slots = true` или `slots = false`. В router-режиме `GET /slots?model=<id>` проксируется к конкретной модели; без модели router routes требуют выбор модели для проксируемых endpoints.
+В INI: `slots = true` или `slots = false`. В router-режиме `GET /slots?model=<id>` проксируется к конкретной модели; без query `model` router отвечает `model name is missing from the request` (HTTP 400).
 
 ## Типовые проблемы и диагностика
 
-- `This server does not support slots endpoint`: сервер запущен с `--no-slots`.
-- `no slot available`: запрос был с `?fail_on_no_slot=1`, и все слоты заняты.
+- ``This server does not support slots endpoint. Start it with `--slots` ``: сервер запущен с `--no-slots`; HTTP 501 (`ERROR_TYPE_NOT_SUPPORTED`).
+- `no slot available`: запрос был с `?fail_on_no_slot=1`, и все слоты заняты; HTTP 503 (`ERROR_TYPE_UNAVAILABLE`).
 - В ответе меньше слотов, чем ожидалось: проверьте `--parallel`; при `-np -1` сервер ставит auto-значение `4` и `kv_unified = true`.
 
 ## Примеры
@@ -91,4 +93,6 @@ curl "http://127.0.0.1:8080/slots?fail_on_no_slot=1"
 - `llama.cpp/common/arg.cpp`
 - `llama.cpp/common/common.h`
 - `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/server-common.cpp`
+- `llama.cpp/tools/server/server-models.cpp`
 - `llama.cpp/tools/server/README.md`

@@ -54,7 +54,9 @@ exit(0);
 
 То есть server не стартует, порт не открывается, модель не загружается. Команду следует запускать как диагностическую, отдельно от обычного managed instance.
 
-`common_list_cached_models()` читает HF cache, берет GGUF files, извлекает quant/tag из имени, пропускает non-first shard, `mmproj` и `mtp-`, и возвращает уникальные пары `repo:tag`.
+`common_list_cached_models()` перечисляет файлы кэша через `hf_cache::get_cached_files()`, извлекает quant/tag из имени GGUF, пропускает файлы без распознаваемого tag, non-first shard, `mmproj` и `mtp-`, и возвращает уникальные пары `repo:tag`.
+
+Каталог кэша резолвится цепочкой `LLAMA_CACHE` → `HF_HUB_CACHE` → `HUGGINGFACE_HUB_CACHE` → `HF_HOME/hub` → `XDG_CACHE_HOME/huggingface/hub` → `$HOME/.cache/huggingface/hub`; layout HF-hub-совместимый (`models--<owner>--<repo>/snapshots/<commit>`), а не плоский llama.cpp-каталог.
 
 ## Значения и формат
 
@@ -65,6 +67,8 @@ number of models in cache: 2
    1. owner/repo:Q4_K_M
    2. owner/other:Q8_0
 ```
+
+Tag в выводе приводится к верхнему регистру, даже если суффикс в имени файла написан строчными буквами.
 
 ## Когда использовать
 
@@ -91,12 +95,12 @@ number of models in cache: 2
 llama-server -hf <user>/<model>:<tag>
 ```
 
-После добавления новой модели router нужно перезапустить или обновить список через соответствующий router mechanism.
+После добавления новой модели сервер нужно перезапустить; README формулирует это как `The server must be restarted after adding a new model`.
 
 ## Типовые проблемы и диагностика
 
-- Список пустой: HF cache для пользователя процесса пуст или используется другой `LLAMA_CACHE`.
-- Модель есть на диске, но не в списке: это может быть локальный файл вне HF cache; используйте `--models-dir` или `--model`.
+- Список пустой: кэш по фактически выбранному пути пуст; проверьте, какая переменная из цепочки `LLAMA_CACHE` → `HF_HUB_CACHE` → `HUGGINGFACE_HUB_CACHE` → `HF_HOME` → `XDG_CACHE_HOME` → `$HOME` действует в окружении процесса.
+- Модель есть на диске, но не в списке: это может быть локальный файл вне HF cache (используйте `--models-dir` или `--model`) либо GGUF без распознаваемого quant/tag-суффикса в имени (regex `[-.]([A-Z0-9_]+)$`) — файл вида `model.gguf` дает пустой tag и пропускается целиком.
 - `mmproj` не отображается: это ожидаемо, функция исключает projector файлы из списка моделей.
 - Split модель отображается один раз: функция пропускает shard index не равный `1`.
 
@@ -113,6 +117,7 @@ LLAMA_CACHE=/srv/llama-cache llama-server --cache-list
 ## Источники
 
 - `llama.cpp/common/arg.cpp`
+- `llama.cpp/common/hf-cache.cpp`
 - `llama.cpp/common/download.cpp`
 - `llama.cpp/common/download.h`
 - `llama.cpp/tools/server/README.md`

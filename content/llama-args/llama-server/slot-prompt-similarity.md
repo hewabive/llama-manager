@@ -15,6 +15,8 @@ related:
   - "--parallel"
   - "--slots"
   - "--cache-prompt"
+  - "--cache-ram"
+  - "--cache-idle-slots"
   - "--slot-save-path"
 ---
 
@@ -46,6 +48,8 @@ how much the prompt of a request must match the prompt of a slot in order to use
 
 Если подходящего слота нет, используется LRU-выбор и лог `selected slot by LRU`.
 
+Явный `id_slot` в запросе полностью обходит `get_available_slot()` — не работает ни similarity-ветка, ни LRU.
+
 ## Значения и формат
 
 - `0.0`: отключает similarity-ветку.
@@ -58,13 +62,17 @@ how much the prompt of a request must match the prompt of a slot in order to use
 
 Увеличивайте, если сервер часто выбирает слот с неподходящим контекстом и тратит время на сброс/переподготовку. Уменьшайте, если запросы имеют общий системный prompt и вы хотите агрессивнее переиспользовать KV-cache.
 
+Учтите: при дефолтной конфигурации сервера флаг фактически нейтрализован (см. взаимодействия) — LCP-выбор слота реально работает только при явном `-np N` или при `--no-cache-idle-slots`.
+
 ## Влияние на производительность и память
 
-Может уменьшить latency prompt processing, когда запросы имеют общий префикс. Слишком низкий порог может выбирать слот, где сохраняется маленькая доля старого контекста; код помечает cache update, если `f_keep < 0.5`.
+Может уменьшить latency prompt processing, когда запросы имеют общий префикс. Слишком низкий порог может выбирать слот, где сохраняется маленькая доля старого контекста: `f_keep = (sim_best * task.tokens.size()) / ret->prompt.tokens.size()` — доля старого контекста слота, которая сохранится; при `f_keep < 0.5` уходящий контекст сохраняется в RAM prompt cache. Cache-update (включая эту ветку) срабатывает только при включенном prompt cache и только для задач `SERVER_TASK_TYPE_COMPLETION`; при LRU-выборе update_cache ставится всегда.
 
 ## Взаимодействие с другими аргументами
 
 - `--parallel` нужен для нескольких слотов; при одном слоте выбор ограничен.
+- При дефолтах (`-np -1` → `kv_unified = true`; `--cache-ram` по умолчанию 8192 → prompt cache включен; `--cache-idle-slots` по умолчанию включен) при запуске каждой новой задачи все idle-слоты сохраняются в RAM prompt cache и очищаются — у свободных слотов cached tokens пусты, similarity-ветка кандидатов не находит, а переиспользование префикса идет через prompt cache (`prompt_load`) в LRU-ветке.
+- При явном `-np N` (`kv_unified = false`) idle-слоты сохраняются в prompt cache, но не очищаются, и LCP-выбор работает; `--no-cache-idle-slots` отключает и сохранение, и очистку.
 - `--slots` помогает наблюдать состояние слотов, но не влияет на алгоритм выбора.
 - Prompt caching и KV shifting определяют, насколько полезно сохранение общего префикса.
 
@@ -74,7 +82,7 @@ how much the prompt of a request must match the prompt of a slot in order to use
 
 ## Типовые проблемы и диагностика
 
-- В логах всегда `selected slot by LRU`: нет cached tokens, все слоты заняты или порог слишком высок.
+- В логах всегда `selected slot by LRU`: при дефолтной конфигурации это ожидаемо (idle-слоты очищаются при старте новой задачи); иначе — нет cached tokens, все слоты заняты или порог слишком высок.
 - Нестабильная latency: проверьте длину общего system prompt и фактическое число слотов.
 - Некорректное значение строки приведет к исключению `std::stof` при парсинге.
 
@@ -90,4 +98,5 @@ llama-server --model /models/model.gguf -np 4 -sps 0.0
 - `llama.cpp/common/arg.cpp`
 - `llama.cpp/common/common.h`
 - `llama.cpp/tools/server/server-context.cpp`
+- `llama.cpp/tools/server/server.cpp`
 - `llama.cpp/tools/server/README.md`

@@ -15,6 +15,7 @@ env:
 related:
   - "--cache-reuse"
   - "--cache-ram"
+  - "--cache-idle-slots"
   - "--slot-prompt-similarity"
   - "--ctx-size"
 ---
@@ -46,6 +47,8 @@ whether to enable prompt caching (default: enabled)
 
 При старте prompt processing сервер вычисляет longest common prefix между `slot.prompt.tokens` и новым input. Совпавшие токены считаются cached (`n_prompt_tokens_cache`), а в batch попадает только оставшаяся часть.
 
+Даже при 100% совпадении префикса минимум один токен переобрабатывается: сервер делает `n_past--` с предупреждением `need to evaluate at least 1 token for each active slot`, поэтому кэш никогда не покрывает prompt целиком и в метриках всегда есть хотя бы один некэшированный токен.
+
 Если `cache_prompt` выключен, сервер сбрасывает `n_past = 0` и удаляет предыдущие токены слота перед новой обработкой.
 
 ## Значения и формат
@@ -69,8 +72,11 @@ CLI использует флаги:
 
 - `--cache-reuse`: работает только при включенном prompt caching и дополнительно ищет совпадающие chunks не только в prefix.
 - `--cache-ram`: может сохранять state вытесняемого prompt в RAM.
+- `--cache-idle-slots`: при старте новой задачи сохраняет prompt-state idle-слотов в RAM prompt cache (требует `--cache-ram`, иначе отключается); при unified KV слот после сохранения еще и очищается.
+- `--kv-unified`: под давлением KV сервер принудительно очищает idle-слоты с закэшированными токенами (лог `purging slot %d with %zu tokens`) — закэшированный prefix таких слотов теряется.
 - `--slot-prompt-similarity`: помогает выбрать слот с похожим prompt.
 - `--ctx-checkpoints`: помогает восстановить usable cache для SWA/hybrid/recurrent memory.
+- Per-request `lora`: смена набора адаптеров в запросе очищает кэш слота (`slot.prompt.tokens.clear()`); при alora кэширование обрезается до начала invocation (лог `only caching to alora invocation start`).
 
 ## INI-пресеты и router-режим
 
@@ -78,8 +84,9 @@ CLI использует флаги:
 
 ## Типовые проблемы и диагностика
 
-- В ответе смотрите `n_prompt_tokens_cache` и `n_tokens_cached`.
+- В non-OAI ответе `/completion` смотрите `tokens_cached` и `timings.cache_n`, в OpenAI-совместимом ответе — `usage.prompt_tokens_details.cached_tokens`; поле `n_prompt_tokens_cache` отдает только эндпоинт `/slots`.
 - При `LLAMA_SERVER_SLOTS_DEBUG=1` сервер печатает токены вокруг mismatch prefix.
+- Для SWA/hybrid/recurrent моделей без context checkpoints кэш частично бесполезен: сервер пишет `forcing full prompt re-processing due to lack of cache data (likely due to SWA or hybrid/recurrent memory, see ...)` и переобрабатывает prompt целиком — смягчается через `--ctx-checkpoints`.
 - Для строгих benchmark-сравнений запускайте `--no-cache-prompt`.
 
 ## Примеры

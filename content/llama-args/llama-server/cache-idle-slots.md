@@ -23,7 +23,7 @@ related:
 
 ## Кратко
 
-`--cache-idle-slots` задает `common_params::cache_idle_slots`. При запуске новой задачи сервер сохраняет prompt каждого idle slot в RAM prompt cache. Если включен `--kv-unified`, slot KV после сохранения очищается, чтобы освободить общий unified KV; без unified KV очистка не освобождает переиспользуемое место, поэтому slot сохраняет свой KV в VRAM, а в prompt cache публикуется только RAM-копия.
+`--cache-idle-slots` задает `common_params::cache_idle_slots`. При запуске новой задачи сервер сохраняет prompt каждого idle slot в RAM prompt cache. Если включен `--kv-unified`, slot KV очищается безусловно — независимо от успеха сохранения — чтобы освободить общий unified KV; без unified KV очистка не освобождает переиспользуемое место, поэтому slot сохраняет свой KV в VRAM, а в prompt cache публикуется только RAM-копия.
 
 По умолчанию включено, но автоматически отключается при `--cache-ram 0`. `--kv-unified` больше не обязателен (изменено в [PR #24190](https://github.com/ggml-org/llama.cpp/pull/24190)).
 
@@ -46,7 +46,7 @@ save idle slots to the prompt cache on new task, and clear them when using unifi
 
 На `init()` сервер проверяет единственное условие: при `--cache-ram 0` пишет `--cache-idle-slots requires --cache-ram, disabling` и отключает флаг. Затем логирует выбранный режим: с unified KV — `idle slots will be saved to prompt cache and cleared upon starting a new task`, без него — `idle slots will be saved to prompt cache upon starting a new task`.
 
-Когда включено, при запуске задач idle slots сохраняются через `prompt_save()` в `server_prompt_cache`; при `--kv-unified` после сохранения вызывается `prompt_clear()`, освобождая место в unified KV.
+Когда включено, при запуске задач `COMPLETION`/`INFILL`/`EMBEDDING`/`RERANK` — после успешного `launch_slot_with_task` — каждый idle slot сохраняется через `prompt_save()` в `server_prompt_cache`; пустые prompts пропускаются, а после каждого успешного save вызывается `prompt_cache->update()` (возможна эвикция и лог `cache state`). При `--kv-unified` `prompt_clear()` вызывается безусловно, вне проверки успеха сохранения: KV слота очищается даже если save был пропущен (пустой prompt, prompt уже в кэше) или не удался из-за `bad_alloc` — тогда state теряется.
 
 ## Значения и формат
 
@@ -58,14 +58,16 @@ save idle slots to the prompt cache on new task, and clear them when using unifi
 
 Оставляйте включенным для серверов с несколькими слотами и длинными prompts: с `--kv-unified` это освобождает общий KV, без него — заранее публикует RAM-копии состояний для последующего restore. Выключайте, если RAM-cache слишком дорог или если нужно, чтобы idle slots не сериализовались.
 
+Учтите: при `--kv-unified` работает отдельный механизм `try_clear_idle_slots()` — когда decode не находит места в KV, сервер пуржит idle-слоты по одному (лог `purging slot %d with %zu tokens`) независимо от `--cache-idle-slots` и без сохранения в prompt cache. Поэтому `--no-cache-idle-slots` при unified KV не защищает состояние idle-слота под давлением — без флага оно при purge просто теряется.
+
 ## Влияние на производительность и память
 
-С unified KV снижает давление на общий KV-cache, перенося часть состояния в RAM; без unified KV память KV не освобождается, добавляется только RAM-копия. Новая задача может стартовать быстрее, чем полный prompt replay, если state удачно восстановлен из prompt cache.
+С unified KV снижает давление на общий KV-cache, перенося часть состояния в RAM; без unified KV память KV не освобождается, добавляется только RAM-копия. Новая задача может стартовать быстрее, чем полный prompt replay, если state удачно восстановлен из prompt cache; restore идет через `get_available_slot()`/`prompt_load()` и срабатывает только для задач `COMPLETION`.
 
 ## Взаимодействие с другими аргументами
 
 - `--cache-ram`: обязательное условие, должен быть не `0`.
-- `--kv-unified`: не обязателен; определяет, очищается ли KV idle slot после сохранения.
+- `--kv-unified`: не обязателен; определяет, очищается ли KV idle slot при старте новой задачи (безусловно, независимо от успеха сохранения).
 - `--parallel`: чем больше слотов, тем чаще есть idle states для сохранения.
 - `--cache-prompt`: влияет на reuse восстановленного состояния.
 
@@ -76,6 +78,7 @@ save idle slots to the prompt cache on new task, and clear them when using unifi
 ## Типовые проблемы и диагностика
 
 - Ищите лог `idle slots will be saved to prompt cache and cleared upon starting a new task` (с unified KV) или `idle slots will be saved to prompt cache upon starting a new task` (без него).
+- Per-slot лог `saving idle slot to prompt cache` подтверждает сохранение конкретного idle slot.
 - При `--cache-ram 0` сервер пишет warning `--cache-idle-slots requires --cache-ram, disabling`.
 - При нехватке RAM смотрите `cache state` и уменьшайте `--cache-ram`.
 

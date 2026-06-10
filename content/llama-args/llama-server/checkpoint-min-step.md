@@ -43,19 +43,23 @@ minimum spacing between context checkpoints in tokens (default: 256, 0 = no mini
 
 ## Что меняет в llama-server
 
-При prompt processing checkpoint создается только если текущая позиция дальше предыдущего checkpoint больше чем `checkpoint_min_step`. Условие выглядит как `n_tokens_start > last_checkpoint.n_tokens + checkpoint_min_step`.
+При prompt processing min-step — последний из нескольких гейтов на создание checkpoint (тип задачи completion, тип памяти, позиция на границе последнего user-сообщения или около конца промпта, отсутствие mtmd-чанков): checkpoint создается только если текущая позиция дальше предыдущего checkpoint больше чем `checkpoint_min_step`. Условие выглядит как `n_tokens_start > last_checkpoint.n_tokens + checkpoint_min_step`.
+
+После https://github.com/ggml-org/llama.cpp/pull/20288 checkpoints не ставятся периодически каждые N токенов mid-prompt — только на границе последнего user-сообщения и около конца промпта (за `4 + n_ubatch` и `4` токена до конца); min-step лишь отсекает слишком близкие из этих фиксированных точек.
+
+На speculative checkpoints (`spec_ckpt`) min-step не действует — они создаются без проверки spacing.
 
 Если `--ctx-checkpoints 0`, этот параметр фактически не используется.
 
 ## Значения и формат
 
-- `0`: разрешить checkpoints без минимального интервала.
+- `0`: разрешить checkpoints без минимального интервала; из-за строгого сравнения `>` все равно нужен хотя бы 1 токен после последнего checkpoint.
 - Положительное число: минимальный интервал в токенах.
 - Отрицательное число: ошибка парсинга.
 
 ## Когда использовать
 
-Увеличивайте, если checkpoints создаются слишком часто и RAM растет. Уменьшайте, если часто видите full prompt re-processing из-за отсутствия подходящего checkpoint.
+Увеличивайте, если checkpoints создаются слишком часто и RAM растет. Уменьшение ниже дефолта помогает редко: точки создания фиксированы (граница последнего user-сообщения и конец промпта), min-step лишь отбрасывает слишком близкие из них; при частом full prompt re-processing сначала проверьте `--ctx-checkpoints` и prompt cache.
 
 ## Влияние на производительность и память
 
@@ -93,3 +97,4 @@ llama-server --model /models/model.gguf --ctx-checkpoints 16 --checkpoint-min-st
 - `llama.cpp/common/common.h`
 - `llama.cpp/tools/server/server-context.cpp`
 - `llama.cpp/tools/server/README.md`
+- https://github.com/ggml-org/llama.cpp/pull/20288
