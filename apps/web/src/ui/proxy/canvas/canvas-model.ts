@@ -240,9 +240,10 @@ type BuildInput = {
   referrers: PipelineReferrer[];
   entryInvalid: boolean;
   invalidNodeIds: Set<string>;
+  placedRefs: string[];
 };
 
-const columnWidth = 300;
+export const columnWidth = 300;
 const rowHeight = 170;
 const originX = 220;
 const originY = 60;
@@ -315,6 +316,38 @@ export function buildFlowGraph(input: BuildInput): {
   const resolvePosition = (id: string, fallback: { x: number; y: number }) =>
     input.previousPositions.get(id) ?? fallback;
 
+  const ensureRefNode = (value: string, fallback: { x: number; y: number }) => {
+    const flowId = flowIdFromPortValue(value);
+    if (refTitles.has(flowId)) {
+      return flowId;
+    }
+    const [refKind, refId] = value.startsWith("target:")
+      ? (["ref-target", value.slice(7)] as const)
+      : (["ref-pipeline", value.slice(9)] as const);
+    const title =
+      refKind === "ref-target"
+        ? (input.targets.find((target) => target.id === refId)?.name ?? refId)
+        : (input.pipelines.find((pipeline) => pipeline.id === refId)?.name ??
+          refId);
+    refTitles.set(flowId, { kind: refKind, title });
+    nodes.push({
+      id: flowId,
+      type: "pipeline-flow",
+      position: resolvePosition(flowId, fallback),
+      selected: flowId === input.selectedNodeId,
+      data: {
+        kind: refKind,
+        title,
+        summary: refKind === "ref-target" ? "target" : "pipeline",
+        sourcePorts: [],
+        hasInput: true,
+        highlighted: false,
+        invalid: false,
+      },
+    });
+    return flowId;
+  };
+
   const pushEdge = (
     sourceId: string,
     port: string,
@@ -324,38 +357,12 @@ export function buildFlowGraph(input: BuildInput): {
     if (!value) {
       return;
     }
-    const targetFlowId = flowIdFromPortValue(value);
-    if (!value.startsWith("node:")) {
-      if (!refTitles.has(targetFlowId)) {
-        const [refKind, refId] = value.startsWith("target:")
-          ? (["ref-target", value.slice(7)] as const)
-          : (["ref-pipeline", value.slice(9)] as const);
-        const title =
-          refKind === "ref-target"
-            ? (input.targets.find((target) => target.id === refId)?.name ??
-              refId)
-            : (input.pipelines.find((pipeline) => pipeline.id === refId)
-                ?.name ?? refId);
-        refTitles.set(targetFlowId, { kind: refKind, title });
-        nodes.push({
-          id: targetFlowId,
-          type: "pipeline-flow",
-          position: resolvePosition(targetFlowId, {
-            x: sourceNodeDepthPosition.x + columnWidth,
-            y: sourceNodeDepthPosition.y + (refTitles.size - 1) * 110,
-          }),
-          data: {
-            kind: refKind,
-            title,
-            summary: refKind === "ref-target" ? "target" : "pipeline",
-            sourcePorts: [],
-            hasInput: true,
-            highlighted: false,
-            invalid: false,
-          },
+    const targetFlowId = value.startsWith("node:")
+      ? flowIdFromPortValue(value)
+      : ensureRefNode(value, {
+          x: sourceNodeDepthPosition.x + columnWidth,
+          y: sourceNodeDepthPosition.y + refTitles.size * 110,
         });
-      }
-    }
     const highlighted = highlight?.ports.has(`${sourceId}:${port}`) ?? false;
     edges.push({
       id: `e:${sourceId}:${port}`,
@@ -420,6 +427,15 @@ export function buildFlowGraph(input: BuildInput): {
       sourceHandle: referrerPortName,
       target: entryNodeId,
     });
+  });
+
+  input.placedRefs.forEach((value, index) => {
+    if (!value.startsWith("node:")) {
+      ensureRefNode(value, {
+        x: originX + 2 * columnWidth,
+        y: originY + index * 110,
+      });
+    }
   });
 
   for (const node of input.draft.nodes) {

@@ -8,6 +8,7 @@ import {
   Button,
   Code,
   Group,
+  Menu,
   Paper,
   Stack,
   Text,
@@ -32,9 +33,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildFlowGraph,
   collectPipelineReferrers,
+  columnWidth,
   entryNodeId,
   highlightFromTrace,
   portValueFromFlowId,
+  refNodeId,
   referrerFlowPrefix,
   referrerPipelineFlowPrefix,
   type FlowNode,
@@ -91,7 +94,14 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [placedRefs, setPlacedRefs] = useState<string[]>([]);
   const positionsRef = useRef(new Map<string, { x: number; y: number }>());
+
+  useEffect(() => {
+    positionsRef.current.clear();
+    setPlacedRefs([]);
+    setSelectedNodeId(null);
+  }, [props.ctx.pipelineId]);
 
   const draft = props.ctx.draft;
   const highlight = useMemo(
@@ -196,6 +206,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
       referrers,
       entryInvalid: routeHoles.length > 0,
       invalidNodeIds,
+      placedRefs,
     });
     setRfNodes(graph.nodes);
     setRfEdges(graph.edges);
@@ -210,6 +221,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     referrers,
     routeHoles,
     invalidNodeIds,
+    placedRefs,
     props.ctx.targets,
     props.ctx.pipelines,
     props.ctx.sources,
@@ -255,9 +267,10 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     }
   };
 
-  const handleEdgesDelete = (edges: Edge[]) => {
+  const handleDelete = (deleted: { nodes: Node[]; edges: Edge[] }) => {
+    const deletedNodeIds = new Set(deleted.nodes.map((node) => node.id));
     let next = draft;
-    for (const edge of edges) {
+    for (const edge of deleted.edges) {
       if (edge.source === entryNodeId) {
         next = { ...next, entryValue: null };
         continue;
@@ -276,22 +289,56 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
         };
       }
     }
-    if (next !== draft) {
-      props.onDraftChange(next);
-    }
-  };
-
-  const handleNodesDelete = (nodes: Node[]) => {
-    let next = draft;
-    for (const node of nodes) {
-      if (draft.nodes.some((item) => item.id === node.id)) {
+    for (const node of deleted.nodes) {
+      if (next.nodes.some((item) => item.id === node.id)) {
         next = removeNodeFromDraft(next, node.id);
       }
     }
     if (next !== draft) {
       props.onDraftChange(next);
+    }
+    if (selectedNodeId && deletedNodeIds.has(selectedNodeId)) {
       setSelectedNodeId(null);
     }
+    setPlacedRefs((prev) => {
+      let result = prev;
+      for (const edge of deleted.edges) {
+        if (
+          !edge.target.startsWith("ref:") ||
+          deletedNodeIds.has(edge.target)
+        ) {
+          continue;
+        }
+        const value = portValueFromFlowId(edge.target);
+        if (value && !result.includes(value)) {
+          result = [...result, value];
+        }
+      }
+      const removedValues = new Set(
+        deleted.nodes
+          .filter((node) => node.id.startsWith("ref:"))
+          .map((node) => portValueFromFlowId(node.id)),
+      );
+      if (removedValues.size > 0) {
+        result = result.filter((value) => !removedValues.has(value));
+      }
+      return result;
+    });
+  };
+
+  const placeTarget = (targetId: string) => {
+    const value = `target:${targetId}`;
+    const flowId = refNodeId(value);
+    if (!positionsRef.current.has(flowId)) {
+      const xs = [...positionsRef.current.values()].map(
+        (position) => position.x,
+      );
+      positionsRef.current.set(flowId, {
+        x: (xs.length > 0 ? Math.max(...xs) : 0) + columnWidth,
+        y: 60 + placedRefs.length * 110,
+      });
+    }
+    setPlacedRefs((prev) => (prev.includes(value) ? prev : [...prev, value]));
   };
 
   const handleNodeDragStop = (_event: unknown, node: Node) => {
@@ -320,6 +367,10 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
   const handleNodeClick = (_event: unknown, node: Node) => {
     if (node.id === entryNodeId || node.id.startsWith(referrerFlowPrefix)) {
       setSelectedNodeId(entryNodeId);
+      return;
+    }
+    if (node.id.startsWith("ref:")) {
+      setSelectedNodeId(node.id);
       return;
     }
     setSelectedNodeId(
@@ -406,6 +457,26 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             {option.label}
           </Button>
         ))}
+        <Menu position="bottom-start" withinPortal>
+          <Menu.Target>
+            <Button
+              variant="light"
+              color="teal"
+              size="xs"
+              leftSection={<Plus size={14} />}
+              disabled={props.ctx.targets.length === 0}
+            >
+              Target
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {props.ctx.targets.map((target) => (
+              <Menu.Item key={target.id} onClick={() => placeTarget(target.id)}>
+                {target.name}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
       </Group>
       <Group align="stretch" gap="sm" wrap="nowrap">
         <Paper
@@ -425,8 +496,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
-            onEdgesDelete={handleEdgesDelete}
-            onNodesDelete={handleNodesDelete}
+            onDelete={handleDelete}
             onNodeDragStop={handleNodeDragStop}
             onNodeClick={handleNodeClick}
             onNodeDoubleClick={handleNodeDoubleClick}

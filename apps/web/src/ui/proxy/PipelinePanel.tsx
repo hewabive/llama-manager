@@ -105,20 +105,22 @@ export function PipelinePanel(props: PipelinePanelProps) {
                 props.onDraftChange({ ...props.draft, enabled });
               }}
             />
-            <TouchSelect
-              placeholder="Entry"
-              data={editorPortOptions(ctx, null)}
-              value={props.draft.entryValue ?? unboundTargetValue}
-              searchable
-              miw={200}
-              onChange={(value) =>
-                props.onDraftChange({
-                  ...props.draft,
-                  entryValue:
-                    !value || value === unboundTargetValue ? null : value,
-                })
-              }
-            />
+            {view === "form" && (
+              <TouchSelect
+                placeholder="Entry"
+                data={editorPortOptions(ctx, null)}
+                value={props.draft.entryValue ?? unboundTargetValue}
+                searchable
+                miw={200}
+                onChange={(value) =>
+                  props.onDraftChange({
+                    ...props.draft,
+                    entryValue:
+                      !value || value === unboundTargetValue ? null : value,
+                  })
+                }
+              />
+            )}
           </Group>
           <Group gap="xs">
             <SegmentedControl
