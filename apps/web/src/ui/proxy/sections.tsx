@@ -32,6 +32,7 @@ import {
   Plus,
   SlidersHorizontal,
   Trash2,
+  Workflow,
 } from "lucide-react";
 
 import { TouchSelect } from "../components/TouchCombobox";
@@ -107,6 +108,7 @@ type ExternalModelsSectionProps = {
   deletePending: boolean;
   onEdit: (model: ApiProxyModelRecord) => void;
   onDelete: (id: string) => void;
+  onOpenPipeline: (pipelineId: string) => void;
 };
 
 export function ExternalModelsSection(props: ExternalModelsSectionProps) {
@@ -177,6 +179,24 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
                   <Table.Td>{formatLocalDateTime(model.updatedAt)}</Table.Td>
                   <Table.Td>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
+                      {model.routeTo?.type === "pipeline" &&
+                        props.pipelineById.has(model.routeTo.id) && (
+                          <Tooltip label="Open pipeline">
+                            <ActionIcon
+                              aria-label="Open bound pipeline"
+                              variant="subtle"
+                              color="teal"
+                              onClick={() => {
+                                const routeTo = model.routeTo;
+                                if (routeTo?.type === "pipeline") {
+                                  props.onOpenPipeline(routeTo.id);
+                                }
+                              }}
+                            >
+                              <Workflow size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
                       <Tooltip label="Edit model">
                         <ActionIcon
                           aria-label="Edit proxy model"

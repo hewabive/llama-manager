@@ -47,6 +47,7 @@ export type PipelinePanelProps = {
   models: ApiProxyModelRecord[];
   busy: boolean;
   explainTrace: ApiProxyRouteTraceStep[] | null;
+  backLabel?: string;
   onBack: () => void;
   onSave: () => void;
   onDraftChange: (draft: PipelineDraft) => void;
@@ -87,7 +88,7 @@ export function PipelinePanel(props: PipelinePanelProps) {
               leftSection={<ArrowLeft size={16} />}
               onClick={props.onBack}
             >
-              Back
+              {props.backLabel ?? "Back"}
             </Button>
             <TextInput
               placeholder="Pipeline name"

@@ -326,8 +326,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     });
   };
 
-  const placeTarget = (targetId: string) => {
-    const value = `target:${targetId}`;
+  const placeRef = (value: string) => {
     const flowId = refNodeId(value);
     if (!positionsRef.current.has(flowId)) {
       const xs = [...positionsRef.current.values()].map(
@@ -340,6 +339,14 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
     }
     setPlacedRefs((prev) => (prev.includes(value) ? prev : [...prev, value]));
   };
+
+  const placeTarget = (targetId: string) => placeRef(`target:${targetId}`);
+  const placePipelineRef = (pipelineId: string) =>
+    placeRef(`pipeline:${pipelineId}`);
+
+  const otherPipelines = props.ctx.pipelines.filter(
+    (pipeline) => pipeline.id !== props.ctx.pipelineId,
+  );
 
   const handleNodeDragStop = (_event: unknown, node: Node) => {
     if (draft.nodes.some((item) => item.id === node.id)) {
@@ -473,6 +480,29 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             {props.ctx.targets.map((target) => (
               <Menu.Item key={target.id} onClick={() => placeTarget(target.id)}>
                 {target.name}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+        <Menu position="bottom-start" withinPortal>
+          <Menu.Target>
+            <Button
+              variant="light"
+              color="indigo"
+              size="xs"
+              leftSection={<Plus size={14} />}
+              disabled={otherPipelines.length === 0}
+            >
+              Pipeline
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {otherPipelines.map((pipeline) => (
+              <Menu.Item
+                key={pipeline.id}
+                onClick={() => placePipelineRef(pipeline.id)}
+              >
+                {pipeline.name}
               </Menu.Item>
             ))}
           </Menu.Dropdown>
@@ -671,7 +701,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
                 Select a node to edit its configuration. Click the entry node to
                 manage which models route into this pipeline. Drag from a port
                 to wire it to another node, a target or a pipeline. Double-click
-                a call node to open the called pipeline.
+                a call or pipeline node to open it.
               </Text>
             </Stack>
           )}

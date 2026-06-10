@@ -70,6 +70,9 @@ export function RoutingView() {
   const [pipelineDraftState, setPipelineDraftState] =
     useState<PipelineDraft>(emptyPipelineDraft);
   const [pipelineDraftFor, setPipelineDraftFor] = useState<string | null>(null);
+  const [pipelineStack, setPipelineStack] = useState<
+    Array<{ pipelineId: string; draft: PipelineDraft }>
+  >([]);
   const [explainResult, setExplainResult] =
     useState<ApiProxyRouteExplainResult | null>(null);
 
@@ -418,6 +421,42 @@ export function RoutingView() {
     await applyStagedModelBindings(pipelineId);
   }
 
+  function openPipeline(pipelineId: string) {
+    setPipelineStack([]);
+    setSubpath(pipelineId);
+  }
+
+  function enterNestedPipeline(pipelineId: string) {
+    if (subpath && subpath !== pipelineId) {
+      setPipelineStack((prev) => [
+        ...prev,
+        { pipelineId: subpath, draft: pipelineDraftState },
+      ]);
+    }
+    setSubpath(pipelineId);
+  }
+
+  function backFromPipeline() {
+    const parent = pipelineStack[pipelineStack.length - 1];
+    if (!parent) {
+      setSubpath("");
+      return;
+    }
+    setPipelineStack((prev) => prev.slice(0, -1));
+    setPipelineDraftFor(parent.pipelineId);
+    setPipelineDraftState(parent.draft);
+    setSubpath(parent.pipelineId);
+  }
+
+  const parentEntry = pipelineStack[pipelineStack.length - 1];
+  const backLabel = parentEntry
+    ? `Back to ${
+        pipelineById.get(parentEntry.pipelineId)?.name ||
+        parentEntry.draft.name ||
+        "pipeline"
+      }`
+    : "Back";
+
   const editorPipeline =
     subpath && subpath !== newPipelineSubpath
       ? (pipelineById.get(subpath) ?? null)
@@ -452,7 +491,7 @@ export function RoutingView() {
             pipelinesCount={pipelines.length}
             targetsCount={targets.length}
             onAddModel={openCreateModel}
-            onAddPipeline={() => setSubpath(newPipelineSubpath)}
+            onAddPipeline={() => openPipeline(newPipelineSubpath)}
             onAddTarget={openCreateTarget}
           />
 
@@ -460,7 +499,7 @@ export function RoutingView() {
             models={models}
             pipelines={pipelines}
             targets={targets}
-            onOpenPipeline={(pipelineId) => setSubpath(pipelineId)}
+            onOpenPipeline={openPipeline}
           />
 
           <ExternalModelsSection
@@ -470,6 +509,7 @@ export function RoutingView() {
             deletePending={deleteModelMutation.isPending}
             onEdit={openEditModel}
             onDelete={(id) => deleteModelMutation.mutate(id)}
+            onOpenPipeline={openPipeline}
           />
 
           <PipelinesSection
@@ -477,7 +517,7 @@ export function RoutingView() {
             pipelineById={pipelineById}
             targetById={targetById}
             deletePending={deletePipelineMutation.isPending}
-            onEdit={(pipeline) => setSubpath(pipeline.id)}
+            onEdit={(pipeline) => openPipeline(pipeline.id)}
             onDelete={(id) => deletePipelineMutation.mutate(id)}
           />
 
@@ -505,10 +545,11 @@ export function RoutingView() {
           models={models}
           busy={pipelineBusy}
           explainTrace={explainResult?.routeTrace ?? null}
-          onBack={() => setSubpath("")}
+          backLabel={backLabel}
+          onBack={backFromPipeline}
           onSave={savePipeline}
           onDraftChange={setPipelineDraftState}
-          onOpenPipeline={(pipelineId) => setSubpath(pipelineId)}
+          onOpenPipeline={enterNestedPipeline}
         />
       )}
 
