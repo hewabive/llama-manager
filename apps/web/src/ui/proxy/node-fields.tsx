@@ -10,6 +10,7 @@ import {
   ActionIcon,
   Button,
   Group,
+  Modal,
   NumberInput,
   Paper,
   Select,
@@ -17,8 +18,10 @@ import {
   Switch,
   Text,
   TextInput,
+  Textarea,
 } from "@mantine/core";
-import { Plus, Trash2 } from "lucide-react";
+import { Maximize2, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "./forms";
 import { unboundTargetValue } from "./forms";
@@ -143,72 +146,87 @@ function PortSelect(props: {
   );
 }
 
-export function PipelineNodeFields(props: {
+const replacementInputStyles = {
+  input: { fontFamily: "monospace" },
+} as const;
+
+function ReplaceTextFields(props: {
   node: PipelineNodeDraft;
   ctx: PipelineEditorContext;
 }) {
   const { node, ctx } = props;
-  const update = (patch: Partial<PipelineNodeDraft>) =>
-    ctx.updateNode(node.id, patch);
+  const [detailIndex, setDetailIndex] = useState<number | null>(null);
+  const rules = node.replacements;
+  const setRules = (next: PipelineNodeDraft["replacements"]) =>
+    ctx.updateNode(node.id, { replacements: next });
+  const patchRule = (
+    index: number,
+    patch: Partial<PipelineNodeDraft["replacements"][number]>,
+  ) =>
+    setRules(
+      rules.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    );
+  const detailRule = detailIndex === null ? null : (rules[detailIndex] ?? null);
 
-  if (node.type === "replace-text") {
-    const rules = node.replacements;
-    const setRules = (next: PipelineNodeDraft["replacements"]) =>
-      update({ replacements: next });
-    return (
-      <>
-        <Stack gap="xs">
-          {rules.length === 0 && (
-            <Text c="dimmed" size="sm">
-              No replacements yet. Each rule rewrites matching text in the
-              request before routing.
-            </Text>
-          )}
-          {rules.map((rule, index) => (
-            <Paper key={index} withBorder p="xs" radius="sm">
-              <Stack gap={6}>
-                <TextInput
+  return (
+    <>
+      <Stack gap="xs">
+        {rules.length === 0 && (
+          <Text c="dimmed" size="sm">
+            No replacements yet. Each rule rewrites matching text in the
+            request before routing.
+          </Text>
+        )}
+        {rules.map((rule, index) => (
+          <Paper key={index} withBorder p="xs" radius="sm">
+            <Stack gap={6}>
+              <Textarea
+                size="xs"
+                label="Find"
+                placeholder="text to find"
+                autosize
+                minRows={1}
+                maxRows={4}
+                value={rule.find}
+                styles={replacementInputStyles}
+                onChange={(event) => {
+                  const find = event.currentTarget.value;
+                  patchRule(index, { find });
+                }}
+              />
+              <Textarea
+                size="xs"
+                label="Replace with"
+                placeholder="replacement (empty deletes the match)"
+                autosize
+                minRows={1}
+                maxRows={4}
+                value={rule.replace}
+                styles={replacementInputStyles}
+                onChange={(event) => {
+                  const replace = event.currentTarget.value;
+                  patchRule(index, { replace });
+                }}
+              />
+              <Group justify="space-between">
+                <Switch
                   size="xs"
-                  label="Find"
-                  placeholder="text to find"
-                  value={rule.find}
+                  label="Enabled"
+                  checked={rule.enabled}
                   onChange={(event) => {
-                    const find = event.currentTarget.value;
-                    setRules(
-                      rules.map((item, i) =>
-                        i === index ? { ...item, find } : item,
-                      ),
-                    );
+                    const enabled = event.currentTarget.checked;
+                    patchRule(index, { enabled });
                   }}
                 />
-                <TextInput
-                  size="xs"
-                  label="Replace with"
-                  placeholder="replacement (empty deletes the match)"
-                  value={rule.replace}
-                  onChange={(event) => {
-                    const replace = event.currentTarget.value;
-                    setRules(
-                      rules.map((item, i) =>
-                        i === index ? { ...item, replace } : item,
-                      ),
-                    );
-                  }}
-                />
-                <Group justify="space-between">
-                  <Switch
-                    size="xs"
-                    label="Enabled"
-                    checked={rule.enabled}
-                    onChange={(event) => {
-                      const enabled = event.currentTarget.checked;
-                      setRules(
-                        rules.map((item, i) =>
-                          i === index ? { ...item, enabled } : item,
-                        ),
-                      );
-                    }}
-                  />
+                <Group gap={4}>
+                  <ActionIcon
+                    aria-label="Edit replacement rule in a large editor"
+                    variant="subtle"
+                    size="sm"
+                    onClick={() => setDetailIndex(index)}
+                  >
+                    <Maximize2 size={14} />
+                  </ActionIcon>
                   <ActionIcon
                     aria-label="Remove replacement rule"
                     variant="subtle"
@@ -221,29 +239,94 @@ export function PipelineNodeFields(props: {
                     <Trash2 size={14} />
                   </ActionIcon>
                 </Group>
-              </Stack>
-            </Paper>
-          ))}
-          <Button
-            variant="light"
-            size="xs"
-            leftSection={<Plus size={14} />}
-            onClick={() =>
-              setRules([...rules, { find: "", replace: "", enabled: true }])
-            }
-          >
-            Add replacement
-          </Button>
-        </Stack>
-        <PortSelect
-          label="Next"
-          ctx={ctx}
-          node={node}
-          value={node.portNext}
-          onChange={(portNext) => update({ portNext })}
-        />
-      </>
-    );
+              </Group>
+            </Stack>
+          </Paper>
+        ))}
+        <Button
+          variant="light"
+          size="xs"
+          leftSection={<Plus size={14} />}
+          onClick={() =>
+            setRules([...rules, { find: "", replace: "", enabled: true }])
+          }
+        >
+          Add replacement
+        </Button>
+      </Stack>
+      <PortSelect
+        label="Next"
+        ctx={ctx}
+        node={node}
+        value={node.portNext}
+        onChange={(portNext) =>
+          ctx.updateNode(node.id, { portNext })
+        }
+      />
+      <Modal
+        opened={detailRule !== null}
+        onClose={() => setDetailIndex(null)}
+        title={`Replacement rule #${(detailIndex ?? 0) + 1}`}
+        size="xl"
+      >
+        {detailRule && detailIndex !== null && (
+          <Stack gap="sm">
+            <Textarea
+              label="Find"
+              placeholder="text to find"
+              autosize
+              minRows={6}
+              maxRows={20}
+              value={detailRule.find}
+              styles={replacementInputStyles}
+              onChange={(event) => {
+                const find = event.currentTarget.value;
+                patchRule(detailIndex, { find });
+              }}
+            />
+            <Textarea
+              label="Replace with"
+              placeholder="replacement (empty deletes the match)"
+              autosize
+              minRows={6}
+              maxRows={20}
+              value={detailRule.replace}
+              styles={replacementInputStyles}
+              onChange={(event) => {
+                const replace = event.currentTarget.value;
+                patchRule(detailIndex, { replace });
+              }}
+            />
+            <Group justify="space-between">
+              <Switch
+                label="Enabled"
+                checked={detailRule.enabled}
+                onChange={(event) => {
+                  const enabled = event.currentTarget.checked;
+                  patchRule(detailIndex, { enabled });
+                }}
+              />
+              <Button variant="light" onClick={() => setDetailIndex(null)}>
+                Done
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+    </>
+  );
+}
+
+export function PipelineNodeFields(props: {
+  node: PipelineNodeDraft;
+  ctx: PipelineEditorContext;
+}) {
+  const { node, ctx } = props;
+  const update = (patch: Partial<PipelineNodeDraft>) =>
+    ctx.updateNode(node.id, patch);
+
+  if (node.type === "replace-text") {
+    return <ReplaceTextFields node={node} ctx={ctx} />;
   }
 
   if (node.type === "capture-request") {

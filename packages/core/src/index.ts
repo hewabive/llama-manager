@@ -445,7 +445,7 @@ const ApiProxyTargetIdleMsSchema = z.number().int().min(0).nullable();
 const ApiProxyModelIdSchema = z.string().trim().min(1).max(500);
 const ApiProxyModelOwnerSchema = z.string().trim().min(1).max(80);
 const ApiProxyModelDescriptionSchema = z.string().trim().max(500).nullable();
-const ApiProxyReplacementTextSchema = z.string().max(2_000);
+const ApiProxyReplacementTextSchema = z.string();
 
 export const ApiProxyRouteToSchema = z.object({
   type: ApiProxyRouteToKindSchema,
@@ -454,7 +454,7 @@ export const ApiProxyRouteToSchema = z.object({
 
 export const ApiProxyTextReplacementRuleSchema = z.object({
   enabled: z.boolean().default(true),
-  find: z.string().min(1).max(2_000),
+  find: z.string().min(1),
   replace: ApiProxyReplacementTextSchema.default(""),
 });
 
