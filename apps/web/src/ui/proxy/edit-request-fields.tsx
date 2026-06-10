@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 
 import type { EditOperationDraft, PipelineNodeDraft } from "./forms";
 import { editOperationFromDraft } from "./forms";
+import { useNarrowScreen } from "../hooks/use-narrow-screen";
 
 const monoInputStyles = {
   input: { fontFamily: "monospace" },
@@ -219,6 +220,7 @@ export function EditRequestFields(props: {
   updateNode: (nodeId: string, patch: Partial<PipelineNodeDraft>) => void;
 }) {
   const { node } = props;
+  const isNarrow = useNarrowScreen();
   const [editorOpened, setEditorOpened] = useState(false);
   const [sampleText, setSampleText] = useState("");
   const [showResult, setShowResult] = useState(false);
@@ -320,6 +322,7 @@ export function EditRequestFields(props: {
         onClose={() => setEditorOpened(false)}
         title="Request block editor"
         size="xl"
+        fullScreen={isNarrow}
       >
         <Stack gap="sm">
           <Textarea

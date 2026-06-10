@@ -28,6 +28,25 @@ const kindColors: Record<FlowNodeKind, string> = {
   "ref-model": "var(--mantine-color-pink-5)",
 };
 
+const portHitSize = 20;
+const portDotSize = 10;
+
+function PortHitArea() {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: portHitSize,
+        height: portHitSize,
+        borderRadius: "50%",
+      }}
+    />
+  );
+}
+
 export function FlowNodeCard(props: NodeProps<FlowNode>) {
   const { data, selected } = props;
   const accent = kindColors[data.kind];
@@ -65,8 +84,18 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
           type="target"
           position={Position.Left}
           id="in"
-          style={{ background: accent }}
-        />
+          style={{
+            width: portDotSize,
+            height: portDotSize,
+            left: -portDotSize / 2,
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: accent,
+            border: "none",
+          }}
+        >
+          <PortHitArea />
+        </Handle>
       )}
       <div style={{ padding: "6px 10px 4px 10px" }}>
         <div
@@ -102,7 +131,7 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
               style={{
                 color: "var(--mantine-color-dimmed)",
                 fontSize: 10,
-                padding: "1px 14px 1px 10px",
+                padding: "3px 14px 3px 10px",
                 position: "relative",
                 textAlign: "right",
               }}
@@ -115,13 +144,18 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
                 position={Position.Right}
                 id={port}
                 style={{
-                  background: accent,
+                  width: portDotSize,
+                  height: portDotSize,
                   position: "absolute",
-                  right: -5,
+                  right: -portDotSize / 2,
                   top: "50%",
                   transform: "translateY(-50%)",
+                  background: accent,
+                  border: "none",
                 }}
-              />
+              >
+                <PortHitArea />
+              </Handle>
             </div>
           ))}
         </div>

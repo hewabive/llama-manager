@@ -28,6 +28,7 @@ import { EditRequestFields } from "./edit-request-fields";
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "./forms";
 import { unboundTargetValue } from "./forms";
 import { TouchSelect } from "../components/TouchCombobox";
+import { useNarrowScreen } from "../hooks/use-narrow-screen";
 
 export type PipelineEditorContext = {
   draft: PipelineDraft;
@@ -245,6 +246,7 @@ function ReplaceTextFields(props: {
   ctx: PipelineEditorContext;
 }) {
   const { node, ctx } = props;
+  const isNarrow = useNarrowScreen();
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [view, setView] = useState<ReplacementView>("raw");
   const rules = node.replacements;
@@ -364,6 +366,7 @@ function ReplaceTextFields(props: {
         onClose={() => setDetailIndex(null)}
         title={`Replacement rule #${(detailIndex ?? 0) + 1}`}
         size="xl"
+        fullScreen={isNarrow}
       >
         {detailRule && detailIndex !== null && (
           <Stack gap="sm">

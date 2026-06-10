@@ -7,6 +7,7 @@ import {
   Badge,
   Button,
   Code,
+  Flex,
   Group,
   Menu,
   Paper,
@@ -57,6 +58,7 @@ import {
   type PipelineEditorContext,
 } from "../node-fields";
 import { TouchSelect } from "../../components/TouchCombobox";
+import { useNarrowScreen } from "../../hooks/use-narrow-screen";
 
 const nodeTypes = { "pipeline-flow": FlowNodeCard };
 const draftCandidateId = "__draft__";
@@ -96,11 +98,22 @@ export type PipelineCanvasProps = {
 
 export function PipelineCanvas(props: PipelineCanvasProps) {
   const colorScheme = useComputedColorScheme("dark");
+  const isNarrow = useNarrowScreen();
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [placedRefs, setPlacedRefs] = useState<string[]>([]);
   const positionsRef = useRef(new Map<string, { x: number; y: number }>());
+  const inspectorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isNarrow && selectedNodeId !== null) {
+      inspectorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }, [isNarrow, selectedNodeId]);
 
   useEffect(() => {
     positionsRef.current.clear();
@@ -514,11 +527,15 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
           </Menu.Dropdown>
         </Menu>
       </Group>
-      <Group align="stretch" gap="sm" wrap="nowrap">
+      <Flex direction={isNarrow ? "column" : "row"} align="stretch" gap="sm">
         <Paper
           withBorder
           radius="sm"
-          style={{ flex: 1, height: "62vh", minWidth: 0, overflow: "hidden" }}
+          style={
+            isNarrow
+              ? { height: "45vh", overflow: "hidden" }
+              : { flex: 1, height: "62vh", minWidth: 0, overflow: "hidden" }
+          }
         >
           <ReactFlow
             nodes={rfNodes}
@@ -527,6 +544,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             colorMode={colorScheme}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+            connectionRadius={32}
             proOptions={{ hideAttribution: true }}
             deleteKeyCode={["Delete", "Backspace"]}
             onNodesChange={handleNodesChange}
@@ -543,15 +561,20 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
           </ReactFlow>
         </Paper>
         <Paper
+          ref={inspectorRef}
           withBorder
           radius="sm"
           p="sm"
-          style={{
-            width: 340,
-            flexShrink: 0,
-            height: "62vh",
-            overflow: "auto",
-          }}
+          style={
+            isNarrow
+              ? { maxHeight: "60vh", overflow: "auto" }
+              : {
+                  width: 340,
+                  flexShrink: 0,
+                  height: "62vh",
+                  overflow: "auto",
+                }
+          }
         >
           {entrySelected ? (
             <Stack gap="xs">
@@ -712,7 +735,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             </Stack>
           )}
         </Paper>
-      </Group>
+      </Flex>
     </Stack>
   );
 }
