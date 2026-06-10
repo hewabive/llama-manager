@@ -1,10 +1,11 @@
-import type { GgufModel } from "@llama-manager/core";
+import type { GgufModel, ModelScanRoot } from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
   Button,
   Collapse,
   Group,
+  Modal,
   NumberInput,
   Paper,
   SimpleGrid,
@@ -18,10 +19,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
 import {
+  createPathCatalogEntry,
+  deletePathCatalogEntry,
   getModelScanSettings,
   scanModels,
   updateModelScanSettings,
@@ -39,10 +42,15 @@ import {
   modelTitle,
 } from "../utils/models";
 
-type ModelScanParams = {
-  directory: string;
-  maxDepth: number;
-};
+function rootSourceLabel(root: ModelScanRoot) {
+  if (root.source === "settings") {
+    return "default";
+  }
+  if (root.source === "llama-cache") {
+    return "llama.cpp cache";
+  }
+  return "catalog";
+}
 
 function paramsLabel(model: GgufModel) {
   return (
@@ -199,28 +207,18 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
   const [hideVocab, setHideVocab] = useState(true);
   const [hideMmproj, setHideMmproj] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [scanParams, setScanParams] = useState<ModelScanParams | null>(null);
+  const [addDirOpen, setAddDirOpen] = useState(false);
+  const [dirDraft, setDirDraft] = useState({ name: "", path: "" });
   const settingsQuery = useQuery({
     queryKey: ["model-scan-settings"],
     queryFn: getModelScanSettings,
   });
-  const scanned = useScannedModels(
-    scanParams?.directory ?? "",
-    scanParams?.maxDepth ?? 0,
-  );
+  const scanned = useScannedModels();
   const refreshModelsMutation = useMutation({
-    mutationFn: (params: ModelScanParams) =>
-      scanModels({ ...params, refresh: true }),
-    onSuccess: (result, params) => {
-      setScanParams(params);
-      queryClient.setQueryData(
-        ["models", params.directory, params.maxDepth],
-        result,
-      );
-      queryClient.setQueryData(
-        ["models", params.directory, params.maxDepth, "cache"],
-        result,
-      );
+    mutationFn: () => scanModels({ refresh: true }),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["models"], result);
+      queryClient.setQueryData(["models", "cache"], result);
     },
     onError: (error) => {
       notifications.show({
@@ -236,6 +234,7 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
       await queryClient.invalidateQueries({
         queryKey: ["model-scan-settings"],
       });
+      await queryClient.invalidateQueries({ queryKey: ["models"] });
       notifications.show({
         title: "Scanner settings saved",
         message: directory,
@@ -249,6 +248,45 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
       });
     },
   });
+  const addDirMutation = useMutation({
+    mutationFn: () =>
+      createPathCatalogEntry({
+        kind: "models-dir",
+        name: dirDraft.name.trim(),
+        path: dirDraft.path.trim(),
+      }),
+    onSuccess: async (result) => {
+      setAddDirOpen(false);
+      setDirDraft({ name: "", path: "" });
+      await queryClient.invalidateQueries({ queryKey: ["path-catalog"] });
+      await queryClient.invalidateQueries({ queryKey: ["models"] });
+      notifications.show({
+        title: "Model directory added",
+        message: result.data.name,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Model directory add failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+  const removeDirMutation = useMutation({
+    mutationFn: deletePathCatalogEntry,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["path-catalog"] });
+      await queryClient.invalidateQueries({ queryKey: ["models"] });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Model directory remove failed",
+        message: (error as Error).message,
+      });
+    },
+  });
   const settingsDirectory = settingsQuery.data?.data.directory;
   const settingsMaxDepth = settingsQuery.data?.data.maxDepth;
 
@@ -256,22 +294,15 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
     if (settingsDirectory && settingsMaxDepth !== undefined) {
       setDirectory(settingsDirectory);
       setMaxDepth(settingsMaxDepth);
-      setScanParams({
-        directory: settingsDirectory,
-        maxDepth: settingsMaxDepth,
-      });
     }
   }, [settingsDirectory, settingsMaxDepth]);
 
-  function requestScan(params: ModelScanParams) {
-    if (
-      scanParams?.directory === params.directory &&
-      scanParams.maxDepth === params.maxDepth
-    ) {
-      scanned.refetch();
+  function requestScan() {
+    if (directory !== settingsDirectory || maxDepth !== settingsMaxDepth) {
+      settingsMutation.mutate({ directory, maxDepth });
       return;
     }
-    setScanParams(params);
+    scanned.refetch();
   }
 
   function toggleExpanded(path: string) {
@@ -339,26 +370,16 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
               w={92}
             />
             <Button
-              aria-label="Save model scanner settings"
-              variant="light"
-              onClick={() => settingsMutation.mutate({ directory, maxDepth })}
-              loading={settingsMutation.isPending}
-            >
-              Save
-            </Button>
-            <Button
-              aria-label="Scan model directory"
-              onClick={() => requestScan({ directory, maxDepth })}
-              loading={scanned.reconciling}
+              aria-label="Scan model directories"
+              onClick={requestScan}
+              loading={scanned.reconciling || settingsMutation.isPending}
             >
               Scan
             </Button>
             <Button
               aria-label="Refresh model metadata"
               variant="subtle"
-              onClick={() =>
-                refreshModelsMutation.mutate({ directory, maxDepth })
-              }
+              onClick={() => refreshModelsMutation.mutate()}
               loading={scanned.reconciling || refreshModelsMutation.isPending}
             >
               Refresh metadata
@@ -371,6 +392,77 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
             {scanned.error.message}
           </Text>
         )}
+
+        <Paper withBorder p="sm" radius="sm">
+          <Stack gap="xs">
+            <Group justify="space-between" align="center">
+              <Text fw={600} size="sm">
+                Scanned directories
+              </Text>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<Plus size={14} />}
+                onClick={() => setAddDirOpen(true)}
+              >
+                Add directory
+              </Button>
+            </Group>
+            {scanned.roots.map((root) => {
+              const count = scanned.models.filter((model) =>
+                model.path.startsWith(`${root.path}/`),
+              ).length;
+              return (
+                <Group key={root.path} gap="xs" wrap="nowrap">
+                  <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+                    <Group gap="xs" wrap="wrap">
+                      <Text size="sm" fw={500}>
+                        {root.label}
+                      </Text>
+                      <Badge
+                        variant={
+                          root.source === "settings" ? "light" : "outline"
+                        }
+                        color={root.source === "llama-cache" ? "grape" : "blue"}
+                      >
+                        {rootSourceLabel(root)}
+                      </Badge>
+                      {!root.exists && (
+                        <Badge color="red" variant="light">
+                          missing
+                        </Badge>
+                      )}
+                      <Badge variant="outline" color="gray">
+                        {count} models
+                      </Badge>
+                    </Group>
+                    <Text c="dimmed" size="xs" className="text-wrap">
+                      {root.path}
+                    </Text>
+                  </Stack>
+                  {root.source === "catalog" && root.refId && (
+                    <Tooltip label="Remove from scan list">
+                      <ActionIcon
+                        aria-label={`Remove ${root.label}`}
+                        color="red"
+                        variant="subtle"
+                        loading={removeDirMutation.isPending}
+                        onClick={() => removeDirMutation.mutate(root.refId!)}
+                      >
+                        <Trash2 size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </Group>
+              );
+            })}
+            {scanned.roots.length === 0 && (
+              <Text c="dimmed" size="sm">
+                {scanned.coldLoading ? "Loading…" : "No directories configured"}
+              </Text>
+            )}
+          </Stack>
+        </Paper>
 
         <Group justify="space-between" align="flex-end" wrap="wrap">
           <TextInput
@@ -573,6 +665,44 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
           </Table>
         </Table.ScrollContainer>
       </Stack>
+
+      <Modal
+        opened={addDirOpen}
+        onClose={() => setAddDirOpen(false)}
+        title="Add model directory"
+      >
+        <Stack gap="sm">
+          <TextInput
+            label="Name"
+            placeholder="e.g. external-ssd"
+            value={dirDraft.name}
+            onChange={(event) => {
+              const name = event.currentTarget.value;
+              setDirDraft((current) => ({ ...current, name }));
+            }}
+          />
+          <PathPickerInput
+            label="Directory"
+            mode="directory"
+            value={dirDraft.path}
+            onChange={(path) =>
+              setDirDraft((current) => ({ ...current, path }))
+            }
+          />
+          <Group justify="flex-end" gap="xs">
+            <Button variant="subtle" onClick={() => setAddDirOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              loading={addDirMutation.isPending}
+              disabled={!dirDraft.name.trim() || !dirDraft.path.trim()}
+              onClick={() => addDirMutation.mutate()}
+            >
+              Add
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Paper>
   );
 }

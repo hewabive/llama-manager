@@ -29,7 +29,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createPreset,
   getLlamaArgumentDefaults,
-  getModelScanSettings,
   getPreset,
   getPresetsSettings,
   listPathCatalog,
@@ -91,10 +90,6 @@ export function PresetsView() {
     enabled: Boolean(selectedName),
     refetchOnWindowFocus: false,
   });
-  const modelSettingsQuery = useQuery({
-    queryKey: ["model-scan-settings"],
-    queryFn: getModelScanSettings,
-  });
   const argumentDefaultsQuery = useQuery({
     queryKey: ["llama-arg-defaults"],
     queryFn: getLlamaArgumentDefaults,
@@ -138,9 +133,7 @@ export function PresetsView() {
   );
   const document = documentQuery.data?.data ?? null;
   const presetDefaultArgs = argumentDefaultsQuery.data?.data.preset ?? [];
-  const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
-  const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
-  const scanned = useScannedModels(modelDirectory, modelMaxDepth);
+  const scanned = useScannedModels();
 
   useEffect(() => {
     selectedNameRef.current = selectedName;

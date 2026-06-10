@@ -2,8 +2,9 @@ import type {
   GgufMetadata,
   GgufModel,
   ModelScanResult,
+  ModelScanRoot,
 } from "@llama-manager/core";
-import { lstat, opendir, stat } from "node:fs/promises";
+import { opendir, stat } from "node:fs/promises";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import { config } from "../config.js";
@@ -254,26 +255,31 @@ function readDirectoryErrorMessage(directory: string, error: unknown) {
 }
 
 export async function scanModels(input: {
-  directory?: string;
+  roots: ModelScanRoot[];
   maxDepth?: number;
   refresh?: boolean;
 }): Promise<ModelScanResult> {
-  const directory = resolve(input.directory || defaultModelsDirectory);
   const maxDepth = Math.max(
     0,
     Math.min(input.maxDepth ?? DEFAULT_MAX_DEPTH, 16),
   );
-  let targetStat;
-  try {
-    targetStat = await lstat(directory);
-  } catch (error) {
-    throw new Error(readDirectoryErrorMessage(directory, error));
-  }
-  if (!targetStat.isDirectory()) {
-    throw new Error(`Model scan target is not a directory: ${directory}`);
+
+  const found: FoundFile[] = [];
+  const seenPaths = new Set<string>();
+  for (const root of input.roots) {
+    if (!root.exists) {
+      continue;
+    }
+    for (const file of await walk(resolve(root.path), maxDepth)) {
+      if (seenPaths.has(file.path)) {
+        continue;
+      }
+      seenPaths.add(file.path);
+      found.push(file);
+    }
   }
 
-  const files = collapseSplitFiles(await walk(directory, maxDepth));
+  const files = collapseSplitFiles(found);
   const mmprojByDir = new Map<string, string[]>();
   for (const file of files) {
     if (file.name.toLowerCase().includes("mmproj")) {
@@ -355,7 +361,7 @@ export async function scanModels(input: {
   }
 
   return {
-    directory,
+    roots: input.roots,
     models: models.sort(compareModelNames),
     scannedAt: new Date().toISOString(),
     cache: {
@@ -375,16 +381,17 @@ function isUnderDirectory(path: string, directory: string, maxDepth: number) {
 }
 
 export function scanModelsFromCache(input: {
-  directory?: string;
+  roots: ModelScanRoot[];
   maxDepth?: number;
 }): ModelScanResult {
-  const directory = resolve(input.directory || defaultModelsDirectory);
   const maxDepth = Math.max(
     0,
     Math.min(input.maxDepth ?? DEFAULT_MAX_DEPTH, 16),
   );
   const scoped = listAllCachedModels().filter((model) =>
-    isUnderDirectory(model.path, directory, maxDepth),
+    input.roots.some((root) =>
+      isUnderDirectory(model.path, resolve(root.path), maxDepth),
+    ),
   );
 
   const mmprojByDir = new Map<string, string[]>();
@@ -406,7 +413,7 @@ export function scanModelsFromCache(input: {
     .sort(compareModelNames);
 
   return {
-    directory,
+    roots: input.roots,
     models,
     scannedAt: "",
     cache: { hits: scoped.length, misses: 0 },

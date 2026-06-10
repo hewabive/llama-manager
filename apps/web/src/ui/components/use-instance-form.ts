@@ -16,7 +16,6 @@ import {
   getDefaultLlamaServerBinary,
   getLlamaArgumentDefaults,
   getLlamaArguments,
-  getModelScanSettings,
   getSystemResources,
   instanceAction,
   listPathCatalog,
@@ -119,14 +118,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     },
   });
   const isEdit = Boolean(props.instance);
-  const modelSettingsQuery = useQuery({
-    queryKey: ["model-scan-settings"],
-    queryFn: getModelScanSettings,
-    enabled: props.opened,
-  });
-  const modelDirectory = modelSettingsQuery.data?.data.directory ?? "";
-  const modelMaxDepth = modelSettingsQuery.data?.data.maxDepth ?? 8;
-  const scanned = useScannedModels(modelDirectory, modelMaxDepth, {
+  const scanned = useScannedModels({
     enabled: props.opened,
   });
   const pathCatalogQuery = useQuery({
@@ -297,6 +289,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     return options;
   }, [presetsQuery.data?.data, selectedPresetName]);
   const hostValue = rowValue(argRows, "--host") || "127.0.0.1";
+  const mmprojValue = rowValue(argRows, "--mmproj");
   const hfRepoValue = rowValue(argRows, "--hf-repo");
   const hfFileValue = rowValue(argRows, "--hf-file");
   const modelUrlValue = rowValue(argRows, "--model-url");
@@ -568,6 +561,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setArgRows((rows) =>
         removeArgRows(rows, [
           "--model",
+          "--mmproj",
           "--models-preset",
           "--models-max",
           "--models-autoload",
@@ -664,6 +658,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     setArgRows((rows) => {
       let next = removeArgRows(rows, [
         "--model",
+        "--mmproj",
         "--hf-repo",
         "--hf-file",
         "--model-url",
@@ -698,6 +693,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   }
 
   function applyModelSelection(modelPath: string | null) {
+    const modelChanged = modelPath !== selectedModelPath;
     setLaunchMode("model");
     setSelectedModelPath(modelPath);
     setSelectedPresetName(null);
@@ -714,6 +710,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         "--hf-file",
         "--model-url",
         "--mmproj-url",
+        ...(modelChanged ? ["--mmproj"] : []),
       ]);
       return next;
     });
@@ -775,6 +772,15 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       trimmed
         ? upsertArgRow(rows, "--model", trimmed, "string")
         : removeArgRow(rows, "--model"),
+    );
+  }
+
+  function applyMmprojSelection(value: string | null) {
+    const trimmed = (value ?? "").trim();
+    setArgRows((rows) =>
+      trimmed
+        ? upsertArgRow(rows, "--mmproj", trimmed, "string")
+        : removeArgRow(rows, "--mmproj"),
     );
   }
 
@@ -1072,6 +1078,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     selectedModelPath,
     applyModelSelection,
     modelOptions,
+    mmprojValue,
+    applyMmprojSelection,
     remoteSource,
     applyRemoteSource,
     hfRepoValue,

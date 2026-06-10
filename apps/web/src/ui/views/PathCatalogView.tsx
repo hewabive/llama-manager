@@ -21,7 +21,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Pencil, Plus, Save, Server, Trash2 } from "lucide-react";
+import { Copy, Folder, Pencil, Plus, Save, Server, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -47,26 +47,22 @@ type EditorState =
 type KindFilter = PathCatalogKind | "all";
 
 const emptyDraft: Draft = { name: "", path: "" };
-const pathKinds: PathCatalogKind[] = ["binary"];
+const pathKinds: PathCatalogKind[] = ["binary", "models-dir"];
 
-function kindTitle(_kind: PathCatalogKind) {
-  return "Binary paths";
+function kindTitle(kind: PathCatalogKind) {
+  return kind === "binary" ? "Binary paths" : "Model directories";
 }
 
-function kindLabel(_kind: PathCatalogKind) {
-  return "binary";
+function kindLabel(kind: PathCatalogKind) {
+  return kind === "binary" ? "binary" : "models dir";
 }
 
-function pickerFilter(_kind: PathCatalogKind): "binary" {
-  return "binary";
+function kindColor(kind: PathCatalogKind) {
+  return kind === "binary" ? "blue" : "teal";
 }
 
-function kindColor(_kind: PathCatalogKind) {
-  return "blue";
-}
-
-function kindIcon(_kind: PathCatalogKind) {
-  return <Server size={18} />;
+function kindIcon(kind: PathCatalogKind) {
+  return kind === "binary" ? <Server size={18} /> : <Folder size={18} />;
 }
 
 function entryMatchesSearch(
@@ -124,6 +120,7 @@ export function PathCatalogView() {
   const counts = useMemo(
     () => ({
       binary: entries.filter((entry) => entry.kind === "binary").length,
+      modelsDir: entries.filter((entry) => entry.kind === "models-dir").length,
       linked: entries.filter(
         (entry) => (usageByEntry.get(entry.id) ?? []).length > 0,
       ).length,
@@ -147,6 +144,9 @@ export function PathCatalogView() {
   const entriesByKind = useMemo(
     () => ({
       binary: filteredEntries.filter((entry) => entry.kind === "binary"),
+      "models-dir": filteredEntries.filter(
+        (entry) => entry.kind === "models-dir",
+      ),
     }),
     [filteredEntries],
   );
@@ -417,6 +417,9 @@ export function PathCatalogView() {
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <Group gap="xs" wrap="wrap">
             <Badge variant="light">{counts.binary} binaries</Badge>
+            <Badge variant="light" color="teal">
+              {counts.modelsDir} model dirs
+            </Badge>
             <Badge variant="outline">{counts.linked} linked</Badge>
           </Group>
           <Group gap="xs" wrap="wrap">
@@ -426,6 +429,14 @@ export function PathCatalogView() {
               onClick={() => openCreate("binary")}
             >
               Add binary
+            </Button>
+            <Button
+              variant="light"
+              color="teal"
+              leftSection={<Plus size={16} />}
+              onClick={() => openCreate("models-dir")}
+            >
+              Add model directory
             </Button>
           </Group>
         </Group>
@@ -446,6 +457,7 @@ export function PathCatalogView() {
             data={[
               { value: "all", label: "All" },
               { value: "binary", label: "Binary" },
+              { value: "models-dir", label: "Model dirs" },
             ]}
           />
         </Group>
@@ -477,8 +489,8 @@ export function PathCatalogView() {
           />
           <PathPickerInput
             label="Path"
-            mode="file"
-            filter={editor ? pickerFilter(editor.kind) : "any"}
+            mode={editor?.kind === "models-dir" ? "directory" : "file"}
+            filter={editor?.kind === "binary" ? "binary" : "any"}
             value={draft.path}
             onChange={(path) =>
               setDraft((current) => ({

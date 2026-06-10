@@ -5,27 +5,23 @@ import {
   getModelScanSettings,
   saveModelScanSettings,
 } from "../models/cache-repository.js";
-import {
-  defaultModelsDirectory,
-  scanModels,
-  scanModelsFromCache,
-} from "../models/scanner.js";
+import { listModelScanRoots } from "../models/roots.js";
+import { scanModels, scanModelsFromCache } from "../models/scanner.js";
 
 export function registerModelRoutes(app: Hono) {
   app.get("/api/models", async (c) => {
     try {
       const settings = getModelScanSettings();
       const maxDepth = Number(c.req.query("maxDepth") ?? settings.maxDepth);
-      const directory =
-        c.req.query("dir") ?? settings.directory ?? defaultModelsDirectory;
       const resolvedMaxDepth = Number.isFinite(maxDepth) ? maxDepth : 8;
+      const roots = listModelScanRoots();
       if (c.req.query("cached") === "true") {
         return c.json({
-          data: scanModelsFromCache({ directory, maxDepth: resolvedMaxDepth }),
+          data: scanModelsFromCache({ roots, maxDepth: resolvedMaxDepth }),
         });
       }
       const result = await scanModels({
-        directory,
+        roots,
         maxDepth: resolvedMaxDepth,
         refresh: c.req.query("refresh") === "true",
       });

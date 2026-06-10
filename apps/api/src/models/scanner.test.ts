@@ -1,36 +1,37 @@
+import type { ModelScanRoot } from "@llama-manager/core";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { scanModels, scanModelsFromCache } from "./scanner.js";
 
-test("scanModels reports a friendly error for a missing directory", async () => {
+function root(path: string): ModelScanRoot {
+  return {
+    path,
+    label: "test",
+    source: "settings",
+    refId: null,
+    exists: existsSync(path),
+  };
+}
+
+test("scanModels skips roots that do not exist", async () => {
   const missing = join(
     tmpdir(),
     `llama-manager-missing-model-dir-${Date.now()}`,
   );
 
-  await assert.rejects(
-    () => scanModels({ directory: missing }),
-    new RegExp(`Directory does not exist: ${missing}`),
-  );
-});
-
-test("scanModels reports a friendly error when target is a file", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-scan-"));
-  const file = join(dir, "model.gguf");
-
-  try {
-    writeFileSync(file, "");
-    await assert.rejects(
-      () => scanModels({ directory: file }),
-      new RegExp(`Model scan target is not a directory: ${file}`),
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const result = await scanModels({ roots: [root(missing)], refresh: true });
+  assert.deepEqual(result.models, []);
+  assert.equal(result.roots[0]?.exists, false);
 });
 
 test("scanModels collapses split GGUF shards into a single model", async () => {
@@ -45,7 +46,7 @@ test("scanModels collapses split GGUF shards into a single model", async () => {
     writeFileSync(join(dir, "alpha-00003-of-00003.gguf"), "ccc");
     writeFileSync(join(dir, "beta.gguf"), "dddd");
 
-    const result = await scanModels({ directory: dir, refresh: true });
+    const result = await scanModels({ roots: [root(dir)], refresh: true });
 
     assert.deepEqual(
       result.models.map((model) => model.name),
@@ -57,7 +58,30 @@ test("scanModels collapses split GGUF shards into a single model", async () => {
   }
 });
 
-test("scanModelsFromCache returns cached models scoped by directory and depth", async () => {
+test("scanModels merges multiple roots and dedupes nested ones", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-scan-"));
+
+  try {
+    const nested = join(dir, "sub");
+    mkdirSync(nested);
+    writeFileSync(join(dir, "top.gguf"), "a");
+    writeFileSync(join(nested, "deep.gguf"), "bb");
+
+    const result = await scanModels({
+      roots: [root(dir), root(nested)],
+      refresh: true,
+    });
+
+    assert.deepEqual(result.models.map((model) => model.name).sort(), [
+      "deep.gguf",
+      "top.gguf",
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scanModelsFromCache returns cached models scoped by roots and depth", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-model-cache-scan-"));
 
   try {
@@ -65,16 +89,16 @@ test("scanModelsFromCache returns cached models scoped by directory and depth", 
     mkdirSync(nested);
     writeFileSync(join(dir, "top.gguf"), "a");
     writeFileSync(join(nested, "deep.gguf"), "bb");
-    await scanModels({ directory: dir, maxDepth: 4, refresh: true });
+    await scanModels({ roots: [root(dir)], maxDepth: 4, refresh: true });
 
-    const full = scanModelsFromCache({ directory: dir, maxDepth: 4 });
+    const full = scanModelsFromCache({ roots: [root(dir)], maxDepth: 4 });
     assert.equal(full.fromCache, true);
     assert.deepEqual(full.models.map((model) => model.name).sort(), [
       "deep.gguf",
       "top.gguf",
     ]);
 
-    const shallow = scanModelsFromCache({ directory: dir, maxDepth: 0 });
+    const shallow = scanModelsFromCache({ roots: [root(dir)], maxDepth: 0 });
     assert.deepEqual(
       shallow.models.map((model) => model.name),
       ["top.gguf"],

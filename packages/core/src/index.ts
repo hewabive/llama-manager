@@ -19,7 +19,7 @@ const InstanceNameSchema = z
 const InstancePathSchema = z.string().min(1);
 const PathCatalogIdSchema = z.string().min(1);
 
-export const PathCatalogKindSchema = z.enum(["binary"]);
+export const PathCatalogKindSchema = z.enum(["binary", "models-dir"]);
 
 export const PresetNameSchema = z
   .string()
@@ -1905,8 +1905,22 @@ export const GgufModelSchema = z.object({
   error: z.string().optional(),
 });
 
+export const ModelScanRootSourceSchema = z.enum([
+  "settings",
+  "catalog",
+  "llama-cache",
+]);
+
+export const ModelScanRootSchema = z.object({
+  path: z.string(),
+  label: z.string(),
+  source: ModelScanRootSourceSchema,
+  refId: z.string().nullable(),
+  exists: z.boolean(),
+});
+
 export const ModelScanResultSchema = z.object({
-  directory: z.string(),
+  roots: z.array(ModelScanRootSchema),
   models: z.array(GgufModelSchema),
   scannedAt: z.string(),
   cache: z.object({
@@ -2272,6 +2286,8 @@ export type ExternalProcessKillResult = z.infer<
 >;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
+export type ModelScanRootSource = z.infer<typeof ModelScanRootSourceSchema>;
+export type ModelScanRoot = z.infer<typeof ModelScanRootSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;
 export type ModelScanSettings = z.infer<typeof ModelScanSettingsSchema>;
 export type ModelPresetEntry = z.infer<typeof ModelPresetEntrySchema>;

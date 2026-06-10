@@ -19,6 +19,7 @@ import {
 } from "@mantine/core";
 import { useEffect, useState } from "react";
 
+import { MmprojSelect } from "../../components/MmprojSelect";
 import { PathPickerInput } from "../../components/PathPickerInput";
 import {
   type PresetEntrySource,
@@ -193,32 +194,32 @@ export function PresetEntryDetailModal(props: {
             }
           />
 
-          <SegmentedControl
-            value={source}
-            onChange={(value) => applySource(value as PresetEntrySource)}
-            data={[
-              { value: "local", label: "Local file" },
-              { value: "hf", label: "HuggingFace" },
-              { value: "url", label: "Direct URL" },
-            ]}
-            fullWidth
-          />
+          {source !== "local" && (
+            <SegmentedControl
+              value={source}
+              onChange={(value) => applySource(value as PresetEntrySource)}
+              data={[
+                { value: "hf", label: "HuggingFace" },
+                { value: "url", label: "Direct URL" },
+              ]}
+              fullWidth
+            />
+          )}
 
           {source === "local" && (
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-              <PathPickerInput
-                label="Model path"
-                mode="file"
-                filter="model"
-                value={draft.modelPath}
-                onChange={(value) => updateDraft({ modelPath: value })}
-              />
-              <PathPickerInput
-                label="mmproj"
-                mode="file"
-                filter="model"
-                value={draft.mmprojPath ?? ""}
-                onChange={(value) => updateDraft({ mmprojPath: value || null })}
+              <Stack gap={2}>
+                <Text size="sm" fw={500}>
+                  Model path
+                </Text>
+                <Text c="dimmed" size="xs" className="text-wrap">
+                  {draft.modelPath || "—"}
+                </Text>
+              </Stack>
+              <MmprojSelect
+                mmprojPaths={props.model?.mmprojPaths ?? []}
+                value={draft.mmprojPath}
+                onChange={(value) => updateDraft({ mmprojPath: value })}
               />
             </SimpleGrid>
           )}

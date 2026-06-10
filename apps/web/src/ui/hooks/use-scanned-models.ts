@@ -1,4 +1,8 @@
-import type { GgufModel, ModelScanResult } from "@llama-manager/core";
+import type {
+  GgufModel,
+  ModelScanResult,
+  ModelScanRoot,
+} from "@llama-manager/core";
 import {
   keepPreviousData,
   useQuery,
@@ -9,7 +13,7 @@ import { scanModels } from "../../api/client";
 
 export type ScannedModels = {
   models: GgufModel[];
-  directory: string;
+  roots: ModelScanRoot[];
   scannedAt: string;
   ready: boolean;
   reconciling: boolean;
@@ -21,30 +25,25 @@ export type ScannedModels = {
   refetch: () => void;
 };
 
-export function useScannedModels(
-  directory: string,
-  maxDepth: number,
-  options?: { enabled?: boolean },
-): ScannedModels {
+export function useScannedModels(options?: {
+  enabled?: boolean;
+}): ScannedModels {
   const queryClient = useQueryClient();
-  const enabled = directory !== "" && (options?.enabled ?? true);
+  const enabled = options?.enabled ?? true;
 
   const cachedQuery = useQuery({
-    queryKey: ["models", directory, maxDepth, "cache"],
-    queryFn: () => scanModels({ directory, maxDepth, cached: true }),
+    queryKey: ["models", "cache"],
+    queryFn: () => scanModels({ cached: true }),
     enabled,
     retry: false,
     staleTime: Infinity,
   });
 
   const liveQuery = useQuery({
-    queryKey: ["models", directory, maxDepth],
+    queryKey: ["models"],
     queryFn: async () => {
-      const result = await scanModels({ directory, maxDepth });
-      queryClient.setQueryData(
-        ["models", directory, maxDepth, "cache"],
-        result,
-      );
+      const result = await scanModels();
+      queryClient.setQueryData(["models", "cache"], result);
       return result;
     },
     enabled,
@@ -59,7 +58,7 @@ export function useScannedModels(
 
   return {
     models: effective?.models ?? [],
-    directory,
+    roots: effective?.roots ?? [],
     scannedAt: effective?.scannedAt ?? "",
     ready: Boolean(effective),
     reconciling: liveQuery.isFetching,

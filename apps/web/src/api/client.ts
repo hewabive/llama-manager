@@ -529,16 +529,16 @@ export async function getBuildJobLogs(id: string, lines = 200) {
   );
 }
 
-export async function scanModels(
-  input: ModelScanSettings & { refresh?: boolean; cached?: boolean },
-) {
+export async function scanModels(input?: {
+  refresh?: boolean;
+  cached?: boolean;
+}) {
   const params = new URLSearchParams({
-    dir: input.directory,
-    maxDepth: String(input.maxDepth),
-    ...(input.refresh ? { refresh: "true" } : {}),
-    ...(input.cached ? { cached: "true" } : {}),
+    ...(input?.refresh ? { refresh: "true" } : {}),
+    ...(input?.cached ? { cached: "true" } : {}),
   });
-  return request<{ data: ModelScanResult }>(`/api/models?${params.toString()}`);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return request<{ data: ModelScanResult }>(`/api/models${query}`);
 }
 
 export async function getModelScanSettings() {

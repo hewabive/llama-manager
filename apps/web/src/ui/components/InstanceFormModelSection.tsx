@@ -14,6 +14,7 @@ import {
 import { formatBytes } from "../utils/models";
 import { HostPicker } from "./HostPicker";
 import { upsertArgRow } from "./InstanceArgumentRows";
+import { MmprojSelect } from "./MmprojSelect";
 import { PathPickerInput } from "./PathPickerInput";
 import { TouchSelect } from "./TouchCombobox";
 import { type LaunchMode, type RemoteSource } from "./instance-form-helpers";
@@ -39,32 +40,37 @@ export function InstanceFormModelSection({
         />
         {fm.launchMode === "model" ? (
           <>
-            <TouchSelect
-              label="Model"
-              placeholder={
-                fm.scanned.coldLoading
-                  ? "Loading models..."
-                  : "Select GGUF model"
-              }
-              searchable
-              clearable
-              value={fm.selectedModelPath}
-              onChange={fm.applyModelSelection}
-              data={fm.modelOptions}
-              nothingFoundMessage={
-                fm.scanned.isError && fm.scanned.error
-                  ? fm.scanned.error.message
-                  : fm.scanned.coldLoading
+            <Stack gap={2}>
+              <TouchSelect
+                label="Model"
+                placeholder={
+                  fm.scanned.coldLoading
                     ? "Loading models..."
-                    : "No models found"
-              }
-            />
-            <PathPickerInput
-              label="Model path"
-              mode="file"
-              filter="model"
-              value={fm.selectedModelPath ?? ""}
-              onChange={fm.applyModelSelection}
+                    : "Select GGUF model"
+                }
+                searchable
+                clearable
+                value={fm.selectedModelPath}
+                onChange={fm.applyModelSelection}
+                data={fm.modelOptions}
+                nothingFoundMessage={
+                  fm.scanned.isError && fm.scanned.error
+                    ? fm.scanned.error.message
+                    : fm.scanned.coldLoading
+                      ? "Loading models..."
+                      : "No models found"
+                }
+              />
+              {fm.selectedModelPath && (
+                <Text c="dimmed" size="xs" className="text-wrap">
+                  {fm.selectedModelPath}
+                </Text>
+              )}
+            </Stack>
+            <MmprojSelect
+              mmprojPaths={fm.selectedModel?.mmprojPaths ?? []}
+              value={fm.mmprojValue || null}
+              onChange={fm.applyMmprojSelection}
             />
           </>
         ) : fm.launchMode === "remote" ? (
