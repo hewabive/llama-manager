@@ -1012,137 +1012,141 @@ export function StatsSection(props: StatsSectionProps) {
             <Text fw={600} size="sm">
               Recent requests
             </Text>
-            <Table
-              striped
-              withTableBorder
-              fz="xs"
-              styles={{ th: { verticalAlign: "top" } }}
-            >
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Time</Table.Th>
-                  <Table.Th>Source</Table.Th>
-                  <Table.Th>API</Table.Th>
-                  <Table.Th>Type</Table.Th>
-                  <Table.Th>Stream</Table.Th>
-                  <Table.Th>Model</Table.Th>
-                  <Table.Th>Target</Table.Th>
-                  <Table.Th>Route</Table.Th>
-                  <Table.Th>Slot</Table.Th>
-                  <Table.Th>Actions</Table.Th>
-                  <Table.Th>
-                    <TwoLineHeader title="Tokens" hint="in/out" />
-                  </Table.Th>
-                  <Table.Th>
-                    <TwoLineHeader title="Cache" hint="read/new" />
-                  </Table.Th>
-                  <Table.Th>Rate</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>ms</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {props.traces.slice(0, 50).map((trace) => (
-                  <Table.Tr key={trace.id}>
-                    <Table.Td>{formatLocalDateTime(trace.at)}</Table.Td>
-                    <Table.Td>
-                      {trace.sourceName ? (
-                        <Badge color="grape" variant="light">
-                          {trace.sourceName}
-                        </Badge>
-                      ) : (
-                        <Text size="xs" c="dimmed">
-                          anonymous
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge
-                        color={traceProtocolColor(trace.protocol)}
-                        variant="light"
-                      >
-                        {trace.translated
-                          ? `${trace.protocol} → openai`
-                          : trace.protocol}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Tooltip label={trace.routePath}>
-                        <Text size="xs">
-                          {formatTraceEndpoint(trace.endpoint)}
-                        </Text>
-                      </Tooltip>
-                    </Table.Td>
-                    <Table.Td>
-                      {trace.stream === null ? (
-                        "—"
-                      ) : (
+            <Table.ScrollContainer minWidth={1180}>
+              <Table
+                striped
+                withTableBorder
+                fz="xs"
+                styles={{ th: { verticalAlign: "top" } }}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Time</Table.Th>
+                    <Table.Th>Source</Table.Th>
+                    <Table.Th>API</Table.Th>
+                    <Table.Th>Type</Table.Th>
+                    <Table.Th>Stream</Table.Th>
+                    <Table.Th>Model</Table.Th>
+                    <Table.Th>Target</Table.Th>
+                    <Table.Th>Route</Table.Th>
+                    <Table.Th>Slot</Table.Th>
+                    <Table.Th>Actions</Table.Th>
+                    <Table.Th>
+                      <TwoLineHeader title="Tokens" hint="in/out" />
+                    </Table.Th>
+                    <Table.Th>
+                      <TwoLineHeader title="Cache" hint="read/new" />
+                    </Table.Th>
+                    <Table.Th>Rate</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>ms</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {props.traces.slice(0, 50).map((trace) => (
+                    <Table.Tr key={trace.id}>
+                      <Table.Td>{formatLocalDateTime(trace.at)}</Table.Td>
+                      <Table.Td>
+                        {trace.sourceName ? (
+                          <Badge color="grape" variant="light">
+                            {trace.sourceName}
+                          </Badge>
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            anonymous
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
                         <Badge
-                          color={trace.stream ? "teal" : "gray"}
+                          color={traceProtocolColor(trace.protocol)}
                           variant="light"
                         >
-                          {trace.stream ? "stream" : "single"}
+                          {trace.translated
+                            ? `${trace.protocol} → openai`
+                            : trace.protocol}
                         </Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>{trace.modelId || "—"}</Table.Td>
-                    <Table.Td>{trace.targetName ?? "—"}</Table.Td>
-                    <Table.Td>
-                      <RouteTraceCell trace={trace} />
-                    </Table.Td>
-                    <Table.Td>
-                      <SlotCell trace={trace} />
-                    </Table.Td>
-                    <Table.Td>
-                      {trace.schedulerActions.length > 0 ? (
-                        <Tooltip label={trace.schedulerActions.join(", ")}>
-                          <Text size="xs">{trace.schedulerActions.length}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Tooltip label={trace.routePath}>
+                          <Text size="xs">
+                            {formatTraceEndpoint(trace.endpoint)}
+                          </Text>
                         </Tooltip>
-                      ) : (
-                        "—"
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <TokensCell usage={trace.usage} />
-                    </Table.Td>
-                    <Table.Td>
-                      <CacheCell usage={trace.usage} />
-                    </Table.Td>
-                    <Table.Td>
-                      {trace.usage
-                        ? formatRate(trace.usage.ratePerSecond)
-                        : "—"}
-                    </Table.Td>
-                    <Table.Td>
-                      {trace.errorMessage ? (
-                        <Tooltip
-                          label={trace.errorMessage}
-                          multiline
-                          maw={420}
-                          withArrow
-                        >
+                      </Table.Td>
+                      <Table.Td>
+                        {trace.stream === null ? (
+                          "—"
+                        ) : (
+                          <Badge
+                            color={trace.stream ? "teal" : "gray"}
+                            variant="light"
+                          >
+                            {trace.stream ? "stream" : "single"}
+                          </Badge>
+                        )}
+                      </Table.Td>
+                      <Table.Td>{trace.modelId || "—"}</Table.Td>
+                      <Table.Td>{trace.targetName ?? "—"}</Table.Td>
+                      <Table.Td>
+                        <RouteTraceCell trace={trace} />
+                      </Table.Td>
+                      <Table.Td>
+                        <SlotCell trace={trace} />
+                      </Table.Td>
+                      <Table.Td>
+                        {trace.schedulerActions.length > 0 ? (
+                          <Tooltip label={trace.schedulerActions.join(", ")}>
+                            <Text size="xs">
+                              {trace.schedulerActions.length}
+                            </Text>
+                          </Tooltip>
+                        ) : (
+                          "—"
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <TokensCell usage={trace.usage} />
+                      </Table.Td>
+                      <Table.Td>
+                        <CacheCell usage={trace.usage} />
+                      </Table.Td>
+                      <Table.Td>
+                        {trace.usage
+                          ? formatRate(trace.usage.ratePerSecond)
+                          : "—"}
+                      </Table.Td>
+                      <Table.Td>
+                        {trace.errorMessage ? (
+                          <Tooltip
+                            label={trace.errorMessage}
+                            multiline
+                            maw={420}
+                            withArrow
+                          >
+                            <Badge
+                              color={trace.ok ? "green" : "red"}
+                              variant="light"
+                              style={{ cursor: "help" }}
+                            >
+                              {trace.status}
+                            </Badge>
+                          </Tooltip>
+                        ) : (
                           <Badge
                             color={trace.ok ? "green" : "red"}
                             variant="light"
-                            style={{ cursor: "help" }}
                           >
                             {trace.status}
                           </Badge>
-                        </Tooltip>
-                      ) : (
-                        <Badge
-                          color={trace.ok ? "green" : "red"}
-                          variant="light"
-                        >
-                          {trace.status}
-                        </Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>{trace.durationMs}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                        )}
+                      </Table.Td>
+                      <Table.Td>{trace.durationMs}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           </Stack>
         )}
       </Stack>
