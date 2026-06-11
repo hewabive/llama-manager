@@ -293,6 +293,31 @@ test("summarizeInstanceLog keeps router connection errors after readiness", asyn
   }
 });
 
+test("summarizeInstanceLog ignores per-request context size overflow errors", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.01.273.782 I srv  llama_server: model loaded",
+        "0.01.273.793 I srv  llama_server: server is listening on http://127.0.0.1:9002",
+        "0.39.544.530 E srv    send_error: task id = 4, error: request (23182 tokens) exceeds the available context size (16384 tokens), try increasing it",
+      ].join("\n"),
+    );
+
+    const summary = await summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.ready, true);
+    assert.deepEqual(summary.errors, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("summarizeInstanceLog ignores the multimodal capability probe failure", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");

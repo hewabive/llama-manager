@@ -131,6 +131,12 @@ function isMultimodalCapabilityProbeFailure(line: string) {
   );
 }
 
+function isRequestExceedsContextSizeError(line: string) {
+  return /^E\s+srv\s+send_error:.*\bexceeds the available context size\b/i.test(
+    withoutLlamaTimestamp(line),
+  );
+}
+
 function errorLines(lines: string[], limit: number) {
   const lastReadyIndex = lastIndex(lines, READY_LOG_PATTERN);
   return interestingLinesByPredicate(
@@ -140,6 +146,9 @@ function errorLines(lines: string[], limit: number) {
         return false;
       }
       if (isMultimodalCapabilityProbeFailure(line)) {
+        return false;
+      }
+      if (isRequestExceedsContextSizeError(line)) {
         return false;
       }
       return !(
