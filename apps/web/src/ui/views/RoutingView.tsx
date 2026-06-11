@@ -64,6 +64,7 @@ import {
 } from "../proxy/sections";
 import { TestBench } from "../proxy/TestBench";
 import { Topology } from "../proxy/Topology";
+import { computeProxyUsage } from "../proxy/usage";
 import { useHashSubpath } from "../routing";
 
 const newPipelineSubpath = "new";
@@ -149,6 +150,10 @@ export function RoutingView() {
   const pipelineById = useMemo(
     () => new Map(pipelines.map((pipeline) => [pipeline.id, pipeline])),
     [pipelines],
+  );
+  const proxyUsage = useMemo(
+    () => computeProxyUsage(models, pipelines),
+    [models, pipelines],
   );
   const instanceOptions = useMemo(
     () =>
@@ -616,6 +621,7 @@ export function RoutingView() {
             pipelines={pipelines}
             pipelineById={pipelineById}
             targetById={targetById}
+            usageByPipelineId={proxyUsage.byPipelineId}
             deletePending={deletePipelineMutation.isPending}
             onEdit={(pipeline) => openPipeline(pipeline.id)}
             onDelete={(id) => deletePipelineMutation.mutate(id)}
@@ -624,6 +630,7 @@ export function RoutingView() {
           <ProxyTargetsSection
             targets={targets}
             endpointById={endpointById}
+            usageByTargetId={proxyUsage.byTargetId}
             instanceOptions={instanceOptions}
             runtimeByTargetId={runtimeByTargetId}
             runtimeRefreshing={runtimeQuery.isFetching}

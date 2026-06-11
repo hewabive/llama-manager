@@ -17,6 +17,7 @@ import {
   SchedulerSection,
   StatsSection,
 } from "../proxy/sections";
+import { computeProxyUsage } from "../proxy/usage";
 
 export function ProxyView() {
   const [requestTargetId, setRequestTargetId] = useState<string | null>(null);
@@ -54,6 +55,12 @@ export function ProxyView() {
   const config = proxyQuery.data?.data;
   const targets = config?.targets ?? [];
   const endpoints = config?.endpoints ?? [];
+  const models = config?.models ?? [];
+  const pipelines = config?.pipelines ?? [];
+  const proxyUsage = useMemo(
+    () => computeProxyUsage(models, pipelines),
+    [models, pipelines],
+  );
   const endpointById = useMemo(
     () => new Map(endpoints.map((endpoint) => [endpoint.id, endpoint])),
     [endpoints],
@@ -123,6 +130,7 @@ export function ProxyView() {
       <ProxyTargetsSection
         targets={targets}
         endpointById={endpointById}
+        usageByTargetId={proxyUsage.byTargetId}
         instanceOptions={instanceOptions}
         runtimeByTargetId={runtimeByTargetId}
         runtimeRefreshing={runtimeQuery.isFetching}

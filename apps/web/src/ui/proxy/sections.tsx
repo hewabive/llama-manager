@@ -43,10 +43,11 @@ import {
   Workflow,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import { getApiProxyRequestFile } from "../../api/client";
 import { modelDirectTargetId } from "./forms";
+import type { ProxyUsageRef } from "./usage";
 import { JsonTreeView } from "../components/JsonTreeView";
 import { TouchSelect } from "../components/TouchCombobox";
 import { formatBytes } from "../utils/models";
@@ -293,6 +294,57 @@ function routeToLabel(
   return pipelineById.get(routeTo.id)?.name ?? routeTo.id;
 }
 
+function usageRefTooltip(ref: ProxyUsageRef): string | null {
+  const parts: string[] = [];
+  if (ref.via.length > 0) {
+    parts.push(`via ${ref.via.join(", ")}`);
+  }
+  if (!ref.enabled) {
+    parts.push("referrer disabled");
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+export function UsedByCell(props: { refs: ProxyUsageRef[] | undefined }) {
+  const refs = props.refs ?? [];
+  if (refs.length === 0) {
+    return (
+      <Badge color="gray" variant="outline">
+        unused
+      </Badge>
+    );
+  }
+  return (
+    <Group gap={4} wrap="wrap">
+      {refs.map((ref) => {
+        const tooltip = usageRefTooltip(ref);
+        const badge =
+          ref.kind === "pipeline" ? (
+            <Badge
+              variant="light"
+              color={ref.enabled ? "teal" : "gray"}
+              component="a"
+              href={`#/routing/${ref.id}`}
+              style={{ cursor: "pointer" }}
+              leftSection={<Workflow size={10} />}
+            >
+              {ref.label}
+            </Badge>
+          ) : (
+            <Badge variant="light" color={ref.enabled ? "blue" : "gray"}>
+              {ref.label}
+            </Badge>
+          );
+        return (
+          <Fragment key={`${ref.kind}-${ref.id}`}>
+            {tooltip ? <Tooltip label={tooltip}>{badge}</Tooltip> : badge}
+          </Fragment>
+        );
+      })}
+    </Group>
+  );
+}
+
 function pipelineEntryLabel(
   entry: ApiProxyPipelineRecord["entry"],
   targetById: Map<string, ApiProxyTargetRecord>,
@@ -318,6 +370,7 @@ type PipelinesSectionProps = {
   pipelines: ApiProxyPipelineRecord[];
   pipelineById: Map<string, ApiProxyPipelineRecord>;
   targetById: Map<string, ApiProxyTargetRecord>;
+  usageByPipelineId: Map<string, ProxyUsageRef[]>;
   deletePending: boolean;
   onEdit: (pipeline: ApiProxyPipelineRecord) => void;
   onDelete: (id: string) => void;
@@ -334,11 +387,12 @@ export function PipelinesSection(props: PipelinesSectionProps) {
             targets.
           </Text>
         </Group>
-        <Table.ScrollContainer minWidth={860}>
+        <Table.ScrollContainer minWidth={980}>
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
+                <Table.Th>Used by</Table.Th>
                 <Table.Th>Nodes</Table.Th>
                 <Table.Th>Entry</Table.Th>
                 <Table.Th>Updated</Table.Th>
@@ -358,6 +412,11 @@ export function PipelinesSection(props: PipelinesSectionProps) {
                         {pipeline.enabled ? "enabled" : "disabled"}
                       </Badge>
                     </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    <UsedByCell
+                      refs={props.usageByPipelineId.get(pipeline.id)}
+                    />
                   </Table.Td>
                   <Table.Td>
                     <Group gap={6} wrap="wrap">
@@ -431,6 +490,7 @@ export function PipelinesSection(props: PipelinesSectionProps) {
 type ProxyTargetsSectionProps = {
   targets: ApiProxyTargetRecord[];
   endpointById: Map<string, ApiEndpointRecord>;
+  usageByTargetId: Map<string, ProxyUsageRef[]>;
   instanceOptions: SelectOption[];
   runtimeByTargetId: Map<string, ApiProxyTargetRuntime>;
   runtimeRefreshing: boolean;
@@ -505,11 +565,12 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
             Targets describe which instance/model can receive proxied traffic.
           </Text>
         </Group>
-        <Table.ScrollContainer minWidth={1040}>
+        <Table.ScrollContainer minWidth={1160}>
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
+                <Table.Th>Used by</Table.Th>
                 <Table.Th>Endpoint</Table.Th>
                 <Table.Th>Model</Table.Th>
                 <Table.Th>Resource</Table.Th>
@@ -530,6 +591,9 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                         <Text fw={600}>{target.name}</Text>
                         <Badge variant="outline">{target.role}</Badge>
                       </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <UsedByCell refs={props.usageByTargetId.get(target.id)} />
                     </Table.Td>
                     <Table.Td>
                       <Stack gap={2}>
@@ -643,7 +707,7 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
               })}
               {props.targets.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={8}>
+                  <Table.Td colSpan={9}>
                     <Text c="dimmed" ta="center" py="lg">
                       No proxy targets configured
                     </Text>
