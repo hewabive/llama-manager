@@ -1,5 +1,12 @@
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import {
+  Handle,
+  NodeToolbar,
+  Position,
+  useReactFlow,
+  type NodeProps,
+} from "@xyflow/react";
 
+import { CanvasDeleteButton } from "./CanvasDeleteButton";
 import type { FlowNode, FlowNodeKind } from "./canvas-model";
 
 const kindLabels: Record<FlowNodeKind, string> = {
@@ -49,6 +56,7 @@ function PortHitArea() {
 
 export function FlowNodeCard(props: NodeProps<FlowNode>) {
   const { data, selected } = props;
+  const { deleteElements } = useReactFlow();
   const accent = kindColors[data.kind];
   const compact = data.kind === "entry" || data.kind.startsWith("ref-");
   const edgeColor = selected
@@ -79,6 +87,14 @@ export function FlowNodeCard(props: NodeProps<FlowNode>) {
         maxWidth: 240,
       }}
     >
+      {selected && props.deletable && (
+        <NodeToolbar position={Position.Top} align="end" offset={6}>
+          <CanvasDeleteButton
+            label="Delete node"
+            onClick={() => void deleteElements({ nodes: [{ id: props.id }] })}
+          />
+        </NodeToolbar>
+      )}
       {data.hasInput && (
         <Handle
           type="target"

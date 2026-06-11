@@ -129,18 +129,19 @@ export function editorCallExitNames(
   return [...names].sort();
 }
 
-function PortSelect(props: {
+export function PortSelect(props: {
   label: string;
   ctx: PipelineEditorContext;
-  node: PipelineNodeDraft;
+  excludeNodeId: string | null;
   value: PortValue;
   onChange: (value: PortValue) => void;
+  includePipelines?: boolean;
 }) {
   return (
     <TouchSelect
       label={props.label}
-      data={editorPortOptions(props.ctx, props.node.id, {
-        includePipelines: false,
+      data={editorPortOptions(props.ctx, props.excludeNodeId, {
+        includePipelines: props.includePipelines ?? false,
       })}
       value={props.value ?? unboundTargetValue}
       searchable
@@ -357,7 +358,7 @@ function ReplaceTextFields(props: {
       <PortSelect
         label="Next"
         ctx={ctx}
-        node={node}
+        excludeNodeId={node.id}
         value={node.portNext}
         onChange={(portNext) => ctx.updateNode(node.id, { portNext })}
       />
@@ -444,7 +445,7 @@ export function PipelineNodeFields(props: {
         <PortSelect
           label="Next"
           ctx={ctx}
-          node={node}
+          excludeNodeId={node.id}
           value={node.portNext}
           onChange={(portNext) => update({ portNext })}
         />
@@ -459,7 +460,7 @@ export function PipelineNodeFields(props: {
         <PortSelect
           label="Next"
           ctx={ctx}
-          node={node}
+          excludeNodeId={node.id}
           value={node.portNext}
           onChange={(portNext) => update({ portNext })}
         />
@@ -554,14 +555,14 @@ export function PipelineNodeFields(props: {
         <PortSelect
           label="True →"
           ctx={ctx}
-          node={node}
+          excludeNodeId={node.id}
           value={node.portTrue}
           onChange={(portTrue) => update({ portTrue })}
         />
         <PortSelect
           label="False →"
           ctx={ctx}
-          node={node}
+          excludeNodeId={node.id}
           value={node.portFalse}
           onChange={(portFalse) => update({ portFalse })}
         />
@@ -589,7 +590,7 @@ export function PipelineNodeFields(props: {
             key={exitName}
             label={`Exit "${exitName}" →`}
             ctx={ctx}
-            node={node}
+            excludeNodeId={node.id}
             value={node.callPorts[exitName] ?? null}
             onChange={(value) =>
               update({ callPorts: { ...node.callPorts, [exitName]: value } })

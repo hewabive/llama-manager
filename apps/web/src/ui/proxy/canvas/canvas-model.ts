@@ -371,6 +371,7 @@ export function buildFlowGraph(input: BuildInput): {
     const highlighted = highlight?.ports.has(`${sourceId}:${port}`) ?? false;
     edges.push({
       id: `e:${sourceId}:${port}`,
+      type: "pipeline-edge",
       source: sourceId,
       sourceHandle: port,
       target: targetFlowId,
@@ -428,9 +429,12 @@ export function buildFlowGraph(input: BuildInput): {
     });
     edges.push({
       id: `e:${referrer.flowId}`,
+      type: "pipeline-edge",
       source: referrer.flowId,
       sourceHandle: referrerPortName,
       target: entryNodeId,
+      deletable: false,
+      selectable: false,
     });
   });
 

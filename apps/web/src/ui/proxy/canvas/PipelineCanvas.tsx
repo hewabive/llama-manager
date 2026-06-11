@@ -43,6 +43,7 @@ import {
   referrerPipelineFlowPrefix,
   type FlowNode,
 } from "./canvas-model";
+import { FlowEdge } from "./FlowEdge";
 import { FlowNodeCard } from "./FlowNodeCard";
 import type { PipelineDraft, PipelineNodeDraft, PortValue } from "../forms";
 import {
@@ -52,6 +53,7 @@ import {
 } from "../forms";
 import {
   PipelineNodeFields,
+  PortSelect,
   editorCallExitNames,
   pipelineNodeTypeLabel,
   pipelineNodeTypeOptions,
@@ -61,6 +63,7 @@ import { TouchSelect } from "../../components/TouchCombobox";
 import { useNarrowScreen } from "../../hooks/use-narrow-screen";
 
 const nodeTypes = { "pipeline-flow": FlowNodeCard };
+const edgeTypes = { "pipeline-edge": FlowEdge };
 const draftCandidateId = "__draft__";
 
 function portPatch(
@@ -541,6 +544,7 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
             nodes={rfNodes}
             edges={rfEdges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             colorMode={colorScheme}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
@@ -583,6 +587,16 @@ export function PipelineCanvas(props: PipelineCanvasProps) {
                   Entry
                 </Badge>
               </Group>
+              <PortSelect
+                label="Routes to"
+                ctx={props.ctx}
+                excludeNodeId={null}
+                value={draft.entryValue}
+                includePipelines
+                onChange={(entryValue) =>
+                  props.onDraftChange({ ...draft, entryValue })
+                }
+              />
               <Text fw={600} size="sm">
                 Routed models
               </Text>
