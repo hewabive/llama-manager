@@ -2,6 +2,7 @@ import {
   proxyRequestHeaders,
   proxyResponseHeaders,
   proxyTargetUrl,
+  proxyUpstreamFetch,
 } from "./http.js";
 import { stripV1BaseUrl } from "./targets.js";
 
@@ -70,7 +71,7 @@ export async function forwardApiProxyRequest(
     init.signal = input.signal;
   }
 
-  const upstream = await fetch(url, init);
+  const upstream = await proxyUpstreamFetch(url, init);
 
   return new Response(upstream.body, {
     status: upstream.status,

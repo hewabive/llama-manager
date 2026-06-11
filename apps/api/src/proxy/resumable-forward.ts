@@ -1,4 +1,8 @@
-import { CLIENT_ABORT_STATUS, describeFetchError } from "./http.js";
+import {
+  CLIENT_ABORT_STATUS,
+  describeFetchError,
+  proxyUpstreamFetch,
+} from "./http.js";
 import type {
   ApiProxyResumableCodec,
   ApiProxyResumableFinalResponse,
@@ -159,7 +163,7 @@ export async function runResumableUpstreamAttempt(input: {
     return { type: "preempted" };
   }
 
-  const fetchImpl = input.fetchImpl ?? fetch;
+  const fetchImpl = input.fetchImpl ?? proxyUpstreamFetch;
   const meta: FrameMeta = {
     upstreamGenMs: null,
     firstTokenSeen: false,

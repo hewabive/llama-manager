@@ -1267,6 +1267,7 @@ export function StatsSection(props: StatsSectionProps) {
                             multiline
                             maw={420}
                             withArrow
+                            events={{ hover: true, focus: true, touch: true }}
                           >
                             <Badge
                               color={traceStatusColor(trace)}

@@ -1,4 +1,23 @@
+import { Agent, fetch as undiciFetch } from "undici";
+
 export const CLIENT_ABORT_STATUS = 499;
+
+const UPSTREAM_RESPONSE_TIMEOUT_MS = 3_600_000;
+
+const proxyUpstreamDispatcher = new Agent({
+  headersTimeout: UPSTREAM_RESPONSE_TIMEOUT_MS,
+  bodyTimeout: UPSTREAM_RESPONSE_TIMEOUT_MS,
+});
+
+export function proxyUpstreamFetch(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  return undiciFetch(url, {
+    ...init,
+    dispatcher: proxyUpstreamDispatcher,
+  } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
+}
 
 export function describeFetchError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -18,12 +37,12 @@ const hopByHopHeaders = new Set([
 const requestOnlyHeaders = new Set(["host", "content-length"]);
 
 function normalizedHeaderEntries(input: Headers | Record<string, string>) {
-  if (!(input instanceof Headers)) {
-    return Object.entries(input);
+  if (typeof (input as Headers).forEach !== "function") {
+    return Object.entries(input as Record<string, string>);
   }
 
   const entries: Array<[string, string]> = [];
-  input.forEach((value, name) => entries.push([name, value]));
+  (input as Headers).forEach((value, name) => entries.push([name, value]));
   return entries;
 }
 
