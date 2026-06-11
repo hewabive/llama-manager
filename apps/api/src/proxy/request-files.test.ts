@@ -6,7 +6,9 @@ import {
   saveApiProxyRequestFile,
 } from "./request-files.js";
 
-function saveInput(over: Partial<Parameters<typeof saveApiProxyRequestFile>[0]> = {}) {
+function saveInput(
+  over: Partial<Parameters<typeof saveApiProxyRequestFile>[0]> = {},
+) {
   return {
     traceId: "0197a000-0000-7000-8000-000000000001",
     traceAt: "2026-06-10T12:34:56.789Z",

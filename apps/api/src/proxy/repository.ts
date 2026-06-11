@@ -318,4 +318,3 @@ export function deleteApiProxyPipeline(id: string): boolean {
   );
   return true;
 }
-

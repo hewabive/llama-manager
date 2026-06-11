@@ -953,7 +953,9 @@ function TraceFileModal(props: {
       opened={props.file !== null}
       onClose={props.onClose}
       title={
-        props.file ? `${props.file.label || props.file.kind} — ${props.file.name}` : ""
+        props.file
+          ? `${props.file.label || props.file.kind} — ${props.file.name}`
+          : ""
       }
       size="xl"
     >

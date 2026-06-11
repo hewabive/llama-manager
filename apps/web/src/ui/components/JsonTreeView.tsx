@@ -206,7 +206,10 @@ function PrimitiveValue(props: { value: unknown }) {
 
 function StringValue(props: { value: string }) {
   const [expanded, setExpanded] = useState(false);
-  if (props.value.length <= STRING_PREVIEW_CHARS && !props.value.includes("\n")) {
+  if (
+    props.value.length <= STRING_PREVIEW_CHARS &&
+    !props.value.includes("\n")
+  ) {
     return (
       <Text span inherit c="teal" style={{ wordBreak: "break-word" }}>
         {JSON.stringify(props.value)}
