@@ -76,6 +76,7 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 - **React event captures**: `pnpm check:events` (part of `pnpm check`) fails the build if `event.currentTarget`/`event.target` from an outer handler is referenced inside a nested callback (setState updater, timer, promise). Read the value into a local first.
 - TypeScript is strict with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` — index access yields `T | undefined`, and optional properties must be omitted rather than set to `undefined`.
 - Realtime: prefer SSE (Hono `streamSSE`); WebSocket only for bidirectional terminal-like control.
+- Mantine component-wide defaults go in the `createTheme` in `web/src/main.tsx` (e.g. `Tooltip` opens on hover/focus/touch so tooltips work on mobile) — don't set per-usage props for behavior every usage should share.
 
 ## Runtime layout & key env vars
 

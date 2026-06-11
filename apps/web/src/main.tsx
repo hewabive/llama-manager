@@ -2,7 +2,7 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "./styles.css";
 
-import { MantineProvider } from "@mantine/core";
+import { createTheme, MantineProvider, Tooltip } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
@@ -11,6 +11,14 @@ import ReactDOM from "react-dom/client";
 import { App } from "./ui/App";
 
 const queryClient = new QueryClient();
+
+const theme = createTheme({
+  components: {
+    Tooltip: Tooltip.extend({
+      defaultProps: { events: { hover: true, focus: true, touch: true } },
+    }),
+  },
+});
 
 type RootErrorBoundaryState = {
   error: Error | null;
@@ -53,7 +61,7 @@ class RootErrorBoundary extends React.Component<
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <MantineProvider defaultColorScheme="dark">
+      <MantineProvider theme={theme} defaultColorScheme="dark">
         <RootErrorBoundary>
           <Notifications position="top-right" />
           <App />
