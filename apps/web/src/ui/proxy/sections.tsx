@@ -23,6 +23,7 @@ import {
   Paper,
   Progress,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Table,
   Text,
@@ -43,6 +44,7 @@ import {
 import { useState } from "react";
 
 import { getApiProxyRequestFile } from "../../api/client";
+import { JsonTreeView } from "../components/JsonTreeView";
 import { TouchSelect } from "../components/TouchCombobox";
 import { formatBytes } from "../utils/models";
 import { formatLocalDateTime, formatLocalHour } from "../utils/time";
@@ -945,6 +947,7 @@ function TraceFileModal(props: {
     enabled: path !== "",
   });
   const record = fileQuery.data?.data;
+  const [view, setView] = useState<"tree" | "raw">("tree");
   return (
     <Modal
       opened={props.file !== null}
@@ -962,19 +965,34 @@ function TraceFileModal(props: {
       )}
       {record && (
         <Stack gap="xs">
-          <Group gap="xs" wrap="wrap">
-            <Badge variant="light">{record.kind}</Badge>
-            <Badge color="gray" variant="light">
-              {record.protocol}
-            </Badge>
-            <Text size="xs" c="dimmed">
-              {record.modelId} · {formatLocalDateTime(record.createdAt)}
-            </Text>
+          <Group gap="xs" wrap="wrap" justify="space-between">
+            <Group gap="xs" wrap="wrap">
+              <Badge variant="light">{record.kind}</Badge>
+              <Badge color="gray" variant="light">
+                {record.protocol}
+              </Badge>
+              <Text size="xs" c="dimmed">
+                {record.modelId} · {formatLocalDateTime(record.createdAt)}
+              </Text>
+            </Group>
+            <SegmentedControl
+              size="xs"
+              value={view}
+              onChange={(value) => setView(value === "raw" ? "raw" : "tree")}
+              data={[
+                { value: "tree", label: "Tree" },
+                { value: "raw", label: "Raw" },
+              ]}
+            />
           </Group>
           <ScrollArea.Autosize mah="65vh">
-            <Code block style={{ whiteSpace: "pre-wrap" }}>
-              {JSON.stringify(record.data, null, 2)}
-            </Code>
+            {view === "tree" ? (
+              <JsonTreeView value={record.data} />
+            ) : (
+              <Code block style={{ whiteSpace: "pre-wrap" }}>
+                {JSON.stringify(record.data, null, 2)}
+              </Code>
+            )}
           </ScrollArea.Autosize>
         </Stack>
       )}
