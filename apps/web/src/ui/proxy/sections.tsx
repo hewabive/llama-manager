@@ -43,7 +43,7 @@ import {
   Workflow,
   Zap,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
 import { getApiProxyRequestFile } from "../../api/client";
 import { modelDirectTargetId } from "./forms";
@@ -499,6 +499,31 @@ type ProxyTargetsSectionProps = {
   onDelete?: (id: string) => void;
 };
 
+function DetailBadge({
+  color,
+  label,
+  detail,
+}: {
+  color: string;
+  label: ReactNode;
+  detail: string | null | undefined;
+}) {
+  if (!detail) {
+    return (
+      <Badge color={color} variant="light">
+        {label}
+      </Badge>
+    );
+  }
+  return (
+    <Tooltip label={detail} multiline maw={420} withArrow>
+      <Badge color={color} variant="light" style={{ cursor: "help" }}>
+        {label}
+      </Badge>
+    </Tooltip>
+  );
+}
+
 function InflightRequests({
   inflight,
 }: {
@@ -644,12 +669,11 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                     <Table.Td>
                       <Stack gap={2}>
                         <Group gap={6} wrap="wrap">
-                          <Badge
+                          <DetailBadge
                             color={runtimeStateColor(runtime?.state)}
-                            variant="light"
-                          >
-                            {runtime?.state ?? "unknown"}
-                          </Badge>
+                            label={runtime?.state ?? "unknown"}
+                            detail={runtime?.stateDetail}
+                          />
                         </Group>
                         {runtimeDetails(runtime).map((detail) => (
                           <Text key={detail} c="dimmed" size="xs">
@@ -1325,29 +1349,11 @@ export function StatsSection(props: StatsSectionProps) {
                           : "—"}
                       </Table.Td>
                       <Table.Td>
-                        {trace.errorMessage ? (
-                          <Tooltip
-                            label={trace.errorMessage}
-                            multiline
-                            maw={420}
-                            withArrow
-                          >
-                            <Badge
-                              color={traceStatusColor(trace)}
-                              variant="light"
-                              style={{ cursor: "help" }}
-                            >
-                              {trace.status}
-                            </Badge>
-                          </Tooltip>
-                        ) : (
-                          <Badge
-                            color={traceStatusColor(trace)}
-                            variant="light"
-                          >
-                            {trace.status}
-                          </Badge>
-                        )}
+                        <DetailBadge
+                          color={traceStatusColor(trace)}
+                          label={trace.status}
+                          detail={trace.errorMessage}
+                        />
                       </Table.Td>
                       <Table.Td>{trace.durationMs}</Table.Td>
                     </Table.Tr>

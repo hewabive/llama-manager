@@ -9,6 +9,7 @@ import {
   Stack,
   Table,
   Text,
+  Tooltip,
 } from "@mantine/core";
 
 import { formatLocalDateTime } from "../utils/time";
@@ -94,9 +95,16 @@ export function BuildJobsPanel({ fm }: { fm: BuildViewController }) {
                   <Table.Td>
                     <Text size="sm">{formatLocalDateTime(job.startedAt)}</Text>
                     {job.error && (
-                      <Text c="red" size="xs" lineClamp={1}>
-                        {job.error}
-                      </Text>
+                      <Tooltip label={job.error} multiline maw={420} withArrow>
+                        <Text
+                          c="red"
+                          size="xs"
+                          lineClamp={1}
+                          style={{ cursor: "help" }}
+                        >
+                          {job.error}
+                        </Text>
+                      </Tooltip>
                     )}
                   </Table.Td>
                   <Table.Td>

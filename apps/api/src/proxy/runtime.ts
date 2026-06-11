@@ -148,38 +148,70 @@ function processRuntimeState(
   return "unknown";
 }
 
+function lastLogErrors(health: InstanceHealthSummary) {
+  return health.logSummary.errors.slice(-3);
+}
+
+function modelErrorDetail(health: InstanceHealthSummary, model: string) {
+  return [`model ${model} failed to load`, ...lastLogErrors(health)].join("\n");
+}
+
+function processErrorDetail(health: InstanceHealthSummary) {
+  const detail = [health.reason, ...lastLogErrors(health)]
+    .filter(Boolean)
+    .join("\n");
+  return detail || null;
+}
+
+type DerivedState = {
+  state: ApiProxyModelState;
+  activeRequests: number;
+  detail: string | null;
+};
+
 function baseState(input: {
   target: ApiProxyTargetRecord;
   instanceId: string | null;
   instance: Instance | undefined;
   health: InstanceHealthSummary | undefined;
-}): { state: ApiProxyModelState; activeRequests: number } {
+}): DerivedState {
   if (!input.instanceId) {
-    return { state: "idle", activeRequests: 0 };
+    return { state: "idle", activeRequests: 0, detail: null };
   }
   if (!input.instance) {
-    return { state: "error", activeRequests: 0 };
+    return {
+      state: "error",
+      activeRequests: 0,
+      detail: `managed instance ${input.instanceId} not found`,
+    };
   }
   if (!input.health) {
-    return { state: "unknown", activeRequests: 0 };
+    return { state: "unknown", activeRequests: 0, detail: null };
   }
 
   if (input.target.model) {
     const slots = modelScopedSlots(input.health, input.target.model);
     const activeRequests = activeRequestsFromSlots(slots);
-    return {
-      state: modelRuntimeState(
-        modelStatusFromProbe(input.health.llama.models, input.target.model),
-        activeRequests,
-      ),
+    const state = modelRuntimeState(
+      modelStatusFromProbe(input.health.llama.models, input.target.model),
       activeRequests,
+    );
+    return {
+      state,
+      activeRequests,
+      detail:
+        state === "error"
+          ? modelErrorDetail(input.health, input.target.model)
+          : null,
     };
   }
 
   const activeRequests = activeRequestsFromSlots(input.health.llama.slots);
+  const state = processRuntimeState(input.health, activeRequests);
   return {
-    state: processRuntimeState(input.health, activeRequests),
+    state,
     activeRequests,
+    detail: state === "error" ? processErrorDetail(input.health) : null,
   };
 }
 
@@ -189,10 +221,14 @@ function deriveState(input: {
   instance: Instance | undefined;
   health: InstanceHealthSummary | undefined;
   inFlight: boolean;
-}): { state: ApiProxyModelState; activeRequests: number } {
+}): DerivedState {
   const base = baseState(input);
   if (input.inFlight && stateIsIdle(base.state)) {
-    return { state: "busy", activeRequests: Math.max(base.activeRequests, 1) };
+    return {
+      state: "busy",
+      activeRequests: Math.max(base.activeRequests, 1),
+      detail: null,
+    };
   }
   return base;
 }
@@ -249,6 +285,7 @@ function deriveApiProxyTargetRuntime(input: {
   endpointId: string;
   baseUrl: string;
   endpointEnabled: boolean;
+  resolutionError?: string | null | undefined;
   instanceId: string | null;
   instance?: Instance | undefined;
   health?: InstanceHealthSummary | undefined;
@@ -266,7 +303,11 @@ function deriveApiProxyTargetRuntime(input: {
         health: input.health,
         inFlight: (input.inFlight ?? false) || inflight.length > 0,
       })
-    : { state: "error" as const, activeRequests: 0 };
+    : {
+        state: "error" as const,
+        activeRequests: 0,
+        detail: input.resolutionError ?? "endpoint disabled",
+      };
   const activeRequests = Math.max(derived.activeRequests, inflight.length);
   const tracker = updateTracker({
     targetId: input.target.id,
@@ -284,6 +325,7 @@ function deriveApiProxyTargetRuntime(input: {
     instanceId: input.instanceId,
     model: input.target.model,
     state: derived.state,
+    stateDetail: derived.detail,
     activeRequests,
     idleSince: tracker.idleSince,
     lastRequestAt: tracker.lastRequestAt,
@@ -328,6 +370,7 @@ export function buildApiProxyRuntimeSnapshot(input: {
         endpointId: resolution?.endpointId ?? target.endpointId,
         baseUrl: resolution?.baseUrl ?? "http://127.0.0.1",
         endpointEnabled: resolution?.enabled ?? false,
+        resolutionError: resolution?.error,
         instanceId: resolution?.instanceId ?? null,
         instance: resolution?.instanceId
           ? instanceById.get(resolution.instanceId)

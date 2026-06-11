@@ -69,12 +69,13 @@ function apiEndpoint(
     baseUrl?: string;
     kind?: ApiEndpointRecord["kind"];
     instanceId?: string | null;
+    enabled?: boolean;
   } = {},
 ): ApiEndpointRecord {
   return {
     id: input.id ?? "instance:instance-a",
     name: "Instance A",
-    enabled: true,
+    enabled: input.enabled ?? true,
     kind: input.kind ?? "managed-instance",
     baseUrl: input.baseUrl ?? "http://127.0.0.1:8080/v1",
     profile: "openai",
@@ -98,6 +99,7 @@ function health(
     modelStatus?: string | null;
     processing?: boolean;
     canStart?: boolean;
+    logErrors?: string[];
   } = {},
 ): InstanceHealthSummary {
   const slots = endpoint([{ id: 0, is_processing: input.processing ?? false }]);
@@ -156,7 +158,7 @@ function health(
       slots: null,
       ready: true,
       warnings: [],
-      errors: [],
+      errors: input.logErrors ?? [],
       notices: [],
       loadProgress: {
         stage: "ready",
@@ -360,6 +362,77 @@ test("buildApiProxyRuntimeSnapshot treats startable previous errors as stopped",
   });
 
   assert.equal(snapshot.targets[0]?.state, "stopped");
+});
+
+test("buildApiProxyRuntimeSnapshot reports failure detail for a failed model", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([
+      [
+        "instance-a",
+        health({
+          modelStatus: "failed",
+          logErrors: ["cuda out of memory"],
+        }),
+      ],
+    ]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "error");
+  assert.equal(
+    snapshot.targets[0]?.stateDetail,
+    "model chat failed to load\ncuda out of memory",
+  );
+});
+
+test("buildApiProxyRuntimeSnapshot reports health reason for a failed process target", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ model: null })],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([
+      [
+        "instance-a",
+        health({
+          status: "error",
+          canStart: false,
+          logErrors: ["bind: address already in use"],
+        }),
+      ],
+    ]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "error");
+  assert.equal(
+    snapshot.targets[0]?.stateDetail,
+    "test\nbind: address already in use",
+  );
+});
+
+test("buildApiProxyRuntimeSnapshot reports resolution error for a disabled endpoint", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint({ enabled: false })],
+    instances: [instance()],
+    healthByInstanceId: new Map([["instance-a", health()]]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "error");
+  assert.equal(
+    snapshot.targets[0]?.stateDetail,
+    "API endpoint Instance A is disabled",
+  );
 });
 
 test("buildApiProxyRuntimeSnapshot treats reachable stale process targets as idle", () => {

@@ -1412,6 +1412,7 @@ export const ApiProxyTargetRuntimeSchema = z.object({
   instanceId: z.string().min(1).nullable().default(null),
   model: z.string().trim().min(1).max(500).nullable().default(null),
   state: ApiProxyModelStateSchema.default("unknown"),
+  stateDetail: z.string().nullable().default(null),
   activeRequests: z.number().int().min(0).default(0),
   idleSince: z.string().nullable().default(null),
   lastRequestAt: z.string().nullable().default(null),
