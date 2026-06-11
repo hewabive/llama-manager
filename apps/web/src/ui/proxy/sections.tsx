@@ -844,6 +844,13 @@ function traceProtocolColor(protocol: string): string {
   return protocol === "anthropic" ? "violet" : "blue";
 }
 
+function traceStatusColor(trace: ApiProxyRequestTrace): string {
+  if (trace.ok) {
+    return "green";
+  }
+  return trace.errorCode === "client-abort" ? "yellow" : "red";
+}
+
 const CACHE_ORIGIN_COLORS: Record<
   NonNullable<ApiProxyRequestTrace["cacheOrigin"]>,
   string
@@ -1262,7 +1269,7 @@ export function StatsSection(props: StatsSectionProps) {
                             withArrow
                           >
                             <Badge
-                              color={trace.ok ? "green" : "red"}
+                              color={traceStatusColor(trace)}
                               variant="light"
                               style={{ cursor: "help" }}
                             >
@@ -1271,7 +1278,7 @@ export function StatsSection(props: StatsSectionProps) {
                           </Tooltip>
                         ) : (
                           <Badge
-                            color={trace.ok ? "green" : "red"}
+                            color={traceStatusColor(trace)}
                             variant="light"
                           >
                             {trace.status}

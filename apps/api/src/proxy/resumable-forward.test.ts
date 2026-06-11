@@ -347,6 +347,39 @@ test("runResumableUpstreamAttempt returns preempted before fetching", async () =
   assert.equal(outcome.type, "preempted");
 });
 
+test("runResumableUpstreamAttempt classifies a consumer abort with a string reason", async () => {
+  const consumer = new AbortController();
+  consumer.abort("Client connection prematurely closed.");
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state: createResumableBufferState(),
+    preemptSignal: new AbortController().signal,
+    consumerSignal: consumer.signal,
+    fetchImpl: makeFetch([]),
+  });
+  assert.equal(outcome.type, "consumer-gone");
+});
+
+test("runResumableUpstreamAttempt reports a non-Error fetch rejection as its text", async () => {
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state: createResumableBufferState(),
+    preemptSignal: new AbortController().signal,
+    fetchImpl: (async () => {
+      throw "socket hang up";
+    }) as unknown as typeof fetch,
+  });
+  assert.deepEqual(outcome, { type: "error", message: "socket hang up" });
+});
+
 test("runResumableUpstreamAttempt captures partial text then preempts", async () => {
   const state = createResumableBufferState();
   const preempt = new AbortController();
@@ -390,6 +423,21 @@ test("runResumableForward returns a synthesized non-stream response", async () =
   assert.equal(attempts, 1);
   assert.equal(final.headers["content-type"], "application/json");
   assert.equal(JSON.parse(final.body).choices[0].message.content, "done-text");
+});
+
+test("runResumableForward signals a gone consumer with the client-abort status", async () => {
+  const final = await runResumableForward({
+    makeReady: async () => ({ ok: true }),
+    attempt: async () => ({ type: "consumer-gone" }),
+    state: createResumableBufferState(),
+    codec,
+    yieldLease: async () => undefined,
+    wantsStream: false,
+    onError: (message) => ({ status: 502, headers: {}, body: message }),
+  });
+
+  assert.equal(final.status, 499);
+  assert.equal(final.body, "");
 });
 
 test("runResumableForward resumes with the accumulated tail after preemption", async () => {

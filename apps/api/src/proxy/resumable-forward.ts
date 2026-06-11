@@ -1,3 +1,4 @@
+import { CLIENT_ABORT_STATUS, describeFetchError } from "./http.js";
 import type {
   ApiProxyResumableCodec,
   ApiProxyResumableFinalResponse,
@@ -194,7 +195,7 @@ export async function runResumableUpstreamAttempt(input: {
     if (preemptSignal.aborted) {
       return { type: "preempted" };
     }
-    return { type: "error", message: (error as Error).message };
+    return { type: "error", message: describeFetchError(error) };
   };
 
   let upstream: Response;
@@ -296,7 +297,7 @@ export async function runResumableForward(input: {
       return finalFromState(input.codec, input.state, input.wantsStream);
     }
     if (outcome.type === "consumer-gone") {
-      return { status: 200, headers: {}, body: "" };
+      return { status: CLIENT_ABORT_STATUS, headers: {}, body: "" };
     }
     if (outcome.type === "error") {
       return input.onError(outcome.message);

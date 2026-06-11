@@ -26,6 +26,7 @@ import {
 } from "./coordinator.js";
 import { apiEndpointAuthHeaders, listApiEndpointCatalog } from "./endpoints.js";
 import { apiProxyForwardUrl, forwardApiProxyRequest } from "./forwarder.js";
+import { CLIENT_ABORT_STATUS, describeFetchError } from "./http.js";
 import { apiProxyInflight, type ApiProxyInflightHandle } from "./inflight.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./gateway.js";
 import { getApiProxyPlanPreview } from "./idle-maintenance.js";
@@ -334,7 +335,7 @@ async function proxyProtocolEndpoint(
     return response;
   } catch (error) {
     if (!trace.errorMessage) {
-      trace.errorMessage = (error as Error).message;
+      trace.errorMessage = describeFetchError(error);
     }
     throw error;
   } finally {
@@ -604,6 +605,11 @@ async function proxyProtocolEndpointInner(
     };
   };
 
+  const markClientAbort = () => {
+    trace.errorCode = "client-abort";
+    trace.errorMessage = `Client closed the request before target ${decision.target.name} finished responding`;
+  };
+
   const respond = async (): Promise<Response> => {
     const upstreamPath = adapter.upstreamPath(operation);
     if (!upstreamPath) {
@@ -796,9 +802,11 @@ async function proxyProtocolEndpointInner(
       });
       return metered;
     } catch (error) {
-      const message = `Proxy target ${decision.target.name} failed to forward request: ${
-        (error as Error).message
-      }`;
+      if (c.req.raw.signal.aborted) {
+        markClientAbort();
+        return new Response(null, { status: CLIENT_ABORT_STATUS });
+      }
+      const message = `Proxy target ${decision.target.name} failed to forward request: ${describeFetchError(error)}`;
       trace.errorMessage = message;
       const response = adapter.diagnosticError(route.request, {
         status: 502,
@@ -934,6 +942,9 @@ async function proxyProtocolEndpointInner(
     }
     await applyServerGenerationTiming(trace, instanceId, task);
 
+    if (final.status === CLIENT_ABORT_STATUS) {
+      markClientAbort();
+    }
     return new Response(final.body, {
       status: final.status,
       headers: final.headers,

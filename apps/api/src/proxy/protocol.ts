@@ -1,6 +1,7 @@
 import type { ApiProxyModelRecord } from "@llama-manager/core";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+import type { CLIENT_ABORT_STATUS } from "./http.js";
 import { asObject } from "./json.js";
 
 export type ApiProxyProtocolId = "openai" | "anthropic";
@@ -102,7 +103,7 @@ type ApiProxyResumableStreamChunk = {
 };
 
 export type ApiProxyResumableFinalResponse = {
-  status: ContentfulStatusCode;
+  status: ContentfulStatusCode | typeof CLIENT_ABORT_STATUS;
   headers: Record<string, string>;
   body: string;
 };

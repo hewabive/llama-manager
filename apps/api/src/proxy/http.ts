@@ -1,3 +1,9 @@
+export const CLIENT_ABORT_STATUS = 499;
+
+export function describeFetchError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 const hopByHopHeaders = new Set([
   "connection",
   "keep-alive",
