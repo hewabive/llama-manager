@@ -46,7 +46,11 @@ import {
 } from "../utils/instance-url";
 import type { LaunchMonitor } from "../utils/launch";
 import { formatLocalDateTime } from "../utils/time";
-import { healthStatusColor, statusColor } from "./InstanceHealthBadge";
+import {
+  InstanceConfigDriftBadge,
+  healthStatusColor,
+  statusColor,
+} from "./InstanceHealthBadge";
 import {
   type RouterModelAction,
   type SlotActionInput,
@@ -153,14 +157,7 @@ export function InstanceDetails(props: {
       }
     };
 
-    for (const eventName of [
-      "ready",
-      "status",
-      "stdout",
-      "stderr",
-      "exit",
-      "error",
-    ]) {
+    for (const eventName of ["ready", "status", "log", "exit", "error"]) {
       eventSource.addEventListener(eventName, append as EventListener);
     }
 
@@ -359,6 +356,7 @@ export function InstanceDetails(props: {
                 {health?.status ?? runtime?.status ?? props.instance.status}
               </Badge>
             </Tooltip>
+            <InstanceConfigDriftBadge health={health} />
           </Group>
         </Group>
 

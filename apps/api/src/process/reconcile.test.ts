@@ -1,0 +1,152 @@
+import type { Instance } from "@llama-manager/core";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { spawn } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { serializeLaunchSnapshot } from "./launch-snapshot.js";
+import { reconcileProcessRuns } from "./reconcile.js";
+import { createProcessRun, latestProcessRun } from "./runs-repository.js";
+import { supervisor } from "./supervisor.js";
+
+function makeInstance(name: string, binaryPath: string): Instance {
+  return {
+    name,
+    binaryPath,
+    status: "stopped",
+    pid: null,
+    args: {},
+    env: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  } as Instance;
+}
+
+function seedOpenRun(input: {
+  instanceId: string;
+  pid: number;
+  snapshotBinaryPath: string | null;
+}) {
+  const dir = mkdtempSync(join(tmpdir(), "reconcile-test-"));
+  const logPath = join(dir, "instance.log");
+  const rawLogPath = join(dir, "instance.raw.log");
+  writeFileSync(logPath, "");
+  writeFileSync(rawLogPath, "# raw\n");
+  return createProcessRun({
+    instanceId: input.instanceId,
+    pid: input.pid,
+    status: "running",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    logPath,
+    rawLogPath,
+    launchSnapshot: input.snapshotBinaryPath
+      ? serializeLaunchSnapshot({
+          binaryPath: input.snapshotBinaryPath,
+          cliArgs: ["60"],
+          env: {},
+          cwd: "/bin",
+        })
+      : null,
+  });
+}
+
+async function spawnSleep() {
+  const child = spawn("/bin/sleep", ["60"], {
+    detached: true,
+    stdio: "ignore",
+  });
+  await new Promise((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  child.unref();
+  return child.pid!;
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return predicate();
+}
+
+test("reconcile adopts a live process whose cmdline matches the launch snapshot", async () => {
+  const pid = await spawnSleep();
+  try {
+    seedOpenRun({
+      instanceId: "adopt-me",
+      pid,
+      snapshotBinaryPath: "/bin/sleep",
+    });
+
+    const summary = reconcileProcessRuns([
+      makeInstance("adopt-me", "/bin/sleep"),
+    ]);
+
+    assert.equal(summary.adopted, 1);
+    const state = supervisor.getState("adopt-me");
+    assert.equal(state?.status, "running");
+    assert.equal(state?.adopted, true);
+    assert.equal(state?.pid, pid);
+    assert.equal(latestProcessRun("adopt-me")?.status, "running");
+    assert.equal(latestProcessRun("adopt-me")?.adopted, "true");
+
+    supervisor.stop("adopt-me");
+    assert.ok(
+      await waitFor(() => latestProcessRun("adopt-me")?.status === "exited"),
+      "adopted process should be stopped and finalized",
+    );
+    assert.equal(supervisor.getState("adopt-me")?.status, "exited");
+  } finally {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      void 0;
+    }
+  }
+});
+
+test("reconcile marks a live process with mismatched cmdline as stale", async () => {
+  const pid = await spawnSleep();
+  try {
+    seedOpenRun({
+      instanceId: "mismatch",
+      pid,
+      snapshotBinaryPath: "/opt/llama/llama-server",
+    });
+
+    const summary = reconcileProcessRuns([
+      makeInstance("mismatch", "/opt/llama/llama-server"),
+    ]);
+
+    assert.equal(summary.adopted, 0);
+    assert.equal(summary.stale, 1);
+    assert.equal(latestProcessRun("mismatch")?.status, "stale");
+    assert.equal(supervisor.getState("mismatch"), undefined);
+  } finally {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      void 0;
+    }
+  }
+});
+
+test("reconcile closes runs whose pid is gone", async () => {
+  const child = spawn("/bin/sleep", ["0"]);
+  const pid = child.pid!;
+  await new Promise((resolve) => child.once("exit", resolve));
+
+  seedOpenRun({ instanceId: "dead", pid, snapshotBinaryPath: "/bin/sleep" });
+
+  const summary = reconcileProcessRuns([makeInstance("dead", "/bin/sleep")]);
+
+  assert.ok(summary.exited >= 1);
+  assert.equal(latestProcessRun("dead")?.status, "exited");
+});

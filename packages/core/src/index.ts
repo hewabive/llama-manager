@@ -95,7 +95,7 @@ export const InstanceConfigRecordSchema = z.object({
 });
 
 export const ProcessEventSchema = z.object({
-  type: z.enum(["stdout", "stderr", "status", "exit", "error"]),
+  type: z.enum(["log", "status", "exit", "error"]),
   instanceId: z.string(),
   timestamp: z.string(),
   message: z.string(),
@@ -110,6 +110,7 @@ export const RuntimeStateSchema = z.object({
   exitCode: z.number().int().nullable(),
   logPath: z.string().nullable(),
   rawLogPath: z.string().nullable(),
+  adopted: z.boolean().optional(),
 });
 
 export const ProcessPreflightIssueSchema = z.object({
@@ -1609,6 +1610,7 @@ export const InstanceHealthSummarySchema = z.object({
   llama: LlamaProbeSchema,
   logSummary: InstanceLogSummarySchema,
   promptCache: PromptCacheStateSchema.nullable().default(null),
+  configDrift: z.boolean().default(false),
   checkedAt: z.string(),
 });
 

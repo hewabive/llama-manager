@@ -15,6 +15,7 @@ export function createProcessRun(input: {
   startedAt: string;
   logPath: string;
   rawLogPath: string | null;
+  launchSnapshot?: string | null;
 }) {
   const id = newId();
   db.insert(processRuns)
@@ -28,6 +29,8 @@ export function createProcessRun(input: {
       exitCode: null,
       logPath: input.logPath,
       rawLogPath: input.rawLogPath,
+      launchSnapshot: input.launchSnapshot ?? null,
+      adopted: null,
     })
     .run();
   db.run(
@@ -59,6 +62,7 @@ export function updateProcessRun(
     status?: string;
     stoppedAt?: string | null;
     exitCode?: number | null;
+    adopted?: boolean;
   },
 ) {
   db.update(processRuns)
@@ -70,6 +74,9 @@ export function updateProcessRun(
       ...(input.stoppedAt !== undefined ? { stoppedAt: input.stoppedAt } : {}),
       ...(input.exitCode !== undefined
         ? { exitCode: input.exitCode === null ? null : String(input.exitCode) }
+        : {}),
+      ...(input.adopted !== undefined
+        ? { adopted: input.adopted ? "true" : null }
         : {}),
     })
     .where(eq(processRuns.id, id))

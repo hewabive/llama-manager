@@ -57,7 +57,7 @@ export class ApiProxySlotTracker {
   private readonly waiters = new Map<string, Map<number, TimingWaiter[]>>();
 
   observe(event: ProcessEvent): void {
-    if (event.type !== "stdout" && event.type !== "stderr") {
+    if (event.type !== "log") {
       return;
     }
     const buffered = (this.buffers.get(event.instanceId) ?? "") + event.message;

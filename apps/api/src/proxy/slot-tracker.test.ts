@@ -7,7 +7,7 @@ import { ApiProxySlotTracker } from "./slot-tracker.js";
 
 function event(instanceId: string, message: string): ProcessEvent {
   return {
-    type: "stdout",
+    type: "log",
     instanceId,
     timestamp: "2026-06-08T00:00:00.000Z",
     message,

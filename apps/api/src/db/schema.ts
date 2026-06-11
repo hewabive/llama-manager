@@ -10,6 +10,8 @@ export const processRuns = sqliteTable("process_runs", {
   exitCode: text("exit_code"),
   logPath: text("log_path").notNull(),
   rawLogPath: text("raw_log_path"),
+  launchSnapshot: text("launch_snapshot"),
+  adopted: text("adopted"),
 });
 
 export const modelCache = sqliteTable("model_cache", {

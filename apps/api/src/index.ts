@@ -17,6 +17,7 @@ import {
 import { migrateApiProxyRuntimeMetadataToFile } from "./proxy/runtime-metadata-migration.js";
 import { migratePathCatalogToFile } from "./path-catalog/migration.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
+import { listInstances } from "./instances/repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
 import { pruneProcessRunHistory } from "./process/runs-repository.js";
 import { initAppSettings } from "./settings/store.js";
@@ -36,7 +37,7 @@ initAppSettings();
 initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const prunedModelCache = pruneMissingCachedModels();
-const reconciliation = reconcileProcessRuns();
+const reconciliation = reconcileProcessRuns(listInstances());
 const prunedProcessRuns = pruneProcessRunHistory();
 
 for (const warning of collectApiProxyPipelineGraphWarnings({

@@ -20,7 +20,7 @@ const NO_LIMIT_LINE =
 
 test("parses prompt cache state with a size limit", () => {
   const tracker = new PromptCacheTracker();
-  tracker.observe(event("stdout", "inst", STATE_LINE));
+  tracker.observe(event("log", "inst", STATE_LINE));
   assert.deepEqual(tracker.get("inst"), {
     prompts: 3,
     sizeMiB: 142.88,
@@ -31,40 +31,36 @@ test("parses prompt cache state with a size limit", () => {
 
 test("treats a zero limit as no limit", () => {
   const tracker = new PromptCacheTracker();
-  tracker.observe(event("stdout", "inst", NO_LIMIT_LINE));
+  tracker.observe(event("log", "inst", NO_LIMIT_LINE));
   assert.equal(tracker.get("inst")?.limitMiB, null);
 });
 
 test("keeps only the latest state per instance", () => {
   const tracker = new PromptCacheTracker();
-  tracker.observe(event("stdout", "inst", STATE_LINE));
-  tracker.observe(event("stdout", "inst", NO_LIMIT_LINE));
+  tracker.observe(event("log", "inst", STATE_LINE));
+  tracker.observe(event("log", "inst", NO_LIMIT_LINE));
   assert.equal(tracker.get("inst")?.prompts, 1);
 });
 
 test("clears state on instance exit", () => {
   const tracker = new PromptCacheTracker();
-  tracker.observe(event("stdout", "inst", STATE_LINE));
+  tracker.observe(event("log", "inst", STATE_LINE));
   tracker.observe(event("exit", "inst", "exit code=0"));
   assert.equal(tracker.get("inst"), null);
 });
 
 test("reassembles a state line split across chunks", () => {
   const tracker = new PromptCacheTracker();
-  tracker.observe(event("stdout", "inst", STATE_LINE.slice(0, 30)));
+  tracker.observe(event("log", "inst", STATE_LINE.slice(0, 30)));
   assert.equal(tracker.get("inst"), null);
-  tracker.observe(event("stdout", "inst", STATE_LINE.slice(30)));
+  tracker.observe(event("log", "inst", STATE_LINE.slice(30)));
   assert.equal(tracker.get("inst")?.prompts, 3);
 });
 
 test("ignores unrelated lines", () => {
   const tracker = new PromptCacheTracker();
   tracker.observe(
-    event(
-      "stdout",
-      "inst",
-      "5.10.000 I srv  update_slots: all slots are idle\n",
-    ),
+    event("log", "inst", "5.10.000 I srv  update_slots: all slots are idle\n"),
   );
   assert.equal(tracker.get("inst"), null);
 });

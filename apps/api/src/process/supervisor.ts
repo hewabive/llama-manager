@@ -1,18 +1,34 @@
 import type { Instance, ProcessEvent, RuntimeState } from "@llama-manager/core";
-import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
+  appendFileSync,
+  closeSync,
+  createWriteStream,
+  openSync,
+  statSync,
+  type WriteStream,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { EventEmitter } from "node:events";
-import type { Readable } from "node:stream";
 
 import { config } from "../config.js";
 import { argsToCli } from "./args.js";
 import { filterManagedLlamaLogChunk } from "./log-filter.js";
 import {
+  buildLaunchSnapshot,
+  serializeLaunchSnapshot,
+} from "./launch-snapshot.js";
+import { isPidAlive } from "./pid.js";
+import {
   ProcessPreflightError,
   validateInstancePreflight,
 } from "./preflight.js";
-import { createProcessRun, updateProcessRun } from "./runs-repository.js";
+import { RawLogTail } from "./raw-log-tail.js";
+import {
+  createProcessRun,
+  updateProcessRun,
+  type ProcessRun,
+} from "./runs-repository.js";
 
 type RuntimeStatus = Instance["status"];
 
@@ -31,10 +47,13 @@ type MutableProcessState = {
 
 type RuntimeProcess = MutableProcessState & {
   runId: string;
-  child: ChildProcessByStdio<null, Readable, Readable>;
-  logStream: WriteStream;
-  rawLogStream: WriteStream;
+  adopted: boolean;
+  child: ChildProcess | null;
+  filteredStream: WriteStream;
+  tail: RawLogTail | null;
+  exitWaiters: Array<() => void>;
   forceKillTimer?: NodeJS.Timeout;
+  adoptedExitPoll?: NodeJS.Timeout;
 };
 
 type ProcessSupervisorShutdownResult = {
@@ -43,6 +62,12 @@ type ProcessSupervisorShutdownResult = {
   forced: number;
   skipped: number;
 };
+
+const ADOPTED_EXIT_POLL_INTERVAL_MS = 1_000;
+
+function nowIso() {
+  return new Date().toISOString();
+}
 
 class ProcessSupervisor extends EventEmitter {
   private readonly processes = new Map<string, RuntimeProcess>();
@@ -62,6 +87,7 @@ class ProcessSupervisor extends EventEmitter {
       exitCode: proc.exitCode,
       logPath: proc.logPath,
       rawLogPath: proc.rawLogPath,
+      adopted: proc.adopted,
     };
   }
 
@@ -79,30 +105,44 @@ class ProcessSupervisor extends EventEmitter {
       throw new ProcessPreflightError(preflight);
     }
 
-    const startedAt = new Date().toISOString();
+    const startedAt = nowIso();
     const logName = `${instance.name}-${Date.now()}`;
     const logPath = resolve(config.logsDir, `${logName}.log`);
     const rawLogPath = resolve(config.logsDir, `${logName}.raw.log`);
-    const logStream = createWriteStream(logPath, { flags: "a" });
-    const rawLogStream = createWriteStream(rawLogPath, { flags: "a" });
-    logStream.on("error", () => undefined);
-    rawLogStream.on("error", () => undefined);
-    const endLogs = () => {
-      if (!logStream.writableEnded) {
-        logStream.end();
-      }
-      if (!rawLogStream.writableEnded) {
-        rawLogStream.end();
-      }
-    };
+    const filteredStream = createWriteStream(logPath, { flags: "a" });
+    filteredStream.on("error", () => undefined);
+    filteredStream.write(
+      [
+        `# llama-manager filtered log for ${instance.name}`,
+        config.logs.filterRoutineProbeRequests
+          ? "# routine diagnostic request lines and their router side-effect noise are omitted here"
+          : "# probe request filtering is disabled; this log matches raw output",
+        `# raw log: ${rawLogPath}`,
+        "",
+      ].join("\n"),
+    );
+    appendFileSync(
+      rawLogPath,
+      [
+        `# llama-manager raw log for ${instance.name}`,
+        `# filtered log: ${logPath}`,
+        "",
+      ].join("\n"),
+    );
+    const tailStartOffset = statSync(rawLogPath).size;
+
     const cliArgs = argsToCli(instance.args);
     const cwd = instance.cwd ?? dirname(instance.binaryPath);
-
+    const childLogFd = openSync(rawLogPath, "a");
     const child = spawn(instance.binaryPath, cliArgs, {
       cwd,
       env: { ...process.env, ...instance.env },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", childLogFd, childLogFd],
+      detached: true,
     });
+    closeSync(childLogFd);
+    child.unref();
+
     const runId = createProcessRun({
       instanceId: instance.name,
       pid: child.pid ?? null,
@@ -110,13 +150,16 @@ class ProcessSupervisor extends EventEmitter {
       startedAt,
       logPath,
       rawLogPath,
+      launchSnapshot: serializeLaunchSnapshot(buildLaunchSnapshot(instance)),
     });
 
     const runtime: RuntimeProcess = {
       runId,
+      adopted: false,
       child,
-      logStream,
-      rawLogStream,
+      filteredStream,
+      tail: null,
+      exitWaiters: [],
       instanceId: instance.name,
       pid: child.pid ?? null,
       status: "starting",
@@ -128,23 +171,7 @@ class ProcessSupervisor extends EventEmitter {
     };
 
     this.processes.set(instance.name, runtime);
-    runtime.logStream.write(
-      [
-        `# llama-manager filtered log for ${instance.name}`,
-        config.logs.filterRoutineProbeRequests
-          ? "# routine diagnostic request lines and their router side-effect noise are omitted here"
-          : "# probe request filtering is disabled; this log matches raw output",
-        `# raw log: ${rawLogPath}`,
-        "",
-      ].join("\n"),
-    );
-    runtime.rawLogStream.write(
-      [
-        `# llama-manager raw log for ${instance.name}`,
-        `# filtered log: ${logPath}`,
-        "",
-      ].join("\n"),
-    );
+    runtime.tail = this.startTail(runtime, rawLogPath, tailStartOffset);
     this.emitEvent(
       "status",
       instance.name,
@@ -152,6 +179,9 @@ class ProcessSupervisor extends EventEmitter {
     );
 
     child.on("spawn", () => {
+      if (this.isTerminal(runtime)) {
+        return;
+      }
       runtime.status = "running";
       updateProcessRun(runtime.runId, { pid: runtime.pid, status: "running" });
       this.emitEvent(
@@ -161,59 +191,91 @@ class ProcessSupervisor extends EventEmitter {
       );
     });
 
-    child.stdout.on("data", (chunk: Buffer) => {
-      const message = chunk.toString();
-      this.writeProcessOutput(runtime, message);
-      this.emitEvent("stdout", instance.name, message);
-    });
-
-    child.stderr.on("data", (chunk: Buffer) => {
-      const message = chunk.toString();
-      this.writeProcessOutput(runtime, message);
-      this.emitEvent("stderr", instance.name, message);
-    });
-
     child.on("error", (error) => {
-      runtime.status = "error";
-      runtime.stoppedAt = new Date().toISOString();
-      updateProcessRun(runtime.runId, {
-        pid: null,
+      this.finalizeExit(runtime, {
         status: "error",
-        stoppedAt: runtime.stoppedAt,
         exitCode: null,
+        marker: `ERROR ${error.message}`,
+        event: { type: "error", message: error.message },
       });
-      this.writeManagerLogLine(
-        runtime,
-        `${runtime.stoppedAt} ERROR ${error.message}\n`,
-      );
-      this.emitEvent("error", instance.name, error.message);
-      endLogs();
     });
 
     child.on("exit", (code) => {
-      if (runtime.forceKillTimer) {
-        clearTimeout(runtime.forceKillTimer);
-      }
-      runtime.status = "exited";
-      runtime.exitCode = code;
-      runtime.stoppedAt = new Date().toISOString();
-      runtime.pid = null;
-      updateProcessRun(runtime.runId, {
-        pid: null,
+      this.finalizeExit(runtime, {
         status: "exited",
-        stoppedAt: runtime.stoppedAt,
         exitCode: code,
+        marker: `EXIT code=${code ?? "signal"}`,
+        event: { type: "exit", message: `exit code=${code ?? "signal"}` },
       });
-      this.writeManagerLogLine(
-        runtime,
-        `${runtime.stoppedAt} EXIT code=${code ?? "signal"}\n`,
-      );
-      this.emitEvent("exit", instance.name, `exit code=${code ?? "signal"}`);
     });
 
-    child.on("close", () => {
-      endLogs();
-    });
+    return this.getState(instance.name)!;
+  }
+
+  adopt(instance: Instance, run: ProcessRun, pid: number): ProcessState {
+    const current = this.processes.get(instance.name);
+    if (current && !this.isTerminal(current)) {
+      return this.getState(instance.name)!;
+    }
+
+    const adoptedAt = nowIso();
+    const filteredStream = createWriteStream(run.logPath, { flags: "a" });
+    filteredStream.on("error", () => undefined);
+    filteredStream.write(
+      `# ${adoptedAt} manager restarted; adopted running pid=${pid} (filtered log has a gap here — see raw log)\n`,
+    );
+
+    const runtime: RuntimeProcess = {
+      runId: run.id,
+      adopted: true,
+      child: null,
+      filteredStream,
+      tail: null,
+      exitWaiters: [],
+      instanceId: instance.name,
+      pid,
+      status: "running",
+      startedAt: run.startedAt,
+      stoppedAt: null,
+      exitCode: null,
+      logPath: run.logPath,
+      rawLogPath: run.rawLogPath,
+    };
+
+    if (run.rawLogPath) {
+      let tailStartOffset = 0;
+      try {
+        tailStartOffset = statSync(run.rawLogPath).size;
+      } catch {
+        tailStartOffset = 0;
+      }
+      runtime.tail = this.startTail(runtime, run.rawLogPath, tailStartOffset);
+    }
+
+    runtime.adoptedExitPoll = setInterval(() => {
+      if (this.isTerminal(runtime) || !runtime.pid) {
+        return;
+      }
+      if (isPidAlive(runtime.pid)) {
+        return;
+      }
+      const requested = runtime.status === "stopping";
+      this.finalizeExit(runtime, {
+        status: requested ? "exited" : "error",
+        exitCode: null,
+        marker: requested
+          ? "EXIT adopted process stopped"
+          : "ERROR adopted process died unexpectedly",
+        event: requested
+          ? { type: "exit", message: "exit adopted process" }
+          : { type: "error", message: "adopted process died unexpectedly" },
+      });
+    }, ADOPTED_EXIT_POLL_INTERVAL_MS);
+    runtime.adoptedExitPoll.unref();
+
+    this.processes.set(instance.name, runtime);
+    updateProcessRun(run.id, { pid, status: "running", adopted: true });
+    this.emitEvent("status", instance.name, `adopted pid=${pid}`);
 
     return this.getState(instance.name)!;
   }
@@ -256,13 +318,9 @@ class ProcessSupervisor extends EventEmitter {
           return;
         }
 
-        try {
-          this.emitEvent("status", runtime.instanceId, "force killing");
-          runtime.child.kill("SIGKILL");
-          result.forced += 1;
-        } catch {
-          // The process may have exited between the timeout and SIGKILL.
-        }
+        this.emitEvent("status", runtime.instanceId, "force killing");
+        this.killRuntime(runtime, "SIGKILL");
+        result.forced += 1;
 
         await this.waitForExit(runtime, 1_000);
       }),
@@ -280,6 +338,28 @@ class ProcessSupervisor extends EventEmitter {
     return this.start(instance);
   }
 
+  private startTail(
+    runtime: RuntimeProcess,
+    rawLogPath: string,
+    startOffset: number,
+  ) {
+    const tail = new RawLogTail({
+      path: rawLogPath,
+      startOffset,
+      onLines: (chunk) => {
+        const filtered = config.logs.filterRoutineProbeRequests
+          ? filterManagedLlamaLogChunk(chunk)
+          : chunk;
+        if (filtered) {
+          this.writeFiltered(runtime, filtered);
+        }
+        this.emitEvent("log", runtime.instanceId, chunk);
+      },
+    });
+    tail.start();
+    return tail;
+  }
+
   private emitEvent(
     type: ProcessEvent["type"],
     instanceId: string,
@@ -289,7 +369,7 @@ class ProcessSupervisor extends EventEmitter {
       type,
       instanceId,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso(),
     };
     this.emit("event", event);
     this.emit(`event:${instanceId}`, event);
@@ -297,6 +377,18 @@ class ProcessSupervisor extends EventEmitter {
 
   private isTerminal(runtime: RuntimeProcess) {
     return ["exited", "stopped", "error"].includes(runtime.status);
+  }
+
+  private killRuntime(runtime: RuntimeProcess, signal: NodeJS.Signals) {
+    try {
+      if (runtime.child) {
+        runtime.child.kill(signal);
+      } else if (runtime.pid) {
+        process.kill(runtime.pid, signal);
+      }
+    } catch {
+      return;
+    }
   }
 
   private requestStop(runtime: RuntimeProcess, timeoutMs: number) {
@@ -310,25 +402,84 @@ class ProcessSupervisor extends EventEmitter {
       runtime.status = "stopping";
       updateProcessRun(runtime.runId, { status: "stopping" });
       this.emitEvent("status", runtime.instanceId, "stopping");
-      try {
-        runtime.child.kill("SIGTERM");
-      } catch {
-        // The process may have exited between status polling and the signal.
-      }
+      this.killRuntime(runtime, "SIGTERM");
     }
 
     if (!runtime.forceKillTimer) {
       runtime.forceKillTimer = setTimeout(() => {
         if (runtime.status === "stopping") {
           this.emitEvent("status", runtime.instanceId, "force killing");
-          try {
-            runtime.child.kill("SIGKILL");
-          } catch {
-            // The process may have exited after the timeout check.
-          }
+          this.killRuntime(runtime, "SIGKILL");
         }
       }, effectiveTimeoutMs);
+      runtime.forceKillTimer.unref();
     }
+  }
+
+  private finalizeExit(
+    runtime: RuntimeProcess,
+    input: {
+      status: "exited" | "error";
+      exitCode: number | null;
+      marker: string;
+      event: { type: "exit" | "error"; message: string };
+    },
+  ) {
+    if (this.isTerminal(runtime)) {
+      return;
+    }
+    if (runtime.forceKillTimer) {
+      clearTimeout(runtime.forceKillTimer);
+      delete runtime.forceKillTimer;
+    }
+    if (runtime.adoptedExitPoll) {
+      clearInterval(runtime.adoptedExitPoll);
+      delete runtime.adoptedExitPoll;
+    }
+    runtime.status = input.status;
+    runtime.exitCode = input.exitCode;
+    runtime.stoppedAt = nowIso();
+    runtime.pid = null;
+    updateProcessRun(runtime.runId, {
+      pid: null,
+      status: input.status,
+      stoppedAt: runtime.stoppedAt,
+      exitCode: input.exitCode,
+    });
+    this.writeMarker(runtime, `${runtime.stoppedAt} ${input.marker}\n`);
+    this.emitEvent(input.event.type, runtime.instanceId, input.event.message);
+    for (const waiter of runtime.exitWaiters.splice(0)) {
+      waiter();
+    }
+    void this.closeLogs(runtime);
+  }
+
+  private async closeLogs(runtime: RuntimeProcess) {
+    await runtime.tail?.stop();
+    if (!runtime.filteredStream.writableEnded) {
+      runtime.filteredStream.end();
+    }
+  }
+
+  private writeMarker(runtime: RuntimeProcess, line: string) {
+    if (runtime.rawLogPath) {
+      try {
+        appendFileSync(runtime.rawLogPath, line);
+        return;
+      } catch {
+        this.writeFiltered(runtime, line);
+        return;
+      }
+    }
+    this.writeFiltered(runtime, line);
+  }
+
+  private writeFiltered(runtime: RuntimeProcess, message: string) {
+    const stream = runtime.filteredStream;
+    if (stream.writableEnded || stream.destroyed) {
+      return;
+    }
+    stream.write(message);
   }
 
   private waitForExit(runtime: RuntimeProcess, timeoutMs: number) {
@@ -339,39 +490,19 @@ class ProcessSupervisor extends EventEmitter {
     }
 
     return new Promise<boolean>((resolveDone) => {
-      const timer = setTimeout(() => {
-        runtime.child.off("exit", onExit);
-        resolveDone(false);
-      }, effectiveTimeoutMs);
-      const onExit = () => {
+      const waiter = () => {
         clearTimeout(timer);
         resolveDone(true);
       };
-      runtime.child.once("exit", onExit);
+      const timer = setTimeout(() => {
+        const index = runtime.exitWaiters.indexOf(waiter);
+        if (index !== -1) {
+          runtime.exitWaiters.splice(index, 1);
+        }
+        resolveDone(false);
+      }, effectiveTimeoutMs);
+      runtime.exitWaiters.push(waiter);
     });
-  }
-
-  private writeToLog(stream: RuntimeProcess["logStream"], message: string) {
-    if (stream.writableEnded || stream.destroyed) {
-      return;
-    }
-    stream.write(message);
-  }
-
-  private writeProcessOutput(runtime: RuntimeProcess, message: string) {
-    this.writeToLog(runtime.rawLogStream, message);
-
-    const filtered = config.logs.filterRoutineProbeRequests
-      ? filterManagedLlamaLogChunk(message)
-      : message;
-    if (filtered) {
-      this.writeToLog(runtime.logStream, filtered);
-    }
-  }
-
-  private writeManagerLogLine(runtime: RuntimeProcess, message: string) {
-    this.writeToLog(runtime.logStream, message);
-    this.writeToLog(runtime.rawLogStream, message);
   }
 }
 

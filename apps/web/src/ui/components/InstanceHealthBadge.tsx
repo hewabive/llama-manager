@@ -18,23 +18,44 @@ export function healthStatusColor(status: InstanceHealthSummary["status"]) {
   return "gray";
 }
 
+export function InstanceConfigDriftBadge(props: {
+  health: InstanceHealthSummary | undefined;
+}) {
+  if (!props.health?.configDrift) {
+    return null;
+  }
+  return (
+    <Tooltip
+      label="Instance configuration changed after this process started; restart to apply it."
+      withArrow
+    >
+      <Badge color="grape" variant="light">
+        config drift
+      </Badge>
+    </Tooltip>
+  );
+}
+
 export function InstanceHealthBadge(props: {
   instance: Instance;
   health: InstanceHealthSummary | undefined;
 }) {
   const health = props.health;
   return (
-    <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
-      <Badge
-        color={
-          health
-            ? healthStatusColor(health.status)
-            : statusColor(props.instance.status)
-        }
-        variant="light"
-      >
-        {health?.status ?? props.instance.status}
-      </Badge>
-    </Tooltip>
+    <>
+      <Tooltip label={health?.reason ?? "Health summary is loading"} withArrow>
+        <Badge
+          color={
+            health
+              ? healthStatusColor(health.status)
+              : statusColor(props.instance.status)
+          }
+          variant="light"
+        >
+          {health?.status ?? props.instance.status}
+        </Badge>
+      </Tooltip>
+      <InstanceConfigDriftBadge health={health} />
+    </>
   );
 }

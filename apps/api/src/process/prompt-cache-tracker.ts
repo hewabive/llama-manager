@@ -16,7 +16,7 @@ export class PromptCacheTracker {
       this.buffers.delete(event.instanceId);
       return;
     }
-    if (event.type !== "stdout" && event.type !== "stderr") {
+    if (event.type !== "log") {
       return;
     }
     const buffered = (this.buffers.get(event.instanceId) ?? "") + event.message;

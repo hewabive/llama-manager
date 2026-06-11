@@ -9,13 +9,17 @@ import type {
 } from "@llama-manager/core";
 
 import { llamaBaseUrl, probeLlamaServer } from "../llama/probe.js";
+import {
+  hasLaunchSnapshotDrift,
+  parseLaunchSnapshot,
+} from "./launch-snapshot.js";
 import { summarizeInstanceLog } from "./log-summary.js";
 import {
   validateInstancePreflight,
   validateInstanceStartPreflight,
 } from "./preflight.js";
 import { promptCacheTracker } from "./prompt-cache-tracker.js";
-import { latestProcessRun } from "./runs-repository.js";
+import { latestProcessRun, type ProcessRun } from "./runs-repository.js";
 import { supervisor } from "./supervisor.js";
 
 type HealthSummaryOptions = {
@@ -47,8 +51,10 @@ function isRuntimeStatus(
   return Boolean(value && runtimeStatuses.has(value as Instance["status"]));
 }
 
-function durableRuntime(instance: Instance): RuntimeState {
-  const latestRun = latestProcessRun(instance.name);
+function durableRuntime(
+  instance: Instance,
+  latestRun: ProcessRun | null,
+): RuntimeState {
   const pid = latestRun?.pid ? Number(latestRun.pid) : null;
   const exitCode =
     latestRun?.exitCode === null || latestRun?.exitCode === undefined
@@ -66,7 +72,30 @@ function durableRuntime(instance: Instance): RuntimeState {
     exitCode: exitCode === null || Number.isFinite(exitCode) ? exitCode : null,
     logPath: latestRun?.logPath ?? null,
     rawLogPath: latestRun?.rawLogPath ?? null,
+    adopted: latestRun?.adopted === "true",
   };
+}
+
+const driftCheckStatuses = new Set<Instance["status"]>([
+  "starting",
+  "running",
+  "stopping",
+  "stale",
+]);
+
+function detectConfigDrift(
+  instance: Instance,
+  runtime: RuntimeState,
+  latestRun: ProcessRun | null,
+): boolean {
+  if (!driftCheckStatuses.has(runtime.status)) {
+    return false;
+  }
+  const snapshot = parseLaunchSnapshot(latestRun?.launchSnapshot);
+  if (!snapshot) {
+    return false;
+  }
+  return hasLaunchSnapshotDrift(instance, snapshot);
 }
 
 function actionsFor(
@@ -250,8 +279,9 @@ export async function getInstanceHealthSummary(
   instance: Instance,
   options: HealthSummaryOptions = {},
 ): Promise<InstanceHealthSummary> {
+  const latestRun = latestProcessRun(instance.name);
   const runtime =
-    supervisor.getState(instance.name) ?? durableRuntime(instance);
+    supervisor.getState(instance.name) ?? durableRuntime(instance, latestRun);
   const shouldCheckStartAvailability = ["stopped", "exited", "error"].includes(
     runtime.status,
   );
@@ -295,6 +325,7 @@ export async function getInstanceHealthSummary(
     llama,
     logSummary,
     promptCache: promptCacheTracker.get(instance.name),
+    configDrift: detectConfigDrift(instance, runtime, latestRun),
     checkedAt: nowIso(),
   };
 }

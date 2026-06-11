@@ -55,7 +55,7 @@ export const config = {
   },
   shutdown: {
     stopManagedOnExit:
-      process.env.LLAMA_MANAGER_STOP_MANAGED_ON_EXIT !== "false",
+      process.env.LLAMA_MANAGER_STOP_MANAGED_ON_EXIT === "true",
     timeoutMs: Number(process.env.LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS ?? 10_000),
   },
   proxy: {
