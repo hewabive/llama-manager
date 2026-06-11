@@ -74,7 +74,6 @@ function exportTargets() {
         ApiProxyTargetRecordSchema.parse({
           id: row.id,
           name: row.name,
-          enabled: parseBool(row.enabled),
           endpointId: row.endpoint_id,
           model: row.model,
           role: row.role,

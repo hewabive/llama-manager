@@ -156,9 +156,6 @@ export function planApiProxyRequest(
       `proxy target ${request.requestedTargetId} not found`,
     );
   }
-  if (!target.enabled) {
-    return blocked(request, `proxy target ${target.name} is disabled`);
-  }
   if (runtimeState(target) === "error") {
     return blocked(request, `proxy target ${target.name} is in error state`);
   }
@@ -167,7 +164,6 @@ export function planApiProxyRequest(
   const blockers = request.targets.filter(
     (item) =>
       item.id !== target.id &&
-      item.enabled &&
       sameResourceGroup(item, target) &&
       isActive(item),
   );
@@ -212,7 +208,7 @@ export function planApiProxyIdleMaintenance(
 
   const actions: ApiProxySchedulerAction[] = [];
   const unloadCandidates = request.targets.filter((target) => {
-    if (!target.enabled || !isActive(target) || isBusy(target)) {
+    if (!isActive(target) || isBusy(target)) {
       return false;
     }
     if (target.idleUnloadMs === null) {
@@ -231,11 +227,10 @@ export function planApiProxyIdleMaintenance(
   const preferredTarget = request.preferredTargetId
     ? request.targets.find((target) => target.id === request.preferredTargetId)
     : null;
-  if (preferredTarget?.enabled && !isActive(preferredTarget)) {
+  if (preferredTarget && !isActive(preferredTarget)) {
     const activePeer = request.targets.find(
       (target) =>
         target.id !== preferredTarget.id &&
-        target.enabled &&
         sameResourceGroup(target, preferredTarget) &&
         isActive(target) &&
         !unloadCandidates.some((candidate) => candidate.id === target.id),

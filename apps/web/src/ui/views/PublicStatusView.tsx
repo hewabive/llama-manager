@@ -46,7 +46,7 @@ function proxyTargetDetails(target: PublicProxyTarget) {
 
 function ProxyTargetCard(props: { target: PublicProxyTarget }) {
   const { target } = props;
-  const color = target.enabled ? runtimeStateColor(target.state) : "gray";
+  const color = runtimeStateColor(target.state);
   return (
     <Paper withBorder p="sm" radius="sm" w={260}>
       <Stack gap={6}>
@@ -59,7 +59,7 @@ function ProxyTargetCard(props: { target: PublicProxyTarget }) {
             variant={target.activeRequests > 0 ? "filled" : "light"}
             style={{ flexShrink: 0 }}
           >
-            {target.enabled ? target.state : "disabled"}
+            {target.state}
           </Badge>
         </Group>
         <Stack gap={2}>

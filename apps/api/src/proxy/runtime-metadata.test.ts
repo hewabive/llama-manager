@@ -16,7 +16,6 @@ import {
 function seedTarget(name: string) {
   return createApiProxyTarget({
     name,
-    enabled: true,
     endpointId: "external:test",
     model: null,
     role: "background",

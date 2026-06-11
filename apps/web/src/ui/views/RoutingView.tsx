@@ -275,7 +275,7 @@ export function RoutingView() {
       closeTargetEditor();
       notifications.show({
         title: "Proxy target saved",
-        message: "Target is disabled until explicitly enabled.",
+        message: "Target is ready to receive routed requests.",
       });
     },
     onError: (error) =>

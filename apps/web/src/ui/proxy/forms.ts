@@ -27,7 +27,6 @@ export type PipelineEditor =
 
 export type TargetDraft = {
   name: string;
-  enabled: boolean;
   endpointId: string | null;
   model: string;
   role: "interactive" | "background";
@@ -116,7 +115,6 @@ const routeToPipelinePrefix = "pipeline:";
 
 export const emptyTargetDraft: TargetDraft = {
   name: "",
-  enabled: false,
   endpointId: null,
   model: "",
   role: "interactive",
@@ -301,7 +299,6 @@ export function targetDraftFromRecord(
 ): TargetDraft {
   return {
     name: target.name,
-    enabled: target.enabled,
     endpointId: target.endpointId,
     model: target.model ?? "",
     role: target.role,
@@ -586,7 +583,6 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
 export function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
   return {
     name: draft.name.trim(),
-    enabled: draft.enabled,
     endpointId: draft.endpointId ?? "",
     model: draft.model.trim() || null,
     role: draft.role,

@@ -502,12 +502,6 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                     <Table.Td>
                       <Group gap={6} wrap="wrap">
                         <Text fw={600}>{target.name}</Text>
-                        <Badge
-                          color={targetStatusColor(target.enabled)}
-                          variant="light"
-                        >
-                          {target.enabled ? "enabled" : "disabled"}
-                        </Badge>
                         <Badge variant="outline">{target.role}</Badge>
                       </Group>
                     </Table.Td>

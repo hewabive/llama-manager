@@ -26,6 +26,24 @@ import {
 import type { SelectOption } from "./sections";
 import { TouchSelect } from "../components/TouchCombobox";
 
+function suggestedTargetName(
+  group: ApiProxyTargetModelGroup | undefined,
+  model: string,
+) {
+  if (!group) {
+    return "";
+  }
+  const trimmed = model.trim();
+  if (group.kind === "external-api") {
+    return trimmed;
+  }
+  if (trimmed) {
+    return trimmed;
+  }
+  const label = group.options[0]?.label ?? group.endpointName;
+  return label.replace(/\.gguf$/i, "");
+}
+
 function targetModelKindLabel(kind: ApiProxyTargetModelGroup["kind"]) {
   if (kind === "managed-single") return "single";
   if (kind === "managed-router") return "router";
@@ -150,6 +168,25 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
     }
     return `${props.draft.endpointId}${targetModelSeparator}${props.draft.model.trim()}`;
   }, [props.draft.endpointId, props.draft.model, selectedGroup]);
+  const isCreate = props.editor?.mode === "create";
+
+  const withSuggestedName = (
+    draft: TargetDraft,
+    nextGroup: ApiProxyTargetModelGroup | undefined,
+  ): TargetDraft => {
+    if (!isCreate) {
+      return draft;
+    }
+    const currentName = props.draft.name.trim();
+    const previousSuggestion = suggestedTargetName(
+      selectedGroup,
+      props.draft.model,
+    );
+    if (currentName && currentName !== previousSuggestion) {
+      return draft;
+    }
+    return { ...draft, name: suggestedTargetName(nextGroup, draft.model) };
+  };
 
   return (
     <Modal
@@ -163,14 +200,6 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
       size="lg"
     >
       <Stack gap="sm">
-        <Switch
-          label="Enabled"
-          checked={props.draft.enabled}
-          onChange={(event) => {
-            const enabled = event.currentTarget.checked;
-            props.onDraftChange({ ...props.draft, enabled });
-          }}
-        />
         <TextInput
           label="Name"
           value={props.draft.name}
@@ -190,11 +219,12 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
           value={modelSelectValue}
           onChange={(value) => {
             if (!value) {
-              props.onDraftChange({
-                ...props.draft,
-                endpointId: null,
-                model: "",
-              });
+              props.onDraftChange(
+                withSuggestedName(
+                  { ...props.draft, endpointId: null, model: "" },
+                  undefined,
+                ),
+              );
               return;
             }
             const parsed = parseTargetModelValue(value);
@@ -203,11 +233,12 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             );
             const model =
               group?.kind === "external-api" ? "" : (parsed.storedModel ?? "");
-            props.onDraftChange({
-              ...props.draft,
-              endpointId: parsed.endpointId,
-              model,
-            });
+            props.onDraftChange(
+              withSuggestedName(
+                { ...props.draft, endpointId: parsed.endpointId, model },
+                group,
+              ),
+            );
           }}
         />
         {isExternal && (
@@ -217,7 +248,9 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             value={props.draft.model}
             onChange={(event) => {
               const model = event.currentTarget.value;
-              props.onDraftChange({ ...props.draft, model });
+              props.onDraftChange(
+                withSuggestedName({ ...props.draft, model }, selectedGroup),
+              );
             }}
           />
         )}

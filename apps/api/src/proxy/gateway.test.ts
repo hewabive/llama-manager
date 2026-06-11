@@ -14,7 +14,6 @@ import type { ApiProxyProtocolModelRequest } from "./protocol.js";
 const target: ApiProxyTargetRecord = {
   id: "target-a",
   name: "Interactive",
-  enabled: true,
   endpointId: "instance:instance-a",
   model: "qwen",
   role: "interactive",

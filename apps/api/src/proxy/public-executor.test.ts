@@ -13,7 +13,6 @@ import { executeApiProxyPublicMvpPlan } from "./public-executor.js";
 const target: ApiProxyTargetRecord = {
   id: "target-a",
   name: "Target A",
-  enabled: true,
   endpointId: "instance:instance-a",
   model: "chat",
   role: "interactive",

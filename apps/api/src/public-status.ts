@@ -56,14 +56,10 @@ function isBusyState(state: PublicProxyTarget["state"]) {
 
 async function getPublicProxy(): Promise<PublicStatus["proxy"]> {
   const { targets, snapshot } = await getApiProxyRuntimeSnapshot();
-  const enabledById = new Map(
-    targets.map((target) => [target.id, target.enabled]),
-  );
   const items: PublicProxyTarget[] = snapshot.targets.map((runtime) => {
     const record = targets.find((target) => target.id === runtime.targetId);
     return {
       name: record?.name ?? runtime.targetId,
-      enabled: enabledById.get(runtime.targetId) ?? false,
       state: runtime.state,
       activeRequests: runtime.activeRequests,
       model: runtime.model,

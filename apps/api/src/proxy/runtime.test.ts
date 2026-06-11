@@ -49,7 +49,6 @@ function target(
   return {
     id: input.id ?? "target-a",
     name: "Target A",
-    enabled: true,
     endpointId: input.endpointId ?? "instance:instance-a",
     model: input.model === undefined ? "chat" : input.model,
     role: "interactive",

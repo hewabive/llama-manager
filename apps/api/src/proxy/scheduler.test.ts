@@ -30,7 +30,6 @@ function target(input: {
   return {
     id: input.id,
     name: input.name,
-    enabled: true,
     endpointId: `instance:${input.instanceId}`,
     instanceId: input.instanceId,
     model: input.model,

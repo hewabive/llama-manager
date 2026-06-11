@@ -577,7 +577,6 @@ const ApiProxyPipelineNameSchema = z.string().min(1).max(80);
 export const ApiProxyTargetConfigSchema = z.object({
   id: ApiProxyIdSchema,
   name: ApiProxyTargetNameSchema,
-  enabled: z.boolean().default(false),
   endpointId: ApiEndpointIdSchema,
   model: ApiProxyTargetModelSchema.default(null),
   role: ApiProxyTargetRoleSchema.default("interactive"),
@@ -1110,7 +1109,6 @@ export const ApiProxyTargetCreateSchema = ApiProxyTargetConfigSchema.omit({
 
 export const ApiProxyTargetUpdateSchema = z.object({
   name: ApiProxyTargetNameSchema.optional(),
-  enabled: z.boolean().optional(),
   endpointId: ApiEndpointIdSchema.optional(),
   model: ApiProxyTargetModelSchema.optional(),
   role: ApiProxyTargetRoleSchema.optional(),
@@ -2029,7 +2027,6 @@ export const PublicInstanceStatusSchema = z.object({
 
 export const PublicProxyTargetSchema = z.object({
   name: z.string(),
-  enabled: z.boolean(),
   state: ApiProxyModelStateSchema,
   activeRequests: z.number().int().nonnegative(),
   model: z.string().nullable(),
