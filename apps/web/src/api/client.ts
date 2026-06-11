@@ -12,6 +12,8 @@ import type {
   ApiProxyPipelineCreate,
   ApiProxyPipelineRecord,
   ApiProxyPipelineUpdate,
+  ApiProxyQuickRouteCreate,
+  ApiProxyQuickRouteResult,
   ApiProxyRouteExplainRequest,
   ApiProxyRouteExplainResult,
   ApiProxyRequestFileRecord,
@@ -385,6 +387,15 @@ export async function explainApiProxyRoute(input: ApiProxyRouteExplainRequest) {
       body: JSON.stringify(input),
     },
   );
+}
+
+export async function createApiProxyQuickRoute(
+  input: ApiProxyQuickRouteCreate,
+) {
+  return request<{ data: ApiProxyQuickRouteResult }>("/api/proxy/quick-route", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createApiProxyTarget(input: ApiProxyTargetCreate) {

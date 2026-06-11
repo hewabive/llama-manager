@@ -6,10 +6,13 @@ import { config } from "../config.js";
 import { resetConfigFilesCache, readSecret } from "./config-files.js";
 import {
   createApiProxyModel,
+  createApiProxyQuickRoute,
   createApiProxyTarget,
   deleteApiProxyTarget,
   getApiProxyModel,
+  getApiProxyModelByModelId,
   getApiProxyRuntimeMetadata,
+  listApiProxyTargets,
   setApiProxyRuntimeMetadata,
 } from "./repository.js";
 import { createApiEndpoint, getExternalApiEndpoint } from "./endpoints.js";
@@ -75,6 +78,57 @@ test("deleting a target nulls referencing models and drops runtime metadata", ()
   assert.equal(deleteApiProxyTarget(target.id), true);
   assert.equal(getApiProxyModel(model.id)?.targetId, null);
   assert.equal(getApiProxyRuntimeMetadata(target.id), null);
+});
+
+test("quick route creates a target and an enabled model bound to it", () => {
+  const result = createApiProxyQuickRoute({
+    targetName: "quick",
+    endpointId: "external:test",
+    model: null,
+    modelId: "quick-model",
+  });
+
+  assert.equal(result.target.name, "quick");
+  assert.equal(result.model.modelId, "quick-model");
+  assert.equal(result.model.enabled, true);
+  assert.equal(result.model.targetId, result.target.id);
+  assert.deepEqual(result.model.routeTo, {
+    type: "target",
+    id: result.target.id,
+  });
+});
+
+test("quick route with a taken model id leaves no orphan target", () => {
+  seedModel("taken", null);
+  assert.throws(
+    () =>
+      createApiProxyQuickRoute({
+        targetName: "orphan",
+        endpointId: "external:test",
+        model: null,
+        modelId: "taken",
+      }),
+    /already exists/,
+  );
+  assert.equal(
+    listApiProxyTargets().some((target) => target.name === "orphan"),
+    false,
+  );
+});
+
+test("quick route with a taken target name creates no model", () => {
+  seedTarget("dup-target");
+  assert.throws(
+    () =>
+      createApiProxyQuickRoute({
+        targetName: "dup-target",
+        endpointId: "external:test",
+        model: null,
+        modelId: "fresh-model",
+      }),
+    /already exists/,
+  );
+  assert.equal(getApiProxyModelByModelId("fresh-model"), null);
 });
 
 test("endpoint api key is stored in secrets, never in endpoints.json", () => {

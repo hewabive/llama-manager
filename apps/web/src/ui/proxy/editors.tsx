@@ -15,6 +15,7 @@ import { useMemo } from "react";
 import type {
   ModelDraft,
   ModelEditor,
+  QuickRouteDraft,
   TargetDraft,
   TargetEditor,
 } from "./forms";
@@ -48,6 +49,18 @@ function targetModelKindLabel(kind: ApiProxyTargetModelGroup["kind"]) {
   if (kind === "managed-single") return "single";
   if (kind === "managed-router") return "router";
   return "external";
+}
+
+function targetModelSelectData(groups: ApiProxyTargetModelGroup[]) {
+  return groups.map((group) => ({
+    group: `${group.endpointName} · ${targetModelKindLabel(group.kind)}${
+      group.online ? "" : " · offline"
+    }`,
+    items: group.options.map((option) => ({
+      value: option.value,
+      label: option.label,
+    })),
+  }));
 }
 
 type ModelEditorModalProps = {
@@ -118,7 +131,7 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
           <Button
             leftSection={<Save size={16} />}
             loading={props.busy}
-            disabled={!props.draft.modelId.trim() || !props.draft.routeToValue}
+            disabled={!props.draft.modelId.trim()}
             onClick={props.onSave}
           >
             Save
@@ -147,16 +160,7 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
   );
   const isExternal = selectedGroup?.kind === "external-api";
   const modelSelectData = useMemo(
-    () =>
-      groups.map((group) => ({
-        group: `${group.endpointName} · ${targetModelKindLabel(group.kind)}${
-          group.online ? "" : " · offline"
-        }`,
-        items: group.options.map((option) => ({
-          value: option.value,
-          label: option.label,
-        })),
-      })),
+    () => targetModelSelectData(groups),
     [groups],
   );
   const modelSelectValue = useMemo(() => {
@@ -339,6 +343,151 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             onClick={props.onSave}
           >
             Save
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+type QuickRouteModalProps = {
+  opened: boolean;
+  draft: QuickRouteDraft;
+  targetModelGroups: ApiProxyTargetModelGroup[];
+  busy: boolean;
+  onClose: () => void;
+  onCreate: () => void;
+  onDraftChange: (draft: QuickRouteDraft) => void;
+};
+
+export function QuickRouteModal(props: QuickRouteModalProps) {
+  const groups = props.targetModelGroups;
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.endpointId === props.draft.endpointId),
+    [groups, props.draft.endpointId],
+  );
+  const isExternal = selectedGroup?.kind === "external-api";
+  const modelSelectData = useMemo(
+    () => targetModelSelectData(groups),
+    [groups],
+  );
+  const modelSelectValue = useMemo(() => {
+    if (!props.draft.endpointId || !selectedGroup) {
+      return null;
+    }
+    if (selectedGroup.kind === "external-api") {
+      return selectedGroup.options[0]?.value ?? null;
+    }
+    return `${props.draft.endpointId}${targetModelSeparator}${props.draft.model.trim()}`;
+  }, [props.draft.endpointId, props.draft.model, selectedGroup]);
+
+  const withSuggestions = (
+    draft: QuickRouteDraft,
+    nextGroup: ApiProxyTargetModelGroup | undefined,
+  ): QuickRouteDraft => {
+    const previousSuggestion = suggestedTargetName(
+      selectedGroup,
+      props.draft.model,
+    );
+    const suggestion = suggestedTargetName(nextGroup, draft.model);
+    const next = { ...draft };
+    const currentTargetName = props.draft.targetName.trim();
+    if (!currentTargetName || currentTargetName === previousSuggestion) {
+      next.targetName = suggestion;
+    }
+    const currentModelId = props.draft.modelId.trim();
+    if (!currentModelId || currentModelId === previousSuggestion) {
+      next.modelId = suggestion;
+    }
+    return next;
+  };
+
+  return (
+    <Modal
+      opened={props.opened}
+      onClose={props.onClose}
+      title="Quick route"
+      size="lg"
+    >
+      <Stack gap="sm">
+        <TouchSelect
+          data={modelSelectData}
+          label="Target model"
+          description="Creates a proxy target for this model and a published model routed to it, all with default settings."
+          searchable
+          nothingFoundMessage="No models — create an instance or external endpoint first"
+          placeholder="Select a model"
+          maxDropdownHeight={360}
+          value={modelSelectValue}
+          onChange={(value) => {
+            if (!value) {
+              props.onDraftChange(
+                withSuggestions(
+                  { ...props.draft, endpointId: null, model: "" },
+                  undefined,
+                ),
+              );
+              return;
+            }
+            const parsed = parseTargetModelValue(value);
+            const group = groups.find(
+              (item) => item.endpointId === parsed.endpointId,
+            );
+            const model =
+              group?.kind === "external-api" ? "" : (parsed.storedModel ?? "");
+            props.onDraftChange(
+              withSuggestions(
+                { ...props.draft, endpointId: parsed.endpointId, model },
+                group,
+              ),
+            );
+          }}
+        />
+        {isExternal && (
+          <TextInput
+            label="Upstream model"
+            placeholder="model id sent to the external API"
+            value={props.draft.model}
+            onChange={(event) => {
+              const model = event.currentTarget.value;
+              props.onDraftChange(
+                withSuggestions({ ...props.draft, model }, selectedGroup),
+              );
+            }}
+          />
+        )}
+        <TextInput
+          label="Target name"
+          value={props.draft.targetName}
+          onChange={(event) => {
+            const targetName = event.currentTarget.value;
+            props.onDraftChange({ ...props.draft, targetName });
+          }}
+        />
+        <TextInput
+          label="Model ID"
+          placeholder="Public model id for /v1/models"
+          value={props.draft.modelId}
+          onChange={(event) => {
+            const modelId = event.currentTarget.value;
+            props.onDraftChange({ ...props.draft, modelId });
+          }}
+        />
+        <Group justify="flex-end" gap="xs">
+          <Button variant="subtle" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button
+            leftSection={<Save size={16} />}
+            loading={props.busy}
+            disabled={
+              !props.draft.endpointId ||
+              !props.draft.targetName.trim() ||
+              !props.draft.modelId.trim()
+            }
+            onClick={props.onCreate}
+          >
+            Create route
           </Button>
         </Group>
       </Stack>

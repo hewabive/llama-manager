@@ -8,6 +8,7 @@ import type {
   ApiProxyPipelineNode,
   ApiProxyPipelineRecord,
   ApiProxyPortRef,
+  ApiProxyQuickRouteCreate,
   ApiProxyRouteTo,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
@@ -44,6 +45,13 @@ export type ModelDraft = {
   ownedBy: string;
   routeToValue: string | null;
   description: string;
+};
+
+export type QuickRouteDraft = {
+  endpointId: string | null;
+  model: string;
+  targetName: string;
+  modelId: string;
 };
 
 export type PortValue = string | null;
@@ -132,6 +140,13 @@ export const emptyModelDraft: ModelDraft = {
   ownedBy: "llama-manager",
   routeToValue: null,
   description: "",
+};
+
+export const emptyQuickRouteDraft: QuickRouteDraft = {
+  endpointId: null,
+  model: "",
+  targetName: "",
+  modelId: "",
 };
 
 export const emptyPipelineDraft: PipelineDraft = {
@@ -309,6 +324,13 @@ export function targetDraftFromRecord(
     slotIds: slotIdsText(target.slotIds),
     idleUnloadMs: target.idleUnloadMs ?? "",
   };
+}
+
+export function modelDirectTargetId(model: ApiProxyModelRecord): string | null {
+  if (model.routeTo) {
+    return model.routeTo.type === "target" ? model.routeTo.id : null;
+  }
+  return model.targetId;
 }
 
 export function modelDraftFromRecord(model: ApiProxyModelRecord): ModelDraft {
@@ -604,6 +626,17 @@ export function modelPayload(draft: ModelDraft): ApiProxyModelCreate {
     targetId: routeTo?.type === "target" ? routeTo.id : null,
     routeTo,
     description: draft.description.trim() || null,
+  };
+}
+
+export function quickRoutePayload(
+  draft: QuickRouteDraft,
+): ApiProxyQuickRouteCreate {
+  return {
+    targetName: draft.targetName.trim(),
+    endpointId: draft.endpointId ?? "",
+    model: draft.model.trim() || null,
+    modelId: draft.modelId.trim(),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   ApiProxyPipelineConfigSchema,
   ApiProxyPipelineRecordSchema,
   ApiProxyPipelineUpdateSchema,
+  ApiProxyQuickRouteCreateSchema,
   ApiProxyTargetConfigSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetRecordSchema,
@@ -19,6 +20,8 @@ import {
   type ApiProxyPipelineCreate,
   type ApiProxyPipelineRecord,
   type ApiProxyPipelineUpdate,
+  type ApiProxyQuickRouteCreate,
+  type ApiProxyQuickRouteResult,
   type ApiProxyTargetCreate,
   type ApiProxyTargetRecord,
   type ApiProxyTargetUpdate,
@@ -220,6 +223,34 @@ export function createApiProxyModel(
   });
   writeCollection(MODELS_FILE, [...records, record]);
   return record;
+}
+
+export function createApiProxyQuickRoute(
+  input: ApiProxyQuickRouteCreate,
+): ApiProxyQuickRouteResult {
+  const parsed = ApiProxyQuickRouteCreateSchema.parse(input);
+  assertUniqueModelId(readModels(), parsed.modelId, null);
+  const target = createApiProxyTarget(
+    ApiProxyTargetCreateSchema.parse({
+      name: parsed.targetName,
+      endpointId: parsed.endpointId,
+      model: parsed.model,
+    }),
+  );
+  try {
+    const model = createApiProxyModel(
+      ApiProxyModelCreateSchema.parse({
+        modelId: parsed.modelId,
+        enabled: true,
+        targetId: target.id,
+        routeTo: { type: "target", id: target.id },
+      }),
+    );
+    return { target, model };
+  } catch (error) {
+    deleteApiProxyTarget(target.id);
+    throw error;
+  }
 }
 
 export function updateApiProxyModel(

@@ -2,6 +2,7 @@ import type {
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyPipelineCreate,
+  ApiProxyPipelineRecord,
   ApiProxyRouteExplainResult,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
@@ -14,6 +15,7 @@ import { useMemo, useState } from "react";
 import {
   createApiProxyModel,
   createApiProxyPipeline,
+  createApiProxyQuickRoute,
   createApiProxyTarget,
   deleteApiProxyModel,
   deleteApiProxyPipeline,
@@ -30,21 +32,29 @@ import {
 import {
   emptyModelDraft,
   emptyPipelineDraft,
+  emptyQuickRouteDraft,
   emptyTargetDraft,
+  modelDirectTargetId,
   modelDraftFromRecord,
   modelPayload,
   pipelineDraftFromRecord,
   pipelinePayload,
+  quickRoutePayload,
   targetDraftFromRecord,
   targetPayload,
   unboundTargetValue,
   type ModelDraft,
   type ModelEditor,
   type PipelineDraft,
+  type QuickRouteDraft,
   type TargetDraft,
   type TargetEditor,
 } from "../proxy/forms";
-import { ModelEditorModal, TargetEditorModal } from "../proxy/editors";
+import {
+  ModelEditorModal,
+  QuickRouteModal,
+  TargetEditorModal,
+} from "../proxy/editors";
 import { PipelinePanel } from "../proxy/PipelinePanel";
 import {
   ExternalModelsSection,
@@ -58,6 +68,22 @@ import { useHashSubpath } from "../routing";
 
 const newPipelineSubpath = "new";
 
+function suggestPipelineName(
+  modelId: string,
+  pipelines: ApiProxyPipelineRecord[],
+): string {
+  const taken = new Set(pipelines.map((pipeline) => pipeline.name));
+  const base = modelId.slice(0, 72) || "route";
+  if (!taken.has(base)) {
+    return base;
+  }
+  let index = 2;
+  while (taken.has(`${base} ${index}`)) {
+    index += 1;
+  }
+  return `${base} ${index}`;
+}
+
 export function RoutingView() {
   const queryClient = useQueryClient();
   const [subpath, setSubpath] = useHashSubpath("routing");
@@ -67,6 +93,9 @@ export function RoutingView() {
   const [targetEditor, setTargetEditor] = useState<TargetEditor | null>(null);
   const [targetDraftState, setTargetDraftState] =
     useState<TargetDraft>(emptyTargetDraft);
+  const [quickRouteOpen, setQuickRouteOpen] = useState(false);
+  const [quickRouteDraftState, setQuickRouteDraftState] =
+    useState<QuickRouteDraft>(emptyQuickRouteDraft);
   const [pipelineDraftState, setPipelineDraftState] =
     useState<PipelineDraft>(emptyPipelineDraft);
   const [pipelineDraftFor, setPipelineDraftFor] = useState<string | null>(null);
@@ -268,6 +297,58 @@ export function RoutingView() {
       }),
   });
 
+  const quickRouteMutation = useMutation({
+    mutationFn: createApiProxyQuickRoute,
+    onSuccess: async (result) => {
+      await invalidateProxy();
+      closeQuickRoute();
+      notifications.show({
+        title: "Quick route created",
+        message: `Model ${result.data.model.modelId} now routes to target ${result.data.target.name}.`,
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Quick route failed",
+        message: (error as Error).message,
+      }),
+  });
+
+  const createPipelineForModelMutation = useMutation({
+    mutationFn: async (model: ApiProxyModelRecord) => {
+      const targetId = modelDirectTargetId(model);
+      if (!targetId) {
+        throw new Error("model is not routed directly to a target");
+      }
+      const created = await createApiProxyPipeline({
+        name: suggestPipelineName(model.modelId, pipelines),
+        enabled: true,
+        entry: { type: "target", id: targetId },
+        nodes: [],
+      });
+      await updateApiProxyModel(model.id, {
+        routeTo: { type: "pipeline", id: created.data.id },
+        targetId: null,
+      });
+      return created.data;
+    },
+    onSuccess: async (pipeline) => {
+      await invalidateProxy();
+      openPipeline(pipeline.id);
+      notifications.show({
+        title: "Pipeline created",
+        message: `Pipeline "${pipeline.name}" was inserted between the model and its target.`,
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Pipeline insert failed",
+        message: (error as Error).message,
+      }),
+  });
+
   const createTargetMutation = useMutation({
     mutationFn: createApiProxyTarget,
     onSuccess: async () => {
@@ -338,6 +419,20 @@ export function RoutingView() {
   function openCreateTarget() {
     setTargetEditor({ mode: "create", target: null });
     setTargetDraftState(emptyTargetDraft);
+  }
+
+  function openQuickRoute() {
+    setQuickRouteDraftState(emptyQuickRouteDraft);
+    setQuickRouteOpen(true);
+  }
+
+  function closeQuickRoute() {
+    setQuickRouteOpen(false);
+    setQuickRouteDraftState(emptyQuickRouteDraft);
+  }
+
+  function createQuickRoute() {
+    quickRouteMutation.mutate(quickRoutePayload(quickRouteDraftState));
   }
 
   function openEditTarget(target: ApiProxyTargetRecord) {
@@ -490,6 +585,7 @@ export function RoutingView() {
             modelsCount={models.length}
             pipelinesCount={pipelines.length}
             targetsCount={targets.length}
+            onQuickRoute={openQuickRoute}
             onAddModel={openCreateModel}
             onAddPipeline={() => openPipeline(newPipelineSubpath)}
             onAddTarget={openCreateTarget}
@@ -507,9 +603,13 @@ export function RoutingView() {
             pipelineById={pipelineById}
             targetById={targetById}
             deletePending={deleteModelMutation.isPending}
+            createPipelinePending={createPipelineForModelMutation.isPending}
             onEdit={openEditModel}
             onDelete={(id) => deleteModelMutation.mutate(id)}
             onOpenPipeline={openPipeline}
+            onCreatePipeline={(model) =>
+              createPipelineForModelMutation.mutate(model)
+            }
           />
 
           <PipelinesSection
@@ -587,6 +687,16 @@ export function RoutingView() {
         onClose={closeTargetEditor}
         onSave={saveTarget}
         onDraftChange={setTargetDraftState}
+      />
+
+      <QuickRouteModal
+        opened={quickRouteOpen}
+        draft={quickRouteDraftState}
+        targetModelGroups={targetModelGroups}
+        busy={quickRouteMutation.isPending}
+        onClose={closeQuickRoute}
+        onCreate={createQuickRoute}
+        onDraftChange={setQuickRouteDraftState}
       />
     </Stack>
   );

@@ -34,16 +34,19 @@ import {
   Activity,
   BarChart3,
   FileText,
+  GitBranchPlus,
   Pencil,
   Play,
   Plus,
   SlidersHorizontal,
   Trash2,
   Workflow,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 
 import { getApiProxyRequestFile } from "../../api/client";
+import { modelDirectTargetId } from "./forms";
 import { JsonTreeView } from "../components/JsonTreeView";
 import { TouchSelect } from "../components/TouchCombobox";
 import { formatBytes } from "../utils/models";
@@ -67,6 +70,7 @@ type ProxyHeaderProps = {
   modelsCount: number;
   pipelinesCount: number;
   targetsCount: number;
+  onQuickRoute: () => void;
   onAddModel: () => void;
   onAddPipeline: () => void;
   onAddTarget: () => void;
@@ -85,6 +89,9 @@ export function ProxyHeader(props: ProxyHeaderProps) {
           </Badge>
         </Group>
         <Group gap="xs" wrap="wrap">
+          <Button leftSection={<Zap size={16} />} onClick={props.onQuickRoute}>
+            Quick route
+          </Button>
           <Button
             variant="light"
             leftSection={<Plus size={16} />}
@@ -117,9 +124,11 @@ type ExternalModelsSectionProps = {
   pipelineById: Map<string, ApiProxyPipelineRecord>;
   targetById: Map<string, ApiProxyTargetRecord>;
   deletePending: boolean;
+  createPipelinePending: boolean;
   onEdit: (model: ApiProxyModelRecord) => void;
   onDelete: (id: string) => void;
   onOpenPipeline: (pipelineId: string) => void;
+  onCreatePipeline: (model: ApiProxyModelRecord) => void;
 };
 
 export function ExternalModelsSection(props: ExternalModelsSectionProps) {
@@ -154,84 +163,101 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {props.models.map((model) => (
-                <Table.Tr key={model.id}>
-                  <Table.Td>
-                    <Code>{model.modelId}</Code>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge
-                      color={targetStatusColor(model.enabled)}
-                      variant="light"
-                    >
-                      {model.enabled ? "enabled" : "disabled"}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    {routeToLabel(
-                      model.routeTo ??
-                        (model.targetId
-                          ? { type: "target", id: model.targetId }
-                          : null),
-                      props.targetById,
-                      props.pipelineById,
-                    )}
-                  </Table.Td>
-                  <Table.Td>{model.ownedBy}</Table.Td>
-                  <Table.Td>
-                    {model.description ? (
-                      <Text size="sm">{model.description}</Text>
-                    ) : (
-                      <Text c="dimmed" size="sm">
-                        none
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>{formatLocalDateTime(model.updatedAt)}</Table.Td>
-                  <Table.Td>
-                    <Group gap={4} justify="flex-end" wrap="nowrap">
-                      {model.routeTo?.type === "pipeline" &&
-                        props.pipelineById.has(model.routeTo.id) && (
-                          <Tooltip label="Open pipeline">
-                            <ActionIcon
-                              aria-label="Open bound pipeline"
-                              variant="subtle"
-                              color="teal"
-                              onClick={() => {
-                                const routeTo = model.routeTo;
-                                if (routeTo?.type === "pipeline") {
-                                  props.onOpenPipeline(routeTo.id);
-                                }
-                              }}
-                            >
-                              <Workflow size={16} />
-                            </ActionIcon>
-                          </Tooltip>
-                        )}
-                      <Tooltip label="Edit model">
-                        <ActionIcon
-                          aria-label="Edit proxy model"
-                          variant="subtle"
-                          onClick={() => props.onEdit(model)}
-                        >
-                          <Pencil size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Delete model">
-                        <ActionIcon
-                          aria-label="Delete proxy model"
-                          variant="subtle"
-                          color="red"
-                          loading={props.deletePending}
-                          onClick={() => props.onDelete(model.id)}
-                        >
-                          <Trash2 size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {props.models.map((model) => {
+                const directTargetId = modelDirectTargetId(model);
+                return (
+                  <Table.Tr key={model.id}>
+                    <Table.Td>
+                      <Code>{model.modelId}</Code>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={targetStatusColor(model.enabled)}
+                        variant="light"
+                      >
+                        {model.enabled ? "enabled" : "disabled"}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {routeToLabel(
+                        model.routeTo ??
+                          (model.targetId
+                            ? { type: "target", id: model.targetId }
+                            : null),
+                        props.targetById,
+                        props.pipelineById,
+                      )}
+                    </Table.Td>
+                    <Table.Td>{model.ownedBy}</Table.Td>
+                    <Table.Td>
+                      {model.description ? (
+                        <Text size="sm">{model.description}</Text>
+                      ) : (
+                        <Text c="dimmed" size="sm">
+                          none
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{formatLocalDateTime(model.updatedAt)}</Table.Td>
+                    <Table.Td>
+                      <Group gap={4} justify="flex-end" wrap="nowrap">
+                        {model.routeTo?.type === "pipeline" &&
+                          props.pipelineById.has(model.routeTo.id) && (
+                            <Tooltip label="Open pipeline">
+                              <ActionIcon
+                                aria-label="Open bound pipeline"
+                                variant="subtle"
+                                color="teal"
+                                onClick={() => {
+                                  const routeTo = model.routeTo;
+                                  if (routeTo?.type === "pipeline") {
+                                    props.onOpenPipeline(routeTo.id);
+                                  }
+                                }}
+                              >
+                                <Workflow size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                        {directTargetId &&
+                          props.targetById.has(directTargetId) && (
+                            <Tooltip label="Create pipeline between model and target">
+                              <ActionIcon
+                                aria-label="Create pipeline between model and target"
+                                variant="subtle"
+                                color="teal"
+                                loading={props.createPipelinePending}
+                                onClick={() => props.onCreatePipeline(model)}
+                              >
+                                <GitBranchPlus size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                        <Tooltip label="Edit model">
+                          <ActionIcon
+                            aria-label="Edit proxy model"
+                            variant="subtle"
+                            onClick={() => props.onEdit(model)}
+                          >
+                            <Pencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Delete model">
+                          <ActionIcon
+                            aria-label="Delete proxy model"
+                            variant="subtle"
+                            color="red"
+                            loading={props.deletePending}
+                            onClick={() => props.onDelete(model.id)}
+                          >
+                            <Trash2 size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
               {props.models.length === 0 && (
                 <Table.Tr>
                   <Table.Td colSpan={7}>

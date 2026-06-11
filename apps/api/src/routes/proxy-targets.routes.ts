@@ -3,6 +3,7 @@ import {
   ApiProxyModelUpdateSchema,
   ApiProxyPipelineCreateSchema,
   ApiProxyPipelineUpdateSchema,
+  ApiProxyQuickRouteCreateSchema,
   ApiProxyTargetCreateSchema,
   ApiProxyTargetUpdateSchema,
   type ApiProxyPipelineRecord,
@@ -21,6 +22,7 @@ import {
 import {
   createApiProxyModel,
   createApiProxyPipeline,
+  createApiProxyQuickRoute,
   createApiProxyTarget,
   deleteApiProxyModel,
   deleteApiProxyPipeline,
@@ -259,6 +261,27 @@ export function registerProxyTargetRoutes(app: Hono) {
     }
     const deleted = deleteApiProxyPipeline(id);
     return c.json({ data: { deleted } }, deleted ? 200 : 404);
+  });
+
+  app.post("/api/proxy/quick-route", async (c) => {
+    const parsed = ApiProxyQuickRouteCreateSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const refError = validateApiProxyTargetRefs(parsed.data);
+    if (refError) {
+      return c.json({ error: refError }, 400);
+    }
+    const modelError = validateApiProxyTargetModel(parsed.data);
+    if (modelError) {
+      return c.json({ error: modelError }, 400);
+    }
+
+    try {
+      return c.json({ data: createApiProxyQuickRoute(parsed.data) }, 201);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
   });
 
   app.post("/api/proxy/targets", async (c) => {

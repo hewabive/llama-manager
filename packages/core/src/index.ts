@@ -1170,6 +1170,18 @@ export const ApiProxyConfigSchema = z.object({
   endpoints: z.array(ApiEndpointRecordSchema).default([]),
 });
 
+export const ApiProxyQuickRouteCreateSchema = z.object({
+  targetName: ApiProxyTargetNameSchema,
+  endpointId: ApiEndpointIdSchema,
+  model: ApiProxyTargetModelSchema.default(null),
+  modelId: ApiProxyModelIdSchema,
+});
+
+export const ApiProxyQuickRouteResultSchema = z.object({
+  target: ApiProxyTargetRecordSchema,
+  model: ApiProxyModelRecordSchema,
+});
+
 export const ApiProxyTargetModelKindSchema = z.enum([
   "managed-single",
   "managed-router",
@@ -2336,6 +2348,12 @@ export type ApiProxyPipelineRecord = z.infer<
 >;
 export type ApiProxyModelRecord = z.infer<typeof ApiProxyModelRecordSchema>;
 export type ApiProxyConfig = z.infer<typeof ApiProxyConfigSchema>;
+export type ApiProxyQuickRouteCreate = z.infer<
+  typeof ApiProxyQuickRouteCreateSchema
+>;
+export type ApiProxyQuickRouteResult = z.infer<
+  typeof ApiProxyQuickRouteResultSchema
+>;
 export type ApiProxyTargetModelOption = z.infer<
   typeof ApiProxyTargetModelOptionSchema
 >;
