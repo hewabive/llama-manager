@@ -477,6 +477,36 @@ export const ApiProxyReplaceTextConfigSchema = z.object({
 const ApiProxyToolNamePatternSchema = z.string().trim().min(1).max(200);
 const ApiProxyToolValueSchema = z.record(z.string(), z.unknown());
 
+export type ApiProxyJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ApiProxyJsonValue[]
+  | { [key: string]: ApiProxyJsonValue };
+
+export const ApiProxyJsonValueSchema: z.ZodType<ApiProxyJsonValue> = z.lazy(
+  () =>
+    z.union([
+      z.string(),
+      z.number(),
+      z.boolean(),
+      z.null(),
+      z.array(ApiProxyJsonValueSchema),
+      z.record(z.string(), ApiProxyJsonValueSchema),
+    ]),
+);
+
+const ApiProxyBodyFieldPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .refine(
+    (path) => parseApiProxyBodyFieldPath(path) !== null,
+    "invalid field path",
+  );
+
 export const ApiProxyEditRequestOperationSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("remove-tool"),
@@ -493,6 +523,17 @@ export const ApiProxyEditRequestOperationSchema = z.discriminatedUnion("kind", [
     kind: z.literal("add-tool"),
     enabled: z.boolean().default(true),
     value: ApiProxyToolValueSchema,
+  }),
+  z.object({
+    kind: z.literal("set-field"),
+    enabled: z.boolean().default(true),
+    path: ApiProxyBodyFieldPathSchema,
+    value: ApiProxyJsonValueSchema,
+  }),
+  z.object({
+    kind: z.literal("remove-field"),
+    enabled: z.boolean().default(true),
+    path: ApiProxyBodyFieldPathSchema,
   }),
 ]);
 
@@ -762,6 +803,204 @@ export function apiProxyToolNameMatcher(
   return (name) => regex.test(name);
 }
 
+export type ApiProxyBodyFieldSegment = string | number;
+
+export function parseApiProxyBodyFieldPath(
+  path: string,
+): ApiProxyBodyFieldSegment[] | null {
+  let rest = path.trim();
+  if (!rest) {
+    return null;
+  }
+  const segments: ApiProxyBodyFieldSegment[] = [];
+  while (rest.length > 0) {
+    if (rest.startsWith("[")) {
+      const close = rest.indexOf("]");
+      if (close === -1) {
+        return null;
+      }
+      const index = rest.slice(1, close);
+      if (!/^\d+$/.test(index)) {
+        return null;
+      }
+      segments.push(Number(index));
+      rest = rest.slice(close + 1);
+    } else {
+      const key = /^[^.[\]]+/.exec(rest)?.[0];
+      if (!key) {
+        return null;
+      }
+      segments.push(key);
+      rest = rest.slice(key.length);
+    }
+    if (rest.startsWith(".")) {
+      rest = rest.slice(1);
+      if (!rest || rest.startsWith(".") || rest.startsWith("[")) {
+        return null;
+      }
+    } else if (rest.length > 0 && !rest.startsWith("[")) {
+      return null;
+    }
+  }
+  return segments;
+}
+
+type BodyFieldContainer = Record<string, unknown> | unknown[];
+
+type BodyFieldEditResult = { changed: boolean; detail: string };
+
+function cloneBodyContainer(value: unknown): BodyFieldContainer | null {
+  if (Array.isArray(value)) {
+    return [...value];
+  }
+  const record = namedRecord(value);
+  return record ? { ...record } : null;
+}
+
+function formatBodyFieldValue(value: unknown): string {
+  const text = JSON.stringify(value) ?? "null";
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+}
+
+function bodyFieldPathPrefix(
+  segments: ApiProxyBodyFieldSegment[],
+  count: number,
+): string {
+  let prefix = "";
+  for (const segment of segments.slice(0, count)) {
+    prefix +=
+      typeof segment === "number"
+        ? `[${segment}]`
+        : prefix
+          ? `.${segment}`
+          : segment;
+  }
+  return prefix || "request body";
+}
+
+function setBodyField(
+  root: Record<string, unknown>,
+  segments: ApiProxyBodyFieldSegment[],
+  value: unknown,
+  path: string,
+): BodyFieldEditResult {
+  let parent: BodyFieldContainer = root;
+  const lastIndex = segments.length - 1;
+  for (const [position, segment] of segments.entries()) {
+    const at = bodyFieldPathPrefix(segments, position);
+    if (typeof segment === "number") {
+      if (!Array.isArray(parent)) {
+        return {
+          changed: false,
+          detail: `cannot set ${path}: ${at} is not an array`,
+        };
+      }
+      if (segment > parent.length - (position === lastIndex ? 0 : 1)) {
+        return {
+          changed: false,
+          detail: `cannot set ${path}: index ${segment} is out of range at ${at}`,
+        };
+      }
+      if (position === lastIndex) {
+        const appended = segment === parent.length;
+        const previous = appended
+          ? ""
+          : ` (was ${formatBodyFieldValue(parent[segment])})`;
+        parent[segment] = value;
+        return {
+          changed: true,
+          detail: `set ${path} = ${formatBodyFieldValue(value)}${previous}`,
+        };
+      }
+      const child = cloneBodyContainer(parent[segment]);
+      if (!child) {
+        return {
+          changed: false,
+          detail: `cannot set ${path}: ${bodyFieldPathPrefix(segments, position + 1)} is not an object or array`,
+        };
+      }
+      parent[segment] = child;
+      parent = child;
+      continue;
+    }
+    if (Array.isArray(parent)) {
+      return {
+        changed: false,
+        detail: `cannot set ${path}: ${at} is an array, expected an object`,
+      };
+    }
+    if (position === lastIndex) {
+      const previous =
+        segment in parent
+          ? ` (was ${formatBodyFieldValue(parent[segment])})`
+          : "";
+      parent[segment] = value;
+      return {
+        changed: true,
+        detail: `set ${path} = ${formatBodyFieldValue(value)}${previous}`,
+      };
+    }
+    const existing = parent[segment];
+    const child = existing === undefined ? {} : cloneBodyContainer(existing);
+    if (!child) {
+      return {
+        changed: false,
+        detail: `cannot set ${path}: ${bodyFieldPathPrefix(segments, position + 1)} is not an object or array`,
+      };
+    }
+    parent[segment] = child;
+    parent = child;
+  }
+  return { changed: false, detail: `cannot set ${path}` };
+}
+
+function removeBodyField(
+  root: Record<string, unknown>,
+  segments: ApiProxyBodyFieldSegment[],
+  path: string,
+): BodyFieldEditResult {
+  const notPresent = { changed: false, detail: `${path} is not present` };
+  let parent: BodyFieldContainer = root;
+  const lastIndex = segments.length - 1;
+  for (const [position, segment] of segments.entries()) {
+    if (position === lastIndex) {
+      if (typeof segment === "number") {
+        if (!Array.isArray(parent) || segment >= parent.length) {
+          return notPresent;
+        }
+        const previous = formatBodyFieldValue(parent[segment]);
+        parent.splice(segment, 1);
+        return { changed: true, detail: `removed ${path} (was ${previous})` };
+      }
+      if (Array.isArray(parent) || !(segment in parent)) {
+        return notPresent;
+      }
+      const previous = formatBodyFieldValue(parent[segment]);
+      delete parent[segment];
+      return { changed: true, detail: `removed ${path} (was ${previous})` };
+    }
+    const existing =
+      typeof segment === "number"
+        ? Array.isArray(parent)
+          ? parent[segment]
+          : undefined
+        : Array.isArray(parent)
+          ? undefined
+          : parent[segment];
+    const child = cloneBodyContainer(existing);
+    if (!child) {
+      return notPresent;
+    }
+    if (typeof segment === "number") {
+      (parent as unknown[])[segment] = child;
+    } else {
+      (parent as Record<string, unknown>)[segment] = child;
+    }
+    parent = child;
+  }
+  return notPresent;
+}
+
 export function applyApiProxyRequestEdits(
   body: unknown,
   operations: ApiProxyEditRequestOperation[],
@@ -805,6 +1044,24 @@ export function applyApiProxyRequestEdits(
         detail,
       });
     };
+
+    if (operation.kind === "set-field" || operation.kind === "remove-field") {
+      const segments = parseApiProxyBodyFieldPath(operation.path);
+      if (!segments) {
+        outcome(0, [], `invalid field path "${operation.path}"`);
+        continue;
+      }
+      const edit =
+        operation.kind === "set-field"
+          ? setBodyField(next, segments, operation.value, operation.path)
+          : removeBodyField(next, segments, operation.path);
+      if (edit.changed) {
+        changed = true;
+      }
+      outcome(edit.changed ? 1 : 0, [], edit.detail);
+      continue;
+    }
+
     const tools = next.tools;
 
     if (operation.kind === "add-tool") {

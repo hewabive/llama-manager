@@ -1,7 +1,9 @@
+import { parseApiProxyBodyFieldPath } from "@llama-manager/core";
 import type {
   ApiProxyConditionPredicate,
   ApiProxyConditionScope,
   ApiProxyEditRequestOperation,
+  ApiProxyJsonValue,
   ApiProxyModelCreate,
   ApiProxyModelRecord,
   ApiProxyPipelineCreate,
@@ -65,6 +67,7 @@ export type ReplacementRuleDraft = {
 export type EditOperationDraft = {
   kind: ApiProxyEditRequestOperation["kind"];
   toolName: string;
+  path: string;
   valueText: string;
   enabled: boolean;
 };
@@ -366,6 +369,7 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       draft.editOperations = node.config.operations.map((operation) => ({
         kind: operation.kind,
         toolName: "toolName" in operation ? operation.toolName : "",
+        path: "path" in operation ? operation.path : "",
         valueText:
           "value" in operation ? JSON.stringify(operation.value, null, 2) : "",
         enabled: operation.enabled,
@@ -441,11 +445,53 @@ export function parseEditOperationValue(
   return { value: parsed as Record<string, unknown>, error: null };
 }
 
+function parseFieldEditValue(
+  valueText: string,
+): { value: ApiProxyJsonValue; error: null } | { value: null; error: string } {
+  const trimmed = valueText.trim();
+  if (!trimmed) {
+    return { value: null, error: "value JSON is empty" };
+  }
+  try {
+    return { value: JSON.parse(trimmed) as ApiProxyJsonValue, error: null };
+  } catch (error) {
+    return { value: null, error: `invalid JSON: ${(error as Error).message}` };
+  }
+}
+
 export function editOperationFromDraft(
   draft: EditOperationDraft,
 ):
   | { operation: ApiProxyEditRequestOperation; error: null }
   | { operation: null; error: string } {
+  if (draft.kind === "set-field" || draft.kind === "remove-field") {
+    const path = draft.path.trim();
+    if (!path) {
+      return { operation: null, error: "field path is empty" };
+    }
+    if (parseApiProxyBodyFieldPath(path) === null) {
+      return { operation: null, error: "invalid field path" };
+    }
+    if (draft.kind === "remove-field") {
+      return {
+        operation: { kind: "remove-field", enabled: draft.enabled, path },
+        error: null,
+      };
+    }
+    const parsed = parseFieldEditValue(draft.valueText);
+    if (parsed.error !== null) {
+      return { operation: null, error: parsed.error };
+    }
+    return {
+      operation: {
+        kind: "set-field",
+        enabled: draft.enabled,
+        path,
+        value: parsed.value,
+      },
+      error: null,
+    };
+  }
   const toolName = draft.toolName.trim();
   if (draft.kind === "remove-tool") {
     if (!toolName) {
@@ -492,7 +538,8 @@ function editOperationsFromDrafts(
 ): ApiProxyEditRequestOperation[] {
   const operations: ApiProxyEditRequestOperation[] = [];
   for (const draft of drafts) {
-    const blank = !draft.toolName.trim() && !draft.valueText.trim();
+    const blank =
+      !draft.toolName.trim() && !draft.path.trim() && !draft.valueText.trim();
     if (blank) {
       continue;
     }
@@ -505,6 +552,7 @@ function editOperationsFromDrafts(
       kind: draft.kind,
       enabled: draft.enabled,
       toolName: draft.toolName,
+      path: draft.path,
       value: draft.valueText,
     } as unknown as ApiProxyEditRequestOperation);
   }

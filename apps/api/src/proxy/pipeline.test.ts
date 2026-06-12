@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ApiProxyEditRequestOperationSchema,
   ApiProxyPipelineRecordSchema,
   applyApiProxyRequestEdits,
   type ApiProxyEditRequestOperation,
@@ -344,6 +345,160 @@ test("edit-request reports no-match and skips disabled operations without changi
     result.outcomes[0]?.detail ?? "",
     /no tool matches "missing_tool"/,
   );
+});
+
+test("edit-request set-field overrides a top-level field without mutating the original body", () => {
+  const body = { model: "public-model", max_tokens: 16384 };
+
+  const result = applyApiProxyRequestEdits(body, [
+    { kind: "set-field", enabled: true, path: "max_tokens", value: 512 },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, { model: "public-model", max_tokens: 512 });
+  assert.equal(result.outcomes[0]?.matched, 1);
+  assert.match(
+    result.outcomes[0]?.detail ?? "",
+    /set max_tokens = 512 \(was 16384\)/,
+  );
+  assert.equal(body.max_tokens, 16384);
+});
+
+test("edit-request set-field creates missing intermediate objects", () => {
+  const result = applyApiProxyRequestEdits({ model: "public-model" }, [
+    {
+      kind: "set-field",
+      enabled: true,
+      path: "stream_options.include_usage",
+      value: true,
+    },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, {
+    model: "public-model",
+    stream_options: { include_usage: true },
+  });
+  assert.match(
+    result.outcomes[0]?.detail ?? "",
+    /set stream_options\.include_usage = true/,
+  );
+});
+
+test("edit-request set-field with array index copies the path and leaves shared structure intact", () => {
+  const original = {
+    model: "public-model",
+    messages: [
+      { role: "system", content: "keep" },
+      { role: "user", content: "hello" },
+    ],
+  };
+
+  const result = applyApiProxyRequestEdits(original, [
+    {
+      kind: "set-field",
+      enabled: true,
+      path: "messages[1].content",
+      value: "rewritten",
+    },
+  ]);
+
+  assert.equal(result.changed, true);
+  const edited = result.body as typeof original;
+  assert.equal(edited.messages[1]?.content, "rewritten");
+  assert.equal(original.messages[1]?.content, "hello");
+  assert.equal(edited.messages[0], original.messages[0]);
+});
+
+test("edit-request set-field appends at array length and rejects out-of-range indices", () => {
+  const body = { stop: ["a"] };
+
+  const appended = applyApiProxyRequestEdits(body, [
+    { kind: "set-field", enabled: true, path: "stop[1]", value: "b" },
+  ]);
+  assert.deepEqual(appended.body, { stop: ["a", "b"] });
+
+  const outOfRange = applyApiProxyRequestEdits(body, [
+    { kind: "set-field", enabled: true, path: "stop[5]", value: "z" },
+  ]);
+  assert.equal(outOfRange.changed, false);
+  assert.equal(outOfRange.outcomes[0]?.matched, 0);
+  assert.match(outOfRange.outcomes[0]?.detail ?? "", /out of range/);
+});
+
+test("edit-request set-field reports a type mismatch instead of descending into scalars", () => {
+  const result = applyApiProxyRequestEdits(
+    { model: "public-model", max_tokens: 100 },
+    [{ kind: "set-field", enabled: true, path: "max_tokens.limit", value: 1 }],
+  );
+
+  assert.equal(result.changed, false);
+  assert.equal(result.outcomes[0]?.matched, 0);
+  assert.match(
+    result.outcomes[0]?.detail ?? "",
+    /max_tokens is not an object or array/,
+  );
+});
+
+test("edit-request remove-field deletes fields and reports absent paths", () => {
+  const body = {
+    model: "public-model",
+    temperature: 0.7,
+    options: { seed: 42, keep: true },
+  };
+
+  const result = applyApiProxyRequestEdits(body, [
+    { kind: "remove-field", enabled: true, path: "temperature" },
+    { kind: "remove-field", enabled: true, path: "options.seed" },
+    { kind: "remove-field", enabled: true, path: "options.missing" },
+  ]);
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, {
+    model: "public-model",
+    options: { keep: true },
+  });
+  assert.match(
+    result.outcomes[0]?.detail ?? "",
+    /removed temperature \(was 0\.7\)/,
+  );
+  assert.equal(result.outcomes[2]?.matched, 0);
+  assert.match(
+    result.outcomes[2]?.detail ?? "",
+    /options\.missing is not present/,
+  );
+  assert.deepEqual(body.options, { seed: 42, keep: true });
+});
+
+test("edit-request remove-field splices array elements", () => {
+  const result = applyApiProxyRequestEdits(
+    { messages: [{ role: "system" }, { role: "user" }] },
+    [{ kind: "remove-field", enabled: true, path: "messages[0]" }],
+  );
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.body, { messages: [{ role: "user" }] });
+});
+
+test("edit-request field operation schema accepts valid paths and rejects malformed ones", () => {
+  assert.equal(
+    ApiProxyEditRequestOperationSchema.safeParse({
+      kind: "set-field",
+      path: "messages[0].content",
+      value: { nested: ["ok", 1, null] },
+    }).success,
+    true,
+  );
+  for (const path of ["", "a..b", "a.[0]", "a[x]", "a]b", "a["]) {
+    assert.equal(
+      ApiProxyEditRequestOperationSchema.safeParse({
+        kind: "remove-field",
+        path,
+      }).success,
+      false,
+      `path ${JSON.stringify(path)} should be rejected`,
+    );
+  }
 });
 
 test("edit-request node edits the body mid-route and traces operation outcomes", async () => {

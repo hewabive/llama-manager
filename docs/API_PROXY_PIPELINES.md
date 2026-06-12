@@ -61,7 +61,7 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | `replace-text`    | `rules: [{enabled, find, replace}]` — literal substring rules over decoded string values of the parsed body (stored text is matched as-is, no escape interpretation; the routing `model` field is never rewritten). The web editor offers a display toggle that shows/accepts rules in `\n`-escaped form and converts to literal text before saving. | `next`                        |
 | `capture-request` | — (no options)                                                                                                                                                                                                                                                                                                                                       | `next`                        |
-| `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request `tools` array (see below)                                                                                                                                                                                                                                                       | `next`                        |
+| `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request body: `tools` array operations and field operations by path (see below)                                                                                                                                                                                                         | `next`                        |
 | `condition`       | `predicate` (see below)                                                                                                                                                                                                                                                                                                                              | `true`, `false`               |
 | `call`            | `pipelineId`                                                                                                                                                                                                                                                                                                                                         | one port per callee exit name |
 | `exit`            | `exitName` (default `done`)                                                                                                                                                                                                                                                                                                                          | —                             |
@@ -81,9 +81,21 @@ walker and the web editor's live preview, one implementation):
 - `replace-tool {toolName, value}` — replaces every matching entry with
   `value` (a full tool JSON object).
 - `add-tool {value}` — appends `value` to `tools`, creating the array.
+- `set-field {path, value}` — sets any body field to `value` (any JSON value).
+  `path` is dot-separated keys with `[n]` array indices (`max_tokens`,
+  `stream_options.include_usage`, `messages[0].role`); paths are validated at
+  save time. Missing intermediate **objects** are created; array indices must
+  address an existing element (the final segment may also be `[length]` to
+  append). A path that runs through a scalar or mismatched container reports a
+  no-match outcome instead of overwriting. The write is copy-on-write along
+  the path — the pre-edit body (e.g. an earlier `capture-request`) is never
+  mutated.
+- `remove-field {path}` — deletes the field (object key or array element,
+  spliced) at `path`; absent paths report `<path> is not present`.
 
 Every operation reports an outcome (`removed 2 tool(s): a, b` /
-`no tool matches "x"`) joined into the node's `routeTrace` detail, so a
+`set max_tokens = 512 (was 16384)` / `no tool matches "x"`) joined into the
+node's `routeTrace` detail, so a
 non-matching rule is visible in the test bench and request traces instead of
 failing silently. The web editor's **block editor** modal previews operations
 against a pasted sample request: sample tools render as blocks with

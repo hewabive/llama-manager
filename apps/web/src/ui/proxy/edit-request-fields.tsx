@@ -38,6 +38,8 @@ const operationKindOptions: Array<{
   { value: "remove-tool", label: "Remove tool" },
   { value: "replace-tool", label: "Replace tool" },
   { value: "add-tool", label: "Add tool" },
+  { value: "set-field", label: "Set body field" },
+  { value: "remove-field", label: "Remove body field" },
 ];
 
 const customToolSkeleton = '{\n  "name": ""\n}';
@@ -126,8 +128,14 @@ function OperationCard(props: {
   onRemove: () => void;
 }) {
   const { draft } = props;
-  const needsName = draft.kind !== "add-tool";
-  const needsValue = draft.kind !== "remove-tool";
+  const needsName =
+    draft.kind === "remove-tool" || draft.kind === "replace-tool";
+  const needsPath = draft.kind === "set-field" || draft.kind === "remove-field";
+  const needsValue =
+    draft.kind === "replace-tool" ||
+    draft.kind === "add-tool" ||
+    draft.kind === "set-field";
+  const isFieldValue = draft.kind === "set-field";
   return (
     <Paper withBorder p="xs" radius="sm">
       <Stack gap={6}>
@@ -167,13 +175,26 @@ function OperationCard(props: {
             }}
           />
         )}
+        {needsPath && (
+          <TextInput
+            size="xs"
+            label="Field path"
+            placeholder="max_tokens or stream_options.include_usage"
+            value={draft.path}
+            styles={monoInputStyles}
+            onChange={(event) => {
+              const path = event.currentTarget.value;
+              props.onPatch({ path });
+            }}
+          />
+        )}
         {needsValue && (
           <Textarea
             size="xs"
-            label="Tool JSON"
-            placeholder={customToolSkeleton}
+            label={isFieldValue ? "Value JSON" : "Tool JSON"}
+            placeholder={isFieldValue ? "512" : customToolSkeleton}
             autosize
-            minRows={3}
+            minRows={isFieldValue ? 1 : 3}
             maxRows={12}
             value={draft.valueText}
             styles={monoInputStyles}
@@ -282,6 +303,7 @@ export function EditRequestFields(props: {
           appendDraft({
             kind: "remove-tool",
             toolName: "",
+            path: "",
             valueText: "",
             enabled: true,
           })
@@ -305,16 +327,19 @@ export function EditRequestFields(props: {
       <Stack gap="xs">
         {drafts.length === 0 && (
           <Text c="dimmed" size="sm">
-            No operations yet. Each operation removes, replaces or adds a tool
-            in the request before routing.
+            No operations yet. Each operation edits the request before routing:
+            remove, replace or add a tool, or set/remove a body field.
           </Text>
         )}
         {operationCards}
         {addButtons}
         <Text c="dimmed" size="xs">
-          Operations target the request tools array (OpenAI and Anthropic
-          shapes). Tool name matches exactly; * matches any characters. Open the
-          block editor to preview operations against a sample request.
+          Tool operations target the request tools array (OpenAI and Anthropic
+          shapes); tool name matches exactly, * matches any characters. Field
+          operations set or remove any body field by path: dot-separated keys
+          with [n] array indices, e.g. max_tokens or messages[0].role; set
+          creates missing intermediate objects. Open the block editor to preview
+          operations against a sample request.
         </Text>
       </Stack>
       <Modal
@@ -395,6 +420,7 @@ export function EditRequestFields(props: {
                             appendDraft({
                               kind: "remove-tool",
                               toolName: name,
+                              path: "",
                               valueText: "",
                               enabled: true,
                             })
@@ -411,6 +437,7 @@ export function EditRequestFields(props: {
                             appendDraft({
                               kind: "replace-tool",
                               toolName: name,
+                              path: "",
                               valueText: JSON.stringify(tool, null, 2),
                               enabled: true,
                             })
@@ -423,21 +450,40 @@ export function EditRequestFields(props: {
                   </Paper>
                 );
               })}
-              <Button
-                variant="light"
-                size="xs"
-                leftSection={<Plus size={14} />}
-                onClick={() =>
-                  appendDraft({
-                    kind: "add-tool",
-                    toolName: "",
-                    valueText: customToolSkeleton,
-                    enabled: true,
-                  })
-                }
-              >
-                Add custom tool
-              </Button>
+              <Group gap="xs">
+                <Button
+                  variant="light"
+                  size="xs"
+                  leftSection={<Plus size={14} />}
+                  onClick={() =>
+                    appendDraft({
+                      kind: "add-tool",
+                      toolName: "",
+                      path: "",
+                      valueText: customToolSkeleton,
+                      enabled: true,
+                    })
+                  }
+                >
+                  Add custom tool
+                </Button>
+                <Button
+                  variant="light"
+                  size="xs"
+                  leftSection={<Plus size={14} />}
+                  onClick={() =>
+                    appendDraft({
+                      kind: "set-field",
+                      toolName: "",
+                      path: "",
+                      valueText: "",
+                      enabled: true,
+                    })
+                  }
+                >
+                  Set body field
+                </Button>
+              </Group>
             </Stack>
           )}
           <Stack gap={6}>
