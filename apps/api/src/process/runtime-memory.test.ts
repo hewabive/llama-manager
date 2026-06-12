@@ -5,6 +5,7 @@ import {
   extractRouterChildPorts,
   parseNvidiaComputeAppsCsv,
   parseProcStatusRss,
+  parseProcStatusSwap,
   parsePsOutput,
 } from "./runtime-memory.js";
 
@@ -47,6 +48,23 @@ test("parseProcStatusRss splits anonymous and file-backed resident memory", () =
 
 test("parseProcStatusRss returns null without resident fields", () => {
   assert.equal(parseProcStatusRss("Name: llama-server\nVmRSS: 100 kB\n"), null);
+});
+
+test("parseProcStatusSwap reads swapped-out process memory", () => {
+  const contents = `
+    Name:   llama-server
+    VmRSS:    240648 kB
+    VmSwap:  1563368 kB
+  `;
+
+  assert.equal(parseProcStatusSwap(contents), 1563368 * 1024);
+});
+
+test("parseProcStatusSwap returns null without a VmSwap field", () => {
+  assert.equal(
+    parseProcStatusSwap("Name: llama-server\nVmRSS: 100 kB\n"),
+    null,
+  );
 });
 
 test("parsePsOutput handles llama-server command lines", () => {

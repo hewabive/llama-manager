@@ -1622,6 +1622,7 @@ export const InstanceHealthSummarySchema = z.object({
   logSummary: InstanceLogSummarySchema,
   promptCache: PromptCacheStateSchema.nullable().default(null),
   configDrift: z.boolean().default(false),
+  swapBytes: z.number().int().min(0).nullable().default(null),
   checkedAt: z.string(),
 });
 

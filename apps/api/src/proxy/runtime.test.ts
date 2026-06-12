@@ -182,6 +182,7 @@ function health(
     },
     promptCache: null,
     configDrift: false,
+    swapBytes: null,
     checkedAt: "2026-05-30T10:00:00.000Z",
   };
 }

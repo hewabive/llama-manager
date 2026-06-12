@@ -20,7 +20,10 @@ import {
 } from "./preflight.js";
 import { promptCacheTracker } from "./prompt-cache-tracker.js";
 import { latestProcessRun, type ProcessRun } from "./runs-repository.js";
+import { getInstanceSwapBytes } from "./runtime-memory.js";
 import { supervisor } from "./supervisor.js";
+
+const SWAP_DEGRADED_THRESHOLD_BYTES = 64 * 1024 * 1024;
 
 type HealthSummaryOptions = {
   peers?: Instance[] | undefined;
@@ -148,6 +151,7 @@ function deriveStatus(input: {
   logReady: boolean;
   logErrors: number;
   logWarnings: number;
+  swapBytes: number | null;
 }): { status: InstanceHealthSummaryStatus; reason: string } {
   if (input.runtime.status === "stale") {
     if (input.healthOk) {
@@ -223,10 +227,14 @@ function deriveStatus(input: {
   }
 
   if (input.healthOk) {
+    const swappedOut =
+      input.swapBytes !== null &&
+      input.swapBytes >= SWAP_DEGRADED_THRESHOLD_BYTES;
     if (
       input.logErrors > 0 ||
       input.logWarnings > 0 ||
-      input.preflightWarnings > 0
+      input.preflightWarnings > 0 ||
+      swappedOut
     ) {
       const issues = [
         input.logErrors > 0
@@ -237,6 +245,9 @@ function deriveStatus(input: {
           : null,
         input.preflightWarnings > 0
           ? `${input.preflightWarnings} preflight warning${input.preflightWarnings === 1 ? "" : "s"}`
+          : null,
+        swappedOut
+          ? `${Math.round((input.swapBytes ?? 0) / (1024 * 1024))} MiB of process memory in swap`
           : null,
       ].filter(Boolean);
       return {
@@ -293,11 +304,12 @@ export async function getInstanceHealthSummary(
         peers: options.peers,
       });
   const shouldProbe = probeableStatuses.has(runtime.status);
-  const [llama, logSummary] = await Promise.all([
+  const [llama, logSummary, swapBytes] = await Promise.all([
     shouldProbe
       ? probeLlamaServer(instance)
       : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
     summarizeInstanceLog({ instanceId: instance.name, runtime }),
+    shouldProbe ? getInstanceSwapBytes(runtime) : Promise.resolve(null),
   ]);
   const preflightErrors = preflight.issues.filter(
     (issue) => issue.level === "error",
@@ -313,6 +325,7 @@ export async function getInstanceHealthSummary(
     logReady: logSummary.ready,
     logErrors: logSummary.errors.length,
     logWarnings: logSummary.warnings.length,
+    swapBytes,
   });
 
   return {
@@ -326,6 +339,7 @@ export async function getInstanceHealthSummary(
     logSummary,
     promptCache: promptCacheTracker.get(instance.name),
     configDrift: detectConfigDrift(instance, runtime, latestRun),
+    swapBytes,
     checkedAt: nowIso(),
   };
 }

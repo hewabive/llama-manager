@@ -222,6 +222,37 @@ export function parseProcStatusRss(
   };
 }
 
+export function parseProcStatusSwap(contents: string): number | null {
+  const match = /^\s*VmSwap:\s+(\d+)\s+kB\s*$/im.exec(contents);
+  return match ? kibToBytes(match[1] ?? "") : null;
+}
+
+function readProcSwap(pid: number): number | null {
+  if (process.platform !== "linux") {
+    return null;
+  }
+
+  try {
+    return parseProcStatusSwap(readFileSync(`/proc/${pid}/status`, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export async function getInstanceSwapBytes(
+  runtime: RuntimeState | undefined,
+): Promise<number | null> {
+  const pids = await candidatePids({ runtime, lines: [] });
+  let total: number | null = null;
+  for (const pid of pids) {
+    const swapBytes = readProcSwap(pid);
+    if (swapBytes !== null) {
+      total = (total ?? 0) + swapBytes;
+    }
+  }
+  return total;
+}
+
 function readProcMemory(pid: number): ProcMemoryUsage | null {
   if (process.platform !== "linux") {
     return null;
