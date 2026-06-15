@@ -318,6 +318,58 @@ test("summarizeInstanceLog ignores per-request context size overflow errors", as
   }
 });
 
+test("summarizeInstanceLog ignores capability probe rejection exceptions", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.00.009.237 I srv  llama_server: server is listening on http://127.0.0.1:5181",
+        `0.12.754.481 W srv    operator(): got exception: {"error":{"code":400,"message":"'messages' is required","type":"invalid_request_error"}}`,
+        `0.12.757.292 W srv    operator(): got exception: {"error":{"code":400,"message":"'input' is required","type":"invalid_request_error"}}`,
+        `0.12.757.846 W srv    operator(): got exception: {"error":{"code":500,"message":"'messages' is required","type":"server_error"}}`,
+        `0.12.758.536 W srv    operator(): got exception: {"error":{"code":500,"message":"'messages' is required","type":"server_error"}}`,
+        `0.12.758.690 W srv    operator(): got exception: {"error":{"code":400,"message":"'messages' is required","type":"invalid_request_error"}}`,
+        `0.12.758.901 W srv    operator(): got exception: {"error":{"code":400,"message":"'input' is required","type":"invalid_request_error"}}`,
+        `0.12.759.035 W srv    operator(): got exception: {"error":{"code":400,"message":"'messages' is required","type":"invalid_request_error"}}`,
+      ].join("\n"),
+    );
+
+    const summary = await summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.deepEqual(summary.errors, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("summarizeInstanceLog keeps genuine server_error exceptions", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.00.009.237 I srv  llama_server: server is listening on http://127.0.0.1:5181",
+        `0.40.000.000 W srv    operator(): got exception: {"error":{"code":500,"message":"failed to decode batch","type":"server_error"}}`,
+      ].join("\n"),
+    );
+
+    const summary = await summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.errors.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("summarizeInstanceLog ignores the multimodal capability probe failure", async () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
   const logPath = join(dir, "llama-server.log");

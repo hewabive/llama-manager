@@ -137,6 +137,19 @@ function isRequestExceedsContextSizeError(line: string) {
   );
 }
 
+function isCapabilityProbeRejection(line: string) {
+  const normalized = withoutLlamaTimestamp(line);
+  if (!/\bsrv\s+operator\(\):\s+got exception:\s/i.test(normalized)) {
+    return false;
+  }
+  return (
+    /"type"\s*:\s*"invalid_request_error"/i.test(normalized) ||
+    /\bis required\b/i.test(normalized) ||
+    /key '/i.test(normalized) ||
+    /json\.exception\.out_of_range/i.test(normalized)
+  );
+}
+
 function errorLines(lines: string[], limit: number) {
   const lastReadyIndex = lastIndex(lines, READY_LOG_PATTERN);
   return interestingLinesByPredicate(
@@ -149,6 +162,9 @@ function errorLines(lines: string[], limit: number) {
         return false;
       }
       if (isRequestExceedsContextSizeError(line)) {
+        return false;
+      }
+      if (isCapabilityProbeRejection(line)) {
         return false;
       }
       return !(
