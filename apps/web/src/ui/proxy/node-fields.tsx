@@ -159,23 +159,23 @@ const replacementInputStyles = {
 type ReplacementView = "raw" | "escaped";
 
 const replacementViewOptions = [
-  { value: "raw", label: "Line breaks" },
-  { value: "escaped", label: "\\n escapes" },
+  { value: "raw", label: "Plain text" },
+  { value: "escaped", label: "JSON string" },
 ];
 
 function escapeRuleDisplay(value: string): string {
-  return value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("\n", "\\n")
-    .replaceAll("\r", "\\r")
-    .replaceAll("\t", "\\t");
+  return JSON.stringify(value).slice(1, -1);
 }
 
 const displayEscapes: Record<string, string> = {
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+  b: "\b",
+  f: "\f",
   n: "\n",
   r: "\r",
   t: "\t",
-  "\\": "\\",
 };
 
 function unescapeRuleDisplay(value: string): string {
@@ -188,7 +188,16 @@ function unescapeRuleDisplay(value: string): string {
       index += 1;
       continue;
     }
-    const decoded = displayEscapes[value[index + 1] as string];
+    const marker = value[index + 1] as string;
+    if (marker === "u" && index + 6 <= value.length) {
+      const hex = value.slice(index + 2, index + 6);
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+        out += String.fromCharCode(parseInt(hex, 16));
+        index += 6;
+        continue;
+      }
+    }
+    const decoded = displayEscapes[marker];
     if (decoded !== undefined) {
       out += decoded;
       index += 2;
@@ -351,7 +360,7 @@ function ReplaceTextFields(props: {
         </Button>
         <Text c="dimmed" size="xs">
           {
-            'Rules match literal text inside request string fields. The toggle only changes how rules are displayed and typed: in the "\\n escapes" view line breaks, tabs and backslashes read \\n \\t \\\\ — paste text copied from a saved request file there.'
+            'Rules match literal text inside request string fields. The toggle only changes how rules are displayed and typed: the "JSON string" view shows text exactly as it appears inside a JSON string (quotes, line breaks and tabs read \\" \\n \\t) — paste text copied from a saved request file there.'
           }
         </Text>
       </Stack>
@@ -400,7 +409,7 @@ function ReplaceTextFields(props: {
             />
             <Text c="dimmed" size="xs">
               {
-                'Rules match literal text inside request string fields. The toggle only changes how rules are displayed and typed: in the "\\n escapes" view line breaks, tabs and backslashes read \\n \\t \\\\ — paste text copied from a saved request file there.'
+                'Rules match literal text inside request string fields. The toggle only changes how rules are displayed and typed: the "JSON string" view shows text exactly as it appears inside a JSON string (quotes, line breaks and tabs read \\" \\n \\t) — paste text copied from a saved request file there.'
               }
             </Text>
             <Group justify="space-between">
