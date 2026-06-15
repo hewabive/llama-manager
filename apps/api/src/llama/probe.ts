@@ -15,6 +15,8 @@ import type {
   LlamaSlotActionResult,
 } from "@llama-manager/core";
 
+import { latestProcessRun } from "../process/runs-repository.js";
+
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8080;
 const PROBE_TIMEOUT_MS = 1_500;
@@ -500,7 +502,32 @@ async function requestCapability(
   };
 }
 
+const capabilitiesCache = new Map<
+  string,
+  { runKey: string; result: LlamaCapabilitiesResult }
+>();
+
 export async function probeLlamaCapabilities(
+  instance: Instance,
+  options: { force?: boolean } = {},
+): Promise<LlamaCapabilitiesResult> {
+  const runKey = latestProcessRun(instance.name)?.id ?? null;
+  if (!options.force && runKey) {
+    const cached = capabilitiesCache.get(instance.name);
+    if (cached && cached.runKey === runKey) {
+      return cached.result;
+    }
+  }
+  const result = await runCapabilityProbe(instance);
+  if (runKey) {
+    capabilitiesCache.set(instance.name, { runKey, result });
+  } else {
+    capabilitiesCache.delete(instance.name);
+  }
+  return result;
+}
+
+async function runCapabilityProbe(
   instance: Instance,
 ): Promise<LlamaCapabilitiesResult> {
   const baseUrl = llamaBaseUrl(instance);

@@ -44,8 +44,11 @@ export function registerInstanceLlamaRoutes(app: Hono) {
       return c.json({ error: "instance not found" }, 404);
     }
 
+    const force = c.req.query("refresh") === "true";
     try {
-      return c.json({ data: await probeLlamaCapabilities(instance) });
+      return c.json({
+        data: await probeLlamaCapabilities(instance, { force }),
+      });
     } catch (error) {
       return c.json({ error: (error as Error).message }, 400);
     }

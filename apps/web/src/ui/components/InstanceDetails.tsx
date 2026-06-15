@@ -22,7 +22,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getInstanceHealthSummary,
@@ -120,11 +120,17 @@ export function InstanceDetails(props: {
     : false;
 
   const capabilitiesOpen = openDetails.includes("capabilities");
+  const forceCapabilitiesRefreshRef = useRef(false);
   const capabilitiesQuery = useQuery({
     queryKey: ["instance-llama-capabilities", id],
-    queryFn: () => getLlamaCapabilities(id!),
+    queryFn: () => {
+      const force = forceCapabilitiesRefreshRef.current;
+      forceCapabilitiesRefreshRef.current = false;
+      return getLlamaCapabilities(id!, force);
+    },
     enabled: Boolean(id) && canProbeCapabilities && capabilitiesOpen,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const logsQuery = useQuery({
@@ -518,7 +524,10 @@ export function InstanceDetails(props: {
                       null)
                     : null
                 }
-                onRefresh={() => void capabilitiesQuery.refetch()}
+                onRefresh={() => {
+                  forceCapabilitiesRefreshRef.current = true;
+                  void capabilitiesQuery.refetch();
+                }}
               />
             </Accordion.Panel>
           </Accordion.Item>

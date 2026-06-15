@@ -699,9 +699,9 @@ export async function getLlamaProbe(id: string) {
   return request<{ data: LlamaProbe }>(`/api/instances/${id}/llama`);
 }
 
-export async function getLlamaCapabilities(id: string) {
+export async function getLlamaCapabilities(id: string, force = false) {
   return request<{ data: LlamaCapabilitiesResult }>(
-    `/api/instances/${id}/llama/capabilities`,
+    `/api/instances/${id}/llama/capabilities${force ? "?refresh=true" : ""}`,
   );
 }
 
