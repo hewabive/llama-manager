@@ -261,6 +261,38 @@ test("translation stream reports telemetry through emitter extensions", async ()
   ]);
 });
 
+test("translation stream fires onReasoning before onFirstToken", async () => {
+  const order: string[] = [];
+  await runTransform(
+    [
+      `data: ${JSON.stringify({
+        id: "chatcmpl-1",
+        model: "m",
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning_content: "thinking" },
+            finish_reason: null,
+          },
+        ],
+      })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ index: 0, delta: { content: "Hi" }, finish_reason: null }],
+      })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      })}\n\n`,
+      "data: [DONE]\n\n",
+    ],
+    {
+      onReasoning: () => order.push("reasoning"),
+      onFirstToken: () => order.push("token"),
+    },
+  );
+
+  assert.deepEqual(order, ["reasoning", "token"]);
+});
+
 function openAiFrame(input: { content?: string; finish?: string }) {
   return `data: ${JSON.stringify({
     id: "cmpl",

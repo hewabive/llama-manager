@@ -57,6 +57,7 @@ import {
   inflightLabel,
   inflightPhaseColor,
   inflightPrefillPercent,
+  inflightTimings,
   runtimeDetails,
   runtimeStateColor,
   targetStatusColor,
@@ -536,6 +537,8 @@ function InflightRequests({
     <Stack gap={4} mt={2}>
       {inflight.map((req) => {
         const percent = inflightPrefillPercent(req);
+        const label = inflightLabel(req);
+        const timings = inflightTimings(req);
         return (
           <Stack key={req.id} gap={2}>
             <Group gap={6} wrap="nowrap">
@@ -546,10 +549,17 @@ function InflightRequests({
               >
                 {req.phase}
               </Badge>
-              <Text size="xs" c="dimmed">
-                {inflightLabel(req)}
-              </Text>
+              {label && (
+                <Text size="xs" c="dimmed">
+                  {label}
+                </Text>
+              )}
             </Group>
+            {timings && (
+              <Text size="xs" c="dimmed">
+                {timings}
+              </Text>
+            )}
             {percent !== null && (
               <Progress
                 size="xs"

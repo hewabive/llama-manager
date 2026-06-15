@@ -478,6 +478,9 @@ async function proxyProtocolEndpointInner(
     }
     inflight.firstToken(promptTokens);
   };
+  const markReasoning = () => {
+    inflight.firstReasoning();
+  };
   const markProgress = (completionTokens: number) => {
     inflight.setCompletionTokens(completionTokens);
   };
@@ -760,6 +763,7 @@ async function proxyProtocolEndpointInner(
       if (translateAnthropic) {
         const translation = createAnthropicTranslationStream({
           onFirstToken: markFirstToken,
+          onReasoning: markReasoning,
           onProgress: markProgress,
           onPrefillProgress: markPrefillProgress,
           onComplete: onStreamComplete,
@@ -795,6 +799,7 @@ async function proxyProtocolEndpointInner(
         stripUsageFrames: streamMeter.strip,
         stripProgressFrames: injectPrefillProgress,
         onFirstToken: markFirstToken,
+        onReasoning: markReasoning,
         onProgress: markProgress,
         onPrefillProgress: markPrefillProgress,
         onComplete: onStreamComplete,
@@ -905,6 +910,7 @@ async function proxyProtocolEndpointInner(
           preemptSignal: heldLease.preemptSignal,
           consumerSignal: c.req.raw.signal,
           onFirstToken: markFirstToken,
+          onReasoning: markReasoning,
           onProgress: markProgress,
           onPrefillProgress: markPrefillProgress,
         });

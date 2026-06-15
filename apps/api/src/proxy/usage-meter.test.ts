@@ -231,6 +231,34 @@ test("createUsageMeterStream strips synthetic usage frame and meters tokens", as
   assert.equal(Number.isInteger(counted?.genMs), true);
 });
 
+test("createUsageMeterStream fires onReasoning before onFirstToken", async () => {
+  const order: string[] = [];
+  const meter = createUsageMeterStream({
+    codec: openAiResumableCodec,
+    stripUsageFrames: false,
+    onReasoning: () => order.push("reasoning"),
+    onFirstToken: () => order.push("token"),
+    onComplete: () => {},
+  });
+
+  const input = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        openAiFrames([
+          `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "hmm" } }] })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "more" } }] })}`,
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Hi" } }] })}`,
+          "data: [DONE]",
+        ]),
+      );
+      controller.close();
+    },
+  });
+
+  await drain(input.pipeThrough(meter.transform));
+  assert.deepEqual(order, ["reasoning", "token"]);
+});
+
 test("createUsageMeterStream reports upstream predicted_ms as genMs", async () => {
   let counted: ProxyUsageCounts | undefined;
   const meter = createUsageMeterStream({

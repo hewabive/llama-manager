@@ -16,6 +16,8 @@ export function inflightPhaseColor(phase: ApiProxyInflightRequest["phase"]) {
       return "gray";
     case "prefilling":
       return "blue";
+    case "thinking":
+      return "violet";
     case "generating":
       return "teal";
     default:
@@ -40,23 +42,38 @@ export function inflightPrefillPercent(
 }
 
 export function inflightLabel(req: ApiProxyInflightRequest): string {
-  if (req.phase === "queued") {
-    return `queued ${formatMs(req.waitingMs)}`;
-  }
   if (req.phase === "prefilling") {
     if (req.prefillTotalTokens && req.prefillProcessedTokens !== null) {
       const pct = inflightPrefillPercent(req) ?? 0;
-      return `prefill ${req.prefillProcessedTokens}/${req.prefillTotalTokens} tok (${pct}%)`;
+      return `${req.prefillProcessedTokens}/${req.prefillTotalTokens} tok (${pct}%)`;
     }
-    return req.prefillMs !== null
-      ? `prefill ${formatMs(req.prefillMs)}`
-      : "prefill";
+    return "";
   }
-  const parts = [`gen ${req.completionTokens} tok`];
-  if (req.completionTokens > 0 && req.generatingMs && req.generatingMs > 0) {
-    parts.push(
-      `${(req.completionTokens / (req.generatingMs / 1000)).toFixed(1)} tok/s`,
-    );
+  if (req.phase === "generating") {
+    const parts = [`${req.completionTokens} tok`];
+    if (req.completionTokens > 0 && req.generatingMs && req.generatingMs > 0) {
+      parts.push(
+        `${(req.completionTokens / (req.generatingMs / 1000)).toFixed(1)} tok/s`,
+      );
+    }
+    return parts.join(" · ");
+  }
+  return "";
+}
+
+export function inflightTimings(req: ApiProxyInflightRequest): string {
+  const parts: string[] = [];
+  if (req.waitingMs > 0) {
+    parts.push(`wait ${formatMs(req.waitingMs)}`);
+  }
+  if (req.prefillMs !== null) {
+    parts.push(`prefill ${formatMs(req.prefillMs)}`);
+  }
+  if (req.thinkingMs !== null) {
+    parts.push(`think ${formatMs(req.thinkingMs)}`);
+  }
+  if (req.generatingMs !== null) {
+    parts.push(`gen ${formatMs(req.generatingMs)}`);
   }
   return parts.join(" · ");
 }

@@ -142,6 +142,7 @@ export function anthropicForwardHeaders(headers: Headers): Headers {
 
 export type AnthropicTranslationStreamCallbacks = {
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onReasoning?: (() => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?: ((progress: ProxyPrefillProgress) => void) | undefined;
   onComplete?: ((usage: ProxyUsageCounts) => void) | undefined;
@@ -151,6 +152,13 @@ export type AnthropicTranslationStream = {
   transform: TransformStream<Uint8Array, Uint8Array>;
   finalize: () => void;
 };
+
+function thinkingStart(event: AnthropicStreamEvent): boolean {
+  return (
+    event.type === "content_block_start" &&
+    event.content_block.type === "thinking"
+  );
+}
 
 function visibleContentStart(event: AnthropicStreamEvent): boolean {
   return (
@@ -170,6 +178,7 @@ export function createAnthropicTranslationStream(
   let completionTokens = 0;
   let genMs: number | null = null;
   let firstTokenSeen = false;
+  let reasoningSeen = false;
   let done = false;
 
   const observe = ({ events, extensions }: AnthropicSsePushResult) => {
@@ -193,6 +202,10 @@ export function createAnthropicTranslationStream(
       if (cacheReadTokens === null) {
         cacheReadTokens = openaiCachedTokens(extensions.usage);
       }
+    }
+    if (!reasoningSeen && events.some(thinkingStart)) {
+      reasoningSeen = true;
+      callbacks.onReasoning?.();
     }
     if (!firstTokenSeen && events.some(visibleContentStart)) {
       firstTokenSeen = true;

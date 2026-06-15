@@ -51,7 +51,9 @@ export function createResumableBufferState(): ResumableBufferState {
 type FrameMeta = {
   upstreamGenMs: number | null;
   firstTokenSeen: boolean;
+  reasoningSeen: boolean;
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onReasoning?: (() => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
@@ -130,6 +132,10 @@ function applyFrame(
         state.cacheCreationTokens = chunk.usage.cacheCreationTokens;
       }
     }
+    if (!meta.reasoningSeen && chunk.reasoning) {
+      meta.reasoningSeen = true;
+      meta.onReasoning?.();
+    }
     if (!meta.firstTokenSeen && (chunk.text !== "" || chunk.toolCall)) {
       meta.firstTokenSeen = true;
       meta.onFirstToken?.(state.promptTokens);
@@ -150,6 +156,7 @@ export async function runResumableUpstreamAttempt(input: {
   consumerSignal?: AbortSignal | undefined;
   fetchImpl?: typeof fetch | undefined;
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onReasoning?: (() => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
@@ -167,7 +174,9 @@ export async function runResumableUpstreamAttempt(input: {
   const meta: FrameMeta = {
     upstreamGenMs: null,
     firstTokenSeen: false,
+    reasoningSeen: false,
     onFirstToken: input.onFirstToken,
+    onReasoning: input.onReasoning,
     onProgress: input.onProgress,
     onPrefillProgress: input.onPrefillProgress,
   };

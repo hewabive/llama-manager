@@ -163,6 +163,7 @@ export function createUsageMeterStream(input: {
   stripProgressFrames?: boolean;
   onComplete: (usage: ProxyUsageCounts) => void;
   onFirstToken?: (promptTokens: number | null) => void;
+  onReasoning?: () => void;
   onProgress?: (completionTokens: number) => void;
   onPrefillProgress?: (progress: ProxyPrefillProgress) => void;
 }): UsageMeterStream {
@@ -172,6 +173,7 @@ export function createUsageMeterStream(input: {
     stripProgressFrames = false,
     onComplete,
     onFirstToken,
+    onReasoning,
     onProgress,
     onPrefillProgress,
   } = input;
@@ -183,6 +185,7 @@ export function createUsageMeterStream(input: {
   let completionTokens = 0;
   let upstreamGenMs: number | null = null;
   let firstTokenSeen = false;
+  let reasoningSeen = false;
   let done = false;
 
   const observeFrame = (frame: string): boolean => {
@@ -237,6 +240,10 @@ export function createUsageMeterStream(input: {
         ) {
           keep = false;
         }
+      }
+      if (!reasoningSeen && chunk.reasoning) {
+        reasoningSeen = true;
+        onReasoning?.();
       }
       if (!firstTokenSeen && (chunk.text !== "" || chunk.toolCall)) {
         firstTokenSeen = true;

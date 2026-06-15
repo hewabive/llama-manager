@@ -38,9 +38,66 @@ test("tracks phase transitions, prompt and completion tokens", () => {
   assert.equal(view.promptTokens, 42);
   assert.equal(view.completionTokens, 3);
   assert.notEqual(view.generatingMs, null);
+  assert.equal(view.thinkingMs, null);
 
   handle.end();
   assert.equal(apiProxyInflight.snapshotByTarget().get("t1"), undefined);
+});
+
+test("splits prefill and thinking when reasoning precedes content", () => {
+  let clock = 0;
+  const registry = new ApiProxyInflightRegistry({ now: () => clock });
+  const handle = registry.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "tk",
+    stream: true,
+  });
+  const view = () => registry.snapshotByTarget().get("tk")![0]!;
+
+  clock = 100;
+  handle.dispatched();
+  assert.equal(view().phase, "prefilling");
+
+  clock = 400;
+  handle.firstReasoning();
+  let v = view();
+  assert.equal(v.phase, "thinking");
+  assert.equal(v.prefillMs, 300);
+
+  clock = 900;
+  v = view();
+  assert.equal(v.prefillMs, 300);
+  assert.equal(v.thinkingMs, 500);
+
+  clock = 1000;
+  handle.firstToken(7);
+  v = view();
+  assert.equal(v.phase, "generating");
+  assert.equal(v.prefillMs, 300);
+  assert.equal(v.thinkingMs, 600);
+  assert.equal(v.promptTokens, 7);
+
+  clock = 1500;
+  v = view();
+  assert.equal(v.thinkingMs, 600);
+  assert.equal(v.generatingMs, 500);
+  handle.end();
+});
+
+test("reasoning after generation began does not downgrade phase", () => {
+  apiProxyInflight.reset();
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "tg",
+  });
+  handle.dispatched();
+  handle.firstToken(5);
+  handle.firstReasoning();
+  const view = only("tg");
+  assert.equal(view.phase, "generating");
+  handle.end();
 });
 
 test("records live prefill progress and seeds prompt tokens from total", () => {

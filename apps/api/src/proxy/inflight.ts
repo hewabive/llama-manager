@@ -14,6 +14,7 @@ type InflightEntry = {
   phase: ApiProxyInflightPhase;
   enqueuedAt: number;
   dispatchedAt: number | null;
+  reasoningStartedAt: number | null;
   firstTokenAt: number | null;
   lastProgressAt: number;
   promptTokens: number | null;
@@ -36,6 +37,7 @@ export type ApiProxyInflightHandle = {
   setTarget(targetId: string | null): void;
   setStream(stream: boolean): void;
   dispatched(): void;
+  firstReasoning(): void;
   firstToken(promptTokens?: number | null): void;
   setPromptTokens(value: number | null): void;
   setCompletionTokens(value: number): void;
@@ -52,12 +54,17 @@ function toView(entry: InflightEntry, at: number): ApiProxyInflightRequest {
     0,
     Math.round((entry.dispatchedAt ?? at) - entry.enqueuedAt),
   );
+  const prefillEndAt = entry.reasoningStartedAt ?? entry.firstTokenAt ?? at;
   const prefillMs =
     entry.dispatchedAt === null
       ? null
+      : Math.max(0, Math.round(prefillEndAt - entry.dispatchedAt));
+  const thinkingMs =
+    entry.reasoningStartedAt === null
+      ? null
       : Math.max(
           0,
-          Math.round((entry.firstTokenAt ?? at) - entry.dispatchedAt),
+          Math.round((entry.firstTokenAt ?? at) - entry.reasoningStartedAt),
         );
   const generatingMs =
     entry.firstTokenAt === null
@@ -71,6 +78,7 @@ function toView(entry: InflightEntry, at: number): ApiProxyInflightRequest {
     phase: entry.phase,
     waitingMs,
     prefillMs,
+    thinkingMs,
     generatingMs,
     promptTokens: entry.promptTokens,
     completionTokens: entry.completionTokens,
@@ -106,6 +114,7 @@ export class ApiProxyInflightRegistry {
       phase: "queued",
       enqueuedAt: startedAt,
       dispatchedAt: null,
+      reasoningStartedAt: null,
       firstTokenAt: null,
       lastProgressAt: startedAt,
       promptTokens: null,
@@ -135,6 +144,15 @@ export class ApiProxyInflightRegistry {
         }
         if (entry.phase === "queued") {
           entry.phase = "prefilling";
+        }
+        touch();
+      },
+      firstReasoning: () => {
+        if (entry.reasoningStartedAt === null) {
+          entry.reasoningStartedAt = this.clock();
+        }
+        if (entry.phase === "queued" || entry.phase === "prefilling") {
+          entry.phase = "thinking";
         }
         touch();
       },

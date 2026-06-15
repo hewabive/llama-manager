@@ -1642,6 +1642,7 @@ export const ApiProxyRuntimeMetadataRecordSchema = z.object({
 export const ApiProxyInflightPhaseSchema = z.enum([
   "queued",
   "prefilling",
+  "thinking",
   "generating",
 ]);
 
@@ -1653,6 +1654,7 @@ export const ApiProxyInflightRequestSchema = z.object({
   phase: ApiProxyInflightPhaseSchema,
   waitingMs: z.number().int().min(0),
   prefillMs: z.number().int().min(0).nullable().default(null),
+  thinkingMs: z.number().int().min(0).nullable().default(null),
   generatingMs: z.number().int().min(0).nullable().default(null),
   promptTokens: z.number().int().min(0).nullable().default(null),
   completionTokens: z.number().int().min(0).default(0),
