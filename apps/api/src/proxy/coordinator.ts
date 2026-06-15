@@ -1,3 +1,4 @@
+import { observeBodyCompletion } from "./body-completion.js";
 import { newId } from "../utils/id.js";
 
 export type ResourceLeaseRequest = {
@@ -289,35 +290,7 @@ export function attachLeaseRelease(
     return response;
   }
 
-  let released = false;
-  const release = () => {
-    if (!released) {
-      released = true;
-      lease.release();
-    }
-  };
-
-  const reader = response.body.getReader();
-  const stream = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          release();
-          return;
-        }
-        controller.enqueue(value);
-      } catch (error) {
-        controller.error(error);
-        release();
-      }
-    },
-    async cancel(reason) {
-      await reader.cancel(reason);
-      release();
-    },
-  });
+  const stream = observeBodyCompletion(response.body, () => lease.release());
 
   return new Response(stream, {
     status: response.status,

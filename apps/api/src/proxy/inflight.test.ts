@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { apiProxyInflight } from "./inflight.js";
+import { ApiProxyInflightRegistry, apiProxyInflight } from "./inflight.js";
 
 function only(targetId: string) {
   const list = apiProxyInflight.snapshotByTarget().get(targetId) ?? [];
@@ -93,4 +93,47 @@ test("first prompt-token value wins and completion tokens are monotonic", () => 
   assert.equal(view.promptTokens, 10);
   assert.equal(view.completionTokens, 5);
   handle.end();
+});
+
+test("sweeps inflight entries with no progress past the stale threshold", () => {
+  let clock = 0;
+  const registry = new ApiProxyInflightRegistry({
+    now: () => clock,
+    staleAfterMs: 1000,
+  });
+  registry.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "stuck",
+    stream: true,
+  });
+
+  clock = 900;
+  assert.equal(registry.snapshotByTarget().get("stuck")?.length, 1);
+
+  clock = 1500;
+  assert.equal(registry.snapshotByTarget().get("stuck"), undefined);
+});
+
+test("keeps inflight entries that show recent progress", () => {
+  let clock = 0;
+  const registry = new ApiProxyInflightRegistry({
+    now: () => clock,
+    staleAfterMs: 1000,
+  });
+  const handle = registry.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "live",
+    stream: true,
+  });
+  handle.dispatched();
+
+  clock = 1500;
+  handle.setCompletionTokens(1);
+  clock = 2000;
+  assert.equal(registry.snapshotByTarget().get("live")?.length, 1);
+
+  clock = 3500;
+  assert.equal(registry.snapshotByTarget().get("live"), undefined);
 });

@@ -19,6 +19,7 @@ import {
 } from "../process/managed-lifecycle.js";
 import { newId } from "../utils/id.js";
 import { anthropicProtocolAdapter } from "./anthropic.js";
+import { observeBodyCompletion } from "./body-completion.js";
 import {
   attachLeaseRelease,
   resourceGroupCoordinator,
@@ -763,24 +764,30 @@ async function proxyProtocolEndpointInner(
           onPrefillProgress: markPrefillProgress,
           onComplete: onStreamComplete,
         });
+        recorder.markDeferred();
         metered = new Response(
-          upstream.body.pipeThrough(translation.transform),
+          observeBodyCompletion(
+            upstream.body.pipeThrough(translation.transform),
+            () => translation.finalize(),
+          ),
           {
             status: upstream.status,
             headers: upstream.headers,
           },
         );
-        recorder.markDeferred();
-        c.req.raw.signal.addEventListener(
-          "abort",
-          () => translation.finalize(),
-          { once: true },
-        );
         return metered;
       }
 
       if (!streamMeter) {
-        return upstream;
+        recorder.markDeferred();
+        return new Response(
+          observeBodyCompletion(upstream.body, () => recorder.record(upstream)),
+          {
+            status: upstream.status,
+            statusText: upstream.statusText,
+            headers: upstream.headers,
+          },
+        );
       }
 
       const meter = createUsageMeterStream({
@@ -792,14 +799,16 @@ async function proxyProtocolEndpointInner(
         onPrefillProgress: markPrefillProgress,
         onComplete: onStreamComplete,
       });
-      metered = new Response(upstream.body.pipeThrough(meter.transform), {
-        status: upstream.status,
-        headers: upstream.headers,
-      });
       recorder.markDeferred();
-      c.req.raw.signal.addEventListener("abort", () => meter.finalize(), {
-        once: true,
-      });
+      metered = new Response(
+        observeBodyCompletion(upstream.body.pipeThrough(meter.transform), () =>
+          meter.finalize(),
+        ),
+        {
+          status: upstream.status,
+          headers: upstream.headers,
+        },
+      );
       return metered;
     } catch (error) {
       if (c.req.raw.signal.aborted) {
