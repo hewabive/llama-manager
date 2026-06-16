@@ -227,6 +227,32 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
   assert.equal(busy.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
 });
 
+test("buildApiProxyRuntimeSnapshot pins lastRequestAt while a request stays active", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const first = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:10.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([["instance-a", health({ processing: true })]]),
+  });
+
+  assert.equal(first.targets[0]?.state, "busy");
+  assert.equal(first.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
+
+  const later = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:15.000Z",
+    targets: [target()],
+    endpoints: [apiEndpoint()],
+    instances: [instance()],
+    healthByInstanceId: new Map([["instance-a", health({ processing: true })]]),
+  });
+
+  assert.equal(later.targets[0]?.state, "busy");
+  assert.equal(later.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
+});
+
 test("buildApiProxyRuntimeSnapshot marks an in-flight lease busy during prefill", () => {
   resetApiProxyRuntimeTrackers();
 

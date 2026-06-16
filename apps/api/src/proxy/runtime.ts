@@ -265,8 +265,10 @@ function updateTracker(input: {
   }
 
   if (input.activeRequests > 0 || input.state === "busy") {
+    if (tracker.idleSince !== null || tracker.lastRequestAt === null) {
+      tracker.lastRequestAt = input.checkedAt;
+    }
     tracker.idleSince = null;
-    tracker.lastRequestAt = input.checkedAt;
     return tracker;
   }
 
