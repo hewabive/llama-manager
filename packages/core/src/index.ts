@@ -614,6 +614,39 @@ export function apiProxyReasoningEditOperations(
   return operations;
 }
 
+export const ApiProxyOutputLimitModeSchema = z.enum(["cap", "set"]);
+
+export const ApiProxyOutputLimitConfigSchema = z.object({
+  maxTokens: z.number().int().min(1).max(10_000_000).default(4096),
+  mode: ApiProxyOutputLimitModeSchema.default("cap"),
+});
+
+export type ApiProxyOutputLimitMode = z.infer<
+  typeof ApiProxyOutputLimitModeSchema
+>;
+export type ApiProxyOutputLimitConfig = z.infer<
+  typeof ApiProxyOutputLimitConfigSchema
+>;
+
+export function apiProxyOutputLimitEditOperations(
+  config: ApiProxyOutputLimitConfig,
+  body: unknown,
+): ApiProxyEditRequestOperation[] {
+  const record = namedRecord(body);
+  const current =
+    record && typeof record.max_tokens === "number" ? record.max_tokens : null;
+  const next =
+    config.mode === "set"
+      ? config.maxTokens
+      : current === null
+        ? config.maxTokens
+        : Math.min(current, config.maxTokens);
+  if (current === next) {
+    return [];
+  }
+  return [{ kind: "set-field", enabled: true, path: "max_tokens", value: next }];
+}
+
 export const ApiProxyConditionScopeSchema = z.enum([
   "last-user-message",
   "any-message",
@@ -693,6 +726,11 @@ export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
   ApiProxyPipelineNodeBaseSchema.extend({
     type: z.literal("reasoning"),
     config: ApiProxyReasoningConfigSchema,
+    ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
+  }),
+  ApiProxyPipelineNodeBaseSchema.extend({
+    type: z.literal("output-limit"),
+    config: ApiProxyOutputLimitConfigSchema,
     ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
   }),
   ApiProxyPipelineNodeBaseSchema.extend({
@@ -842,6 +880,7 @@ export function apiProxyPipelineNodePorts(
     case "capture-request":
     case "edit-request":
     case "reasoning":
+    case "output-limit":
       return node.ports.next ? [{ port: "next", ref: node.ports.next }] : [];
     case "condition": {
       const refs: Array<{
@@ -1368,6 +1407,7 @@ export function collectApiProxyRouteHoles(
       case "capture-request":
       case "edit-request":
       case "reasoning":
+      case "output-limit":
         visit(node.ports.next, pipeline, stack, {
           nodeId: node.id,
           where: `port "next" of node ${label(node)}`,
@@ -1665,6 +1705,7 @@ export const ApiProxyRouteTraceStepSchema = z.object({
     "capture-request",
     "edit-request",
     "reasoning",
+    "output-limit",
     "condition",
     "call",
     "exit",

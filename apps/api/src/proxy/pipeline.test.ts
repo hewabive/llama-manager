@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ApiProxyEditRequestOperationSchema,
   ApiProxyPipelineRecordSchema,
+  apiProxyOutputLimitEditOperations,
   apiProxyReasoningEditOperations,
   applyApiProxyRequestEdits,
   type ApiProxyEditRequestOperation,
@@ -1027,5 +1028,60 @@ test("reasoning node sets the native thinking block for anthropic requests", asy
       messages: [{ role: "user", content: "hi" }],
       thinking: { type: "enabled", budget_tokens: 8192 },
     });
+  }
+});
+
+test("apiProxyOutputLimitEditOperations caps or sets max_tokens", () => {
+  const cap = { maxTokens: 4096, mode: "cap" as const };
+  assert.deepEqual(apiProxyOutputLimitEditOperations(cap, { max_tokens: 32000 }), [
+    { kind: "set-field", enabled: true, path: "max_tokens", value: 4096 },
+  ]);
+  assert.deepEqual(apiProxyOutputLimitEditOperations(cap, { max_tokens: 500 }), []);
+  assert.deepEqual(apiProxyOutputLimitEditOperations(cap, {}), [
+    { kind: "set-field", enabled: true, path: "max_tokens", value: 4096 },
+  ]);
+  const set = { maxTokens: 4096, mode: "set" as const };
+  assert.deepEqual(apiProxyOutputLimitEditOperations(set, { max_tokens: 500 }), [
+    { kind: "set-field", enabled: true, path: "max_tokens", value: 4096 },
+  ]);
+  assert.deepEqual(apiProxyOutputLimitEditOperations(set, { max_tokens: 4096 }), []);
+});
+
+test("output-limit node caps a runaway max_tokens mid-route", async () => {
+  const pipelines = [
+    pipelineRecord({
+      id: "pipeline-a",
+      entry: { type: "node", id: "limit" },
+      nodes: [
+        {
+          id: "limit",
+          name: "",
+          type: "output-limit",
+          config: { maxTokens: 4096, mode: "cap" },
+          ports: { next: { type: "target", id: "target-a" } },
+        },
+      ],
+    }),
+  ];
+
+  const result = await resolveApiProxyRouteChain({
+    request: request({
+      body: {
+        model: "public-model",
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 32000,
+      },
+    }),
+    getPipeline: getPipelineFrom(pipelines),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.deepEqual(result.request.body, {
+      model: "public-model",
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 4096,
+    });
+    assert.equal(result.routeTrace[1]?.kind, "output-limit");
   }
 });

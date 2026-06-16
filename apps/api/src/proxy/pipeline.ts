@@ -1,4 +1,5 @@
 import {
+  apiProxyOutputLimitEditOperations,
   apiProxyReasoningEditOperations,
   applyApiProxyRequestEdits,
   resolveApiProxyReasoning,
@@ -402,6 +403,32 @@ export async function resolveApiProxyRouteChain(input: {
           nodeStep(pipeline, node, {
             port: "next",
             detail: reasoningTraceDetail(node.config),
+          }),
+        );
+        ref = node.ports.next;
+        break;
+      }
+      case "output-limit": {
+        const operations = apiProxyOutputLimitEditOperations(
+          node.config,
+          state.request.body,
+        );
+        const edit = applyApiProxyRequestEdits(state.request.body, operations);
+        if (edit.changed) {
+          state.request = {
+            ...state.request,
+            body: edit.body,
+            stream: bodyRequestsStreaming(edit.body),
+          };
+          tokenEstimate = null;
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: "next",
+            detail:
+              edit.outcomes.length > 0
+                ? edit.outcomes.map((outcome) => outcome.detail).join("; ")
+                : `${node.config.mode} ${node.config.maxTokens}: no change`,
           }),
         );
         ref = node.ports.next;

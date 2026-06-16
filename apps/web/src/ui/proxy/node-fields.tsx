@@ -2,6 +2,7 @@ import {
   collectApiProxyPipelineExitNames,
   resolveApiProxyReasoning,
   type ApiProxyModelRecord,
+  type ApiProxyOutputLimitMode,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
   type ApiProxyReasoningEffort,
@@ -47,6 +48,7 @@ const nodeTypeLabels: Record<ApiProxyPipelineNode["type"], string> = {
   "capture-request": "Save request",
   "edit-request": "Edit request",
   reasoning: "Reasoning",
+  "output-limit": "Limit output",
   condition: "Condition",
   call: "Pipeline",
   exit: "Exit",
@@ -61,6 +63,7 @@ export const pipelineNodeTypeOptions: Array<{
   { value: "capture-request", label: nodeTypeLabels["capture-request"] },
   { value: "edit-request", label: nodeTypeLabels["edit-request"] },
   { value: "reasoning", label: nodeTypeLabels.reasoning },
+  { value: "output-limit", label: nodeTypeLabels["output-limit"] },
   { value: "condition", label: nodeTypeLabels.condition },
   { value: "fusion", label: nodeTypeLabels.fusion },
   { value: "exit", label: nodeTypeLabels.exit },
@@ -73,6 +76,11 @@ const reasoningEffortOptions = [
   { value: "high", label: "High" },
   { value: "max", label: "Max" },
   { value: "custom", label: "Custom" },
+];
+
+const outputLimitModeOptions = [
+  { value: "cap", label: "Cap" },
+  { value: "set", label: "Set" },
 ];
 
 const conditionScopeOptions = [
@@ -492,6 +500,40 @@ function ReasoningFields(props: {
   );
 }
 
+function OutputLimitFields(props: {
+  node: PipelineNodeDraft;
+  update: (patch: Partial<PipelineNodeDraft>) => void;
+}) {
+  const { node, update } = props;
+  const caption =
+    node.outputLimitMode === "cap"
+      ? "Lowers max_tokens to this ceiling, never raises it — caps runaway generation while respecting smaller client requests."
+      : "Forces max_tokens to this value, overriding whatever the client sent.";
+  return (
+    <Stack gap="sm">
+      <SegmentedControl
+        fullWidth
+        data={outputLimitModeOptions}
+        value={node.outputLimitMode}
+        onChange={(value) =>
+          update({ outputLimitMode: value as ApiProxyOutputLimitMode })
+        }
+      />
+      <NumberInput
+        label="Max output tokens"
+        min={1}
+        value={node.outputLimitMax}
+        onChange={(value) =>
+          update({ outputLimitMax: value === "" ? "" : Number(value) })
+        }
+      />
+      <Text c="dimmed" size="xs">
+        {caption}
+      </Text>
+    </Stack>
+  );
+}
+
 export function PipelineNodeFields(props: {
   node: PipelineNodeDraft;
   ctx: PipelineEditorContext;
@@ -541,6 +583,21 @@ export function PipelineNodeFields(props: {
     return (
       <>
         <ReasoningFields node={node} update={update} />
+        <PortSelect
+          label="Next"
+          ctx={ctx}
+          excludeNodeId={node.id}
+          value={node.portNext}
+          onChange={(portNext) => update({ portNext })}
+        />
+      </>
+    );
+  }
+
+  if (node.type === "output-limit") {
+    return (
+      <>
+        <OutputLimitFields node={node} update={update} />
         <PortSelect
           label="Next"
           ctx={ctx}

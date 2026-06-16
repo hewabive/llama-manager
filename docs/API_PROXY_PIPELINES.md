@@ -63,6 +63,7 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 | `capture-request` | — (no options)                                                                                                                                                                                                                                                                                                                                       | `next`                        |
 | `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request body: `tools` array operations and field operations by path (see below)                                                                                                                                                                                                         | `next`                        |
 | `reasoning`       | `effort: off\|low\|medium\|high\|max\|custom` + `customBudgetTokens` — controls the model's thinking channel (see below)                                                                                                                                                                                                                              | `next`                        |
+| `output-limit`    | `maxTokens` + `mode: cap\|set` — bounds `max_tokens` on the request (see below)                                                                                                                                                                                                                                                                       | `next`                        |
 | `condition`       | `predicate` (see below)                                                                                                                                                                                                                                                                                                                              | `true`, `false`               |
 | `call`            | `pipelineId`                                                                                                                                                                                                                                                                                                                                         | one port per callee exit name |
 | `exit`            | `exitName` (default `done`)                                                                                                                                                                                                                                                                                                                          | —                             |
@@ -128,6 +129,24 @@ protocol**:
 The node does not arm llama.cpp's realtime `reasoning_control`/force-answer
 endpoint — that is the separate interrupt-to-force-answer path on proxy
 targets.
+
+### Output limit
+
+The `output-limit` node bounds the response length via the request's
+`max_tokens` (the same field for OpenAI and Anthropic inbound, preserved by the
+bridge), the hard stop against runaway/looping generation
+(`finish_reason: "length"`). `apiProxyOutputLimitEditOperations(config, body)`
+(`@llama-manager/core`) reads the current `max_tokens` and emits a `set-field`
+op only when the value changes:
+
+- `cap` (default) — `min(client max_tokens, maxTokens)`; an absent client value
+  is set to `maxTokens`. A safety ceiling that never raises a smaller client
+  request.
+- `set` — forces `max_tokens = maxTokens` unconditionally.
+
+The applied change is reported in the node's `routeTrace` detail (e.g.
+`set max_tokens = 4096 (was 32000)`), or `<mode> <n>: no change` when the bound
+was already satisfied.
 
 ### Condition predicates
 

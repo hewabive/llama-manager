@@ -13,6 +13,8 @@ import type {
   ApiProxyPipelineCreate,
   ApiProxyPipelineNode,
   ApiProxyPipelineRecord,
+  ApiProxyOutputLimitConfig,
+  ApiProxyOutputLimitMode,
   ApiProxyPortRef,
   ApiProxyQuickRouteCreate,
   ApiProxyReasoningConfig,
@@ -86,6 +88,8 @@ export type PipelineNodeDraft = {
   editOperations: EditOperationDraft[];
   reasoningEffort: ApiProxyReasoningEffort;
   reasoningCustomBudget: number | "";
+  outputLimitMax: number | "";
+  outputLimitMode: ApiProxyOutputLimitMode;
   predicateType: ApiProxyConditionPredicate["type"];
   scope: ApiProxyConditionScope;
   pattern: string;
@@ -186,6 +190,8 @@ export function emptyPipelineNodeDraft(
     editOperations: [],
     reasoningEffort: "medium",
     reasoningCustomBudget: 2048,
+    outputLimitMax: 4096,
+    outputLimitMode: "cap",
     predicateType: "text-match",
     scope: "any-message",
     pattern: "",
@@ -403,6 +409,11 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       draft.reasoningCustomBudget = node.config.customBudgetTokens;
       draft.portNext = portRefToValue(node.ports.next);
       break;
+    case "output-limit":
+      draft.outputLimitMax = node.config.maxTokens;
+      draft.outputLimitMode = node.config.mode;
+      draft.portNext = portRefToValue(node.ports.next);
+      break;
     case "condition": {
       const predicate = node.config.predicate;
       draft.predicateType = predicate.type;
@@ -603,6 +614,15 @@ function reasoningConfigFromDraft(
   };
 }
 
+function outputLimitConfigFromDraft(
+  draft: PipelineNodeDraft,
+): ApiProxyOutputLimitConfig {
+  return {
+    maxTokens: draft.outputLimitMax === "" ? 4096 : draft.outputLimitMax,
+    mode: draft.outputLimitMode,
+  };
+}
+
 function predicateFromDraft(
   draft: PipelineNodeDraft,
 ): ApiProxyConditionPredicate {
@@ -665,6 +685,13 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
         ...base,
         type: "reasoning",
         config: reasoningConfigFromDraft(draft),
+        ports: { next: portRefFromValue(draft.portNext) },
+      };
+    case "output-limit":
+      return {
+        ...base,
+        type: "output-limit",
+        config: outputLimitConfigFromDraft(draft),
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "condition":

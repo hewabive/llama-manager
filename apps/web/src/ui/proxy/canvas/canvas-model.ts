@@ -173,6 +173,7 @@ export function draftNodePorts(
     case "capture-request":
     case "edit-request":
     case "reasoning":
+    case "output-limit":
       return [{ port: "next", value: node.portNext }];
     case "condition":
       return [
@@ -221,6 +222,8 @@ export function nodeSummary(
     }
     case "reasoning":
       return reasoningSummary(node);
+    case "output-limit":
+      return `${node.outputLimitMode} max_tokens ${node.outputLimitMax || "?"}`;
     case "condition": {
       if (node.predicateType === "token-estimate") {
         return `≥ ${node.minTokens || "?"} tokens (est.)`;
