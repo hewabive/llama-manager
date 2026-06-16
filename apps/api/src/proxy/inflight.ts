@@ -112,6 +112,7 @@ function toView(entry: InflightEntry, at: number): ApiProxyInflightRequest {
     prefillProcessedTokens: entry.prefillProcessedTokens,
     prefillCachedTokens: entry.prefillCachedTokens,
     reasoningChars: entry.reasoningCharsTotal,
+    answerChars: entry.answerCharsTotal,
     interruptible: entryInterruptible(entry),
   };
 }

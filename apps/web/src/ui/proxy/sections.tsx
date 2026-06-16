@@ -623,13 +623,13 @@ function InflightDetailModal({
     <Modal
       opened={id !== null}
       onClose={onClose}
-      title="In-flight reasoning"
+      title="In-flight output"
       size="xl"
     >
       {detailQuery.isLoading && <Loader size="sm" />}
       {!detail && detailQuery.isError && (
         <Text size="sm" c="dimmed">
-          Request finished — no live reasoning to show.
+          Request finished — no live output to show.
         </Text>
       )}
       {detail && (
@@ -656,20 +656,22 @@ function InflightDetailModal({
           </Group>
           {detailQuery.isError && (
             <Text size="xs" c="dimmed">
-              Request finished — showing last captured reasoning.
+              Request finished — showing last captured output.
             </Text>
           )}
-          <Stack gap={2}>
-            <Text size="xs" fw={600} c="violet">
-              Reasoning
-              {detail.reasoningTruncated ? " (truncated, latest shown)" : ""}
-            </Text>
-            <ScrollArea.Autosize mah="45vh">
-              <Code block style={{ whiteSpace: "pre-wrap" }}>
-                {detail.reasoningText || "—"}
-              </Code>
-            </ScrollArea.Autosize>
-          </Stack>
+          {(detail.reasoningText || !detail.answerText) && (
+            <Stack gap={2}>
+              <Text size="xs" fw={600} c="violet">
+                Reasoning
+                {detail.reasoningTruncated ? " (truncated, latest shown)" : ""}
+              </Text>
+              <ScrollArea.Autosize mah="45vh">
+                <Code block style={{ whiteSpace: "pre-wrap" }}>
+                  {detail.reasoningText || "—"}
+                </Code>
+              </ScrollArea.Autosize>
+            </Stack>
+          )}
           {detail.answerText && (
             <Stack gap={2}>
               <Text size="xs" fw={600} c="teal">
@@ -720,13 +722,13 @@ function InflightRequests({
                     {label}
                   </Text>
                 )}
-                {req.reasoningChars > 0 && (
-                  <Tooltip label="View reasoning">
+                {(req.reasoningChars > 0 || req.answerChars > 0) && (
+                  <Tooltip label="View output">
                     <ActionIcon
                       size="xs"
                       variant="subtle"
                       color="violet"
-                      aria-label="View reasoning"
+                      aria-label="View output"
                       onClick={() => setOpenId(req.id)}
                     >
                       <Eye size={13} />

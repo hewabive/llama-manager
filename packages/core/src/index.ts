@@ -1836,6 +1836,7 @@ export const ApiProxyInflightRequestSchema = z.object({
   prefillProcessedTokens: z.number().int().min(0).nullable().default(null),
   prefillCachedTokens: z.number().int().min(0).nullable().default(null),
   reasoningChars: z.number().int().min(0).default(0),
+  answerChars: z.number().int().min(0).default(0),
   interruptible: z.boolean().default(false),
 });
 
