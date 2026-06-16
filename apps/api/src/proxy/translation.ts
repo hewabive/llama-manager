@@ -143,6 +143,8 @@ export function anthropicForwardHeaders(headers: Headers): Headers {
 export type AnthropicTranslationStreamCallbacks = {
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
   onReasoning?: (() => void) | undefined;
+  onReasoningDelta?: ((text: string) => void) | undefined;
+  onAnswerDelta?: ((text: string) => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?: ((progress: ProxyPrefillProgress) => void) | undefined;
   onComplete?: ((usage: ProxyUsageCounts) => void) | undefined;
@@ -201,6 +203,16 @@ export function createAnthropicTranslationStream(
       }
       if (cacheReadTokens === null) {
         cacheReadTokens = openaiCachedTokens(extensions.usage);
+      }
+    }
+    for (const event of events) {
+      if (event.type !== "content_block_delta") {
+        continue;
+      }
+      if (event.delta.type === "thinking_delta") {
+        callbacks.onReasoningDelta?.(event.delta.thinking);
+      } else if (event.delta.type === "text_delta") {
+        callbacks.onAnswerDelta?.(event.delta.text);
       }
     }
     if (!reasoningSeen && events.some(thinkingStart)) {

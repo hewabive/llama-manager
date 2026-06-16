@@ -152,6 +152,92 @@ test("first prompt-token value wins and completion tokens are monotonic", () => 
   handle.end();
 });
 
+test("captures reasoning/answer buffers and exposes them via getDetail", () => {
+  apiProxyInflight.reset();
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "tr",
+    stream: true,
+  });
+  handle.dispatched();
+  handle.firstReasoning();
+  handle.appendReasoning("Let me think");
+  handle.appendReasoning(" carefully");
+
+  const view = only("tr");
+  assert.equal(view.reasoningChars, "Let me think carefully".length);
+
+  const detail = apiProxyInflight.getDetail(handle.id);
+  assert.ok(detail);
+  assert.equal(detail.reasoningText, "Let me think carefully");
+  assert.equal(detail.reasoningChars, "Let me think carefully".length);
+  assert.equal(detail.reasoningTruncated, false);
+  assert.equal(detail.answerText, "");
+
+  handle.firstToken(3);
+  handle.appendAnswer("Hi");
+  const after = apiProxyInflight.getDetail(handle.id);
+  assert.ok(after);
+  assert.equal(after.answerText, "Hi");
+  assert.equal(after.phase, "generating");
+
+  handle.end();
+  assert.equal(apiProxyInflight.getDetail(handle.id), null);
+});
+
+test("caps the reasoning buffer and flags truncation", () => {
+  apiProxyInflight.reset();
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "tc",
+    stream: true,
+  });
+  handle.appendReasoning("a".repeat(300_000));
+  const detail = apiProxyInflight.getDetail(handle.id);
+  assert.ok(detail);
+  assert.equal(detail.reasoningChars, 300_000);
+  assert.equal(detail.reasoningTruncated, true);
+  assert.equal(detail.reasoningText.length, 256 * 1024);
+  handle.end();
+});
+
+test("force-answer interrupt is gated by support and the thinking phase", () => {
+  apiProxyInflight.reset();
+  assert.equal(apiProxyInflight.requestForceAnswer("nope"), "not-found");
+
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "ti",
+    stream: true,
+  });
+  handle.dispatched();
+  assert.equal(apiProxyInflight.requestForceAnswer(handle.id), "not-supported");
+
+  handle.setInterruptible(true);
+  assert.equal(apiProxyInflight.requestForceAnswer(handle.id), "not-ready");
+  assert.equal(only("ti").interruptible, false);
+
+  handle.firstReasoning();
+  handle.appendReasoning("R");
+  assert.equal(only("ti").interruptible, true);
+
+  const signal = handle.interruptSignal();
+  assert.equal(signal.aborted, false);
+  assert.equal(apiProxyInflight.requestForceAnswer(handle.id), "ok");
+  assert.equal(signal.aborted, true);
+
+  const rearmed = handle.interruptSignal();
+  assert.equal(rearmed.aborted, false);
+
+  handle.firstToken(5);
+  assert.equal(only("ti").interruptible, false);
+  assert.equal(apiProxyInflight.requestForceAnswer(handle.id), "too-late");
+  handle.end();
+});
+
 test("sweeps inflight entries with no progress past the stale threshold", () => {
   let clock = 0;
   const registry = new ApiProxyInflightRegistry({

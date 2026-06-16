@@ -8,6 +8,7 @@ import type { Hono } from "hono";
 
 import { listInstances } from "../instances/repository.js";
 import { listApiEndpointCatalog } from "../proxy/endpoints.js";
+import { apiProxyInflight } from "../proxy/inflight.js";
 import { getApiProxyPlanPreview } from "../proxy/idle-maintenance.js";
 import { explainApiProxyRoute } from "../proxy/route-explain.js";
 import { getApiProxyConfig } from "../proxy/repository.js";
@@ -110,6 +111,19 @@ export function registerProxyRoutes(app: Hono) {
     } catch (error) {
       return c.json({ error: (error as Error).message }, 400);
     }
+  });
+
+  app.get("/api/proxy/inflight/:id", (c) => {
+    const detail = apiProxyInflight.getDetail(c.req.param("id"));
+    if (!detail) {
+      return c.json({ error: "in-flight request not found" }, 404);
+    }
+    return c.json({ data: detail });
+  });
+
+  app.post("/api/proxy/inflight/:id/interrupt", (c) => {
+    const status = apiProxyInflight.requestForceAnswer(c.req.param("id"));
+    return c.json({ data: { status } });
   });
 
   app.post("/api/proxy/route-explain", async (c) => {

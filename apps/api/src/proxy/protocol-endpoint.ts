@@ -523,6 +523,12 @@ async function proxyProtocolEndpointInner(
   const markReasoning = () => {
     inflight.firstReasoning();
   };
+  const markReasoningDelta = (text: string) => {
+    inflight.appendReasoning(text);
+  };
+  const markAnswerDelta = (text: string) => {
+    inflight.appendAnswer(text);
+  };
   const markProgress = (completionTokens: number) => {
     inflight.setCompletionTokens(completionTokens);
   };
@@ -716,6 +722,8 @@ async function proxyProtocolEndpointInner(
         const translation = createAnthropicTranslationStream({
           onFirstToken: markFirstToken,
           onReasoning: markReasoning,
+          onReasoningDelta: markReasoningDelta,
+          onAnswerDelta: markAnswerDelta,
           onProgress: markProgress,
           onPrefillProgress: markPrefillProgress,
           onComplete: onStreamComplete,
@@ -752,6 +760,8 @@ async function proxyProtocolEndpointInner(
         stripProgressFrames: injectPrefillProgress,
         onFirstToken: markFirstToken,
         onReasoning: markReasoning,
+        onReasoningDelta: markReasoningDelta,
+        onAnswerDelta: markAnswerDelta,
         onProgress: markProgress,
         onPrefillProgress: markPrefillProgress,
         onComplete: onStreamComplete,
@@ -816,6 +826,16 @@ async function proxyProtocolEndpointInner(
       (operation.protocol === "openai" || translateAnthropic) &&
       instanceId !== null &&
       !returnProgressRequested(route.request.body);
+    const forceAnswerSupported =
+      instanceId !== null &&
+      (operation.protocol === "openai" || translateAnthropic);
+    inflight.setInterruptible(forceAnswerSupported);
+    const buildForceAnswerTail = forceAnswerSupported
+      ? (reasoningText: string): string | null => {
+          const trimmed = reasoningText.trimEnd();
+          return `<think>\n${trimmed}\n</think>\n\n`;
+        }
+      : undefined;
     const state = createResumableBufferState();
     const buildBody = (tail: string | null) => {
       const built = effectiveCodec.upstreamBody(
@@ -861,8 +881,11 @@ async function proxyProtocolEndpointInner(
           state,
           preemptSignal: heldLease.preemptSignal,
           consumerSignal: c.req.raw.signal,
+          interruptSignal: inflight.interruptSignal(),
           onFirstToken: markFirstToken,
           onReasoning: markReasoning,
+          onReasoningDelta: markReasoningDelta,
+          onAnswerDelta: markAnswerDelta,
           onProgress: markProgress,
           onPrefillProgress: markPrefillProgress,
         });
@@ -871,6 +894,7 @@ async function proxyProtocolEndpointInner(
       codec: effectiveCodec,
       yieldLease: () => heldLease.yield(),
       wantsStream: route.request.stream,
+      ...(buildForceAnswerTail ? { buildForceAnswerTail } : {}),
       onError: (message) => {
         trace.errorMessage = `Proxy target ${decision.target.name} failed to forward request: ${message}`;
         const response = adapter.diagnosticError(route.request, {

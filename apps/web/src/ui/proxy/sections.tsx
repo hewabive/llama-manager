@@ -1,5 +1,6 @@
 import type {
   ApiEndpointRecord,
+  ApiProxyInflightInterruptResult,
   ApiProxyModelRecord,
   ApiProxyPipelineRecord,
   ApiProxyPlanPreview,
@@ -29,10 +30,13 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
 import {
   Activity,
   BarChart3,
+  Eye,
+  FastForward,
   FileText,
   GitBranchPlus,
   Pencil,
@@ -45,7 +49,11 @@ import {
 } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
-import { getApiProxyRequestFile } from "../../api/client";
+import {
+  getApiProxyInflightDetail,
+  getApiProxyRequestFile,
+  interruptApiProxyInflight,
+} from "../../api/client";
 import { modelDirectTargetId } from "./forms";
 import type { ProxyUsageRef } from "./usage";
 import { JsonTreeView } from "../components/JsonTreeView";
@@ -525,53 +533,227 @@ function DetailBadge({
   );
 }
 
+function interruptStatusMessage(
+  status: ApiProxyInflightInterruptResult["status"],
+): string {
+  switch (status) {
+    case "too-late":
+      return "Already answering — nothing left to interrupt.";
+    case "not-ready":
+      return "No reasoning captured yet — try again in a moment.";
+    case "not-supported":
+      return "This target does not support forced answers.";
+    case "not-found":
+      return "Request already finished.";
+    default:
+      return "Forcing the model to write its answer…";
+  }
+}
+
+function InflightInterruptButton({ id, full }: { id: string; full?: boolean }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => interruptApiProxyInflight(id),
+    onSuccess: async (result) => {
+      const status = result.data.status;
+      notifications.show({
+        color: status === "ok" ? "violet" : "yellow",
+        message: interruptStatusMessage(status),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
+        queryClient.invalidateQueries({ queryKey: ["api-proxy-inflight", id] }),
+      ]);
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Interrupt failed",
+        message: (error as Error).message,
+      });
+    },
+  });
+  if (full) {
+    return (
+      <Button
+        size="compact-xs"
+        variant="light"
+        color="orange"
+        leftSection={<FastForward size={13} />}
+        loading={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        Force answer
+      </Button>
+    );
+  }
+  return (
+    <Tooltip label="Interrupt thinking → force answer">
+      <ActionIcon
+        size="xs"
+        variant="subtle"
+        color="orange"
+        aria-label="Interrupt thinking, force answer"
+        loading={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        <FastForward size={13} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+function InflightDetailModal({
+  id,
+  onClose,
+}: {
+  id: string | null;
+  onClose: () => void;
+}) {
+  const detailQuery = useQuery({
+    queryKey: ["api-proxy-inflight", id],
+    queryFn: () => getApiProxyInflightDetail(id as string),
+    enabled: id !== null,
+    retry: false,
+    refetchInterval: (query) =>
+      id !== null && query.state.status !== "error" ? 700 : false,
+  });
+  const detail = detailQuery.data?.data;
+  return (
+    <Modal
+      opened={id !== null}
+      onClose={onClose}
+      title="In-flight reasoning"
+      size="xl"
+    >
+      {detailQuery.isLoading && <Loader size="sm" />}
+      {!detail && detailQuery.isError && (
+        <Text size="sm" c="dimmed">
+          Request finished — no live reasoning to show.
+        </Text>
+      )}
+      {detail && (
+        <Stack gap="sm">
+          <Group gap="xs" wrap="wrap" justify="space-between">
+            <Group gap="xs" wrap="wrap">
+              <Badge color={inflightPhaseColor(detail.phase)} variant="light">
+                {detail.phase}
+              </Badge>
+              <Badge color="gray" variant="light">
+                {detail.protocol}
+              </Badge>
+              <Text size="xs" c="dimmed">
+                {detail.modelId}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {detail.reasoningChars} reasoning chars ·{" "}
+                {detail.completionTokens} answer tok
+              </Text>
+            </Group>
+            {detail.interruptible && (
+              <InflightInterruptButton id={detail.id} full />
+            )}
+          </Group>
+          {detailQuery.isError && (
+            <Text size="xs" c="dimmed">
+              Request finished — showing last captured reasoning.
+            </Text>
+          )}
+          <Stack gap={2}>
+            <Text size="xs" fw={600} c="violet">
+              Reasoning
+              {detail.reasoningTruncated ? " (truncated, latest shown)" : ""}
+            </Text>
+            <ScrollArea.Autosize mah="45vh">
+              <Code block style={{ whiteSpace: "pre-wrap" }}>
+                {detail.reasoningText || "—"}
+              </Code>
+            </ScrollArea.Autosize>
+          </Stack>
+          {detail.answerText && (
+            <Stack gap={2}>
+              <Text size="xs" fw={600} c="teal">
+                Answer
+                {detail.answerTruncated ? " (truncated, latest shown)" : ""}
+              </Text>
+              <ScrollArea.Autosize mah="25vh">
+                <Code block style={{ whiteSpace: "pre-wrap" }}>
+                  {detail.answerText}
+                </Code>
+              </ScrollArea.Autosize>
+            </Stack>
+          )}
+        </Stack>
+      )}
+    </Modal>
+  );
+}
+
 function InflightRequests({
   inflight,
 }: {
   inflight: ApiProxyTargetRuntime["inflight"];
 }) {
+  const [openId, setOpenId] = useState<string | null>(null);
   if (inflight.length === 0) {
     return null;
   }
   return (
-    <Stack gap={4} mt={2}>
-      {inflight.map((req) => {
-        const percent = inflightPrefillPercent(req);
-        const label = inflightLabel(req);
-        const timings = inflightTimings(req);
-        return (
-          <Stack key={req.id} gap={2}>
-            <Group gap={6} wrap="nowrap">
-              <Badge
-                size="xs"
-                color={inflightPhaseColor(req.phase)}
-                variant="light"
-              >
-                {req.phase}
-              </Badge>
-              {label && (
+    <>
+      <Stack gap={4} mt={2}>
+        {inflight.map((req) => {
+          const percent = inflightPrefillPercent(req);
+          const label = inflightLabel(req);
+          const timings = inflightTimings(req);
+          return (
+            <Stack key={req.id} gap={2}>
+              <Group gap={6} wrap="wrap">
+                <Badge
+                  size="xs"
+                  color={inflightPhaseColor(req.phase)}
+                  variant="light"
+                >
+                  {req.phase}
+                </Badge>
+                {label && (
+                  <Text size="xs" c="dimmed">
+                    {label}
+                  </Text>
+                )}
+                {req.reasoningChars > 0 && (
+                  <Tooltip label="View reasoning">
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color="violet"
+                      aria-label="View reasoning"
+                      onClick={() => setOpenId(req.id)}
+                    >
+                      <Eye size={13} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {req.interruptible && <InflightInterruptButton id={req.id} />}
+              </Group>
+              {timings && (
                 <Text size="xs" c="dimmed">
-                  {label}
+                  {timings}
                 </Text>
               )}
-            </Group>
-            {timings && (
-              <Text size="xs" c="dimmed">
-                {timings}
-              </Text>
-            )}
-            {percent !== null && (
-              <Progress
-                size="xs"
-                value={percent}
-                color={inflightPhaseColor(req.phase)}
-                aria-label="prefill progress"
-              />
-            )}
-          </Stack>
-        );
-      })}
-    </Stack>
+              {percent !== null && (
+                <Progress
+                  size="xs"
+                  value={percent}
+                  color={inflightPhaseColor(req.phase)}
+                  aria-label="prefill progress"
+                />
+              )}
+            </Stack>
+          );
+        })}
+      </Stack>
+      <InflightDetailModal id={openId} onClose={() => setOpenId(null)} />
+    </>
   );
 }
 

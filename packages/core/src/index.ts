@@ -1713,6 +1713,27 @@ export const ApiProxyInflightRequestSchema = z.object({
   prefillTotalTokens: z.number().int().min(0).nullable().default(null),
   prefillProcessedTokens: z.number().int().min(0).nullable().default(null),
   prefillCachedTokens: z.number().int().min(0).nullable().default(null),
+  reasoningChars: z.number().int().min(0).default(0),
+  interruptible: z.boolean().default(false),
+});
+
+export const ApiProxyInflightDetailSchema = z.object({
+  id: z.string(),
+  modelId: z.string(),
+  protocol: z.enum(["openai", "anthropic"]),
+  phase: ApiProxyInflightPhaseSchema,
+  reasoningText: z.string(),
+  reasoningChars: z.number().int().min(0),
+  reasoningTruncated: z.boolean(),
+  answerText: z.string(),
+  answerChars: z.number().int().min(0),
+  answerTruncated: z.boolean(),
+  completionTokens: z.number().int().min(0),
+  interruptible: z.boolean(),
+});
+
+export const ApiProxyInflightInterruptResultSchema = z.object({
+  status: z.enum(["ok", "not-found", "not-supported", "not-ready", "too-late"]),
 });
 
 export const ApiProxyTargetRuntimeSchema = z.object({
@@ -2698,6 +2719,12 @@ export type ApiProxyRuntimeMetadataRecord = z.infer<
 export type ApiProxyInflightPhase = z.infer<typeof ApiProxyInflightPhaseSchema>;
 export type ApiProxyInflightRequest = z.infer<
   typeof ApiProxyInflightRequestSchema
+>;
+export type ApiProxyInflightDetail = z.infer<
+  typeof ApiProxyInflightDetailSchema
+>;
+export type ApiProxyInflightInterruptResult = z.infer<
+  typeof ApiProxyInflightInterruptResultSchema
 >;
 export type ApiProxyTargetRuntime = z.infer<typeof ApiProxyTargetRuntimeSchema>;
 export type ApiProxyTargetPlanInput = z.infer<

@@ -1,4 +1,6 @@
 import type {
+  ApiProxyInflightDetail,
+  ApiProxyInflightInterruptResult,
   ApiProxyInflightPhase,
   ApiProxyInflightRequest,
 } from "@llama-manager/core";
@@ -22,9 +24,29 @@ type InflightEntry = {
   prefillTotalTokens: number | null;
   prefillProcessedTokens: number | null;
   prefillCachedTokens: number | null;
+  reasoningText: string;
+  reasoningCharsTotal: number;
+  answerText: string;
+  answerCharsTotal: number;
+  interruptible: boolean;
+  interruptController: AbortController | null;
 };
 
 const DEFAULT_INFLIGHT_STALE_AFTER_MS = 90 * 60 * 1000;
+const REASONING_BUFFER_CAP = 256 * 1024;
+const ANSWER_BUFFER_CAP = 64 * 1024;
+
+function appendCapped(buffer: string, addition: string, cap: number): string {
+  if (addition.length === 0) {
+    return buffer;
+  }
+  const next = buffer + addition;
+  return next.length > cap ? next.slice(next.length - cap) : next;
+}
+
+function entryInterruptible(entry: InflightEntry): boolean {
+  return entry.interruptible && entry.phase === "thinking";
+}
 
 type ApiProxyInflightRegistryOptions = {
   now?: () => number;
@@ -46,6 +68,10 @@ export type ApiProxyInflightHandle = {
     processed: number;
     cache: number;
   }): void;
+  appendReasoning(text: string): void;
+  appendAnswer(text: string): void;
+  setInterruptible(value: boolean): void;
+  interruptSignal(): AbortSignal;
   end(): void;
 };
 
@@ -85,6 +111,8 @@ function toView(entry: InflightEntry, at: number): ApiProxyInflightRequest {
     prefillTotalTokens: entry.prefillTotalTokens,
     prefillProcessedTokens: entry.prefillProcessedTokens,
     prefillCachedTokens: entry.prefillCachedTokens,
+    reasoningChars: entry.reasoningCharsTotal,
+    interruptible: entryInterruptible(entry),
   };
 }
 
@@ -122,6 +150,12 @@ export class ApiProxyInflightRegistry {
       prefillTotalTokens: null,
       prefillProcessedTokens: null,
       prefillCachedTokens: null,
+      reasoningText: "",
+      reasoningCharsTotal: 0,
+      answerText: "",
+      answerCharsTotal: 0,
+      interruptible: false,
+      interruptController: null,
     };
     this.entries.set(entry.id, entry);
     const touch = () => {
@@ -190,6 +224,42 @@ export class ApiProxyInflightRegistry {
         }
         touch();
       },
+      appendReasoning: (text) => {
+        if (text.length === 0) {
+          return;
+        }
+        entry.reasoningCharsTotal += text.length;
+        entry.reasoningText = appendCapped(
+          entry.reasoningText,
+          text,
+          REASONING_BUFFER_CAP,
+        );
+        touch();
+      },
+      appendAnswer: (text) => {
+        if (text.length === 0) {
+          return;
+        }
+        entry.answerCharsTotal += text.length;
+        entry.answerText = appendCapped(
+          entry.answerText,
+          text,
+          ANSWER_BUFFER_CAP,
+        );
+        touch();
+      },
+      setInterruptible: (value) => {
+        entry.interruptible = value;
+      },
+      interruptSignal: () => {
+        if (
+          entry.interruptController === null ||
+          entry.interruptController.signal.aborted
+        ) {
+          entry.interruptController = new AbortController();
+        }
+        return entry.interruptController.signal;
+      },
       end: () => {
         this.entries.delete(entry.id);
       },
@@ -221,6 +291,46 @@ export class ApiProxyInflightRegistry {
       }
     }
     return byTarget;
+  }
+
+  getDetail(id: string): ApiProxyInflightDetail | null {
+    const entry = this.entries.get(id);
+    if (!entry) {
+      return null;
+    }
+    return {
+      id: entry.id,
+      modelId: entry.modelId,
+      protocol: entry.protocol,
+      phase: entry.phase,
+      reasoningText: entry.reasoningText,
+      reasoningChars: entry.reasoningCharsTotal,
+      reasoningTruncated:
+        entry.reasoningCharsTotal > entry.reasoningText.length,
+      answerText: entry.answerText,
+      answerChars: entry.answerCharsTotal,
+      answerTruncated: entry.answerCharsTotal > entry.answerText.length,
+      completionTokens: entry.completionTokens,
+      interruptible: entryInterruptible(entry),
+    };
+  }
+
+  requestForceAnswer(id: string): ApiProxyInflightInterruptResult["status"] {
+    const entry = this.entries.get(id);
+    if (!entry) {
+      return "not-found";
+    }
+    if (!entry.interruptible) {
+      return "not-supported";
+    }
+    if (entry.phase !== "thinking") {
+      return entry.phase === "generating" ? "too-late" : "not-ready";
+    }
+    if (entry.interruptController === null) {
+      entry.interruptController = new AbortController();
+    }
+    entry.interruptController.abort();
+    return "ok";
   }
 
   reset(): void {

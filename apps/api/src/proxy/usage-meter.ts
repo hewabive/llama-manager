@@ -164,6 +164,8 @@ export function createUsageMeterStream(input: {
   onComplete: (usage: ProxyUsageCounts) => void;
   onFirstToken?: (promptTokens: number | null) => void;
   onReasoning?: () => void;
+  onReasoningDelta?: (text: string) => void;
+  onAnswerDelta?: (text: string) => void;
   onProgress?: (completionTokens: number) => void;
   onPrefillProgress?: (progress: ProxyPrefillProgress) => void;
 }): UsageMeterStream {
@@ -174,6 +176,8 @@ export function createUsageMeterStream(input: {
     onComplete,
     onFirstToken,
     onReasoning,
+    onReasoningDelta,
+    onAnswerDelta,
     onProgress,
     onPrefillProgress,
   } = input;
@@ -241,9 +245,15 @@ export function createUsageMeterStream(input: {
           keep = false;
         }
       }
-      if (!reasoningSeen && chunk.reasoning) {
-        reasoningSeen = true;
-        onReasoning?.();
+      if (chunk.reasoning) {
+        if (!reasoningSeen) {
+          reasoningSeen = true;
+          onReasoning?.();
+        }
+        onReasoningDelta?.(chunk.reasoning);
+      }
+      if (chunk.text !== "") {
+        onAnswerDelta?.(chunk.text);
       }
       if (!firstTokenSeen && (chunk.text !== "" || chunk.toolCall)) {
         firstTokenSeen = true;

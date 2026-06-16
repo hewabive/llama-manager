@@ -28,6 +28,7 @@ export type ResumableBufferState = {
 export type ResumableUpstreamOutcome =
   | { type: "completed" }
   | { type: "preempted" }
+  | { type: "interrupted" }
   | { type: "consumer-gone" }
   | { type: "error"; message: string };
 
@@ -54,6 +55,8 @@ type FrameMeta = {
   reasoningSeen: boolean;
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
   onReasoning?: (() => void) | undefined;
+  onReasoningDelta?: ((text: string) => void) | undefined;
+  onAnswerDelta?: ((text: string) => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
@@ -75,8 +78,12 @@ function applyFrame(
       continue;
     }
     state.text += chunk.text;
+    if (chunk.text !== "") {
+      meta.onAnswerDelta?.(chunk.text);
+    }
     if (chunk.reasoning) {
       state.reasoningText += chunk.reasoning;
+      meta.onReasoningDelta?.(chunk.reasoning);
     }
     if (chunk.id) {
       state.id = chunk.id;
@@ -154,17 +161,23 @@ export async function runResumableUpstreamAttempt(input: {
   state: ResumableBufferState;
   preemptSignal: AbortSignal;
   consumerSignal?: AbortSignal | undefined;
+  interruptSignal?: AbortSignal | undefined;
   fetchImpl?: typeof fetch | undefined;
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
   onReasoning?: (() => void) | undefined;
+  onReasoningDelta?: ((text: string) => void) | undefined;
+  onAnswerDelta?: ((text: string) => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
     | undefined;
 }): Promise<ResumableUpstreamOutcome> {
-  const { preemptSignal, consumerSignal } = input;
+  const { preemptSignal, consumerSignal, interruptSignal } = input;
   if (consumerSignal?.aborted) {
     return { type: "consumer-gone" };
+  }
+  if (interruptSignal?.aborted) {
+    return { type: "interrupted" };
   }
   if (preemptSignal.aborted) {
     return { type: "preempted" };
@@ -177,6 +190,8 @@ export async function runResumableUpstreamAttempt(input: {
     reasoningSeen: false,
     onFirstToken: input.onFirstToken,
     onReasoning: input.onReasoning,
+    onReasoningDelta: input.onReasoningDelta,
+    onAnswerDelta: input.onAnswerDelta,
     onProgress: input.onProgress,
     onPrefillProgress: input.onPrefillProgress,
   };
@@ -187,14 +202,17 @@ export async function runResumableUpstreamAttempt(input: {
     }
   };
   const onConsumerGone = () => controller.abort();
+  const onInterrupt = () => controller.abort();
   preemptSignal.addEventListener("abort", onPreempt, { once: true });
   consumerSignal?.addEventListener("abort", onConsumerGone, { once: true });
+  interruptSignal?.addEventListener("abort", onInterrupt, { once: true });
 
   const settle = (
     outcome: ResumableUpstreamOutcome,
   ): ResumableUpstreamOutcome => {
     preemptSignal.removeEventListener("abort", onPreempt);
     consumerSignal?.removeEventListener("abort", onConsumerGone);
+    interruptSignal?.removeEventListener("abort", onInterrupt);
     if (meta.upstreamGenMs !== null) {
       input.state.genMs += Math.max(0, meta.upstreamGenMs);
     }
@@ -204,6 +222,9 @@ export async function runResumableUpstreamAttempt(input: {
   const classifyAbort = (error: unknown): ResumableUpstreamOutcome => {
     if (consumerSignal?.aborted) {
       return { type: "consumer-gone" };
+    }
+    if (interruptSignal?.aborted) {
+      return { type: "interrupted" };
     }
     if (preemptSignal.aborted) {
       return { type: "preempted" };
@@ -286,10 +307,13 @@ export async function runResumableForward(input: {
   yieldLease: () => Promise<void>;
   wantsStream: boolean;
   onError: (message: string) => ApiProxyResumableFinalResponse;
+  buildForceAnswerTail?: ((reasoningText: string) => string | null) | undefined;
   maxAttempts?: number | undefined;
 }): Promise<ApiProxyResumableFinalResponse> {
   const maxAttempts = input.maxAttempts ?? 8;
   let preemptions = 0;
+  let forceAnswerNext = false;
+  let forceAnswerPrefix: string | null = null;
 
   for (;;) {
     const ready = await input.makeReady();
@@ -297,12 +321,22 @@ export async function runResumableForward(input: {
       return ready.final;
     }
 
-    const tail =
-      preemptions === 0 || input.state.text.length === 0
-        ? null
-        : input.state.text;
-    if (tail === null) {
-      input.state.reasoningText = "";
+    let tail: string | null;
+    if (forceAnswerNext) {
+      forceAnswerPrefix =
+        input.buildForceAnswerTail?.(input.state.reasoningText) ?? null;
+      tail = forceAnswerPrefix;
+      forceAnswerNext = false;
+    } else if (forceAnswerPrefix !== null) {
+      tail = forceAnswerPrefix + input.state.text;
+    } else {
+      tail =
+        preemptions === 0 || input.state.text.length === 0
+          ? null
+          : input.state.text;
+      if (tail === null) {
+        input.state.reasoningText = "";
+      }
     }
     const outcome = await input.attempt(tail);
 
@@ -314,6 +348,10 @@ export async function runResumableForward(input: {
     }
     if (outcome.type === "error") {
       return input.onError(outcome.message);
+    }
+    if (outcome.type === "interrupted") {
+      forceAnswerNext = true;
+      continue;
     }
 
     preemptions += 1;

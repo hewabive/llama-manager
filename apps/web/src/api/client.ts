@@ -21,6 +21,8 @@ import type {
   ApiProxySourceCreate,
   ApiProxySourceRecord,
   ApiProxySourceUpdate,
+  ApiProxyInflightDetail,
+  ApiProxyInflightInterruptResult,
   ApiProxyRuntimeSnapshot,
   ApiProxyStatsSnapshot,
   ApiProxyTargetModelCatalog,
@@ -300,6 +302,19 @@ export async function deleteApiProxySource(id: string) {
 
 export async function getApiProxyRuntime() {
   return request<{ data: ApiProxyRuntimeSnapshot }>("/api/proxy/runtime");
+}
+
+export async function getApiProxyInflightDetail(id: string) {
+  return request<{ data: ApiProxyInflightDetail }>(
+    `/api/proxy/inflight/${encodeURIComponent(id)}`,
+  );
+}
+
+export async function interruptApiProxyInflight(id: string) {
+  return request<{ data: ApiProxyInflightInterruptResult }>(
+    `/api/proxy/inflight/${encodeURIComponent(id)}/interrupt`,
+    { method: "POST" },
+  );
 }
 
 export async function getApiProxyStats(hours = 24) {

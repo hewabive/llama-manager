@@ -579,6 +579,63 @@ test("runResumableForward regenerates from scratch when preempted before any tex
   assert.deepEqual(tails, [null, null]);
 });
 
+test("runResumableForward forces an answer after an interrupt, preserving reasoning", async () => {
+  const state = createResumableBufferState();
+  const tails: Array<string | null> = [];
+  let attempts = 0;
+  const final = await runResumableForward({
+    makeReady: async () => ({ ok: true }),
+    attempt: async (tail) => {
+      tails.push(tail);
+      attempts += 1;
+      if (attempts === 1) {
+        state.reasoningText = "R";
+        return { type: "interrupted" };
+      }
+      if (attempts === 2) {
+        state.text = "AB";
+        return { type: "preempted" };
+      }
+      state.text = "ABCD";
+      state.finishReason = "stop";
+      return { type: "completed" };
+    },
+    state,
+    codec,
+    yieldLease: async () => undefined,
+    wantsStream: false,
+    onError: (message) => ({ status: 502, headers: {}, body: message }),
+    buildForceAnswerTail: (reasoning) => `<think>\n${reasoning}\n</think>\n\n`,
+  });
+
+  assert.deepEqual(tails, [
+    null,
+    "<think>\nR\n</think>\n\n",
+    "<think>\nR\n</think>\n\nAB",
+  ]);
+  assert.equal(state.reasoningText, "R");
+  const body = JSON.parse(final.body);
+  assert.equal(body.choices[0].message.content, "ABCD");
+  assert.equal(body.choices[0].message.reasoning_content, "R");
+});
+
+test("runResumableUpstreamAttempt returns interrupted when its signal aborts", async () => {
+  const interrupt = new AbortController();
+  interrupt.abort();
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state: createResumableBufferState(),
+    preemptSignal: new AbortController().signal,
+    interruptSignal: interrupt.signal,
+    fetchImpl: makeFetch([]),
+  });
+  assert.equal(outcome.type, "interrupted");
+});
+
 test("runResumableForward returns the readiness failure response", async () => {
   const final = await runResumableForward({
     makeReady: async () => ({
