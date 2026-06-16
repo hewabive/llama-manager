@@ -15,6 +15,8 @@ import type {
   ApiProxyPipelineRecord,
   ApiProxyPortRef,
   ApiProxyQuickRouteCreate,
+  ApiProxyReasoningConfig,
+  ApiProxyReasoningEffort,
   ApiProxyRouteTo,
   ApiProxyTargetCreate,
   ApiProxyTargetRecord,
@@ -82,6 +84,8 @@ export type PipelineNodeDraft = {
   type: ApiProxyPipelineNode["type"];
   replacements: ReplacementRuleDraft[];
   editOperations: EditOperationDraft[];
+  reasoningEffort: ApiProxyReasoningEffort;
+  reasoningCustomBudget: number | "";
   predicateType: ApiProxyConditionPredicate["type"];
   scope: ApiProxyConditionScope;
   pattern: string;
@@ -180,6 +184,8 @@ export function emptyPipelineNodeDraft(
     type,
     replacements: [],
     editOperations: [],
+    reasoningEffort: "medium",
+    reasoningCustomBudget: 2048,
     predicateType: "text-match",
     scope: "any-message",
     pattern: "",
@@ -392,6 +398,11 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       }));
       draft.portNext = portRefToValue(node.ports.next);
       break;
+    case "reasoning":
+      draft.reasoningEffort = node.config.effort;
+      draft.reasoningCustomBudget = node.config.customBudgetTokens;
+      draft.portNext = portRefToValue(node.ports.next);
+      break;
     case "condition": {
       const predicate = node.config.predicate;
       draft.predicateType = predicate.type;
@@ -582,6 +593,16 @@ function editOperationsFromDrafts(
   return operations;
 }
 
+function reasoningConfigFromDraft(
+  draft: PipelineNodeDraft,
+): ApiProxyReasoningConfig {
+  return {
+    effort: draft.reasoningEffort,
+    customBudgetTokens:
+      draft.reasoningCustomBudget === "" ? -1 : draft.reasoningCustomBudget,
+  };
+}
+
 function predicateFromDraft(
   draft: PipelineNodeDraft,
 ): ApiProxyConditionPredicate {
@@ -637,6 +658,13 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
         ...base,
         type: "edit-request",
         config: { operations: editOperationsFromDrafts(draft.editOperations) },
+        ports: { next: portRefFromValue(draft.portNext) },
+      };
+    case "reasoning":
+      return {
+        ...base,
+        type: "reasoning",
+        config: reasoningConfigFromDraft(draft),
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "condition":

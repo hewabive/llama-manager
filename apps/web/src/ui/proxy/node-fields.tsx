@@ -1,8 +1,14 @@
 import {
+  apiProxyReasoningEditOperations,
+  applyApiProxyRequestEdits,
   collectApiProxyPipelineExitNames,
+  resolveApiProxyReasoning,
+  type ApiProxyEditRequestOperation,
   type ApiProxyModelRecord,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
+  type ApiProxyReasoningConfig,
+  type ApiProxyReasoningEffort,
   type ApiProxySourceRecord,
   type ApiProxyTargetRecord,
 } from "@llama-manager/core";
@@ -44,6 +50,7 @@ const nodeTypeLabels: Record<ApiProxyPipelineNode["type"], string> = {
   "replace-text": "Replace text",
   "capture-request": "Save request",
   "edit-request": "Edit request",
+  reasoning: "Reasoning",
   condition: "Condition",
   call: "Pipeline",
   exit: "Exit",
@@ -57,9 +64,19 @@ export const pipelineNodeTypeOptions: Array<{
   { value: "replace-text", label: nodeTypeLabels["replace-text"] },
   { value: "capture-request", label: nodeTypeLabels["capture-request"] },
   { value: "edit-request", label: nodeTypeLabels["edit-request"] },
+  { value: "reasoning", label: nodeTypeLabels.reasoning },
   { value: "condition", label: nodeTypeLabels.condition },
   { value: "fusion", label: nodeTypeLabels.fusion },
   { value: "exit", label: nodeTypeLabels.exit },
+];
+
+const reasoningEffortOptions = [
+  { value: "off", label: "Off" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "max", label: "Max" },
+  { value: "custom", label: "Custom" },
 ];
 
 const conditionScopeOptions = [
@@ -434,6 +451,79 @@ function ReplaceTextFields(props: {
   );
 }
 
+function ReasoningPreview(props: {
+  title: string;
+  operations: ApiProxyEditRequestOperation[];
+}) {
+  const result = applyApiProxyRequestEdits({}, props.operations);
+  return (
+    <Paper withBorder p="xs" radius="sm">
+      <Text size="xs" fw={600} c="dimmed">
+        {props.title}
+      </Text>
+      <Text size="xs" ff="monospace" style={{ whiteSpace: "pre-wrap" }}>
+        {JSON.stringify(result.body, null, 2)}
+      </Text>
+    </Paper>
+  );
+}
+
+function ReasoningFields(props: {
+  node: PipelineNodeDraft;
+  update: (patch: Partial<PipelineNodeDraft>) => void;
+}) {
+  const { node, update } = props;
+  const config: ApiProxyReasoningConfig = {
+    effort: node.reasoningEffort,
+    customBudgetTokens:
+      node.reasoningCustomBudget === "" ? -1 : node.reasoningCustomBudget,
+  };
+  const resolved = resolveApiProxyReasoning(config);
+  return (
+    <Stack gap="sm">
+      <SegmentedControl
+        fullWidth
+        data={reasoningEffortOptions}
+        value={node.reasoningEffort}
+        onChange={(value) =>
+          update({ reasoningEffort: value as ApiProxyReasoningEffort })
+        }
+      />
+      {node.reasoningEffort === "custom" && (
+        <NumberInput
+          label="Thinking budget (tokens)"
+          description="-1 = unlimited"
+          min={-1}
+          value={node.reasoningCustomBudget}
+          onChange={(value) =>
+            update({
+              reasoningCustomBudget: value === "" ? "" : Number(value),
+            })
+          }
+        />
+      )}
+      <Text c="dimmed" size="xs">
+        {resolved.enableThinking
+          ? resolved.budget === null || resolved.budget < 0
+            ? "Thinking on, unlimited token budget."
+            : `Thinking on, capped at ${resolved.budget} reasoning tokens.`
+          : "Disables the model's thinking/reasoning channel."}{" "}
+        The node writes the right fields for the inbound protocol: for OpenAI it
+        sets chat_template_kwargs.enable_thinking and thinking_budget_tokens
+        (llama.cpp extensions); for Anthropic it sets the native thinking block.
+      </Text>
+      <ReasoningPreview
+        title="OpenAI request →"
+        operations={apiProxyReasoningEditOperations(config, "openai")}
+      />
+      <ReasoningPreview
+        title="Anthropic request →"
+        operations={apiProxyReasoningEditOperations(config, "anthropic")}
+      />
+    </Stack>
+  );
+}
+
 export function PipelineNodeFields(props: {
   node: PipelineNodeDraft;
   ctx: PipelineEditorContext;
@@ -468,6 +558,21 @@ export function PipelineNodeFields(props: {
     return (
       <>
         <EditRequestFields node={node} updateNode={ctx.updateNode} />
+        <PortSelect
+          label="Next"
+          ctx={ctx}
+          excludeNodeId={node.id}
+          value={node.portNext}
+          onChange={(portNext) => update({ portNext })}
+        />
+      </>
+    );
+  }
+
+  if (node.type === "reasoning") {
+    return (
+      <>
+        <ReasoningFields node={node} update={update} />
         <PortSelect
           label="Next"
           ctx={ctx}

@@ -541,6 +541,79 @@ export const ApiProxyEditRequestConfigSchema = z.object({
   operations: z.array(ApiProxyEditRequestOperationSchema).max(50).default([]),
 });
 
+export const ApiProxyReasoningEffortSchema = z.enum([
+  "off",
+  "low",
+  "medium",
+  "high",
+  "max",
+  "custom",
+]);
+
+export const ApiProxyReasoningConfigSchema = z.object({
+  effort: ApiProxyReasoningEffortSchema.default("medium"),
+  customBudgetTokens: z.number().int().min(-1).max(10_000_000).default(2048),
+});
+
+export type ApiProxyReasoningEffort = z.infer<
+  typeof ApiProxyReasoningEffortSchema
+>;
+export type ApiProxyReasoningConfig = z.infer<
+  typeof ApiProxyReasoningConfigSchema
+>;
+
+export const apiProxyReasoningEffortBudgets: Record<
+  Exclude<ApiProxyReasoningEffort, "off" | "custom">,
+  number
+> = { low: 512, medium: 2048, high: 8192, max: -1 };
+
+export function resolveApiProxyReasoning(config: ApiProxyReasoningConfig): {
+  enableThinking: boolean;
+  budget: number | null;
+} {
+  switch (config.effort) {
+    case "off":
+      return { enableThinking: false, budget: null };
+    case "custom":
+      return { enableThinking: true, budget: config.customBudgetTokens };
+    default:
+      return {
+        enableThinking: true,
+        budget: apiProxyReasoningEffortBudgets[config.effort],
+      };
+  }
+}
+
+export function apiProxyReasoningEditOperations(
+  config: ApiProxyReasoningConfig,
+  protocol: "openai" | "anthropic",
+): ApiProxyEditRequestOperation[] {
+  const { enableThinking, budget } = resolveApiProxyReasoning(config);
+  if (protocol === "anthropic") {
+    const value: ApiProxyJsonValue = enableThinking
+      ? { type: "enabled", budget_tokens: budget ?? -1 }
+      : { type: "disabled" };
+    return [{ kind: "set-field", enabled: true, path: "thinking", value }];
+  }
+  const operations: ApiProxyEditRequestOperation[] = [
+    {
+      kind: "set-field",
+      enabled: true,
+      path: "chat_template_kwargs.enable_thinking",
+      value: enableThinking,
+    },
+  ];
+  if (enableThinking && budget !== null && budget >= 0) {
+    operations.push({
+      kind: "set-field",
+      enabled: true,
+      path: "thinking_budget_tokens",
+      value: budget,
+    });
+  }
+  return operations;
+}
+
 export const ApiProxyConditionScopeSchema = z.enum([
   "last-user-message",
   "any-message",
@@ -615,6 +688,11 @@ export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
   ApiProxyPipelineNodeBaseSchema.extend({
     type: z.literal("edit-request"),
     config: ApiProxyEditRequestConfigSchema,
+    ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
+  }),
+  ApiProxyPipelineNodeBaseSchema.extend({
+    type: z.literal("reasoning"),
+    config: ApiProxyReasoningConfigSchema,
     ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
   }),
   ApiProxyPipelineNodeBaseSchema.extend({
@@ -763,6 +841,7 @@ export function apiProxyPipelineNodePorts(
     case "replace-text":
     case "capture-request":
     case "edit-request":
+    case "reasoning":
       return node.ports.next ? [{ port: "next", ref: node.ports.next }] : [];
     case "condition": {
       const refs: Array<{
@@ -1288,6 +1367,7 @@ export function collectApiProxyRouteHoles(
       case "replace-text":
       case "capture-request":
       case "edit-request":
+      case "reasoning":
         visit(node.ports.next, pipeline, stack, {
           nodeId: node.id,
           where: `port "next" of node ${label(node)}`,
@@ -1584,6 +1664,7 @@ export const ApiProxyRouteTraceStepSchema = z.object({
     "replace-text",
     "capture-request",
     "edit-request",
+    "reasoning",
     "condition",
     "call",
     "exit",

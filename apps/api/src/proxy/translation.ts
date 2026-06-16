@@ -26,6 +26,7 @@ import {
 
 const llamaServerRequestOptions = {
   namedToolChoice: "filter" as const,
+  enableThinkingKwargField: "enable_thinking",
 };
 
 const translatedUpstreamPath = "/v1/chat/completions";

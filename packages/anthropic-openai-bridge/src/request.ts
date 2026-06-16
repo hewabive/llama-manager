@@ -5,6 +5,7 @@ export type AnthropicToOpenAiRequestOptions = {
   toolResultImages?: "hoist" | "drop";
   namedToolChoice?: "native" | "filter";
   thinkingBudgetField?: string | null;
+  enableThinkingKwargField?: string | null;
   passthroughKeys?: string[];
 };
 
@@ -331,6 +332,7 @@ export function translateAnthropicRequest(
     options.thinkingBudgetField === undefined
       ? "thinking_budget_tokens"
       : options.thinkingBudgetField;
+  const enableThinkingKwargField = options.enableThinkingKwargField ?? null;
 
   const messages: Record<string, unknown>[] = [];
   const system = systemContent(body.system, warnings);
@@ -420,6 +422,18 @@ export function translateAnthropicRequest(
     if (key in body) {
       out[key] = body[key];
     }
+  }
+
+  if (
+    enableThinkingKwargField &&
+    thinking &&
+    (thinking.type === "enabled" || thinking.type === "disabled")
+  ) {
+    const existing = asObject(out.chat_template_kwargs) ?? {};
+    out.chat_template_kwargs = {
+      ...existing,
+      [enableThinkingKwargField]: thinking.type === "enabled",
+    };
   }
 
   for (const key of Object.keys(body)) {

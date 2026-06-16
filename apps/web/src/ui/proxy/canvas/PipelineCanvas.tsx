@@ -75,6 +75,7 @@ function portPatch(
     case "replace-text":
     case "capture-request":
     case "edit-request":
+    case "reasoning":
       return port === "next" ? { portNext: value } : null;
     case "condition":
       if (port === "true") {

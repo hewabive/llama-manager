@@ -1,8 +1,11 @@
 import {
+  apiProxyReasoningEditOperations,
   applyApiProxyRequestEdits,
+  resolveApiProxyReasoning,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
   type ApiProxyPortRef,
+  type ApiProxyReasoningConfig,
   type ApiProxyRouteTo,
   type ApiProxyRouteTraceStep,
   type ApiProxyTextReplacementRule,
@@ -188,6 +191,17 @@ function routeDiagnostic(
   return { status, code, param: "model", message };
 }
 
+function reasoningTraceDetail(config: ApiProxyReasoningConfig): string {
+  const { enableThinking, budget } = resolveApiProxyReasoning(config);
+  if (!enableThinking) {
+    return "thinking off";
+  }
+  if (budget === null || budget < 0) {
+    return `${config.effort} · unlimited budget`;
+  }
+  return `${config.effort} · ${budget} token budget`;
+}
+
 export async function resolveApiProxyRouteChain(input: {
   request: ApiProxyProtocolModelRequest;
   getPipeline: (pipelineId: string) => ApiProxyPipelineRecord | null;
@@ -365,6 +379,29 @@ export async function resolveApiProxyRouteChain(input: {
               edit.outcomes.length > 0
                 ? edit.outcomes.map((outcome) => outcome.detail).join("; ")
                 : "no operations",
+          }),
+        );
+        ref = node.ports.next;
+        break;
+      }
+      case "reasoning": {
+        const operations = apiProxyReasoningEditOperations(
+          node.config,
+          input.request.operation.protocol,
+        );
+        const edit = applyApiProxyRequestEdits(state.request.body, operations);
+        if (edit.changed) {
+          state.request = {
+            ...state.request,
+            body: edit.body,
+            stream: bodyRequestsStreaming(edit.body),
+          };
+          tokenEstimate = null;
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: "next",
+            detail: reasoningTraceDetail(node.config),
           }),
         );
         ref = node.ports.next;

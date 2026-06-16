@@ -260,3 +260,36 @@ test("adaptive thinking yields warning instead of budget field", () => {
   assert.equal(body.thinking_budget_tokens, undefined);
   assert.ok(warnings.some((warning) => warning.includes("adaptive")));
 });
+
+test("enableThinkingKwargField maps disabled thinking to enable_thinking:false", () => {
+  const { body } = translateAnthropicRequest(
+    { messages: [], thinking: { type: "disabled" } },
+    { enableThinkingKwargField: "enable_thinking" },
+  );
+  assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+  assert.equal(body.thinking_budget_tokens, undefined);
+});
+
+test("enableThinkingKwargField maps enabled thinking to enable_thinking:true and merges kwargs", () => {
+  const { body } = translateAnthropicRequest(
+    {
+      messages: [],
+      thinking: { type: "enabled", budget_tokens: 512 },
+      chat_template_kwargs: { foo: "bar" },
+    },
+    { enableThinkingKwargField: "enable_thinking" },
+  );
+  assert.deepEqual(body.chat_template_kwargs, {
+    foo: "bar",
+    enable_thinking: true,
+  });
+  assert.equal(body.thinking_budget_tokens, 512);
+});
+
+test("enableThinkingKwargField off by default leaves chat_template_kwargs untouched", () => {
+  const { body } = translateAnthropicRequest({
+    messages: [],
+    thinking: { type: "disabled" },
+  });
+  assert.equal(body.chat_template_kwargs, undefined);
+});

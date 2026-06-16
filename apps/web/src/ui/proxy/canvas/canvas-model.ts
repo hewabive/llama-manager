@@ -1,5 +1,6 @@
 import {
   apiProxyPipelineNodePorts,
+  apiProxyReasoningEffortBudgets,
   type ApiProxyModelRecord,
   type ApiProxyPipelineRecord,
   type ApiProxyRouteTraceStep,
@@ -171,6 +172,7 @@ export function draftNodePorts(
     case "replace-text":
     case "capture-request":
     case "edit-request":
+    case "reasoning":
       return [{ port: "next", value: node.portNext }];
     case "condition":
       return [
@@ -217,6 +219,8 @@ export function nodeSummary(
       ).length;
       return `${count} operation(s)`;
     }
+    case "reasoning":
+      return reasoningSummary(node);
     case "condition": {
       if (node.predicateType === "token-estimate") {
         return `≥ ${node.minTokens || "?"} tokens (est.)`;
@@ -243,6 +247,20 @@ export function nodeSummary(
       return `fusion: ${wired} panel → synthesizer`;
     }
   }
+}
+
+function reasoningSummary(node: PipelineNodeDraft): string {
+  if (node.reasoningEffort === "off") {
+    return "thinking off";
+  }
+  const budget =
+    node.reasoningEffort === "custom"
+      ? node.reasoningCustomBudget === ""
+        ? -1
+        : Number(node.reasoningCustomBudget)
+      : apiProxyReasoningEffortBudgets[node.reasoningEffort];
+  const budgetLabel = budget < 0 ? "unlimited" : `${budget} tok`;
+  return `${node.reasoningEffort} · ${budgetLabel}`;
 }
 
 type BuildInput = {

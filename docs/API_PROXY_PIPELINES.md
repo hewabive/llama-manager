@@ -62,6 +62,7 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 | `replace-text`    | `rules: [{enabled, find, replace}]` — literal substring rules over decoded string values of the parsed body (stored text is matched as-is, no escape interpretation; the routing `model` field is never rewritten). The web editor offers a display toggle that shows/accepts rules in `\n`-escaped form and converts to literal text before saving. | `next`                        |
 | `capture-request` | — (no options)                                                                                                                                                                                                                                                                                                                                       | `next`                        |
 | `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request body: `tools` array operations and field operations by path (see below)                                                                                                                                                                                                         | `next`                        |
+| `reasoning`       | `effort: off\|low\|medium\|high\|max\|custom` + `customBudgetTokens` — controls the model's thinking channel (see below)                                                                                                                                                                                                                              | `next`                        |
 | `condition`       | `predicate` (see below)                                                                                                                                                                                                                                                                                                                              | `true`, `false`               |
 | `call`            | `pipelineId`                                                                                                                                                                                                                                                                                                                                         | one port per callee exit name |
 | `exit`            | `exitName` (default `done`)                                                                                                                                                                                                                                                                                                                          | —                             |
@@ -101,6 +102,32 @@ failing silently. The web editor's **block editor** modal previews operations
 against a pasted sample request: sample tools render as blocks with
 removed/replaced badges, and Remove/Replace/Add buttons on the blocks generate
 operations.
+
+### Reasoning control
+
+The `reasoning` node sets the request fields that toggle and budget the model's
+thinking/reasoning channel. `effort` mirrors the llama.cpp web UI presets
+(`off` disables thinking; `low`/`medium`/`high` = 512/2048/8192 token budgets;
+`max` = unlimited; `custom` uses `customBudgetTokens`, `-1` = unlimited). The
+node synthesizes `set-field` operations via
+`apiProxyReasoningEditOperations(config, protocol)` (`@llama-manager/core`,
+shared with the editor's live preview) and runs them through
+`applyApiProxyRequestEdits`, so the written shape follows the **inbound
+protocol**:
+
+- OpenAI → `chat_template_kwargs.enable_thinking` (bool) and, when a finite
+  budget is set, `thinking_budget_tokens` (llama.cpp extensions; `max`/`-1`
+  omit the budget and defer to the server default).
+- Anthropic → the native `thinking: {type: "enabled"|"disabled", budget_tokens}`
+  block. For Anthropic-profile upstreams it passes through verbatim; for
+  non-anthropic upstreams the `anthropic-openai-bridge` translates it — enabled
+  → `thinking_budget_tokens`, and disabled → `chat_template_kwargs.enable_thinking:false`
+  (via the consumer-set `enableThinkingKwargField` option) so "off" reaches
+  llama.cpp.
+
+The node does not arm llama.cpp's realtime `reasoning_control`/force-answer
+endpoint — that is the separate interrupt-to-force-answer path on proxy
+targets.
 
 ### Condition predicates
 
