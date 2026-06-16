@@ -65,6 +65,7 @@ import {
   finalFromState,
   runResumableForward,
   runResumableUpstreamAttempt,
+  type ResumableBufferState,
 } from "./resumable-forward.js";
 import { executeApiProxyTargetReadiness } from "./target-lifecycle.js";
 import { resolveApiProxyUpstreamContext } from "./upstream-context.js";
@@ -294,6 +295,24 @@ async function applyServerGenerationTiming(
       promptPerSecond: timing.promptPerSecond,
     };
   }
+}
+
+function resumableTraceUsage(
+  state: ResumableBufferState,
+): NonNullable<ProxyTraceAccumulator["usage"]> {
+  return {
+    promptTokens: state.promptTokens,
+    cacheReadTokens: state.cacheReadTokens,
+    cacheCreationTokens: state.cacheCreationTokens,
+    completionTokens: state.completionTokens,
+    genMs: Math.round(state.genMs),
+    ratePerSecond:
+      state.completionTokens > 0 && state.genMs > 0
+        ? state.completionTokens / (state.genMs / 1000)
+        : null,
+    prefillMs: null,
+    promptPerSecond: null,
+  };
 }
 
 async function proxyProtocolEndpoint(
@@ -610,13 +629,15 @@ async function proxyProtocolEndpointInner(
       route.request.stream && !translateAnthropic
         ? resolveStreamUsageMeter(operation, adapter, route.request.body)
         : null;
-    const bufferUpstreamStream =
+    const bufferCodec: ApiProxyResumableCodec | null =
       !route.request.stream &&
       instanceId !== null &&
       !translateAnthropic &&
-      Boolean(adapter.resumable) &&
+      adapter.resumable &&
       resumableEndpoints.has(operation.endpoint) &&
-      !requestBreaksStreamReconstruction(route.request.body);
+      !requestBreaksStreamReconstruction(route.request.body)
+        ? adapter.resumable
+        : null;
     const injectUsage = translateAnthropic
       ? route.request.stream
       : (streamMeter?.inject ?? false);
@@ -628,8 +649,8 @@ async function proxyProtocolEndpointInner(
     const injectPrefillProgress =
       wantsPrefillProgress && !returnProgressRequested(exchange.body);
     let forwardBody: unknown;
-    if (bufferUpstreamStream && adapter.resumable) {
-      const built = adapter.resumable.upstreamBody(exchange.body, null);
+    if (bufferCodec) {
+      const built = bufferCodec.upstreamBody(exchange.body, null);
       forwardBody = returnProgressRequested(exchange.body)
         ? built
         : withReturnProgress(built);
@@ -687,12 +708,11 @@ async function proxyProtocolEndpointInner(
       }
 
       if (!route.request.stream) {
-        if (bufferUpstreamStream && adapter.resumable && upstream.body) {
-          const codec = adapter.resumable;
+        if (bufferCodec && upstream.body) {
           const state = createResumableBufferState();
           const outcome = await consumeResumableSse({
             body: upstream.body,
-            codec,
+            codec: bufferCodec,
             state,
             consumerSignal: c.req.raw.signal,
             onFirstToken: markFirstToken,
@@ -702,12 +722,12 @@ async function proxyProtocolEndpointInner(
             onProgress: markProgress,
             onPrefillProgress: markPrefillProgress,
           });
-          if (outcome === "consumer-gone") {
+          if (outcome.type === "consumer-gone") {
             markClientAbort();
             return new Response(null, { status: CLIENT_ABORT_STATUS });
           }
-          if (typeof outcome === "object") {
-            const message = `Proxy target ${decision.target.name} failed to forward request: ${outcome.error}`;
+          if (outcome.type === "error") {
+            const message = `Proxy target ${decision.target.name} failed to forward request: ${outcome.message}`;
             trace.errorMessage = message;
             const response = adapter.diagnosticError(route.request, {
               status: 502,
@@ -717,22 +737,10 @@ async function proxyProtocolEndpointInner(
             });
             return c.json(response.body, response.status);
           }
-          trace.usage = {
-            promptTokens: state.promptTokens,
-            cacheReadTokens: state.cacheReadTokens,
-            cacheCreationTokens: state.cacheCreationTokens,
-            completionTokens: state.completionTokens,
-            genMs: Math.round(state.genMs),
-            ratePerSecond:
-              state.completionTokens > 0 && state.genMs > 0
-                ? state.completionTokens / (state.genMs / 1000)
-                : null,
-            prefillMs: null,
-            promptPerSecond: null,
-          };
+          trace.usage = resumableTraceUsage(state);
           const task = resolveSlot();
           await applyServerGenerationTiming(trace, instanceId, task);
-          const final = finalFromState(codec, state, false);
+          const final = finalFromState(bufferCodec, state, false);
           return new Response(final.body, {
             status: final.status,
             headers: final.headers,
@@ -980,19 +988,7 @@ async function proxyProtocolEndpointInner(
       },
     });
 
-    trace.usage = {
-      promptTokens: state.promptTokens,
-      cacheReadTokens: state.cacheReadTokens,
-      cacheCreationTokens: state.cacheCreationTokens,
-      completionTokens: state.completionTokens,
-      genMs: Math.round(state.genMs),
-      ratePerSecond:
-        state.completionTokens > 0 && state.genMs > 0
-          ? state.completionTokens / (state.genMs / 1000)
-          : null,
-      prefillMs: null,
-      promptPerSecond: null,
-    };
+    trace.usage = resumableTraceUsage(state);
     let task: number | null = null;
     if (instanceId !== null && slotSeq !== null) {
       const resolved = apiProxySlotTracker.resolve(instanceId, slotSeq);

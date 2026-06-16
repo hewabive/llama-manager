@@ -716,7 +716,7 @@ test("consumeResumableSse buffers a stream and fires live callbacks", async () =
     },
   });
 
-  assert.equal(outcome, "completed");
+  assert.equal(outcome.type, "completed");
   assert.equal(state.text, "Hello");
   assert.equal(state.finishReason, "stop");
   assert.equal(state.completionTokens, 5);
@@ -761,7 +761,7 @@ test("consumeResumableSse returns consumer-gone when the client aborts", async (
     state: createResumableBufferState(),
     consumerSignal: consumer.signal,
   });
-  assert.equal(outcome, "consumer-gone");
+  assert.equal(outcome.type, "consumer-gone");
 });
 
 test("consumeResumableSse reports a read error as an error outcome", async () => {
@@ -774,7 +774,7 @@ test("consumeResumableSse reports a read error as an error outcome", async () =>
     codec,
     state: createResumableBufferState(),
   });
-  assert.deepEqual(outcome, { error: "boom" });
+  assert.deepEqual(outcome, { type: "error", message: "boom" });
 });
 
 test("runResumableForward emits an SSE body for streaming consumers", async () => {

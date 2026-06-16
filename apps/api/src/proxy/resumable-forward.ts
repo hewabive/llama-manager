@@ -152,6 +152,31 @@ function applyFrame(
   return null;
 }
 
+async function pumpSseFrames(
+  body: ReadableStream<Uint8Array>,
+  codec: ApiProxyResumableCodec,
+  state: ResumableBufferState,
+  meta: FrameMeta,
+): Promise<void> {
+  const reader = body.getReader();
+  const frames = createSseFrameBuffer();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    for (const frame of frames.push(value)) {
+      if (applyFrame(frame, codec, state, meta) === "done") {
+        return;
+      }
+    }
+  }
+  const tail = frames.flush();
+  if (tail) {
+    applyFrame(tail, codec, state, meta);
+  }
+}
+
 export async function runResumableUpstreamAttempt(input: {
   url: string;
   method: string;
@@ -251,25 +276,8 @@ export async function runResumableUpstreamAttempt(input: {
     });
   }
 
-  const reader = upstream.body.getReader();
-  const frames = createSseFrameBuffer();
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      for (const frame of frames.push(value)) {
-        const result = applyFrame(frame, input.codec, input.state, meta);
-        if (result === "done") {
-          return settle({ type: "completed" });
-        }
-      }
-    }
-    const tail = frames.flush();
-    if (tail) {
-      applyFrame(tail, input.codec, input.state, meta);
-    }
+    await pumpSseFrames(upstream.body, input.codec, input.state, meta);
     return settle({ type: "completed" });
   } catch (error) {
     return settle(classifyAbort(error));
@@ -277,9 +285,9 @@ export async function runResumableUpstreamAttempt(input: {
 }
 
 export type ConsumeResumableSseOutcome =
-  | "completed"
-  | "consumer-gone"
-  | { error: string };
+  | { type: "completed" }
+  | { type: "consumer-gone" }
+  | { type: "error"; message: string };
 
 export async function consumeResumableSse(input: {
   body: ReadableStream<Uint8Array>;
@@ -306,40 +314,20 @@ export async function consumeResumableSse(input: {
     onProgress: input.onProgress,
     onPrefillProgress: input.onPrefillProgress,
   };
-  const flushGenMs = () => {
+  if (input.consumerSignal?.aborted) {
+    return { type: "consumer-gone" };
+  }
+  try {
+    await pumpSseFrames(input.body, input.codec, input.state, meta);
     if (meta.upstreamGenMs !== null) {
       input.state.genMs += Math.max(0, meta.upstreamGenMs);
     }
-  };
-  const reader = input.body.getReader();
-  const frames = createSseFrameBuffer();
-  try {
-    for (;;) {
-      if (input.consumerSignal?.aborted) {
-        return "consumer-gone";
-      }
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      for (const frame of frames.push(value)) {
-        if (applyFrame(frame, input.codec, input.state, meta) === "done") {
-          flushGenMs();
-          return "completed";
-        }
-      }
-    }
-    const tail = frames.flush();
-    if (tail) {
-      applyFrame(tail, input.codec, input.state, meta);
-    }
-    flushGenMs();
-    return "completed";
+    return { type: "completed" };
   } catch (error) {
     if (input.consumerSignal?.aborted) {
-      return "consumer-gone";
+      return { type: "consumer-gone" };
     }
-    return { error: describeFetchError(error) };
+    return { type: "error", message: describeFetchError(error) };
   }
 }
 
