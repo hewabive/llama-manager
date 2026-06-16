@@ -4,7 +4,9 @@ import { test } from "node:test";
 import { anthropicResumableCodec } from "./anthropic.js";
 import { openAiResumableCodec } from "./openai.js";
 import {
+  consumeResumableSse,
   createResumableBufferState,
+  finalFromState,
   runResumableForward,
   runResumableUpstreamAttempt,
 } from "./resumable-forward.js";
@@ -673,6 +675,106 @@ test("runResumableForward caps resume attempts and emits the partial buffer", as
 
   assert.equal(attempts, 3);
   assert.equal(JSON.parse(final.body).choices[0].message.content, "partial");
+});
+
+function streamOf(frames: string[]) {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) {
+        controller.enqueue(encoder.encode(frame));
+      }
+      controller.close();
+    },
+  });
+}
+
+test("consumeResumableSse buffers a stream and fires live callbacks", async () => {
+  const state = createResumableBufferState();
+  const deltas: string[] = [];
+  const progress: number[] = [];
+  let firstTokenPrompt: number | null | undefined;
+  const outcome = await consumeResumableSse({
+    body: streamOf([
+      chunkFrame({ content: "Hel" }),
+      chunkFrame({ content: "lo", finish: "stop" }),
+      `data: ${JSON.stringify({
+        id: "cmpl",
+        model: "m",
+        choices: [],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+        timings: { predicted_ms: 250 },
+      })}\n\n`,
+      "data: [DONE]\n\n",
+    ]),
+    codec,
+    state,
+    onAnswerDelta: (text) => deltas.push(text),
+    onProgress: (n) => progress.push(n),
+    onFirstToken: (prompt) => {
+      firstTokenPrompt = prompt;
+    },
+  });
+
+  assert.equal(outcome, "completed");
+  assert.equal(state.text, "Hello");
+  assert.equal(state.finishReason, "stop");
+  assert.equal(state.completionTokens, 5);
+  assert.equal(state.promptTokens, 10);
+  assert.equal(state.genMs, 250);
+  assert.deepEqual(deltas, ["Hel", "lo"]);
+  assert.equal(progress.at(-1), 5);
+  assert.equal(firstTokenPrompt, null);
+});
+
+test("consumeResumableSse rebuilds a non-stream response via finalFromState", async () => {
+  const state = createResumableBufferState();
+  await consumeResumableSse({
+    body: streamOf([
+      chunkFrame({ content: "Hi", id: "x", model: "m" }),
+      chunkFrame({ finish: "stop" }),
+      usageFrame({ prompt: 4, completion: 2 }),
+      "data: [DONE]\n\n",
+    ]),
+    codec,
+    state,
+  });
+  const final = finalFromState(codec, state, false);
+  assert.equal(final.headers["content-type"], "application/json");
+  const body = JSON.parse(final.body);
+  assert.equal(body.object, "chat.completion");
+  assert.equal(body.choices[0].message.content, "Hi");
+  assert.equal(body.choices[0].finish_reason, "stop");
+  assert.deepEqual(body.usage, {
+    prompt_tokens: 4,
+    completion_tokens: 2,
+    total_tokens: 6,
+  });
+});
+
+test("consumeResumableSse returns consumer-gone when the client aborts", async () => {
+  const consumer = new AbortController();
+  consumer.abort();
+  const outcome = await consumeResumableSse({
+    body: streamOf([chunkFrame({ content: "x" })]),
+    codec,
+    state: createResumableBufferState(),
+    consumerSignal: consumer.signal,
+  });
+  assert.equal(outcome, "consumer-gone");
+});
+
+test("consumeResumableSse reports a read error as an error outcome", async () => {
+  const outcome = await consumeResumableSse({
+    body: new ReadableStream<Uint8Array>({
+      pull() {
+        throw new Error("boom");
+      },
+    }),
+    codec,
+    state: createResumableBufferState(),
+  });
+  assert.deepEqual(outcome, { error: "boom" });
 });
 
 test("runResumableForward emits an SSE body for streaming consumers", async () => {

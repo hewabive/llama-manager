@@ -276,7 +276,74 @@ export async function runResumableUpstreamAttempt(input: {
   }
 }
 
-function finalFromState(
+export type ConsumeResumableSseOutcome =
+  | "completed"
+  | "consumer-gone"
+  | { error: string };
+
+export async function consumeResumableSse(input: {
+  body: ReadableStream<Uint8Array>;
+  codec: ApiProxyResumableCodec;
+  state: ResumableBufferState;
+  consumerSignal?: AbortSignal | undefined;
+  onFirstToken?: ((promptTokens: number | null) => void) | undefined;
+  onReasoning?: (() => void) | undefined;
+  onReasoningDelta?: ((text: string) => void) | undefined;
+  onAnswerDelta?: ((text: string) => void) | undefined;
+  onProgress?: ((completionTokens: number) => void) | undefined;
+  onPrefillProgress?:
+    | ((progress: { total: number; processed: number; cache: number }) => void)
+    | undefined;
+}): Promise<ConsumeResumableSseOutcome> {
+  const meta: FrameMeta = {
+    upstreamGenMs: null,
+    firstTokenSeen: false,
+    reasoningSeen: false,
+    onFirstToken: input.onFirstToken,
+    onReasoning: input.onReasoning,
+    onReasoningDelta: input.onReasoningDelta,
+    onAnswerDelta: input.onAnswerDelta,
+    onProgress: input.onProgress,
+    onPrefillProgress: input.onPrefillProgress,
+  };
+  const flushGenMs = () => {
+    if (meta.upstreamGenMs !== null) {
+      input.state.genMs += Math.max(0, meta.upstreamGenMs);
+    }
+  };
+  const reader = input.body.getReader();
+  const frames = createSseFrameBuffer();
+  try {
+    for (;;) {
+      if (input.consumerSignal?.aborted) {
+        return "consumer-gone";
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      for (const frame of frames.push(value)) {
+        if (applyFrame(frame, input.codec, input.state, meta) === "done") {
+          flushGenMs();
+          return "completed";
+        }
+      }
+    }
+    const tail = frames.flush();
+    if (tail) {
+      applyFrame(tail, input.codec, input.state, meta);
+    }
+    flushGenMs();
+    return "completed";
+  } catch (error) {
+    if (input.consumerSignal?.aborted) {
+      return "consumer-gone";
+    }
+    return { error: describeFetchError(error) };
+  }
+}
+
+export function finalFromState(
   codec: ApiProxyResumableCodec,
   state: ResumableBufferState,
   wantsStream: boolean,

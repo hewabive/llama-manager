@@ -60,7 +60,9 @@ import {
 } from "./repository.js";
 import { saveApiProxyRequestFile } from "./request-files.js";
 import {
+  consumeResumableSse,
   createResumableBufferState,
+  finalFromState,
   runResumableForward,
   runResumableUpstreamAttempt,
 } from "./resumable-forward.js";
@@ -82,6 +84,7 @@ import {
   createUsageMeterStream,
   includeUsageRequested,
   ratePerSecondFromUsage,
+  requestBreaksStreamReconstruction,
   returnProgressRequested,
   usageFromNonStreamBody,
   withIncludeUsage,
@@ -607,6 +610,13 @@ async function proxyProtocolEndpointInner(
       route.request.stream && !translateAnthropic
         ? resolveStreamUsageMeter(operation, adapter, route.request.body)
         : null;
+    const bufferUpstreamStream =
+      !route.request.stream &&
+      instanceId !== null &&
+      !translateAnthropic &&
+      Boolean(adapter.resumable) &&
+      resumableEndpoints.has(operation.endpoint) &&
+      !requestBreaksStreamReconstruction(route.request.body);
     const injectUsage = translateAnthropic
       ? route.request.stream
       : (streamMeter?.inject ?? false);
@@ -617,11 +627,19 @@ async function proxyProtocolEndpointInner(
         : streamMeter !== null && operation.endpoint === "chat.completions");
     const injectPrefillProgress =
       wantsPrefillProgress && !returnProgressRequested(exchange.body);
-    let forwardBody = injectUsage
-      ? withIncludeUsage(exchange.body)
-      : exchange.body;
-    if (injectPrefillProgress) {
-      forwardBody = withReturnProgress(forwardBody);
+    let forwardBody: unknown;
+    if (bufferUpstreamStream && adapter.resumable) {
+      const built = adapter.resumable.upstreamBody(exchange.body, null);
+      forwardBody = returnProgressRequested(exchange.body)
+        ? built
+        : withReturnProgress(built);
+    } else {
+      forwardBody = injectUsage
+        ? withIncludeUsage(exchange.body)
+        : exchange.body;
+      if (injectPrefillProgress) {
+        forwardBody = withReturnProgress(forwardBody);
+      }
     }
 
     const slotSeq =
@@ -669,6 +687,57 @@ async function proxyProtocolEndpointInner(
       }
 
       if (!route.request.stream) {
+        if (bufferUpstreamStream && adapter.resumable && upstream.body) {
+          const codec = adapter.resumable;
+          const state = createResumableBufferState();
+          const outcome = await consumeResumableSse({
+            body: upstream.body,
+            codec,
+            state,
+            consumerSignal: c.req.raw.signal,
+            onFirstToken: markFirstToken,
+            onReasoning: markReasoning,
+            onReasoningDelta: markReasoningDelta,
+            onAnswerDelta: markAnswerDelta,
+            onProgress: markProgress,
+            onPrefillProgress: markPrefillProgress,
+          });
+          if (outcome === "consumer-gone") {
+            markClientAbort();
+            return new Response(null, { status: CLIENT_ABORT_STATUS });
+          }
+          if (typeof outcome === "object") {
+            const message = `Proxy target ${decision.target.name} failed to forward request: ${outcome.error}`;
+            trace.errorMessage = message;
+            const response = adapter.diagnosticError(route.request, {
+              status: 502,
+              code: "llama_manager_proxy_upstream_error",
+              param: "model",
+              message,
+            });
+            return c.json(response.body, response.status);
+          }
+          trace.usage = {
+            promptTokens: state.promptTokens,
+            cacheReadTokens: state.cacheReadTokens,
+            cacheCreationTokens: state.cacheCreationTokens,
+            completionTokens: state.completionTokens,
+            genMs: Math.round(state.genMs),
+            ratePerSecond:
+              state.completionTokens > 0 && state.genMs > 0
+                ? state.completionTokens / (state.genMs / 1000)
+                : null,
+            prefillMs: null,
+            promptPerSecond: null,
+          };
+          const task = resolveSlot();
+          await applyServerGenerationTiming(trace, instanceId, task);
+          const final = finalFromState(codec, state, false);
+          return new Response(final.body, {
+            status: final.status,
+            headers: final.headers,
+          });
+        }
         const text = await upstream.text();
         const usage = usageFromNonStreamBody(exchange.protocol, text);
         if (usage) {

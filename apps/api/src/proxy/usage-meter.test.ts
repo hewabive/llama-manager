@@ -6,6 +6,7 @@ import { openAiResponsesUsageCodec, openAiResumableCodec } from "./openai.js";
 import {
   createUsageMeterStream,
   includeUsageRequested,
+  requestBreaksStreamReconstruction,
   returnProgressRequested,
   usageFromNonStreamBody,
   withIncludeUsage,
@@ -13,6 +14,15 @@ import {
   type ProxyPrefillProgress,
   type ProxyUsageCounts,
 } from "./usage-meter.js";
+
+test("requestBreaksStreamReconstruction flags multi-choice and logprob requests", () => {
+  assert.equal(requestBreaksStreamReconstruction({ messages: [] }), false);
+  assert.equal(requestBreaksStreamReconstruction({ n: 1 }), false);
+  assert.equal(requestBreaksStreamReconstruction({ n: 2 }), true);
+  assert.equal(requestBreaksStreamReconstruction({ logprobs: true }), true);
+  assert.equal(requestBreaksStreamReconstruction({ top_logprobs: 5 }), true);
+  assert.equal(requestBreaksStreamReconstruction(null), false);
+});
 
 test("usageFromNonStreamBody reads OpenAI usage and timings", () => {
   const usage = usageFromNonStreamBody(

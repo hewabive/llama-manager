@@ -128,6 +128,23 @@ export function withIncludeUsage(body: unknown): unknown {
   };
 }
 
+export function requestBreaksStreamReconstruction(body: unknown): boolean {
+  const obj = asObject(body);
+  if (!obj) {
+    return false;
+  }
+  if (typeof obj.n === "number" && obj.n > 1) {
+    return true;
+  }
+  if (obj.logprobs === true || typeof obj.logprobs === "number") {
+    return true;
+  }
+  if (obj.top_logprobs !== undefined && obj.top_logprobs !== null) {
+    return true;
+  }
+  return false;
+}
+
 export function returnProgressRequested(body: unknown): boolean {
   return asObject(body)?.return_progress === true;
 }
