@@ -36,7 +36,11 @@ import {
   openAiProtocolAdapter,
   openAiResponsesUsageCodec,
 } from "./openai.js";
-import { resolveApiProxyRouteChain } from "./pipeline.js";
+import { executeApiProxyFusion } from "./fusion.js";
+import {
+  resolveApiProxyRouteChain,
+  type ApiProxyRouteChainResult,
+} from "./pipeline.js";
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
@@ -60,6 +64,8 @@ import {
   runResumableForward,
   runResumableUpstreamAttempt,
 } from "./resumable-forward.js";
+import { executeApiProxyTargetReadiness } from "./target-lifecycle.js";
+import { resolveApiProxyUpstreamContext } from "./upstream-context.js";
 import { apiProxySlotTracker } from "./slot-tracker.js";
 import { extractRequestApiKey, resolveApiProxySourceByKey } from "./sources.js";
 import { apiProxyStats } from "./stats.js";
@@ -375,7 +381,7 @@ async function proxyProtocolEndpointInner(
   trace.modelId = resolution.request.modelId;
   inflight.setModel(resolution.request.modelId);
 
-  const route = await resolveApiProxyRouteChain({
+  const routeResult = await resolveApiProxyRouteChain({
     request: resolution.request,
     getPipeline: getApiProxyPipeline,
     sourceId: trace.sourceId,
@@ -395,14 +401,50 @@ async function proxyProtocolEndpointInner(
       );
     },
   });
-  trace.routeTrace = route.routeTrace;
-  if (!route.ok) {
-    trace.errorMessage = route.diagnostic.message;
+  trace.routeTrace = routeResult.routeTrace;
+  if (!routeResult.ok) {
+    trace.errorMessage = routeResult.diagnostic.message;
     const response = adapter.diagnosticError(
       resolution.request,
-      route.diagnostic,
+      routeResult.diagnostic,
     );
     return c.json(response.body, response.status);
+  }
+
+  let route: Extract<ApiProxyRouteChainResult, { ok: true; kind: "target" }>;
+  if (routeResult.kind === "fusion") {
+    const fusion = await executeApiProxyFusion({
+      node: routeResult.node,
+      pipeline: routeResult.pipeline,
+      request: routeResult.request,
+      sourceId: trace.sourceId,
+      signal: c.req.raw.signal,
+    });
+    if (fusion.kind === "error") {
+      trace.errorMessage = fusion.diagnostic.message;
+      const response = adapter.diagnosticError(
+        routeResult.request,
+        fusion.diagnostic,
+      );
+      return c.json(response.body, response.status);
+    }
+    if (fusion.kind === "direct") {
+      trace.stream = routeResult.request.stream;
+      return new Response(fusion.response.body, {
+        status: fusion.response.status,
+        headers: fusion.response.headers,
+      });
+    }
+    route = {
+      ok: true,
+      kind: "target",
+      request: fusion.request,
+      targetId: fusion.targetId,
+      textReplacementCount: routeResult.textReplacementCount,
+      routeTrace: routeResult.routeTrace,
+    };
+  } else {
+    route = routeResult;
   }
   trace.targetId = route.targetId;
   trace.stream = route.request.stream;
@@ -494,67 +536,7 @@ async function proxyProtocolEndpointInner(
 
   const makeTargetReady = (
     initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
-  ) =>
-    executeApiProxyPublicMvpPlan({
-      target: decision.target,
-      initialPreview,
-      getInstance,
-      startInstance: async (instance) => {
-        try {
-          return await startOrRecoverManagedInstance(instance);
-        } catch (error) {
-          throw new Error(actionErrorProxyMessage(error));
-        }
-      },
-      loadModel: async (instance, model) => {
-        const result = await requestLlamaModelAction(instance, "load", model);
-        if (!result.response.ok) {
-          throw new Error(llamaEndpointErrorMessage(result.response));
-        }
-      },
-      unloadModel: async (instance, model) => {
-        const result = await requestLlamaModelAction(instance, "unload", model);
-        if (!result.response.ok) {
-          throw new Error(llamaEndpointErrorMessage(result.response));
-        }
-      },
-      stopInstance: async (instance) => {
-        try {
-          await stopManagedInstance(instance.name);
-        } catch (error) {
-          if (error instanceof ProcessActionHttpError && error.status === 404) {
-            return;
-          }
-          throw new Error(actionErrorProxyMessage(error));
-        }
-      },
-      saveSlot: async (instance, slotId, targetId) => {
-        const result = await requestLlamaSlotAction(instance, "save", slotId, {
-          filename: apiProxySlotFilename(targetId, slotId),
-        });
-        if (!result.response.ok) {
-          throw new Error(llamaEndpointErrorMessage(result.response));
-        }
-        addApiProxySavedSlotId(targetId, slotId);
-      },
-      restoreSlot: async (instance, slotId, targetId) => {
-        const result = await requestLlamaSlotAction(
-          instance,
-          "restore",
-          slotId,
-          { filename: apiProxySlotFilename(targetId, slotId) },
-        );
-        if (!result.response.ok) {
-          throw new Error(llamaEndpointErrorMessage(result.response));
-        }
-        removeApiProxySavedSlotId(targetId, slotId);
-      },
-      getPlanPreview: (targetId) =>
-        getApiProxyPlanPreview({
-          mode: "request",
-          requestedTargetId: targetId,
-        }),
-    });
+  ) => executeApiProxyTargetReadiness(decision.target, initialPreview);
 
   const freshRequestPreview = () =>
     getApiProxyPlanPreview({
@@ -563,50 +545,20 @@ async function proxyProtocolEndpointInner(
     });
 
   const resolveUpstreamContext = (): UpstreamContextResolution => {
-    const instances = listInstances();
-    const targetResolution = resolveApiProxyTarget(
-      decision.target,
-      instances,
-      listApiEndpointCatalog(instances),
-    );
-    if (!targetResolution.enabled) {
-      const message =
-        targetResolution.error ??
-        `Proxy target ${decision.target.name} endpoint is unavailable.`;
-      trace.errorMessage = message;
-      const response = adapter.diagnosticError(route.request, {
-        status: 503,
-        code: "llama_manager_proxy_upstream_unavailable",
-        param: "model",
-        message,
-      });
-      return { ok: false, response: c.json(response.body, response.status) };
-    }
-    const auth = apiEndpointAuthHeaders(targetResolution.endpointId);
-    if (!auth.ok) {
-      trace.errorMessage = auth.error;
-      const response = adapter.diagnosticError(route.request, {
-        status: 503,
-        code: "llama_manager_proxy_upstream_unavailable",
-        param: "model",
-        message: auth.error,
-      });
-      return { ok: false, response: c.json(response.body, response.status) };
-    }
-    const translateAnthropic = shouldTranslateAnthropicMessages(
+    const resolved = resolveApiProxyUpstreamContext({
+      target: decision.target,
       operation,
-      targetResolution.profile,
-    );
-    trace.translated = translateAnthropic;
-    return {
-      ok: true,
-      context: {
-        baseUrl: targetResolution.baseUrl,
-        instanceId: targetResolution.instanceId,
-        authHeaders: auth.headers,
-        translateAnthropic,
-      },
-    };
+    });
+    if (!resolved.ok) {
+      trace.errorMessage = resolved.diagnostic.message;
+      const response = adapter.diagnosticError(
+        route.request,
+        resolved.diagnostic,
+      );
+      return { ok: false, response: c.json(response.body, response.status) };
+    }
+    trace.translated = resolved.context.translateAnthropic;
+    return { ok: true, context: resolved.context };
   };
 
   const markClientAbort = () => {

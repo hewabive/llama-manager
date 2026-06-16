@@ -88,6 +88,21 @@ function portPatch(
       return { callPorts: { ...node.callPorts, [port]: value } };
     case "exit":
       return null;
+    case "fusion": {
+      if (port === "synthesizer") {
+        return { fusionSynthesizer: value };
+      }
+      const match = /^panel-(\d+)$/.exec(port);
+      if (!match) {
+        return null;
+      }
+      const index = Number(match[1]);
+      return {
+        fusionPanel: node.fusionPanel.map((current, i) =>
+          i === index ? value : current,
+        ),
+      };
+    }
   }
 }
 

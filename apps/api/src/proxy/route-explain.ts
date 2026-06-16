@@ -99,6 +99,18 @@ export async function explainApiProxyRoute(
     };
   }
 
+  if (route.kind === "fusion") {
+    return {
+      ...base,
+      ok: true,
+      targetId: null,
+      targetName: `fusion (${route.node.ports.panel.length} panel)`,
+      routeTrace: route.routeTrace,
+      textReplacementCount: route.textReplacementCount,
+      transformedBody: route.request.body,
+    };
+  }
+
   const target = getApiProxyTarget(route.targetId);
   return {
     ...base,

@@ -566,6 +566,23 @@ export const ApiProxyConditionPredicateSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const defaultFusionSynthesizerPrompt =
+  "You are a synthesizer. Several assistants independently answered the user's request. " +
+  "Cross-check their answers, prefer claims you can verify, resolve contradictions, and do not blindly average. " +
+  "Write a single best final answer for the user. Do not mention the other assistants or that several answers were combined.";
+
+const defaultFusionAnswersTemplate =
+  "Below are candidate answers from independent assistants responding to the request above. Use them to write the best final answer.";
+
+export const ApiProxyFusionConfigSchema = z.object({
+  synthesizerPrompt: z
+    .string()
+    .max(20_000)
+    .default(defaultFusionSynthesizerPrompt),
+  answersTemplate: z.string().max(20_000).default(defaultFusionAnswersTemplate),
+  minQuorum: z.number().int().min(1).max(64).default(2),
+});
+
 export const ApiProxyNodeLayoutSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -610,6 +627,16 @@ export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
     config: z
       .object({ exitName: ApiProxyExitNameSchema.default("done") })
       .default({ exitName: "done" }),
+  }),
+  ApiProxyPipelineNodeBaseSchema.extend({
+    type: z.literal("fusion"),
+    config: ApiProxyFusionConfigSchema,
+    ports: z
+      .object({
+        panel: z.array(ApiProxyPortRefSchema).max(64).default([]),
+        synthesizer: ApiProxyNodePortSchema,
+      })
+      .default({ panel: [], synthesizer: null }),
   }),
 ]);
 
@@ -747,8 +774,23 @@ export function apiProxyPipelineNodePorts(
       return Object.entries(node.ports).map(([port, ref]) => ({ port, ref }));
     case "exit":
       return [];
+    case "fusion": {
+      const refs: Array<{
+        port: string;
+        ref: z.infer<typeof ApiProxyPortRefSchema>;
+      }> = [];
+      node.ports.panel.forEach((ref, index) => {
+        refs.push({ port: `panel-${index}`, ref });
+      });
+      if (node.ports.synthesizer) {
+        refs.push({ port: "synthesizer", ref: node.ports.synthesizer });
+      }
+      return refs;
+    }
   }
 }
+
+export type ApiProxyFusionConfig = z.infer<typeof ApiProxyFusionConfigSchema>;
 
 export type ApiProxyEditRequestOperation = z.infer<
   typeof ApiProxyEditRequestOperationSchema
@@ -1296,6 +1338,8 @@ export function collectApiProxyRouteHoles(
         });
         return;
       }
+      case "fusion":
+        return;
     }
   };
 
@@ -1536,6 +1580,7 @@ export const ApiProxyRouteTraceStepSchema = z.object({
     "condition",
     "call",
     "exit",
+    "fusion",
   ]),
   pipelineId: z.string().nullable().default(null),
   pipelineName: z.string().nullable().default(null),

@@ -184,6 +184,14 @@ export function draftNodePorts(
       }));
     case "exit":
       return [];
+    case "fusion":
+      return [
+        ...node.fusionPanel.map((value, index) => ({
+          port: `panel-${index}`,
+          value,
+        })),
+        { port: "synthesizer", value: node.fusionSynthesizer },
+      ];
   }
 }
 
@@ -230,6 +238,10 @@ export function nodeSummary(
     }
     case "exit":
       return `exit "${node.exitName || "done"}"`;
+    case "fusion": {
+      const wired = node.fusionPanel.filter((value) => value !== null).length;
+      return `fusion: ${wired} panel → synthesizer`;
+    }
   }
 }
 

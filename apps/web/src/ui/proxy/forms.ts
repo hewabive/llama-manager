@@ -88,6 +88,11 @@ export type PipelineNodeDraft = {
   callPipelineId: string | null;
   callPorts: Record<string, PortValue>;
   exitName: string;
+  fusionPanel: PortValue[];
+  fusionSynthesizer: PortValue;
+  fusionSynthesizerPrompt: string;
+  fusionAnswersTemplate: string;
+  fusionMinQuorum: number | "";
   portNext: PortValue;
   portTrue: PortValue;
   portFalse: PortValue;
@@ -181,6 +186,11 @@ export function emptyPipelineNodeDraft(
     callPipelineId: null,
     callPorts: {},
     exitName: "done",
+    fusionPanel: [null, null],
+    fusionSynthesizer: null,
+    fusionSynthesizerPrompt: "",
+    fusionAnswersTemplate: "",
+    fusionMinQuorum: 2,
     portNext: null,
     portTrue: null,
     portFalse: null,
@@ -247,6 +257,8 @@ export function removeNodeFromDraft(
         portNext: clearPort(node.portNext),
         portTrue: clearPort(node.portTrue),
         portFalse: clearPort(node.portFalse),
+        fusionPanel: node.fusionPanel.map(clearPort),
+        fusionSynthesizer: clearPort(node.fusionSynthesizer),
         callPorts: Object.fromEntries(
           Object.entries(node.callPorts).map(([port, value]) => [
             port,
@@ -406,6 +418,13 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       break;
     case "exit":
       draft.exitName = node.config.exitName;
+      break;
+    case "fusion":
+      draft.fusionPanel = node.ports.panel.map((ref) => portRefToValue(ref));
+      draft.fusionSynthesizer = portRefToValue(node.ports.synthesizer);
+      draft.fusionSynthesizerPrompt = node.config.synthesizerPrompt;
+      draft.fusionAnswersTemplate = node.config.answersTemplate;
+      draft.fusionMinQuorum = node.config.minQuorum;
       break;
   }
   return draft;
@@ -647,6 +666,24 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
         type: "exit",
         config: { exitName: draft.exitName.trim() || "done" },
       };
+    case "fusion": {
+      const panel = draft.fusionPanel
+        .map((value) => portRefFromValue(value))
+        .filter((ref): ref is ApiProxyPortRef => ref !== null);
+      return {
+        ...base,
+        type: "fusion",
+        config: {
+          synthesizerPrompt: draft.fusionSynthesizerPrompt,
+          answersTemplate: draft.fusionAnswersTemplate,
+          minQuorum: draft.fusionMinQuorum === "" ? 1 : draft.fusionMinQuorum,
+        },
+        ports: {
+          panel,
+          synthesizer: portRefFromValue(draft.fusionSynthesizer),
+        },
+      };
+    }
   }
 }
 

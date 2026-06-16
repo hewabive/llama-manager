@@ -164,7 +164,7 @@ test("capture-request saves the request as it arrives at the node", async () => 
   });
 
   assert.equal(result.ok, true);
-  if (result.ok) {
+  if (result.ok && result.kind === "target") {
     assert.equal(result.targetId, "target-a");
     assert.equal(result.textReplacementCount, 1);
     assert.deepEqual(result.request.body, {
@@ -212,7 +212,7 @@ test("replace-text does not touch the routing model field", async () => {
   });
 
   assert.equal(result.ok, true);
-  if (result.ok) {
+  if (result.ok && result.kind === "target") {
     assert.deepEqual(result.request.body, {
       model: "bad text",
       prompt: "good text",
@@ -535,7 +535,7 @@ test("edit-request node edits the body mid-route and traces operation outcomes",
   });
 
   assert.equal(result.ok, true);
-  if (result.ok) {
+  if (result.ok && result.kind === "target") {
     assert.equal(result.targetId, "target-a");
     assert.deepEqual(result.request.body, {
       model: "public-model",
@@ -590,7 +590,7 @@ test("condition text-match regex routes by message content", async () => {
     getPipeline: getPipelineFrom(pipelines),
   });
   assert.equal(matched.ok, true);
-  if (matched.ok) {
+  if (matched.ok && matched.kind === "target") {
     assert.equal(matched.targetId, "target-true");
     assert.equal(matched.routeTrace[1]?.port, "true");
   }
@@ -605,7 +605,7 @@ test("condition text-match regex routes by message content", async () => {
     getPipeline: getPipelineFrom(pipelines),
   });
   assert.equal(missed.ok, true);
-  if (missed.ok) {
+  if (missed.ok && missed.kind === "target") {
     assert.equal(missed.targetId, "target-false");
   }
 });
@@ -625,7 +625,7 @@ test("condition token-estimate routes long requests separately", async () => {
     getPipeline: getPipelineFrom(pipelines),
   });
   assert.equal(long.ok, true);
-  if (long.ok) {
+  if (long.ok && long.kind === "target") {
     assert.equal(long.targetId, "target-true");
     assert.match(long.routeTrace[1]?.detail ?? "", /~\d+ tokens >= 1000/);
   }
@@ -635,7 +635,7 @@ test("condition token-estimate routes long requests separately", async () => {
     getPipeline: getPipelineFrom(pipelines),
   });
   assert.equal(short.ok, true);
-  if (short.ok) {
+  if (short.ok && short.kind === "target") {
     assert.equal(short.targetId, "target-false");
   }
 });
@@ -651,7 +651,7 @@ test("condition source matches the resolved request source", async () => {
     sourceId: "src-claude",
   });
   assert.equal(fromSource.ok, true);
-  if (fromSource.ok) {
+  if (fromSource.ok && fromSource.kind === "target") {
     assert.equal(fromSource.targetId, "target-true");
   }
 
@@ -660,7 +660,7 @@ test("condition source matches the resolved request source", async () => {
     getPipeline: getPipelineFrom(pipelines),
   });
   assert.equal(anonymous.ok, true);
-  if (anonymous.ok) {
+  if (anonymous.ok && anonymous.kind === "target") {
     assert.equal(anonymous.targetId, "target-false");
   }
 });
@@ -742,7 +742,7 @@ test("call returns through the wired exit of the callee", async () => {
   });
 
   assert.equal(result.ok, true);
-  if (result.ok) {
+  if (result.ok && result.kind === "target") {
     assert.equal(result.targetId, "target-matched");
     assert.deepEqual(
       result.routeTrace.map((step) => step.kind),
@@ -798,7 +798,7 @@ test("target inside a called pipeline terminates the route", async () => {
   });
 
   assert.equal(result.ok, true);
-  if (result.ok) {
+  if (result.ok && result.kind === "target") {
     assert.equal(result.targetId, "target-inner");
   }
 });
@@ -837,7 +837,7 @@ test("exit of a jumped-to pipeline returns to the original caller frame", async 
   });
 
   assert.equal(result.ok, true);
-  if (result.ok) {
+  if (result.ok && result.kind === "target") {
     assert.equal(result.targetId, "target-x");
   }
 });

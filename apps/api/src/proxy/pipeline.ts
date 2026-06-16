@@ -26,11 +26,26 @@ export type ApiProxyPipelineRecordRequestInput = {
   requestBody: unknown;
 };
 
+export type ApiProxyFusionNode = Extract<
+  ApiProxyPipelineNode,
+  { type: "fusion" }
+>;
+
 export type ApiProxyRouteChainResult =
   | {
       ok: true;
+      kind: "target";
       request: ApiProxyProtocolModelRequest;
       targetId: string;
+      textReplacementCount: number;
+      routeTrace: ApiProxyRouteTraceStep[];
+    }
+  | {
+      ok: true;
+      kind: "fusion";
+      request: ApiProxyProtocolModelRequest;
+      node: ApiProxyFusionNode;
+      pipeline: ApiProxyPipelineRecord;
       textReplacementCount: number;
       routeTrace: ApiProxyRouteTraceStep[];
     }
@@ -177,6 +192,9 @@ export async function resolveApiProxyRouteChain(input: {
   request: ApiProxyProtocolModelRequest;
   getPipeline: (pipelineId: string) => ApiProxyPipelineRecord | null;
   sourceId?: string | null | undefined;
+  entry?:
+    | { ref: ApiProxyPortRef; pipeline: ApiProxyPipelineRecord }
+    | undefined;
   recordRequest?: (
     request: ApiProxyPipelineRecordRequestInput,
   ) => void | Promise<void>;
@@ -198,7 +216,8 @@ export async function resolveApiProxyRouteChain(input: {
     (tokenEstimate ??= estimateRequestTokens(state.request.body));
 
   const callStack: CallFrame[] = [];
-  let currentPipeline: ApiProxyPipelineRecord | null = null;
+  let currentPipeline: ApiProxyPipelineRecord | null =
+    input.entry?.pipeline ?? null;
   let visitedNodes = 0;
 
   const fail = (diagnostic: ApiProxyProtocolDiagnostic) => {
@@ -206,9 +225,9 @@ export async function resolveApiProxyRouteChain(input: {
   };
 
   const modelId = input.request.modelId;
-  let ref: ApiProxyPortRef | ApiProxyRouteTo | null = legacyModelRouteTo(
-    input.request,
-  );
+  let ref: ApiProxyPortRef | ApiProxyRouteTo | null = input.entry
+    ? input.entry.ref
+    : legacyModelRouteTo(input.request);
 
   while (true) {
     if (!ref) {
@@ -226,6 +245,7 @@ export async function resolveApiProxyRouteChain(input: {
     if (ref.type === "target") {
       return {
         ok: true,
+        kind: "target",
         request: state.request,
         targetId: ref.id,
         textReplacementCount: state.textReplacementCount,
@@ -276,8 +296,10 @@ export async function resolveApiProxyRouteChain(input: {
     }
 
     const pipeline = currentPipeline;
-    const nodeId = ref.id;
-    const node = pipeline.nodes.find((item) => item.id === nodeId);
+    const nodeId: string = ref.id;
+    const node: ApiProxyPipelineNode | undefined = pipeline.nodes.find(
+      (item) => item.id === nodeId,
+    );
     if (!node) {
       return fail(
         routeDiagnostic(
@@ -482,6 +504,22 @@ export async function resolveApiProxyRouteChain(input: {
         currentPipeline = frame.ownerPipeline;
         ref = continuation;
         break;
+      }
+      case "fusion": {
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            detail: `fusion (${node.ports.panel.length} panel)`,
+          }),
+        );
+        return {
+          ok: true,
+          kind: "fusion",
+          request: state.request,
+          node,
+          pipeline,
+          textReplacementCount: state.textReplacementCount,
+          routeTrace: state.routeTrace,
+        };
       }
     }
   }
