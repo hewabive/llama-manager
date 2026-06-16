@@ -182,7 +182,7 @@ test("fusion routes to the synthesizer with joined panel answers", async () => {
     const serialized = JSON.stringify(outcome.request.body);
     assert.match(serialized, /Alpha answer/);
     assert.match(serialized, /Beta answer/);
-    assert.match(serialized, /You are a synthesizer/);
+    assert.match(serialized, /final responder in an ensemble/);
   }
 });
 

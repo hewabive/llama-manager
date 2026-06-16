@@ -1,4 +1,8 @@
-import { parseApiProxyBodyFieldPath } from "@llama-manager/core";
+import {
+  defaultFusionAnswersTemplate,
+  defaultFusionSynthesizerPrompt,
+  parseApiProxyBodyFieldPath,
+} from "@llama-manager/core";
 import type {
   ApiProxyConditionPredicate,
   ApiProxyConditionScope,
@@ -188,8 +192,8 @@ export function emptyPipelineNodeDraft(
     exitName: "done",
     fusionPanel: [null, null],
     fusionSynthesizer: null,
-    fusionSynthesizerPrompt: "",
-    fusionAnswersTemplate: "",
+    fusionSynthesizerPrompt: defaultFusionSynthesizerPrompt,
+    fusionAnswersTemplate: defaultFusionAnswersTemplate,
     fusionMinQuorum: 2,
     portNext: null,
     portTrue: null,
