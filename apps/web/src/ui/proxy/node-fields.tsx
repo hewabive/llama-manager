@@ -1,13 +1,9 @@
 import {
-  apiProxyReasoningEditOperations,
-  applyApiProxyRequestEdits,
   collectApiProxyPipelineExitNames,
   resolveApiProxyReasoning,
-  type ApiProxyEditRequestOperation,
   type ApiProxyModelRecord,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
-  type ApiProxyReasoningConfig,
   type ApiProxyReasoningEffort,
   type ApiProxySourceRecord,
   type ApiProxyTargetRecord,
@@ -451,34 +447,21 @@ function ReplaceTextFields(props: {
   );
 }
 
-function ReasoningPreview(props: {
-  title: string;
-  operations: ApiProxyEditRequestOperation[];
-}) {
-  const result = applyApiProxyRequestEdits({}, props.operations);
-  return (
-    <Paper withBorder p="xs" radius="sm">
-      <Text size="xs" fw={600} c="dimmed">
-        {props.title}
-      </Text>
-      <Text size="xs" ff="monospace" style={{ whiteSpace: "pre-wrap" }}>
-        {JSON.stringify(result.body, null, 2)}
-      </Text>
-    </Paper>
-  );
-}
-
 function ReasoningFields(props: {
   node: PipelineNodeDraft;
   update: (patch: Partial<PipelineNodeDraft>) => void;
 }) {
   const { node, update } = props;
-  const config: ApiProxyReasoningConfig = {
+  const resolved = resolveApiProxyReasoning({
     effort: node.reasoningEffort,
     customBudgetTokens:
       node.reasoningCustomBudget === "" ? -1 : node.reasoningCustomBudget,
-  };
-  const resolved = resolveApiProxyReasoning(config);
+  });
+  const caption = !resolved.enableThinking
+    ? "Model thinking is disabled."
+    : resolved.budget === null || resolved.budget < 0
+      ? "Thinking on, unlimited token budget."
+      : `Thinking on, ~${resolved.budget} reasoning-token budget.`;
   return (
     <Stack gap="sm">
       <SegmentedControl
@@ -503,23 +486,8 @@ function ReasoningFields(props: {
         />
       )}
       <Text c="dimmed" size="xs">
-        {resolved.enableThinking
-          ? resolved.budget === null || resolved.budget < 0
-            ? "Thinking on, unlimited token budget."
-            : `Thinking on, capped at ${resolved.budget} reasoning tokens.`
-          : "Disables the model's thinking/reasoning channel."}{" "}
-        The node writes the right fields for the inbound protocol: for OpenAI it
-        sets chat_template_kwargs.enable_thinking and thinking_budget_tokens
-        (llama.cpp extensions); for Anthropic it sets the native thinking block.
+        {caption}
       </Text>
-      <ReasoningPreview
-        title="OpenAI request →"
-        operations={apiProxyReasoningEditOperations(config, "openai")}
-      />
-      <ReasoningPreview
-        title="Anthropic request →"
-        operations={apiProxyReasoningEditOperations(config, "anthropic")}
-      />
     </Stack>
   );
 }
