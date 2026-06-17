@@ -86,31 +86,31 @@ in v1 (live nvidia-smi subtraction is a v2 concern). When a request cannot fit
 and the obstacle is immovable/protected, it queues and waits rather than 503-ing;
 the wait is bounded only by the request's own timeout/abort.
 
-## How the axes drive the proxy (later phases)
+## How the axes drive the proxy
 
-- **Memory (scheduler):** alongside the legacy "one active target per group" the
-  scheduler does quantitative fit (`apps/api/src/proxy/scheduler.ts`,
-  `planMemoryEvictions`). If a target's declared draw fits the per-pool headroom
-  (`budget − usedByOthers − kept residents`), just start/load. If not, greedily
-  evict **idle** residents of the contended pools (`preemptible`, priority ≤ the
-  requester, idle-longest first) until it fits, emitting unload/stop (+ slot save).
-  If it still cannot fit — or the only obstacle is a **busy** resident — the request
-  queues (`ok:false`). The fit pass is **inert until draws are declared** (empty
-  `memory` ⇒ skipped), so it changes nothing until an instance opts in.
-- **Compute (coordinator):** keyed by compute domain. A new request of priority `P`
-  waits while any in-flight request of priority `> P` runs on that domain; equal
-  priorities run concurrently (the GPU time-slices). In-flight lower-priority
-  requests are **not** interrupted for the compute axis — only new dispatch is held.
+- **Memory (scheduler):** the scheduler does quantitative fit
+  (`apps/api/src/proxy/scheduler.ts`, `planMemoryEvictions`). If a target's declared
+  draw fits the per-pool headroom (`budget − usedByOthers − kept residents`), just
+  start/load. If not, greedily evict residents of the contended pools — **idle**
+  ones first (`preemptible`, priority ≤ requester), then, when `allowBusyEviction`
+  is set, **busy** ones (`preemptible`, priority < requester, surfaced as
+  `preemptTargetIds`) — until it fits, else the request queues (`ok:false`). The
+  fit pass is **inert until draws are declared** (empty `memory` ⇒ skipped).
+- **Compute (coordinator):** the `ComputeDomainCoordinator` is keyed on the gpu
+  domains a request draws from. A new request of priority `P` waits while any
+  in-flight request of priority `> P` runs on a shared domain; equal priorities run
+  concurrently (the GPU time-slices). In-flight lower-priority requests are **not**
+  interrupted for the compute axis — only new dispatch is held. The
+  `decide()` policy (`proxy/domain-admission.ts`) folds this hold together with the
+  memory plan, so a single admission either admits concurrently, preempts a busy
+  preemptible lower-priority holder (abort → slot save → swap → resume), or queues.
 
-Concurrency is already available today — two resident `llama-server` processes
-time-slice on the GPU, and ungrouped proxy targets take no coordinator lease
-(`protocol-endpoint.ts`, `if (groupKey)`) so they dispatch in parallel. The hard
-part deferred to Phase 3 is not concurrency but **arbitration**: preempting a
-*busy* resident for the memory axis, and holding low-priority dispatch while
-high-priority runs, both require turning the coordinator's one-holder lease into a
-multi-holder, individually-preemptible, priority-gated gate keyed on the compute
-domain. Until then, busy preemption stays available only via the existing
-same-`resourceGroupId` lease path; the memory fit pass evicts idle residents only.
+Bare concurrency was always available — two resident `llama-server` processes
+time-slice on the GPU, and a request with no gpu draws takes no lease
+(`requestComputeDomains` returns none), so such requests dispatch in parallel. What
+Phase 3 added is **arbitration**: the multi-holder, individually-preemptible,
+priority-gated domain gate that lets fitting models coexist, holds low priority
+behind high, and preempts a busy resident to reclaim memory.
 
 ## Phasing
 
@@ -134,11 +134,22 @@ same-`resourceGroupId` lease path; the memory fit pass evicts idle residents onl
     draws are declared. Busy-resident preemption for memory and robust serialization
     of concurrent ungrouped evictions are **not** here — they need the Phase 3
     coordinator.
-- **Phase 3:** coordinator redesign + compute QoS — re-key the coordinator on the
-  compute domain as a multi-holder, individually-preemptible, priority-gated gate
-  (per-domain priority hold + drain), enabling busy-resident memory preemption and
-  compute arbitration; then drop the vestigial target `resourceGroupId`
-  (migrate-and-drop per `docs/MIGRATIONS.md`).
+- **Phase 3 (done):** coordinator redesign + compute QoS.
+  - **3.0/3.1:** `requestComputeDomains` derives the per-request gpu-domain lease
+    keys; `ComputeDomainCoordinator` (`proxy/domain-coordinator.ts`) is a
+    multi-holder, multi-domain, individually-preemptible gate whose admission
+    policy is an injected `decide()` (admit | preempt[leaseIds] | wait).
+  - **3.2/3.3a:** the scheduler proposes busy-resident eviction
+    (`preemptTargetIds`, gated by `allowBusyEviction`), and
+    `buildDomainAdmissionDecider` (`proxy/domain-admission.ts`) is the
+    scheduler-backed `decide`: compute-QoS hold behind a strictly higher-priority
+    running holder, then a live holder overlay (running ⇒ busy, suspended ⇒ freed)
+    + a pure re-plan to decide fit and which busy holders to preempt.
+  - **3.3b:** the live path (`protocol-endpoint`, `fusion`, idle maintenance,
+    runtime snapshot) runs through the domain coordinator. No gpu draws ⇒ no
+    domain ⇒ no lease, preserving today's unmanaged concurrency.
+  - **3.4:** dropped the vestigial target `resourceGroupId` and the legacy
+    `ResourceGroupCoordinator` (Zod strips the field from stored configs on read).
 
 ## Future axes
 

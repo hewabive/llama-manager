@@ -24,7 +24,6 @@ function target(input: {
     model: input.id,
     role: "interactive" as const,
     priority: input.priority,
-    resourceGroupId: null,
     preemptible: input.preemptible ?? true,
     saveSlotsBeforeUnload: false,
     slotIds: [],

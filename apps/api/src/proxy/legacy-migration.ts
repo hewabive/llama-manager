@@ -79,7 +79,6 @@ function exportTargets() {
           model: row.model,
           role: row.role,
           priority: Number(row.priority),
-          resourceGroupId: row.resource_group_id,
           preemptible: parseBool(row.preemptible),
           saveSlotsBeforeUnload: parseBool(row.save_slots_before_unload),
           slotIds: parseSlotIds(row.slot_ids_json),

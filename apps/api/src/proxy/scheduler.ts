@@ -28,17 +28,6 @@ function isManaged(target: ApiProxyTargetPlanInput) {
   return Boolean(target.instanceId);
 }
 
-function sameResourceGroup(
-  left: ApiProxyTargetPlanInput,
-  right: ApiProxyTargetPlanInput,
-) {
-  return (
-    isManaged(left) &&
-    isManaged(right) &&
-    Boolean(left.resourceGroupId) &&
-    left.resourceGroupId === right.resourceGroupId
-  );
-}
 
 function elapsedMs(now: string, since: string | null | undefined) {
   if (!since) {
@@ -337,40 +326,10 @@ export function planApiProxyRequest(
   }
 
   const actions: ApiProxySchedulerAction[] = [];
-  const blockers = request.targets.filter(
-    (item) =>
-      item.id !== target.id &&
-      sameResourceGroup(item, target) &&
-      isActive(item),
-  );
-
-  const freedInstanceIds = new Set<string>();
-  for (const blocker of blockers) {
-    if (
-      isBusy(blocker) &&
-      (!blocker.preemptible || blocker.priority > target.priority)
-    ) {
-      return blocked(
-        request,
-        `${blocker.name} is busy and cannot be preempted by ${target.name}`,
-      );
-    }
-
-    actions.push(
-      ...unloadActions(
-        blocker,
-        `${target.name} request needs exclusive resource group ${target.resourceGroupId}`,
-      ),
-    );
-    if (blocker.instanceId) {
-      freedInstanceIds.add(blocker.instanceId);
-    }
-  }
-
   const memory = planMemoryEvictions(
     request,
     target,
-    freedInstanceIds,
+    new Set<string>(),
     options.allowBusyEviction ?? false,
   );
   if (!memory.ok) {
@@ -420,15 +379,18 @@ export function planApiProxyIdleMaintenance(
     ? request.targets.find((target) => target.id === request.preferredTargetId)
     : null;
   if (preferredTarget && !isActive(preferredTarget)) {
-    const activePeer = request.targets.find(
-      (target) =>
-        target.id !== preferredTarget.id &&
-        sameResourceGroup(target, preferredTarget) &&
-        isActive(target) &&
-        !unloadCandidates.some((candidate) => candidate.id === target.id),
+    const freedInstanceIds = new Set(
+      unloadCandidates
+        .map((candidate) => candidate.instanceId)
+        .filter((id): id is string => Boolean(id)),
     );
-
-    if (!activePeer) {
+    const fit = planMemoryEvictions(
+      request,
+      preferredTarget,
+      freedInstanceIds,
+      false,
+    );
+    if (fit.ok && fit.actions.length === 0) {
       actions.push(
         ...loadActions(
           preferredTarget,

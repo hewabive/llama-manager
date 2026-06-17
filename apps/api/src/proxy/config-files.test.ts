@@ -42,7 +42,6 @@ function seedTarget(name: string) {
     model: null,
     role: "background",
     priority: 100,
-    resourceGroupId: "gpu0",
     preemptible: true,
     saveSlotsBeforeUnload: true,
     slotIds: [0],

@@ -99,7 +99,6 @@ function seedExternalTarget(name: string, baseUrl = "http://fake.local") {
     model: null,
     role: "background",
     priority: 100,
-    resourceGroupId: null,
     preemptible: false,
     saveSlotsBeforeUnload: false,
     slotIds: [],

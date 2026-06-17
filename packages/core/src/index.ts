@@ -565,7 +565,6 @@ export const ApiProxyModelStateSchema = z.enum([
 const ApiProxyTargetNameSchema = z.string().min(1).max(80);
 const ApiProxyTargetModelSchema = z.string().trim().min(1).max(500).nullable();
 const ApiProxyTargetPrioritySchema = z.number().int().min(0).max(10_000);
-const ApiProxyTargetResourceGroupSchema = z.string().min(1).max(80).nullable();
 const ApiProxyTargetSlotIdsSchema = z.array(z.number().int().min(0));
 const ApiProxyTargetIdleMsSchema = z.number().int().min(0).nullable();
 const ApiProxyModelIdSchema = z.string().trim().min(1).max(500);
@@ -899,7 +898,6 @@ export const ApiProxyTargetConfigSchema = z.object({
   model: ApiProxyTargetModelSchema.default(null),
   role: ApiProxyTargetRoleSchema.default("interactive"),
   priority: ApiProxyTargetPrioritySchema.default(100),
-  resourceGroupId: ApiProxyTargetResourceGroupSchema.default(null),
   preemptible: z.boolean().default(true),
   saveSlotsBeforeUnload: z.boolean().default(false),
   slotIds: ApiProxyTargetSlotIdsSchema.default([]),
@@ -1665,7 +1663,6 @@ export const ApiProxyTargetUpdateSchema = z.object({
   model: ApiProxyTargetModelSchema.optional(),
   role: ApiProxyTargetRoleSchema.optional(),
   priority: ApiProxyTargetPrioritySchema.optional(),
-  resourceGroupId: ApiProxyTargetResourceGroupSchema.optional(),
   preemptible: z.boolean().optional(),
   saveSlotsBeforeUnload: z.boolean().optional(),
   slotIds: ApiProxyTargetSlotIdsSchema.optional(),
@@ -1878,7 +1875,6 @@ export const ApiProxyRequestTraceSchema = z.object({
   stream: z.boolean().nullable().default(null),
   targetId: ApiProxyIdSchema.nullable().default(null),
   targetName: z.string().nullable().default(null),
-  resourceGroupId: z.string().nullable().default(null),
   slotId: z.number().int().min(0).nullable().default(null),
   cacheOrigin: z.enum(["live", "restored", "fresh"]).nullable().default(null),
   textReplacementCount: z.number().int().min(0).default(0),

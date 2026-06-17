@@ -171,7 +171,6 @@ type ProxyTraceAccumulator = {
   stream: boolean | null;
   targetId: string | null;
   targetName: string | null;
-  resourceGroupId: string | null;
   slotId: number | null;
   cacheOrigin: "live" | "restored" | "fresh" | null;
   textReplacementCount: number;
@@ -213,7 +212,6 @@ function createProxyTrace(
     stream: null,
     targetId: null,
     targetName: null,
-    resourceGroupId: null,
     slotId: null,
     cacheOrigin: null,
     textReplacementCount: 0,
@@ -497,7 +495,6 @@ async function proxyProtocolEndpointInner(
   }
   trace.targetId = decision.target.id;
   trace.targetName = decision.target.name;
-  trace.resourceGroupId = decision.target.resourceGroupId;
   trace.schedulerActions = decision.preview.plan.actions.map(
     (action) => action.type,
   );

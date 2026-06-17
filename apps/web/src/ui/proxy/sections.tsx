@@ -792,7 +792,7 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                 <Table.Th>Used by</Table.Th>
                 <Table.Th>Endpoint</Table.Th>
                 <Table.Th>Model</Table.Th>
-                <Table.Th>Resource</Table.Th>
+                <Table.Th>Priority</Table.Th>
                 <Table.Th>Policy</Table.Th>
                 <Table.Th>Runtime</Table.Th>
                 <Table.Th>Updated</Table.Th>
@@ -846,14 +846,7 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <Stack gap={2}>
-                        <Text size="sm">
-                          {target.resourceGroupId ?? "not exclusive"}
-                        </Text>
-                        <Text c="dimmed" size="xs">
-                          priority {target.priority}
-                        </Text>
-                      </Stack>
+                      <Text size="sm">{target.priority}</Text>
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm">

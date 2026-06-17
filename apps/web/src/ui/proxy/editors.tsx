@@ -284,15 +284,6 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             }
           />
         </Group>
-        <TextInput
-          label="Resource group"
-          placeholder="cuda:0"
-          value={props.draft.resourceGroupId}
-          onChange={(event) => {
-            const resourceGroupId = event.currentTarget.value;
-            props.onDraftChange({ ...props.draft, resourceGroupId });
-          }}
-        />
         <Group gap="lg" wrap="wrap">
           <Switch
             label="Preemptible"

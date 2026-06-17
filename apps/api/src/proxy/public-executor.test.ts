@@ -17,7 +17,6 @@ const target: ApiProxyTargetRecord = {
   model: "chat",
   role: "interactive",
   priority: 100,
-  resourceGroupId: null,
   preemptible: true,
   saveSlotsBeforeUnload: false,
   slotIds: [],

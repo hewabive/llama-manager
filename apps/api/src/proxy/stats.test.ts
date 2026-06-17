@@ -19,7 +19,6 @@ function trace(
     stream: null,
     targetId: null,
     targetName: null,
-    resourceGroupId: null,
     slotId: null,
     cacheOrigin: null,
     textReplacementCount: 0,

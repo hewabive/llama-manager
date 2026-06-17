@@ -54,7 +54,6 @@ function target(
     model: input.model === undefined ? "chat" : input.model,
     role: "interactive",
     priority: 100,
-    resourceGroupId: "cuda:0",
     preemptible: true,
     saveSlotsBeforeUnload: false,
     slotIds: [],

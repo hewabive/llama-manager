@@ -42,7 +42,6 @@ export type TargetDraft = {
   model: string;
   role: "interactive" | "background";
   priority: number | "";
-  resourceGroupId: string;
   preemptible: boolean;
   saveSlotsBeforeUnload: boolean;
   slotIds: string;
@@ -147,7 +146,6 @@ export const emptyTargetDraft: TargetDraft = {
   model: "",
   role: "interactive",
   priority: 100,
-  resourceGroupId: "",
   preemptible: true,
   saveSlotsBeforeUnload: false,
   slotIds: "",
@@ -349,7 +347,6 @@ export function targetDraftFromRecord(
     model: target.model ?? "",
     role: target.role,
     priority: target.priority,
-    resourceGroupId: target.resourceGroupId ?? "",
     preemptible: target.preemptible,
     saveSlotsBeforeUnload: target.saveSlotsBeforeUnload,
     slotIds: slotIdsText(target.slotIds),
@@ -753,7 +750,6 @@ export function targetPayload(draft: TargetDraft): ApiProxyTargetCreate {
     model: draft.model.trim() || null,
     role: draft.role,
     priority: draft.priority === "" ? 100 : draft.priority,
-    resourceGroupId: draft.resourceGroupId.trim() || null,
     preemptible: draft.preemptible,
     saveSlotsBeforeUnload: draft.saveSlotsBeforeUnload,
     slotIds: slotIdsFromText(draft.slotIds),
