@@ -26,6 +26,8 @@ function target(input: {
   saveSlotsBeforeUnload?: boolean;
   slotIds?: number[];
   savedSlotIds?: number[];
+  resourceGroupId?: string | null;
+  draws?: { poolId: string; bytes: number }[];
 }) {
   return {
     id: input.id,
@@ -35,11 +37,13 @@ function target(input: {
     model: input.model,
     role: input.role ?? "interactive",
     priority: input.priority,
-    resourceGroupId: "cuda:0",
+    resourceGroupId:
+      input.resourceGroupId === undefined ? "cuda:0" : input.resourceGroupId,
     preemptible: input.preemptible ?? true,
     saveSlotsBeforeUnload: input.saveSlotsBeforeUnload ?? false,
     slotIds: input.slotIds ?? [],
     idleUnloadMs: input.idleUnloadMs ?? null,
+    draws: input.draws ?? [],
     runtime: {
       targetId: input.id,
       kind: "managed-instance",
@@ -273,4 +277,289 @@ test("planApiProxyIdleMaintenance unloads idle urgent target and resumes backgro
   );
   assert.equal(plan.actions[0]?.targetId, "urgent");
   assert.equal(plan.actions[1]?.targetId, "background");
+});
+
+test("planApiProxyRequest leaves a fitting resident peer alone (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "new",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "resident",
+          name: "Resident",
+          instanceId: "inst-resident",
+          model: "a",
+          priority: 50,
+          state: "idle",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 40 }],
+        }),
+        target({
+          id: "new",
+          name: "New chat",
+          instanceId: "inst-new",
+          model: "b",
+          priority: 50,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 40 }],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["load-model", "wait-model-ready", "route-request"],
+  );
+});
+
+test("planApiProxyRequest evicts an idle lower-priority peer to fit (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "batch",
+          name: "Batch",
+          instanceId: "inst-batch",
+          model: "slow",
+          priority: 10,
+          state: "idle",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 70 }],
+        }),
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 50 }],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["unload-model", "load-model", "wait-model-ready", "route-request"],
+  );
+  assert.equal(plan.actions[0]?.targetId, "batch");
+});
+
+test("planApiProxyRequest queues when only a busy peer blocks the fit (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "batch",
+          name: "Batch",
+          instanceId: "inst-batch",
+          model: "slow",
+          priority: 10,
+          state: "busy",
+          activeRequests: 1,
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 70 }],
+        }),
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 50 }],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, false);
+  assert.match(plan.blockingReason ?? "", /does not fit/);
+  assert.deepEqual(plan.actions, []);
+});
+
+test("planApiProxyRequest never evicts a higher-priority idle peer (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "batch",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "chat",
+          name: "Resident chat",
+          instanceId: "inst-chat",
+          model: "chat",
+          priority: 200,
+          state: "idle",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 70 }],
+        }),
+        target({
+          id: "batch",
+          name: "Batch",
+          instanceId: "inst-batch",
+          model: "slow",
+          priority: 10,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 50 }],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, false);
+  assert.match(plan.blockingReason ?? "", /does not fit/);
+  assert.deepEqual(plan.actions, []);
+});
+
+test("planApiProxyRequest evicts across split pools (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+        { poolId: "gpu1", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "batch",
+          name: "Batch",
+          instanceId: "inst-batch",
+          model: "slow",
+          priority: 10,
+          state: "idle",
+          resourceGroupId: null,
+          draws: [
+            { poolId: "gpu0", bytes: 60 },
+            { poolId: "gpu1", bytes: 60 },
+          ],
+        }),
+        target({
+          id: "urgent",
+          name: "Urgent split",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [
+            { poolId: "gpu0", bytes: 60 },
+            { poolId: "gpu1", bytes: 60 },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["unload-model", "load-model", "wait-model-ready", "route-request"],
+  );
+  assert.equal(plan.actions[0]?.targetId, "batch");
+});
+
+test("planApiProxyRequest queues when immovable usage leaves no room (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        {
+          poolId: "gpu0",
+          kind: "gpu",
+          budgetBytes: 100,
+          usedByOthersBytes: 80,
+        },
+      ],
+      targets: [
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 50 }],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, false);
+  assert.match(plan.blockingReason ?? "", /does not fit/);
+  assert.deepEqual(plan.actions, []);
+});
+
+test("planApiProxyRequest skips the memory axis when no draws are declared", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "new",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 1, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "resident",
+          name: "Resident",
+          instanceId: "inst-resident",
+          model: "a",
+          priority: 50,
+          state: "idle",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 999 }],
+        }),
+        target({
+          id: "new",
+          name: "Undeclared",
+          instanceId: "inst-new",
+          model: "b",
+          priority: 50,
+          state: "unloaded",
+          resourceGroupId: null,
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["load-model", "wait-model-ready", "route-request"],
+  );
 });

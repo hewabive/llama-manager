@@ -88,17 +88,29 @@ the wait is bounded only by the request's own timeout/abort.
 
 ## How the axes drive the proxy (later phases)
 
-- **Memory (scheduler):** replace "one active target per group" with quantitative
-  fit. If a target's draw fits the current ledger, just start/load. If not, greedily
-  pick eviction victims among residents of the contended pools (`preemptible`,
-  lower priority, idle first) until it fits, emitting unload/stop (+ slot save). If
-  it still cannot fit, the request queues. The existing save→swap→restore machinery
-  (`proxy/resumable-forward.ts`) is the eviction-of-a-busy-resident mechanism and is
-  retained.
+- **Memory (scheduler):** alongside the legacy "one active target per group" the
+  scheduler does quantitative fit (`apps/api/src/proxy/scheduler.ts`,
+  `planMemoryEvictions`). If a target's declared draw fits the per-pool headroom
+  (`budget − usedByOthers − kept residents`), just start/load. If not, greedily
+  evict **idle** residents of the contended pools (`preemptible`, priority ≤ the
+  requester, idle-longest first) until it fits, emitting unload/stop (+ slot save).
+  If it still cannot fit — or the only obstacle is a **busy** resident — the request
+  queues (`ok:false`). The fit pass is **inert until draws are declared** (empty
+  `memory` ⇒ skipped), so it changes nothing until an instance opts in.
 - **Compute (coordinator):** keyed by compute domain. A new request of priority `P`
   waits while any in-flight request of priority `> P` runs on that domain; equal
   priorities run concurrently (the GPU time-slices). In-flight lower-priority
   requests are **not** interrupted for the compute axis — only new dispatch is held.
+
+Concurrency is already available today — two resident `llama-server` processes
+time-slice on the GPU, and ungrouped proxy targets take no coordinator lease
+(`protocol-endpoint.ts`, `if (groupKey)`) so they dispatch in parallel. The hard
+part deferred to Phase 3 is not concurrency but **arbitration**: preempting a
+*busy* resident for the memory axis, and holding low-priority dispatch while
+high-priority runs, both require turning the coordinator's one-holder lease into a
+multi-holder, individually-preemptible, priority-gated gate keyed on the compute
+domain. Until then, busy preemption stays available only via the existing
+same-`resourceGroupId` lease path; the memory fit pass evicts idle residents only.
 
 ## Phasing
 
@@ -112,11 +124,21 @@ the wait is bounded only by the request's own timeout/abort.
   dialog (`force: true` overrides). Proxy autostart bypasses the gate (planned by
   the scheduler in Phase 2). A capacity `warning` surfaces in the preflight
   endpoints (form preview). Bulk start is not gated yet.
-- **Phase 2:** proxy memory axis — extend the scheduler snapshot with pools + draws,
-  swap exclusivity for fit + greedy eviction, key the coordinator on compute domain,
-  drop the vestigial target `resourceGroupId` (migrate-and-drop per
-  `docs/MIGRATIONS.md`).
-- **Phase 3:** compute QoS gate — per-domain priority hold + drain.
+- **Phase 2:** proxy memory axis (scheduler only, coordinator untouched).
+  - **2.0/2.1 (done):** scheduler snapshot carries per-target `draws` and per-pool
+    `{budgetBytes, usedByOthersBytes}` (`resources/ledger.ts:computeSchedulerPoolInputs`,
+    `proxy/resource-domains.ts`); `usedByOthers` = residents the proxy does not manage
+    (immovable), so the proxy reasons only over what it controls.
+  - **2.2 (done):** quantitative fit + greedy **idle** eviction in `planApiProxyRequest`
+    (`planMemoryEvictions`). Additive to the legacy group exclusivity, inert until
+    draws are declared. Busy-resident preemption for memory and robust serialization
+    of concurrent ungrouped evictions are **not** here — they need the Phase 3
+    coordinator.
+- **Phase 3:** coordinator redesign + compute QoS — re-key the coordinator on the
+  compute domain as a multi-holder, individually-preemptible, priority-gated gate
+  (per-domain priority hold + drain), enabling busy-resident memory preemption and
+  compute arbitration; then drop the vestigial target `resourceGroupId`
+  (migrate-and-drop per `docs/MIGRATIONS.md`).
 
 ## Future axes
 

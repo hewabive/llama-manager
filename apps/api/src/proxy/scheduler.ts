@@ -2,7 +2,9 @@ import type {
   ApiProxySchedulerAction,
   ApiProxySchedulerPlan,
   ApiProxySchedulerPlanRequest,
+  ApiProxySchedulerPoolInput,
   ApiProxyTargetPlanInput,
+  InstanceMemoryDraw,
 } from "@llama-manager/core";
 
 const activeStates = new Set(["loaded", "idle", "busy"]);
@@ -137,6 +139,162 @@ function loadActions(
   return actions;
 }
 
+function drawByPool(draws: InstanceMemoryDraw[]): Map<string, number> {
+  const byPool = new Map<string, number>();
+  for (const draw of draws) {
+    byPool.set(draw.poolId, (byPool.get(draw.poolId) ?? 0) + draw.bytes);
+  }
+  return byPool;
+}
+
+type MemoryPeerInstance = {
+  instanceId: string;
+  target: ApiProxyTargetPlanInput;
+  draw: Map<string, number>;
+  busy: boolean;
+  preemptible: boolean;
+  priority: number;
+  idleForMs: number | null;
+};
+
+function collectMemoryPeerInstances(
+  request: ApiProxySchedulerPlanRequest,
+  target: ApiProxyTargetPlanInput,
+  freedInstanceIds: Set<string>,
+): Map<string, MemoryPeerInstance> {
+  const peers = new Map<string, MemoryPeerInstance>();
+  for (const item of request.targets) {
+    if (item.id === target.id || !isManaged(item) || !isActive(item)) {
+      continue;
+    }
+    const instanceId = item.instanceId;
+    if (
+      !instanceId ||
+      instanceId === target.instanceId ||
+      freedInstanceIds.has(instanceId) ||
+      item.draws.length === 0
+    ) {
+      continue;
+    }
+    const existing = peers.get(instanceId);
+    if (existing) {
+      existing.busy = existing.busy || isBusy(item);
+      existing.preemptible = existing.preemptible && item.preemptible;
+      existing.priority = Math.max(existing.priority, item.priority);
+      if (!existing.target.model && item.model) {
+        existing.target = item;
+      }
+      continue;
+    }
+    peers.set(instanceId, {
+      instanceId,
+      target: item,
+      draw: drawByPool(item.draws),
+      busy: isBusy(item),
+      preemptible: item.preemptible,
+      priority: item.priority,
+      idleForMs: elapsedMs(request.now, item.runtime?.idleSince),
+    });
+  }
+  return peers;
+}
+
+function drawOnPools(peer: MemoryPeerInstance, pools: Set<string>): number {
+  let bytes = 0;
+  for (const [poolId, value] of peer.draw) {
+    if (pools.has(poolId)) {
+      bytes += value;
+    }
+  }
+  return bytes;
+}
+
+type MemoryFitResult =
+  | { ok: true; actions: ApiProxySchedulerAction[] }
+  | { ok: false; reason: string };
+
+function planMemoryEvictions(
+  request: ApiProxySchedulerPlanRequest,
+  target: ApiProxyTargetPlanInput,
+  freedInstanceIds: Set<string>,
+): MemoryFitResult {
+  const targetDraw = drawByPool(target.draws);
+  if (
+    targetDraw.size === 0 ||
+    request.pools.length === 0 ||
+    isActive(target) ||
+    !isManaged(target)
+  ) {
+    return { ok: true, actions: [] };
+  }
+
+  const poolById = new Map<string, ApiProxySchedulerPoolInput>(
+    request.pools.map((pool) => [pool.poolId, pool]),
+  );
+  const kept = collectMemoryPeerInstances(request, target, freedInstanceIds);
+
+  const freeFor = (poolId: string): number => {
+    const pool = poolById.get(poolId);
+    if (!pool) {
+      return 0;
+    }
+    let used = 0;
+    for (const peer of kept.values()) {
+      used += peer.draw.get(poolId) ?? 0;
+    }
+    return pool.budgetBytes - pool.usedByOthersBytes - used;
+  };
+
+  const deficitPools = (): string[] => {
+    const deficits: string[] = [];
+    for (const [poolId, needed] of targetDraw) {
+      if (needed > 0 && needed > freeFor(poolId)) {
+        deficits.push(poolId);
+      }
+    }
+    return deficits;
+  };
+
+  const actions: ApiProxySchedulerAction[] = [];
+  while (true) {
+    const deficits = deficitPools();
+    if (deficits.length === 0) {
+      return { ok: true, actions };
+    }
+    const deficitSet = new Set(deficits);
+    const victims = [...kept.values()].filter(
+      (peer) =>
+        peer.preemptible &&
+        !peer.busy &&
+        peer.priority <= target.priority &&
+        drawOnPools(peer, deficitSet) > 0,
+    );
+    if (victims.length === 0) {
+      return {
+        ok: false,
+        reason: `${target.name} does not fit available memory on pool(s) ${deficits.join(", ")}; queued behind resident models`,
+      };
+    }
+    victims.sort(
+      (left, right) =>
+        left.priority - right.priority ||
+        (right.idleForMs ?? 0) - (left.idleForMs ?? 0) ||
+        drawOnPools(right, deficitSet) - drawOnPools(left, deficitSet),
+    );
+    const victim = victims[0];
+    if (!victim) {
+      return { ok: true, actions };
+    }
+    kept.delete(victim.instanceId);
+    actions.push(
+      ...unloadActions(
+        victim.target,
+        `${target.name} needs memory; evicting idle ${victim.target.name}`,
+      ),
+    );
+  }
+}
+
 export function planApiProxyRequest(
   request: ApiProxySchedulerPlanRequest,
 ): ApiProxySchedulerPlan {
@@ -168,6 +326,7 @@ export function planApiProxyRequest(
       isActive(item),
   );
 
+  const freedInstanceIds = new Set<string>();
   for (const blocker of blockers) {
     if (
       isBusy(blocker) &&
@@ -185,7 +344,16 @@ export function planApiProxyRequest(
         `${target.name} request needs exclusive resource group ${target.resourceGroupId}`,
       ),
     );
+    if (blocker.instanceId) {
+      freedInstanceIds.add(blocker.instanceId);
+    }
   }
+
+  const memory = planMemoryEvictions(request, target, freedInstanceIds);
+  if (!memory.ok) {
+    return blocked(request, memory.reason);
+  }
+  actions.push(...memory.actions);
 
   actions.push(...loadActions(target, `${target.name} request arrived`));
   actions.push(action("route-request", target, "target is selected"));
