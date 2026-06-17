@@ -10,6 +10,10 @@ import {
   migratePipelinesToGraphFormat,
 } from "../proxy/pipelines-graph-migration.js";
 import { migrateApiProxyRuntimeMetadataToFile } from "../proxy/runtime-metadata-migration.js";
+import {
+  dropPresetsSettingsSection,
+  settingsFileHasPresetsSection,
+} from "../settings/presets-settings-migration.js";
 import type { Migration } from "./types.js";
 
 function tableExists(name: string): boolean {
@@ -61,6 +65,14 @@ export const migrations: Migration[] = [
     isApplied: () => !hasLegacyPipelineRecords(),
     apply: () => {
       migratePipelinesToGraphFormat();
+    },
+  },
+  {
+    id: "0006-drop-presets-settings",
+    describe: "settings.json: remove obsolete presets section (validation binary)",
+    isApplied: () => !settingsFileHasPresetsSection(),
+    apply: () => {
+      dropPresetsSettingsSection();
     },
   },
 ];

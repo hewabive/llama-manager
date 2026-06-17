@@ -1,14 +1,9 @@
 import type {
-  LlamaArgumentOption,
   ModelPresetDocument,
   ModelPresetFile,
   ModelPresetSummary,
   ModelPresetWrite,
-  PresetDiagnostic,
-  PresetsSettings,
-  PresetValidation,
 } from "@llama-manager/core";
-import { PresetsSettingsSchema } from "@llama-manager/core";
 import {
   existsSync,
   mkdirSync,
@@ -21,16 +16,9 @@ import {
 } from "node:fs";
 import { resolve } from "node:path";
 
-import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
 import { config } from "../config.js";
-import { getPathCatalogEntry } from "../path-catalog/repository.js";
-import { readSettings, writeSettings } from "../settings/store.js";
 import { parseModelPresetIni, renderModelPresetFile } from "./ini.js";
-import {
-  presetFileHasErrors,
-  validateModelPresetFile,
-  validatePresetStructure,
-} from "./validate.js";
+import { presetFileHasErrors, validatePresetStructure } from "./validate.js";
 
 const presetsDir = config.presetsDir;
 const presetNamePattern = /^[A-Za-z0-9._-]+$/;
@@ -47,69 +35,12 @@ function emptyFile(): ModelPresetFile {
   return { globalArgs: {}, rootArgs: {}, entries: [] };
 }
 
-type CatalogOptions = {
-  options: LlamaArgumentOption[];
-  warning: PresetDiagnostic | null;
-};
-
-export function getPresetsSettings(): PresetsSettings {
-  return PresetsSettingsSchema.parse(readSettings().presets ?? {});
-}
-
-export function savePresetsSettings(input: PresetsSettings): PresetsSettings {
-  const parsed = PresetsSettingsSchema.parse(input);
-  writeSettings({ ...readSettings(), presets: parsed });
-  return getPresetsSettings();
-}
-
-function resolveValidationBinaryPath(): string | undefined {
-  const refId = getPresetsSettings().validationBinaryPathRefId;
-  if (!refId) {
-    return undefined;
-  }
-  return getPathCatalogEntry(refId)?.path ?? undefined;
-}
-
-function loadCatalogOptions(): CatalogOptions {
-  try {
-    const binaryPath = resolveValidationBinaryPath();
-    return {
-      options: getLlamaArgumentCatalog(binaryPath).options,
-      warning: null,
-    };
-  } catch (error) {
-    return {
-      options: [],
-      warning: {
-        severity: "warning",
-        message: `key validation skipped: ${(error as Error).message}`,
-        section: null,
-        key: null,
-        line: null,
-      },
-    };
-  }
-}
-
-function diagnoseFile(
-  file: ModelPresetFile,
-  catalog: CatalogOptions,
-): PresetDiagnostic[] {
-  if (catalog.warning) {
-    return [catalog.warning];
-  }
-  return validateModelPresetFile(file, catalog.options);
-}
-
-function documentFromName(
-  name: string,
-  catalog: CatalogOptions,
-): ModelPresetDocument {
+function documentFromName(name: string): ModelPresetDocument {
   const path = presetPath(name);
   const content = readFileSync(path, "utf8");
   const mtimeMs = statSync(path).mtimeMs;
   const { file, diagnostics: parseDiagnostics } = parseModelPresetIni(content);
-  const diagnostics = [...parseDiagnostics, ...diagnoseFile(file, catalog)];
+  const diagnostics = [...parseDiagnostics, ...validatePresetStructure(file)];
 
   return {
     name,
@@ -149,25 +80,11 @@ export function listPresets(): ModelPresetSummary[] {
   });
 }
 
-export function listPresetValidations(): PresetValidation[] {
-  const catalog = loadCatalogOptions();
-  return listPresetNames().map((name) => {
-    const content = readFileSync(presetPath(name), "utf8");
-    const { file, diagnostics } = parseModelPresetIni(content);
-    const all = [...diagnostics, ...diagnoseFile(file, catalog)];
-    return {
-      name,
-      valid: !presetFileHasErrors(all),
-      diagnostics: all,
-    };
-  });
-}
-
 export function readPreset(name: string): ModelPresetDocument | null {
   if (!isValidPresetName(name) || !existsSync(presetPath(name))) {
     return null;
   }
-  return documentFromName(name, loadCatalogOptions());
+  return documentFromName(name);
 }
 
 export type WritePresetResult =
@@ -187,21 +104,14 @@ export function writePreset(
   const currentMtime = statSync(path).mtimeMs;
 
   if (!input.force && input.expectedMtimeMs !== currentMtime) {
-    return {
-      kind: "conflict",
-      document: documentFromName(name, loadCatalogOptions()),
-    };
+    return { kind: "conflict", document: documentFromName(name) };
   }
 
-  const content = renderModelPresetFile(input.file);
   const tmpPath = `${path}.tmp`;
-  writeFileSync(tmpPath, content, "utf8");
+  writeFileSync(tmpPath, input.content, "utf8");
   renameSync(tmpPath, path);
 
-  return {
-    kind: "ok",
-    document: documentFromName(name, loadCatalogOptions()),
-  };
+  return { kind: "ok", document: documentFromName(name) };
 }
 
 export type CreatePresetResult =
@@ -215,10 +125,7 @@ export function createPreset(input: { name: string }): CreatePresetResult {
   }
   mkdirSync(presetsDir, { recursive: true });
   writeFileSync(path, renderModelPresetFile(emptyFile()), "utf8");
-  return {
-    kind: "ok",
-    document: documentFromName(input.name, loadCatalogOptions()),
-  };
+  return { kind: "ok", document: documentFromName(input.name) };
 }
 
 export function deletePreset(name: string): boolean {

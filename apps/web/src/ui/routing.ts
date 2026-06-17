@@ -94,7 +94,7 @@ export const appRoutes: {
     id: "presets",
     label: "Presets",
     title: "Presets",
-    description: "Pick scanned models for the llama-server --models-preset INI",
+    description: "Edit the llama-server --models-preset INI file directly",
   },
   {
     id: "build",

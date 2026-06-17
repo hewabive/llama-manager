@@ -2621,21 +2621,15 @@ export const ModelScanSettingsSchema = z.object({
   maxDepth: z.number().int().min(0).max(16),
 });
 
-export const PresetsSettingsSchema = z.object({
-  validationBinaryPathRefId: z.string().nullable().default(null),
-});
-
 export const AppSettingsFileSchema = z
   .object({
     modelScan: ModelScanSettingsSchema.optional(),
     llamaSource: LlamaSourceSettingsSchema.optional(),
     build: BuildSettingsSchema.omit({ repoPath: true }).optional(),
-    presets: PresetsSettingsSchema.optional(),
   })
   .default({});
 
 export type AppSettingsFile = z.infer<typeof AppSettingsFileSchema>;
-export type PresetsSettings = z.infer<typeof PresetsSettingsSchema>;
 
 export const ModelPresetEntrySchema = z.object({
   id: z.string(),
@@ -2684,7 +2678,7 @@ export const ModelPresetDocumentSchema = z.object({
 });
 
 export const ModelPresetWriteSchema = z.object({
-  file: ModelPresetFileSchema,
+  content: z.string(),
   expectedMtimeMs: z.number().nullable(),
   force: z.boolean().default(false),
 });
