@@ -5,6 +5,7 @@ import {
 
 import { config } from "../config.js";
 import { getInstance } from "../instances/repository.js";
+import { schedulerPoolInputs } from "../resources/ledger.js";
 import {
   requestLlamaModelAction,
   requestLlamaSlotAction,
@@ -33,18 +34,27 @@ export async function getApiProxyPlanPreview(input: {
   );
   const targets = runtime.targets.map((target) => {
     const targetRuntime = runtimeByTargetId.get(target.id);
+    const instanceId = targetRuntime?.instanceId ?? null;
+    const draws = instanceId ? (getInstance(instanceId)?.memory ?? []) : [];
     return targetRuntime
       ? {
           ...target,
-          instanceId: targetRuntime.instanceId,
+          instanceId,
           runtime: targetRuntime,
+          draws,
         }
-      : { ...target, instanceId: null };
+      : { ...target, instanceId: null, draws };
   });
+  const targetInstanceIds = new Set(
+    targets
+      .map((target) => target.instanceId)
+      .filter((id): id is string => Boolean(id)),
+  );
   const request: ApiProxySchedulerPlanRequest = {
     mode: input.mode,
     now: runtime.snapshot.checkedAt,
     targets,
+    pools: schedulerPoolInputs(targetInstanceIds),
   };
   if (input.requestedTargetId) {
     request.requestedTargetId = input.requestedTargetId;

@@ -59,6 +59,33 @@ instance, whose gpu-kind draws are the domains it occupies. The `host` pool yiel
 no compute domain in v1 (CPU contention is left unmanaged). A split instance
 occupies several domains at once.
 
+## Mandate & occupancy
+
+The proxy shares the machine but only moves what it has a mandate over. It must
+_see_ the full pool occupancy (the ledger sum of every resident instance's
+declared draw) yet may only _evict_ a subset. Occupancy splits into three tiers:
+
+- **Immovable** — a resident instance with no proxy target (router preset,
+  manually started, or a non-llama-manager process). Counts against the budget;
+  the proxy never unloads it. If it blocks a request, the proxy waits.
+- **Protected** — a proxy target with `preemptible:false`. The proxy may start
+  and route to it, but never evicts it for another request. Counts; also a
+  reason to wait.
+- **Preemptible** — a proxy target with `preemptible:true` and lower priority
+  than the requester. The only tier the proxy moves (unload + slot save/restore),
+  in priority order.
+
+"Given to manage" = a proxy target exists for the instance; `preemptible` decides
+whether it may be evicted. The same ledger numbers feed both the manager's
+passive manual-start admission (warn/block, moves nothing) and the proxy's active
+planning (evict the preemptible tier).
+
+Truly-external usage (a game, a foreign process — not a llama-manager instance)
+never enters the ledger; the static `reservedBytes` is the only buffer against it
+in v1 (live nvidia-smi subtraction is a v2 concern). When a request cannot fit
+and the obstacle is immovable/protected, it queues and waits rather than 503-ing;
+the wait is bounded only by the request's own timeout/abort.
+
 ## How the axes drive the proxy (later phases)
 
 - **Memory (scheduler):** replace "one active target per group" with quantitative

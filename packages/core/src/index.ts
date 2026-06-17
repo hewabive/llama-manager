@@ -1999,6 +1999,14 @@ export const ApiProxyTargetRuntimeSchema = z.object({
 export const ApiProxyTargetPlanInputSchema = ApiProxyTargetConfigSchema.extend({
   instanceId: z.string().min(1).nullable().default(null),
   runtime: ApiProxyTargetRuntimeSchema.optional(),
+  draws: z.array(InstanceMemoryDrawSchema).default([]),
+});
+
+export const ApiProxySchedulerPoolInputSchema = z.object({
+  poolId: z.string().min(1),
+  kind: MemoryPoolKindSchema,
+  budgetBytes: z.number().int().nonnegative(),
+  usedByOthersBytes: z.number().int().nonnegative(),
 });
 
 export const ApiProxySchedulerModeSchema = z.enum(["request", "idle"]);
@@ -2030,6 +2038,7 @@ export const ApiProxySchedulerPlanRequestSchema = z.object({
   preferredTargetId: ApiProxyIdSchema.optional(),
   now: z.string(),
   targets: z.array(ApiProxyTargetPlanInputSchema),
+  pools: z.array(ApiProxySchedulerPoolInputSchema).default([]),
 });
 
 export const ApiProxySchedulerPlanSchema = z.object({
@@ -2976,6 +2985,9 @@ export type ApiProxyInflightInterruptResult = z.infer<
 export type ApiProxyTargetRuntime = z.infer<typeof ApiProxyTargetRuntimeSchema>;
 export type ApiProxyTargetPlanInput = z.infer<
   typeof ApiProxyTargetPlanInputSchema
+>;
+export type ApiProxySchedulerPoolInput = z.infer<
+  typeof ApiProxySchedulerPoolInputSchema
 >;
 export type ApiProxySchedulerMode = z.infer<typeof ApiProxySchedulerModeSchema>;
 export type ApiProxySchedulerActionType = z.infer<
