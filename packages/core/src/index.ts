@@ -2321,7 +2321,6 @@ export const LlamaArgumentOptionSchema = z.object({
   help: z.string(),
   helpRu: z.string(),
   helpRuSource: z.enum(["registry", "builtin", "fallback"]),
-  notes: z.string().nullable(),
   doc: LlamaArgumentDocIndexSchema,
   control: LlamaArgumentControlSchema,
   compatibility: LlamaArgumentCompatibilitySchema,

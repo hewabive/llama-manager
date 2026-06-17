@@ -166,8 +166,20 @@ function InstanceDefaultsCard({ fm }: { fm: ArgumentsViewController }) {
   );
 }
 
+function curatedShortHelp(option: LlamaArgumentOption): string | null {
+  const { help, helpRu } = option;
+  if (!helpRu || helpRu === help) {
+    return null;
+  }
+  if (help && helpRu.endsWith(help)) {
+    return null;
+  }
+  return helpRu;
+}
+
 export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
   const selectedOption = fm.selectedOption;
+  const shortHelp = selectedOption ? curatedShortHelp(selectedOption) : null;
   return (
     <Paper withBorder p="md" radius="sm" className="args-reference-detail">
       {selectedOption ? (
@@ -214,23 +226,22 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
             </Stack>
           )}
 
-          <Stack gap={4}>
-            <Text fw={600} size="sm">
-              Short help
-            </Text>
-            <Text className="text-wrap" size="sm">
-              {selectedOption.helpRu}
-            </Text>
-          </Stack>
-
           <details className="argument-secondary-details">
             <Text component="summary" fw={600} size="sm">
-              Original --help, values and notes
+              Original --help and values
             </Text>
             <Stack gap="xs" mt="xs">
-              <Text c="dimmed" className="text-wrap" size="sm">
-                {selectedOption.help}
-              </Text>
+              {shortHelp && (
+                <Text className="text-wrap" size="sm">
+                  {shortHelp}
+                </Text>
+              )}
+
+              {selectedOption.help && (
+                <Text c="dimmed" className="text-wrap" size="sm">
+                  {selectedOption.help}
+                </Text>
+              )}
 
               {selectedOption.allowedValues.length > 0 && (
                 <Stack gap={4}>
@@ -242,17 +253,6 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
                       <Code key={value}>{value}</Code>
                     ))}
                   </Group>
-                </Stack>
-              )}
-
-              {selectedOption.notes && (
-                <Stack gap={4}>
-                  <Text c="dimmed" size="xs">
-                    Notes
-                  </Text>
-                  <Text c="dimmed" className="text-wrap" size="sm">
-                    {selectedOption.notes}
-                  </Text>
                 </Stack>
               )}
             </Stack>

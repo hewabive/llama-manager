@@ -419,7 +419,6 @@ function toOption(parsed: ParsedHelpOption): LlamaArgumentOption | null {
       helpRuOverlay[name] ??
       `Оригинальная справка llama.cpp: ${help || parsed.optionText}`,
     helpRuSource: helpRuOverlay[name] ? "builtin" : "fallback",
-    notes: null,
     doc: {
       exists: false,
       path: null,
@@ -488,7 +487,6 @@ function applyArgumentHelp(options: LlamaArgumentOption[]) {
         category,
         helpRu: builtinHelp,
         helpRuSource: "builtin" as const,
-        notes: null,
       };
     }
 
@@ -497,7 +495,6 @@ function applyArgumentHelp(options: LlamaArgumentOption[]) {
       category,
       helpRu: optionFallbackHelpRu(option),
       helpRuSource: "fallback" as const,
-      notes: null,
     };
   });
 }
@@ -596,7 +593,6 @@ function referenceCatalogHash(options: LlamaArgumentOption[]) {
           allowedValues: option.allowedValues,
           help: option.help,
           helpRu: option.helpRu,
-          notes: option.notes,
           control: option.control,
         })),
       ),

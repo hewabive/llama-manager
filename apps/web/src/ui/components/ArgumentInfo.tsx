@@ -39,11 +39,6 @@ export function ArgumentInfo(props: { option: LlamaArgumentOption }) {
             Values: {option.allowedValues.join(", ")}
           </Text>
         )}
-        {option.notes && (
-          <Text c="dimmed" size="xs" mt={6}>
-            Notes: {option.notes}
-          </Text>
-        )}
         <Text c="dimmed" size="xs" mt={6}>
           {option.names.join(", ")}
         </Text>

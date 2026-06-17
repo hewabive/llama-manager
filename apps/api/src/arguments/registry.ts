@@ -180,7 +180,6 @@ export function optionFromArgumentDocFrontmatter(
     help: summary ?? "",
     helpRu: summary ?? `См. инженерную справку для ${primaryName}.`,
     helpRuSource: "registry",
-    notes: null,
     doc: emptyDoc,
     control,
     compatibility: {

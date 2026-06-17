@@ -29,7 +29,6 @@ export function optionSearchText(option: LlamaArgumentOption) {
     option.allowedValues.join(" "),
     option.help,
     option.helpRu,
-    option.notes,
     option.doc.summary,
   ]
     .filter(Boolean)
