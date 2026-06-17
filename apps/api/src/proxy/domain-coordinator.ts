@@ -1,3 +1,4 @@
+import { observeBodyCompletion } from "./body-completion.js";
 import { newId } from "../utils/id.js";
 
 export type DomainHolderView = {
@@ -314,3 +315,21 @@ export class ComputeDomainCoordinator {
 }
 
 export const computeDomainCoordinator = new ComputeDomainCoordinator();
+
+export function attachLeaseRelease(
+  response: Response,
+  lease: { release(): void },
+): Response {
+  if (!response.body) {
+    lease.release();
+    return response;
+  }
+
+  const stream = observeBodyCompletion(response.body, () => lease.release());
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}

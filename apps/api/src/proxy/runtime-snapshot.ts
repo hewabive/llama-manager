@@ -1,6 +1,6 @@
 import { getInstanceHealthSummary } from "../process/health-summary.js";
 import { listInstances } from "../instances/repository.js";
-import { resourceGroupCoordinator } from "./coordinator.js";
+import { computeDomainCoordinator } from "./domain-coordinator.js";
 import { apiProxyInflight } from "./inflight.js";
 import { listApiEndpointCatalog } from "./endpoints.js";
 import {
@@ -44,7 +44,7 @@ export async function getApiProxyRuntimeSnapshot() {
       instances,
       healthByInstanceId: new Map(healthEntries),
       metadataByTargetId: listApiProxyRuntimeMetadata(),
-      busyTargetIds: resourceGroupCoordinator.busyTargetIds(),
+      busyTargetIds: computeDomainCoordinator.busyTargetIds(),
       inflightByTargetId: apiProxyInflight.snapshotByTarget(),
     }),
   };

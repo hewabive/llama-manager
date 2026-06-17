@@ -20,17 +20,22 @@ import {
 import { newId } from "../utils/id.js";
 import { anthropicProtocolAdapter } from "./anthropic.js";
 import { observeBodyCompletion } from "./body-completion.js";
+import { buildDomainAdmissionDecider } from "./domain-admission.js";
 import {
   attachLeaseRelease,
-  resourceGroupCoordinator,
-  type ResourceLease,
-} from "./coordinator.js";
+  computeDomainCoordinator,
+  type DomainLease,
+} from "./domain-coordinator.js";
+import { requestComputeDomains } from "./resource-domains.js";
 import { apiEndpointAuthHeaders, listApiEndpointCatalog } from "./endpoints.js";
 import { apiProxyForwardUrl, forwardApiProxyRequest } from "./forwarder.js";
 import { CLIENT_ABORT_STATUS, describeFetchError } from "./http.js";
 import { apiProxyInflight, type ApiProxyInflightHandle } from "./inflight.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./gateway.js";
-import { getApiProxyPlanPreview } from "./idle-maintenance.js";
+import {
+  buildApiProxyPlanRequest,
+  getApiProxyPlanPreview,
+} from "./idle-maintenance.js";
 import {
   openAiModelsList,
   openAiProtocolAdapter,
@@ -504,16 +509,31 @@ async function proxyProtocolEndpointInner(
       trace.queueMs = Math.round(performance.now() - queueStart);
     }
   };
-  const groupKey = decision.target.resourceGroupId;
-  let lease: ResourceLease | null = null;
-  if (groupKey) {
+  const { request: planRequest } = await buildApiProxyPlanRequest({
+    mode: "request",
+    requestedTargetId: decision.target.id,
+  });
+  const candidatePlanTarget = planRequest.targets.find(
+    (item) => item.id === decision.target.id,
+  );
+  const domains = requestComputeDomains(
+    candidatePlanTarget?.draws ?? [],
+    planRequest.pools,
+  );
+  let lease: DomainLease | null = null;
+  if (domains.length > 0) {
     try {
-      lease = await resourceGroupCoordinator.acquire({
-        groupKey,
+      lease = await computeDomainCoordinator.acquire({
+        domains,
         targetId: decision.target.id,
         priority: decision.target.priority,
         preemptible: decision.target.preemptible,
         signal: c.req.raw.signal,
+        decide: buildDomainAdmissionDecider({
+          candidateTargetId: decision.target.id,
+          candidatePriority: decision.target.priority,
+          planRequest,
+        }),
       });
     } catch {
       const message = `Request for model ${route.request.modelId} was aborted while queued.`;
@@ -872,7 +892,7 @@ async function proxyProtocolEndpointInner(
   };
 
   const respondResumable = async (
-    heldLease: ResourceLease,
+    heldLease: DomainLease,
     upstreamPath: string,
     codec: NonNullable<typeof adapter.resumable>,
   ): Promise<Response> => {

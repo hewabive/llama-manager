@@ -6,9 +6,17 @@ import type {
 } from "@llama-manager/core";
 
 import { anthropicProtocolAdapter } from "./anthropic.js";
-import { resourceGroupCoordinator, type ResourceLease } from "./coordinator.js";
+import { buildDomainAdmissionDecider } from "./domain-admission.js";
+import {
+  computeDomainCoordinator,
+  type DomainLease,
+} from "./domain-coordinator.js";
 import { apiProxyForwardUrl } from "./forwarder.js";
-import { getApiProxyPlanPreview } from "./idle-maintenance.js";
+import {
+  buildApiProxyPlanRequest,
+  getApiProxyPlanPreview,
+} from "./idle-maintenance.js";
+import { requestComputeDomains } from "./resource-domains.js";
 import { openAiProtocolAdapter } from "./openai.js";
 import {
   resolveApiProxyRouteChain,
@@ -88,15 +96,31 @@ export async function executeApiProxyModelSubRequest(input: {
     });
   }
 
-  let lease: ResourceLease | null = null;
-  if (target.resourceGroupId) {
+  const { request: planRequest } = await buildApiProxyPlanRequest({
+    mode: "request",
+    requestedTargetId: target.id,
+  });
+  const candidatePlanTarget = planRequest.targets.find(
+    (item) => item.id === target.id,
+  );
+  const domains = requestComputeDomains(
+    candidatePlanTarget?.draws ?? [],
+    planRequest.pools,
+  );
+  let lease: DomainLease | null = null;
+  if (domains.length > 0) {
     try {
-      lease = await resourceGroupCoordinator.acquire({
-        groupKey: target.resourceGroupId,
+      lease = await computeDomainCoordinator.acquire({
+        domains,
         targetId: target.id,
         priority: target.priority,
         preemptible: false,
         ...(input.signal ? { signal: input.signal } : {}),
+        decide: buildDomainAdmissionDecider({
+          candidateTargetId: target.id,
+          candidatePriority: target.priority,
+          planRequest,
+        }),
       });
     } catch {
       return fail({
