@@ -1,4 +1,8 @@
-import type { InstanceMemoryDraw, MemoryPool } from "@llama-manager/core";
+import type {
+  ApiProxySchedulerPoolInput,
+  InstanceMemoryDraw,
+  MemoryPool,
+} from "@llama-manager/core";
 
 export function gpuComputeDomains(
   draws: InstanceMemoryDraw[],
@@ -14,4 +18,21 @@ export function gpuComputeDomains(
     }
   }
   return [...domains].sort();
+}
+
+export function requestComputeDomains(
+  draws: InstanceMemoryDraw[],
+  pools: Pick<ApiProxySchedulerPoolInput, "poolId" | "kind">[],
+): string[] {
+  return gpuComputeDomains(
+    draws,
+    pools.map((pool) => ({ id: pool.poolId, kind: pool.kind })),
+  );
+}
+
+export function requestNeedsComputeLease(
+  draws: InstanceMemoryDraw[],
+  pools: Pick<ApiProxySchedulerPoolInput, "poolId" | "kind">[],
+): boolean {
+  return requestComputeDomains(draws, pools).length > 0;
 }
