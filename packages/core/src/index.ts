@@ -203,6 +203,10 @@ export const InstanceSchema = InstanceCreateSchema.extend({
   updatedAt: z.string(),
 });
 
+export const InstanceStartRequestSchema = z.object({
+  force: z.boolean().default(false),
+});
+
 export const InstanceConfigRecordSchema = z.object({
   name: InstanceNameSchema,
   binaryPath: z.string(),
@@ -2828,6 +2832,7 @@ export type InstancePreflightPreview = z.infer<
   typeof InstancePreflightPreviewSchema
 >;
 export type InstanceUpdate = z.infer<typeof InstanceUpdateSchema>;
+export type InstanceStartRequest = z.infer<typeof InstanceStartRequestSchema>;
 export type Instance = z.infer<typeof InstanceSchema>;
 export type InstanceConfigRecord = z.infer<typeof InstanceConfigRecordSchema>;
 export type ProcessEvent = z.infer<typeof ProcessEventSchema>;

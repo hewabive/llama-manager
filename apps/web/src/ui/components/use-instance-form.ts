@@ -13,16 +13,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  ApiError,
   createInstance,
   getDefaultLlamaServerBinary,
   getLlamaArgumentDefaults,
   getLlamaArguments,
   getResources,
   getSystemResources,
-  instanceAction,
   listPathCatalog,
   listPresets,
   previewInstancePreflight,
+  startInstance,
   updateInstance,
 } from "../../api/client";
 import { useScannedModels } from "../hooks/use-scanned-models";
@@ -970,18 +971,27 @@ export function useInstanceForm(props: InstanceFormModalProps) {
           };
         } else {
           try {
-            await instanceAction(created.name, "start");
+            await startInstance(created.name);
             props.onLaunchStarted?.(created, "create");
             notification = {
               title: "Instance created and started",
               message: created.name,
             };
           } catch (error) {
-            notification = {
-              title: "Instance created, start failed",
-              message: (error as Error).message,
-              color: "red",
-            };
+            if (error instanceof ApiError && error.status === 409) {
+              notification = {
+                title: "Instance created",
+                message:
+                  "Start skipped: not enough memory budget. Start manually to confirm.",
+                color: "yellow",
+              };
+            } else {
+              notification = {
+                title: "Instance created, start failed",
+                message: (error as Error).message,
+                color: "red",
+              };
+            }
           }
         }
       }

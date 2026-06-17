@@ -2,6 +2,7 @@ import type {
   Instance,
   ProcessPreflightIssue,
   ProcessPreflightResult,
+  ResourceAdmission,
   SystemAccelerator,
 } from "@llama-manager/core";
 import {
@@ -20,6 +21,7 @@ import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
 type PreflightOptions = {
   peers?: Instance[] | undefined;
   accelerators?: SystemAccelerator[] | undefined;
+  capacityAdmission?: ResourceAdmission | undefined;
 };
 
 type StartPreflightOptions = PreflightOptions & {
@@ -549,6 +551,25 @@ function validateGpuLayerRequests(
   }
 }
 
+function validateMemoryCapacity(
+  issues: ProcessPreflightIssue[],
+  options: PreflightOptions,
+) {
+  const admission = options.capacityAdmission;
+  if (!admission || admission.ok) {
+    return;
+  }
+  for (const shortfall of admission.shortfalls) {
+    const deficitGib = (shortfall.deficitBytes / 1024 ** 3).toFixed(1);
+    const freeGib = (shortfall.availableBytes / 1024 ** 3).toFixed(1);
+    issues.push({
+      level: "warning",
+      field: "memory",
+      message: `Memory pool ${shortfall.poolId} is over budget: needs ${deficitGib} GiB more than the ${freeGib} GiB free. Starting will require confirmation.`,
+    });
+  }
+}
+
 function validateArgumentCompatibility(
   instance: Instance,
   issues: ProcessPreflightIssue[],
@@ -679,6 +700,7 @@ export function validateInstancePreflight(
   validateKnownPathArgs(instance, issues);
   validateArgumentCompatibility(instance, issues);
   validateGpuLayerRequests(instance, issues, options);
+  validateMemoryCapacity(issues, options);
 
   return {
     instanceId: instance.name,

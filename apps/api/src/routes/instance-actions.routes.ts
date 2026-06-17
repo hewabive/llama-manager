@@ -1,12 +1,15 @@
 import {
   InstanceBulkActionRequestSchema,
+  InstanceStartRequestSchema,
   type InstanceBulkActionItem,
   type ProcessEvent,
+  type ResourceAdmission,
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 
 import { getInstance, listInstances } from "../instances/repository.js";
+import { admitInstanceDraw } from "../resources/ledger.js";
 import { getInstanceHealthSummary } from "../process/health-summary.js";
 import {
   actionAllowed,
@@ -18,6 +21,18 @@ import {
   stopManagedInstance,
 } from "../process/managed-lifecycle.js";
 import { supervisor } from "../process/supervisor.js";
+
+function formatGib(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+function formatAdmissionError(admission: ResourceAdmission): string {
+  const parts = admission.shortfalls.map(
+    (shortfall) =>
+      `${shortfall.poolId} needs ${formatGib(shortfall.deficitBytes)} more (${formatGib(shortfall.availableBytes)} free)`,
+  );
+  return `Not enough memory to start: ${parts.join("; ")}`;
+}
 
 export function registerInstanceActionRoutes(app: Hono) {
   app.post("/api/instances/actions", async (c) => {
@@ -113,6 +128,22 @@ export function registerInstanceActionRoutes(app: Hono) {
     const instance = getInstance(c.req.param("id"));
     if (!instance) {
       return c.json({ error: "instance not found" }, 404);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = InstanceStartRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    if (!parsed.data.force) {
+      const admission = admitInstanceDraw(instance.memory, {
+        excludeInstanceId: instance.name,
+      });
+      if (!admission.ok) {
+        return c.json(
+          { error: formatAdmissionError(admission), admission },
+          409,
+        );
+      }
     }
     try {
       return c.json({ data: await startManagedInstance(instance) });

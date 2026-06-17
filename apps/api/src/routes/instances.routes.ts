@@ -7,6 +7,7 @@ import {
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 
+import { admitInstanceDraw } from "../resources/ledger.js";
 import { getMemoryPool } from "../resources/repository.js";
 
 import {
@@ -125,6 +126,9 @@ export function registerInstanceRoutes(app: Hono) {
       data: await validateInstanceStartPreflight(instance, {
         peers: listInstances(),
         allowActiveSelfPort: Boolean(preview.name),
+        capacityAdmission: admitInstanceDraw(instance.memory, {
+          excludeInstanceId: instance.name,
+        }),
       }),
     });
   });
@@ -172,6 +176,9 @@ export function registerInstanceRoutes(app: Hono) {
       data: await validateInstanceStartPreflight(instance, {
         peers: listInstances(),
         allowActiveSelfPort: true,
+        capacityAdmission: admitInstanceDraw(instance.memory, {
+          excludeInstanceId: instance.name,
+        }),
       }),
     });
   });

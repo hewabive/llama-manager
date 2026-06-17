@@ -1,4 +1,8 @@
-import type { Instance, InstanceHealthSummary } from "@llama-manager/core";
+import type {
+  Instance,
+  InstanceHealthSummary,
+  ResourceAdmission,
+} from "@llama-manager/core";
 import {
   ActionIcon,
   Button,
@@ -22,13 +26,19 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { deleteInstance, instanceAction } from "../../api/client";
+import {
+  ApiError,
+  deleteInstance,
+  instanceAction,
+  startInstance,
+} from "../../api/client";
 import {
   canOpenLlamaWebUi,
   llamaServerWebUrl,
   llamaWebUiTooltip,
   openUrlInNewTab,
 } from "../utils/instance-url";
+import { formatBytes } from "../utils/models";
 
 type InstanceActionName = "start" | "stop" | "restart";
 
@@ -81,11 +91,18 @@ export function InstanceActions(props: {
   const queryClient = useQueryClient();
   const health = props.health;
   const [deleteConfirmOpened, setDeleteConfirmOpened] = useState(false);
+  const [startConfirm, setStartConfirm] = useState<ResourceAdmission | null>(
+    null,
+  );
 
   const actionMutation = useMutation({
-    mutationFn: (action: InstanceActionName) =>
-      instanceAction(props.instance.name, action),
-    onSuccess: async (_result, action) => {
+    mutationFn: (variables: { action: InstanceActionName; force?: boolean }) =>
+      variables.action === "start"
+        ? startInstance(props.instance.name, variables.force ?? false)
+        : instanceAction(props.instance.name, variables.action),
+    onSuccess: async (_result, variables) => {
+      const action = variables.action;
+      setStartConfirm(null);
       if (action === "start" || action === "restart") {
         props.onLaunchStarted(props.instance, action);
       } else {
@@ -113,7 +130,18 @@ export function InstanceActions(props: {
         }),
       ]);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      if (
+        variables.action === "start" &&
+        error instanceof ApiError &&
+        error.status === 409
+      ) {
+        const admission =
+          (error.body as { admission?: ResourceAdmission } | null)?.admission ??
+          null;
+        setStartConfirm(admission);
+        return;
+      }
       notifications.show({
         color: "red",
         title: "Action failed",
@@ -205,7 +233,7 @@ export function InstanceActions(props: {
             variant="subtle"
             color="green"
             disabled={startDisabled}
-            onClick={() => actionMutation.mutate("start")}
+            onClick={() => actionMutation.mutate({ action: "start" })}
             loading={actionMutation.isPending}
           >
             <Triangle size={16} fill="currentColor" />
@@ -219,7 +247,7 @@ export function InstanceActions(props: {
             variant="subtle"
             color="yellow"
             disabled={stopDisabled}
-            onClick={() => actionMutation.mutate("stop")}
+            onClick={() => actionMutation.mutate({ action: "stop" })}
             loading={actionMutation.isPending}
           >
             <Square size={16} />
@@ -232,7 +260,7 @@ export function InstanceActions(props: {
             aria-label="Restart instance"
             variant="subtle"
             disabled={restartDisabled}
-            onClick={() => actionMutation.mutate("restart")}
+            onClick={() => actionMutation.mutate({ action: "restart" })}
             loading={actionMutation.isPending}
           >
             <RotateCcw size={16} />
@@ -277,6 +305,45 @@ export function InstanceActions(props: {
               onClick={() => deleteMutation.mutate()}
             >
               Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={Boolean(startConfirm)}
+        onClose={() => setStartConfirm(null)}
+        title="Start over budget?"
+        centered
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            Starting this instance would exceed the available memory budget:
+          </Text>
+          <Code className="code-wrap">{props.instance.name}</Code>
+          {startConfirm?.shortfalls.map((shortfall) => (
+            <Text key={shortfall.poolId} size="sm" c="orange">
+              {shortfall.poolId}: needs {formatBytes(shortfall.deficitBytes)}{" "}
+              more than the {formatBytes(shortfall.availableBytes)} free
+            </Text>
+          ))}
+          <Text size="xs" c="dimmed">
+            Start anyway only if the declared footprints are conservative;
+            overcommitting may cause swapping or OOM.
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button variant="default" onClick={() => setStartConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              color="orange"
+              leftSection={<Triangle size={16} fill="currentColor" />}
+              loading={actionMutation.isPending}
+              onClick={() =>
+                actionMutation.mutate({ action: "start", force: true })
+              }
+            >
+              Start anyway
             </Button>
           </Group>
         </Stack>

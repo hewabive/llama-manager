@@ -79,9 +79,12 @@ occupies several domains at once.
   `resources` domain + `config/resources.json` scaffold/refresh, `GET /api/resources`
   and `PUT /api/resources/pools/:id`, `instance.memory` threaded through the
   repository with poolId ref validation. No scheduler/coordinator change.
-- **Phase 1:** manual-start admission — `POST /api/instances/:id/start` runs the
-  ledger; over-budget returns a confirmable `409` and the UI shows an OK/Cancel
-  dialog (`force: true` overrides). A capacity `warning` surfaces in preflight.
+- **Phase 1 (done):** manual-start admission — `POST /api/instances/:id/start`
+  takes `{ force }` and runs the ledger; over-budget returns a confirmable `409`
+  with the `ResourceAdmission` shortfall, and the UI shows a Start-anyway/Cancel
+  dialog (`force: true` overrides). Proxy autostart bypasses the gate (planned by
+  the scheduler in Phase 2). A capacity `warning` surfaces in the preflight
+  endpoints (form preview). Bulk start is not gated yet.
 - **Phase 2:** proxy memory axis — extend the scheduler snapshot with pools + draws,
   swap exclusivity for fit + greedy eviction, key the coordinator on compute domain,
   drop the vestigial target `resourceGroupId` (migrate-and-drop per

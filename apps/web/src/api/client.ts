@@ -129,6 +129,17 @@ function formatApiErrorValue(value: unknown): string | null {
   );
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     credentials: "include",
@@ -158,11 +169,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ?.map((issue) => formatApiErrorValue(issue.message))
         .filter(Boolean)
         .join("; ");
-      throw new Error(
+      throw new ApiError(
         issueText || formatApiErrorValue(parsed.error) || response.statusText,
+        response.status,
+        parsed,
       );
     }
-    throw new Error(error || response.statusText);
+    throw new ApiError(error || response.statusText, response.status, null);
   }
 
   return (await response.json()) as T;
@@ -681,6 +694,13 @@ export async function instanceAction(
 ) {
   return request<{ data: unknown }>(`/api/instances/${id}/${action}`, {
     method: "POST",
+  });
+}
+
+export async function startInstance(id: string, force = false) {
+  return request<{ data: unknown }>(`/api/instances/${id}/start`, {
+    method: "POST",
+    body: JSON.stringify({ force }),
   });
 }
 
