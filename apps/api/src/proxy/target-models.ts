@@ -40,7 +40,7 @@ function managedGroup(
   return {
     endpointId: endpoint.id,
     endpointName: endpoint.name,
-    kind: "managed-single",
+    kind: "managed-instance",
     online: instanceOnline(instance),
     options: [
       {

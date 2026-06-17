@@ -46,7 +46,7 @@ function suggestedTargetName(
 }
 
 function targetModelKindLabel(kind: ApiProxyTargetModelGroup["kind"]) {
-  if (kind === "managed-single") return "single";
+  if (kind === "managed-instance") return "managed";
   return "external";
 }
 
