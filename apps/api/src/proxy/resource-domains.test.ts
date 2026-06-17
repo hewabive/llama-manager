@@ -2,11 +2,7 @@ import type { ApiProxySchedulerPoolInput, MemoryPool } from "@llama-manager/core
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  computeDomains,
-  requestComputeDomains,
-  requestNeedsComputeLease,
-} from "./resource-domains.js";
+import { computeDomains, requestComputeDomains } from "./resource-domains.js";
 
 const POOLS: Pick<MemoryPool, "id" | "kind">[] = [
   { id: "gpu0", kind: "gpu" },
@@ -98,16 +94,4 @@ test("requestComputeDomains returns the host domain for a host-only draw", () =>
     requestComputeDomains([{ poolId: "host", bytes: 1 }], POOL_INPUTS),
     ["host"],
   );
-});
-
-test("requestNeedsComputeLease is true whenever any declared pool is touched", () => {
-  assert.equal(
-    requestNeedsComputeLease([{ poolId: "gpu0", bytes: 1 }], POOL_INPUTS),
-    true,
-  );
-  assert.equal(
-    requestNeedsComputeLease([{ poolId: "host", bytes: 1 }], POOL_INPUTS),
-    true,
-  );
-  assert.equal(requestNeedsComputeLease([], POOL_INPUTS), false);
 });

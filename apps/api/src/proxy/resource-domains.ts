@@ -4,11 +4,10 @@ import type {
   MemoryPool,
 } from "@llama-manager/core";
 
-export function computeDomains(
+function drawnDomains(
   draws: InstanceMemoryDraw[],
-  pools: Pick<MemoryPool, "id">[],
+  poolIds: Set<string>,
 ): string[] {
-  const poolIds = new Set(pools.map((pool) => pool.id));
   const domains = new Set<string>();
   for (const draw of draws) {
     if (poolIds.has(draw.poolId)) {
@@ -18,19 +17,16 @@ export function computeDomains(
   return [...domains].sort();
 }
 
+export function computeDomains(
+  draws: InstanceMemoryDraw[],
+  pools: Pick<MemoryPool, "id">[],
+): string[] {
+  return drawnDomains(draws, new Set(pools.map((pool) => pool.id)));
+}
+
 export function requestComputeDomains(
   draws: InstanceMemoryDraw[],
   pools: Pick<ApiProxySchedulerPoolInput, "poolId">[],
 ): string[] {
-  return computeDomains(
-    draws,
-    pools.map((pool) => ({ id: pool.poolId })),
-  );
-}
-
-export function requestNeedsComputeLease(
-  draws: InstanceMemoryDraw[],
-  pools: Pick<ApiProxySchedulerPoolInput, "poolId">[],
-): boolean {
-  return requestComputeDomains(draws, pools).length > 0;
+  return drawnDomains(draws, new Set(pools.map((pool) => pool.poolId)));
 }
