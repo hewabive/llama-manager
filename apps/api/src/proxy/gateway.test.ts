@@ -74,6 +74,7 @@ function planPreview(
       mode: "request",
       requestedTargetId: target.id,
       blockingReason: null,
+      preemptTargetIds: [],
       actions: [
         {
           type: "route-request",

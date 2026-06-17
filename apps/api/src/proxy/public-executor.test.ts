@@ -65,6 +65,7 @@ function preview(actions: ApiProxySchedulerAction[]): ApiProxyPlanPreview {
       mode: "request",
       requestedTargetId: target.id,
       blockingReason: null,
+      preemptTargetIds: [],
       actions,
     },
   };

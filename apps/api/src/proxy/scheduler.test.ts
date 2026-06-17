@@ -524,6 +524,144 @@ test("planApiProxyRequest queues when immovable usage leaves no room (memory)", 
   assert.deepEqual(plan.actions, []);
 });
 
+test("planApiProxyRequest preempts a busy lower-priority peer when allowed (memory)", () => {
+  const request = planRequest({
+    mode: "request",
+    requestedTargetId: "urgent",
+    now: "2026-05-30T10:00:00.000Z",
+    pools: [
+      { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+    ],
+    targets: [
+      target({
+        id: "batch",
+        name: "Batch",
+        instanceId: "inst-batch",
+        model: "slow",
+        priority: 10,
+        state: "busy",
+        activeRequests: 1,
+        resourceGroupId: null,
+        draws: [{ poolId: "gpu0", bytes: 70 }],
+      }),
+      target({
+        id: "urgent",
+        name: "Urgent chat",
+        instanceId: "inst-urgent",
+        model: "chat",
+        priority: 100,
+        state: "unloaded",
+        resourceGroupId: null,
+        draws: [{ poolId: "gpu0", bytes: 50 }],
+      }),
+    ],
+  });
+
+  const blockedPlan = planApiProxyRequest(request);
+  assert.equal(blockedPlan.ok, false);
+  assert.deepEqual(blockedPlan.preemptTargetIds, []);
+
+  const plan = planApiProxyRequest(request, { allowBusyEviction: true });
+  assert.equal(plan.ok, true);
+  assert.deepEqual(plan.preemptTargetIds, ["batch"]);
+  assert.deepEqual(
+    plan.actions.map((item) => item.type),
+    ["unload-model", "load-model", "wait-model-ready", "route-request"],
+  );
+  assert.equal(plan.actions[0]?.targetId, "batch");
+});
+
+test("planApiProxyRequest prefers an idle victim over a busy one (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "idle-batch",
+          name: "Idle batch",
+          instanceId: "inst-idle",
+          model: "slow",
+          priority: 10,
+          state: "idle",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 40 }],
+        }),
+        target({
+          id: "busy-batch",
+          name: "Busy batch",
+          instanceId: "inst-busy",
+          model: "slow2",
+          priority: 10,
+          state: "busy",
+          activeRequests: 1,
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 40 }],
+        }),
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 50 }],
+        }),
+      ],
+    }),
+    { allowBusyEviction: true },
+  );
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(plan.preemptTargetIds, []);
+  assert.equal(plan.actions[0]?.targetId, "idle-batch");
+});
+
+test("planApiProxyRequest never preempts an equal-priority busy peer (memory)", () => {
+  const plan = planApiProxyRequest(
+    planRequest({
+      mode: "request",
+      requestedTargetId: "urgent",
+      now: "2026-05-30T10:00:00.000Z",
+      pools: [
+        { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+      ],
+      targets: [
+        target({
+          id: "peer",
+          name: "Peer",
+          instanceId: "inst-peer",
+          model: "slow",
+          priority: 100,
+          state: "busy",
+          activeRequests: 1,
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 70 }],
+        }),
+        target({
+          id: "urgent",
+          name: "Urgent chat",
+          instanceId: "inst-urgent",
+          model: "chat",
+          priority: 100,
+          state: "unloaded",
+          resourceGroupId: null,
+          draws: [{ poolId: "gpu0", bytes: 50 }],
+        }),
+      ],
+    }),
+    { allowBusyEviction: true },
+  );
+
+  assert.equal(plan.ok, false);
+  assert.match(plan.blockingReason ?? "", /does not fit/);
+});
+
 test("planApiProxyRequest skips the memory axis when no draws are declared", () => {
   const plan = planApiProxyRequest(
     planRequest({

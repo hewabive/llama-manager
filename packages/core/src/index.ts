@@ -2046,6 +2046,7 @@ export const ApiProxySchedulerPlanSchema = z.object({
   mode: ApiProxySchedulerModeSchema,
   requestedTargetId: z.string().nullable(),
   actions: z.array(ApiProxySchedulerActionSchema),
+  preemptTargetIds: z.array(ApiProxyIdSchema).default([]),
   blockingReason: z.string().nullable(),
 });
 

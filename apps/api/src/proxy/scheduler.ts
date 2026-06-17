@@ -77,6 +77,7 @@ function blocked(
     mode: request.mode,
     requestedTargetId: request.requestedTargetId ?? null,
     actions: [],
+    preemptTargetIds: [],
     blockingReason,
   };
 }
@@ -210,13 +211,14 @@ function drawOnPools(peer: MemoryPeerInstance, pools: Set<string>): number {
 }
 
 type MemoryFitResult =
-  | { ok: true; actions: ApiProxySchedulerAction[] }
+  | { ok: true; actions: ApiProxySchedulerAction[]; preemptTargetIds: string[] }
   | { ok: false; reason: string };
 
 function planMemoryEvictions(
   request: ApiProxySchedulerPlanRequest,
   target: ApiProxyTargetPlanInput,
   freedInstanceIds: Set<string>,
+  allowBusyEviction: boolean,
 ): MemoryFitResult {
   const targetDraw = drawByPool(target.draws);
   if (
@@ -225,7 +227,7 @@ function planMemoryEvictions(
     isActive(target) ||
     !isManaged(target)
   ) {
-    return { ok: true, actions: [] };
+    return { ok: true, actions: [], preemptTargetIds: [] };
   }
 
   const poolById = new Map<string, ApiProxySchedulerPoolInput>(
@@ -256,47 +258,63 @@ function planMemoryEvictions(
   };
 
   const actions: ApiProxySchedulerAction[] = [];
+  const preemptTargetIds: string[] = [];
   while (true) {
     const deficits = deficitPools();
     if (deficits.length === 0) {
-      return { ok: true, actions };
+      return { ok: true, actions, preemptTargetIds };
     }
     const deficitSet = new Set(deficits);
-    const victims = [...kept.values()].filter(
-      (peer) =>
-        peer.preemptible &&
-        !peer.busy &&
-        peer.priority <= target.priority &&
-        drawOnPools(peer, deficitSet) > 0,
+    const eligible = (peer: MemoryPeerInstance, busy: boolean): boolean =>
+      peer.preemptible &&
+      peer.busy === busy &&
+      drawOnPools(peer, deficitSet) > 0 &&
+      (busy ? peer.priority < target.priority : peer.priority <= target.priority);
+
+    const idleVictims = [...kept.values()].filter((peer) =>
+      eligible(peer, false),
     );
-    if (victims.length === 0) {
+    const busyVictims = allowBusyEviction
+      ? [...kept.values()].filter((peer) => eligible(peer, true))
+      : [];
+
+    const tier = idleVictims.length > 0 ? idleVictims : busyVictims;
+    if (tier.length === 0) {
       return {
         ok: false,
         reason: `${target.name} does not fit available memory on pool(s) ${deficits.join(", ")}; queued behind resident models`,
       };
     }
-    victims.sort(
+    tier.sort(
       (left, right) =>
         left.priority - right.priority ||
         (right.idleForMs ?? 0) - (left.idleForMs ?? 0) ||
         drawOnPools(right, deficitSet) - drawOnPools(left, deficitSet),
     );
-    const victim = victims[0];
+    const victim = tier[0];
     if (!victim) {
-      return { ok: true, actions };
+      return { ok: true, actions, preemptTargetIds };
     }
     kept.delete(victim.instanceId);
     actions.push(
       ...unloadActions(
         victim.target,
-        `${target.name} needs memory; evicting idle ${victim.target.name}`,
+        `${target.name} needs memory; evicting ${victim.busy ? "busy" : "idle"} ${victim.target.name}`,
       ),
     );
+    if (victim.busy) {
+      preemptTargetIds.push(victim.target.id);
+    }
   }
 }
 
+export type PlanRequestOptions = {
+  allowBusyEviction?: boolean;
+};
+
 export function planApiProxyRequest(
   request: ApiProxySchedulerPlanRequest,
+  options: PlanRequestOptions = {},
 ): ApiProxySchedulerPlan {
   if (request.mode !== "request") {
     throw new Error("planApiProxyRequest expects request mode");
@@ -349,7 +367,12 @@ export function planApiProxyRequest(
     }
   }
 
-  const memory = planMemoryEvictions(request, target, freedInstanceIds);
+  const memory = planMemoryEvictions(
+    request,
+    target,
+    freedInstanceIds,
+    options.allowBusyEviction ?? false,
+  );
   if (!memory.ok) {
     return blocked(request, memory.reason);
   }
@@ -363,6 +386,7 @@ export function planApiProxyRequest(
     mode: request.mode,
     requestedTargetId: target.id,
     actions,
+    preemptTargetIds: memory.preemptTargetIds,
     blockingReason: null,
   };
 }
@@ -419,6 +443,7 @@ export function planApiProxyIdleMaintenance(
     mode: request.mode,
     requestedTargetId: null,
     actions,
+    preemptTargetIds: [],
     blockingReason: null,
   };
 }
