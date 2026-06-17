@@ -271,7 +271,7 @@ function planMemoryEvictions(
     if (tier.length === 0) {
       return {
         ok: false,
-        reason: `${target.name} does not fit available memory on pool(s) ${deficits.join(", ")}; queued behind resident models`,
+        reason: `${target.name} does not fit available memory on pool(s) ${deficits.join(", ")}; no preemptible models available to evict`,
       };
     }
     tier.sort(

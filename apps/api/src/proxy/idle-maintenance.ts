@@ -13,7 +13,7 @@ import {
 } from "../llama/probe.js";
 import { supervisor } from "../process/supervisor.js";
 import { computeDomainCoordinator } from "./domain-coordinator.js";
-import { gpuComputeDomains } from "./resource-domains.js";
+import { computeDomains } from "./resource-domains.js";
 import {
   addApiProxySavedSlotId,
   apiProxySlotFilename,
@@ -119,7 +119,7 @@ async function runApiProxyIdleMaintenancePass() {
     if (!instance) {
       continue;
     }
-    const domains = gpuComputeDomains(instance.memory, pools);
+    const domains = computeDomains(instance.memory, pools);
     const lease =
       domains.length > 0
         ? computeDomainCoordinator.tryAcquireMaintenance(domains)

@@ -53,11 +53,18 @@ wraps them over the live set of running instances (`starting`/`running` = reside
 
 ## Compute model
 
-A **compute domain** is a set of execution units that contend — one per GPU in v1.
-Domains are **not** a separate config entity: a managed target resolves to an
-instance, whose gpu-kind draws are the domains it occupies. The `host` pool yields
-no compute domain in v1 (CPU contention is left unmanaged). A split instance
-occupies several domains at once.
+A **compute domain** is a set of execution units that contend. Domains are **not**
+a separate config entity: a managed target resolves to an instance, and **every
+memory pool it draws from is a compute domain** — a GPU VRAM pool is that GPU's
+compute, the `host` pool is CPU compute. A split instance (gpu + host draws)
+occupies several domains at once and is arbitrated on each.
+
+CPU contention is arbitrated exactly like GPU contention (the per-domain priority
+queue below). The v1 simplification (the draw model does not yet parse
+`--n-gpu-layers`): an instance is assumed to compute on every pool it declares a
+draw on, so a fully GPU-offloaded instance should declare only its VRAM draw —
+declaring host overhead would take a (mostly harmless) CPU lease. Precise
+CPU-vs-GPU compute attribution arrives with draw auto-derivation from launch args.
 
 ## Mandate & occupancy
 
@@ -96,21 +103,23 @@ the wait is bounded only by the request's own timeout/abort.
   is set, **busy** ones (`preemptible`, priority < requester, surfaced as
   `preemptTargetIds`) — until it fits, else the request queues (`ok:false`). The
   fit pass is **inert until draws are declared** (empty `memory` ⇒ skipped).
-- **Compute (coordinator):** the `ComputeDomainCoordinator` is keyed on the gpu
-  domains a request draws from. A new request of priority `P` waits while any
-  in-flight request of priority `> P` runs on a shared domain; equal priorities run
-  concurrently (the GPU time-slices). In-flight lower-priority requests are **not**
-  interrupted for the compute axis — only new dispatch is held. The
-  `decide()` policy (`proxy/domain-admission.ts`) folds this hold together with the
-  memory plan, so a single admission either admits concurrently, preempts a busy
-  preemptible lower-priority holder (abort → slot save → swap → resume), or queues.
+- **Compute (coordinator):** the `ComputeDomainCoordinator` is keyed on the
+  compute domains a request draws from (gpu **and** host pools). A new request of
+  priority `P` waits while any in-flight request of priority `> P` runs on a shared
+  domain; equal priorities run concurrently (the GPU or CPU time-slices). In-flight
+  lower-priority requests are **not** interrupted for the compute axis — only new
+  dispatch is held. The `decide()` policy (`proxy/domain-admission.ts`) folds this
+  hold together with the memory plan, so a single admission either admits
+  concurrently, preempts a busy preemptible lower-priority holder (abort → slot save
+  → swap → resume), or queues.
 
 Bare concurrency was always available — two resident `llama-server` processes
-time-slice on the GPU, and a request with no gpu draws takes no lease
-(`requestComputeDomains` returns none), so such requests dispatch in parallel. What
-Phase 3 added is **arbitration**: the multi-holder, individually-preemptible,
-priority-gated domain gate that lets fitting models coexist, holds low priority
-behind high, and preempts a busy resident to reclaim memory.
+time-slice on the device, and a request whose instance declares **no** memory
+draws takes no lease (`requestComputeDomains` returns none), so such requests
+dispatch in parallel. What Phase 3 added is **arbitration**: the multi-holder,
+individually-preemptible, priority-gated domain gate that lets fitting models
+coexist, holds low priority behind high, and preempts a busy resident to reclaim
+memory — uniformly across GPU and CPU domains.
 
 ## Phasing
 
@@ -154,7 +163,7 @@ behind high, and preempts a busy resident to reclaim memory.
 ## Future axes
 
 NUMA / dual-socket: VRAM pools are unaffected; the `host` pool splits into
-per-node pools and gains an affinity field (numactl), and CPU sockets become
-compute domains. Per-node host budgets are only meaningful once the process is
-pinned, so they stay advisory until pinning lands. The pool/domain split keeps the
-schema ready for this without rework.
+per-node pools and gains an affinity field (numactl). Each per-node host pool then
+becomes its own compute domain **automatically** — a domain is just the poolId a
+draw touches, so no coordinator rework is needed. Per-node host budgets are only
+meaningful once the process is pinned, so they stay advisory until pinning lands.

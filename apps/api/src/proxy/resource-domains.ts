@@ -4,16 +4,14 @@ import type {
   MemoryPool,
 } from "@llama-manager/core";
 
-export function gpuComputeDomains(
+export function computeDomains(
   draws: InstanceMemoryDraw[],
-  pools: Pick<MemoryPool, "id" | "kind">[],
+  pools: Pick<MemoryPool, "id">[],
 ): string[] {
-  const gpuPoolIds = new Set(
-    pools.filter((pool) => pool.kind === "gpu").map((pool) => pool.id),
-  );
+  const poolIds = new Set(pools.map((pool) => pool.id));
   const domains = new Set<string>();
   for (const draw of draws) {
-    if (gpuPoolIds.has(draw.poolId)) {
+    if (poolIds.has(draw.poolId)) {
       domains.add(draw.poolId);
     }
   }
@@ -22,17 +20,17 @@ export function gpuComputeDomains(
 
 export function requestComputeDomains(
   draws: InstanceMemoryDraw[],
-  pools: Pick<ApiProxySchedulerPoolInput, "poolId" | "kind">[],
+  pools: Pick<ApiProxySchedulerPoolInput, "poolId">[],
 ): string[] {
-  return gpuComputeDomains(
+  return computeDomains(
     draws,
-    pools.map((pool) => ({ id: pool.poolId, kind: pool.kind })),
+    pools.map((pool) => ({ id: pool.poolId })),
   );
 }
 
 export function requestNeedsComputeLease(
   draws: InstanceMemoryDraw[],
-  pools: Pick<ApiProxySchedulerPoolInput, "poolId" | "kind">[],
+  pools: Pick<ApiProxySchedulerPoolInput, "poolId">[],
 ): boolean {
   return requestComputeDomains(draws, pools).length > 0;
 }
