@@ -515,6 +515,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env,
+        memory: props.instance?.memory ?? [],
       };
       return { input, error: null };
     } catch (error) {
@@ -1040,6 +1041,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env: parseEnvJson(values.envJson),
+        memory: props.instance?.memory ?? [],
       };
       mutation.mutate(input);
     } catch (error) {

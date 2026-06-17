@@ -32,6 +32,7 @@ function instance(name = "instance-a"): Instance {
     binaryPathRefId: "bin-a",
     args: {},
     env: {},
+    memory: [],
     status: "running",
     pid: 100,
     createdAt: "2026-05-30T10:00:00.000Z",

@@ -3,8 +3,11 @@ import {
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
   type Instance,
+  type InstanceMemoryDraw,
 } from "@llama-manager/core";
 import type { Hono } from "hono";
+
+import { getMemoryPool } from "../resources/repository.js";
 
 import {
   InstanceNameConflictError,
@@ -45,6 +48,17 @@ function validateInstancePathRefs(input: {
   return null;
 }
 
+function validateInstanceMemoryRefs(input: {
+  memory?: InstanceMemoryDraw[] | undefined;
+}) {
+  for (const draw of input.memory ?? []) {
+    if (!getMemoryPool(draw.poolId)) {
+      return `memory pool not found: ${draw.poolId}`;
+    }
+  }
+  return null;
+}
+
 export function registerInstanceRoutes(app: Hono) {
   app.get("/api/instances", (c) => {
     return c.json({ data: listInstances() });
@@ -66,7 +80,9 @@ export function registerInstanceRoutes(app: Hono) {
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
-    const refError = validateInstancePathRefs(parsed.data);
+    const refError =
+      validateInstancePathRefs(parsed.data) ??
+      validateInstanceMemoryRefs(parsed.data);
     if (refError) {
       return c.json({ error: refError }, 400);
     }
@@ -99,6 +115,7 @@ export function registerInstanceRoutes(app: Hono) {
       cwd: preview.cwd,
       args: preview.args,
       env: preview.env,
+      memory: preview.memory,
       status: "stopped",
       pid: null,
       createdAt: timestamp,
@@ -209,7 +226,9 @@ export function registerInstanceRoutes(app: Hono) {
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
-    const refError = validateInstancePathRefs(parsed.data);
+    const refError =
+      validateInstancePathRefs(parsed.data) ??
+      validateInstanceMemoryRefs(parsed.data);
     if (refError) {
       return c.json({ error: refError }, 400);
     }

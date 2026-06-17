@@ -23,6 +23,7 @@ import { registerModelRoutes } from "./routes/models.routes.js";
 import { registerPathCatalogRoutes } from "./routes/path-catalog.routes.js";
 import { registerPresetRoutes } from "./routes/presets.routes.js";
 import { registerProxyRoutes } from "./routes/proxy.routes.js";
+import { registerResourceRoutes } from "./routes/resources.routes.js";
 import { registerProxyTargetRoutes } from "./routes/proxy-targets.routes.js";
 import { registerSystemRoutes } from "./routes/system.routes.js";
 
@@ -49,6 +50,7 @@ registerAnthropicProxyRoutes(app, "/proxy/anthropic/v1");
 registerAnthropicProxyRoutes(app, "/v1");
 
 registerPathCatalogRoutes(app);
+registerResourceRoutes(app);
 registerProxyRoutes(app);
 registerEndpointRoutes(app);
 registerLabRoutes(app);

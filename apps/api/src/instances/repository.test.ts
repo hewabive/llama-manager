@@ -43,6 +43,7 @@ test("createInstance writes a file and resolves the binary path", () => {
     binaryPathRefId: binaryRefId,
     args: { "--ctx-size": 4096 },
     env: { CUDA_VISIBLE_DEVICES: "0" },
+    memory: [],
   });
 
   assert.equal(created.name, name);
@@ -70,6 +71,7 @@ test("getInstance/listInstances read back from files", () => {
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
+    memory: [],
   });
 
   resetInstancesCache();
@@ -79,10 +81,10 @@ test("getInstance/listInstances read back from files", () => {
 
 test("createInstance rejects duplicate names", () => {
   const name = uniqueName("dup");
-  createInstance({ name, binaryPathRefId: binaryRefId, args: {}, env: {} });
+  createInstance({ name, binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] });
   assert.throws(
     () =>
-      createInstance({ name, binaryPathRefId: binaryRefId, args: {}, env: {} }),
+      createInstance({ name, binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] }),
     InstanceNameConflictError,
   );
 });
@@ -94,6 +96,7 @@ test("updateInstance renaming moves the file", () => {
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
+    memory: [],
   });
 
   const newName = uniqueName("new");
@@ -112,12 +115,14 @@ test("updateInstance rejects renaming onto an existing name", () => {
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
+    memory: [],
   });
   const b = createInstance({
     name: uniqueName("b"),
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
+    memory: [],
   });
 
   assert.throws(
@@ -133,6 +138,7 @@ test("deleteInstance removes the file and prunes process_runs", () => {
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
+    memory: [],
   });
   createProcessRun({
     instanceId: created.name,

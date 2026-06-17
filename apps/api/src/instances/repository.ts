@@ -72,6 +72,7 @@ function toInstance(record: InstanceConfigRecord): Instance {
     cwd: record.cwd ?? undefined,
     args: record.args,
     env: record.env,
+    memory: record.memory,
     status: processState?.status ?? durableState.status,
     pid: processState?.pid ?? durableState.pid,
     createdAt: record.createdAt,
@@ -103,6 +104,7 @@ export function createInstance(input: InstanceCreate): Instance {
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
     args: input.args,
     env: input.env,
+    memory: input.memory,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -136,6 +138,7 @@ export function updateInstance(
     ...(nextCwd !== undefined ? { cwd: nextCwd } : {}),
     args: input.args ?? current.args,
     env: input.env ?? current.env,
+    memory: input.memory ?? current.memory,
     createdAt: current.createdAt,
     updatedAt: nowIso(),
   };

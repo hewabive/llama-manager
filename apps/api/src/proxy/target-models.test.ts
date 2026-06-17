@@ -16,6 +16,7 @@ function instance(name: string, args: Instance["args"]): Instance {
     binaryPathRefId: "bin",
     args,
     env: {},
+    memory: [],
     status: "running",
     pid: 1,
     createdAt: "2026-06-03T00:00:00.000Z",

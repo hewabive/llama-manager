@@ -17,6 +17,10 @@ import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { listInstances } from "./instances/repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
 import { pruneProcessRunHistory } from "./process/runs-repository.js";
+import {
+  ensureResourcePoolsScaffold,
+  refreshAutoCapacities,
+} from "./resources/repository.js";
 import { initAppSettings } from "./settings/store.js";
 import { supervisor } from "./process/supervisor.js";
 
@@ -29,6 +33,8 @@ ensureConfigScaffold();
 const appliedMigrations = runMigrations();
 initAppSettings();
 initArgumentDefaults();
+const seededResourcePools = ensureResourcePoolsScaffold();
+const refreshedResourcePools = refreshAutoCapacities();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
 const prunedModelCache = pruneMissingCachedModels();
 const reconciliation = reconcileProcessRuns(listInstances());
@@ -57,6 +63,8 @@ const server = serve(
         prunedProcessRuns,
         prunedArgumentCatalogs,
         prunedModelCache,
+        seededResourcePools,
+        refreshedResourcePools,
       },
       "llama-manager api listening",
     );
