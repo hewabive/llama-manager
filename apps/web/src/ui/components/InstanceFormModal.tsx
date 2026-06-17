@@ -14,6 +14,7 @@ import { Triangle } from "lucide-react";
 
 import { InstanceFormArgumentsSection } from "./InstanceFormArgumentsSection";
 import { InstanceFormCudaSection } from "./InstanceFormCudaSection";
+import { InstanceFormMemorySection } from "./InstanceFormMemorySection";
 import { InstanceFormModelSection } from "./InstanceFormModelSection";
 import { InstanceFormPreflightSection } from "./InstanceFormPreflightSection";
 import { InstanceFormSpecSection } from "./InstanceFormSpecSection";
@@ -85,6 +86,7 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
           <InstanceFormArgumentsSection fm={fm} />
           <InstanceFormPreflightSection fm={fm} />
           <InstanceFormCudaSection fm={fm} />
+          <InstanceFormMemorySection fm={fm} />
           <JsonInput
             label="Environment"
             minRows={4}

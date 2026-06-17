@@ -2,6 +2,7 @@ import {
   InstanceArgsSchema,
   type Instance,
   type InstanceCreate,
+  type InstanceMemoryDraw,
   type InstancePreflightPreview,
   type InstanceUpdate,
   type LlamaArgumentOption,
@@ -16,6 +17,7 @@ import {
   getDefaultLlamaServerBinary,
   getLlamaArgumentDefaults,
   getLlamaArguments,
+  getResources,
   getSystemResources,
   instanceAction,
   listPathCatalog,
@@ -70,6 +72,31 @@ import {
   type RemoteSource,
 } from "./instance-form-helpers";
 
+const MEMORY_GIB = 1024 ** 3;
+
+export type MemoryDraftRow = {
+  id: string;
+  poolId: string;
+  gib: number | string;
+};
+
+function memoryRowsFromDraws(draws: InstanceMemoryDraw[]): MemoryDraftRow[] {
+  return draws.map((draw) => ({
+    id: createUiId(),
+    poolId: draw.poolId,
+    gib: Math.round((draw.bytes / MEMORY_GIB) * 100) / 100,
+  }));
+}
+
+function memoryDrawsFromRows(rows: MemoryDraftRow[]): InstanceMemoryDraw[] {
+  return rows
+    .filter((row) => row.poolId && Number(row.gib) > 0)
+    .map((row) => ({
+      poolId: row.poolId,
+      bytes: Math.round(Number(row.gib) * MEMORY_GIB),
+    }));
+}
+
 export type InstanceFormModalProps = {
   opened: boolean;
   onClose: () => void;
@@ -105,6 +132,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     null,
   );
   const [startAfterCreate, setStartAfterCreate] = useState(false);
+  const [memoryRows, setMemoryRows] = useState<MemoryDraftRow[]>([]);
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -118,6 +146,39 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     },
   });
   const isEdit = Boolean(props.instance);
+  const resourcesQuery = useQuery({
+    queryKey: ["resources"],
+    queryFn: getResources,
+    enabled: props.opened,
+    staleTime: 30_000,
+  });
+  const memoryPools = resourcesQuery.data?.data.pools ?? [];
+  const memoryLedger = resourcesQuery.data?.data.ledger.pools ?? [];
+  const memoryPoolOptions = memoryPools.map((pool) => ({
+    value: pool.id,
+    label: `${pool.name} (${pool.kind})`,
+  }));
+
+  function addMemoryRow() {
+    setMemoryRows((rows) => [
+      ...rows,
+      { id: createUiId(), poolId: "", gib: "" },
+    ]);
+  }
+
+  function updateMemoryRow(
+    id: string,
+    patch: Partial<Omit<MemoryDraftRow, "id">>,
+  ) {
+    setMemoryRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function removeMemoryRow(id: string) {
+    setMemoryRows((rows) => rows.filter((row) => row.id !== id));
+  }
+
   const scanned = useScannedModels({
     enabled: props.opened,
   });
@@ -435,6 +496,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       );
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args, knownArgByName));
+      setMemoryRows(memoryRowsFromDraws(props.instance.memory));
     } else {
       const modelPath = props.initialModelPath ?? null;
       const port = nextAvailablePort(props.instances);
@@ -452,6 +514,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setSpecAdvancedOpen(false);
       setStartAfterCreate(false);
       setArgRows(defaultRows(modelPath ?? undefined, port));
+      setMemoryRows([]);
     }
   }, [
     argumentDefaultsQuery.isLoading,
@@ -515,7 +578,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env,
-        memory: props.instance?.memory ?? [],
+        memory: memoryDrawsFromRows(memoryRows),
       };
       return { input, error: null };
     } catch (error) {
@@ -526,6 +589,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     form.values.envJson,
     form.values.name,
     knownArgByName,
+    memoryRows,
     props.instance?.name,
     selectedBinaryPathRefId,
   ]);
@@ -1041,7 +1105,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env: parseEnvJson(values.envJson),
-        memory: props.instance?.memory ?? [],
+        memory: memoryDrawsFromRows(memoryRows),
       };
       mutation.mutate(input);
     } catch (error) {
@@ -1146,6 +1210,13 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     mutation,
     startAfterCreate,
     setStartAfterCreate,
+    memoryRows,
+    memoryPoolOptions,
+    memoryLedger,
+    resourcesQuery,
+    addMemoryRow,
+    updateMemoryRow,
+    removeMemoryRow,
     submit,
   };
 }

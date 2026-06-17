@@ -69,6 +69,8 @@ import type {
   LlamaSlotActionResult,
   LlamaProbe,
   LogTail,
+  MemoryPool,
+  MemoryPoolUpdate,
   ModelPresetCreate,
   ModelPresetDocument,
   ModelPresetSummary,
@@ -82,6 +84,7 @@ import type {
   PathCatalogUpdate,
   ProcessPreflightResult,
   PublicStatus,
+  ResourceLedger,
   RuntimeState,
   SystemResources,
 } from "@llama-manager/core";
@@ -238,6 +241,23 @@ export async function updatePathCatalogEntry(
 export async function deletePathCatalogEntry(id: string) {
   return request<{ data: { deleted: boolean } }>(`/api/path-catalog/${id}`, {
     method: "DELETE",
+  });
+}
+
+export type ResourcesSnapshot = {
+  pools: MemoryPool[];
+  ledger: ResourceLedger;
+  detected: SystemResources;
+};
+
+export async function getResources() {
+  return request<{ data: ResourcesSnapshot }>("/api/resources");
+}
+
+export async function updateMemoryPool(id: string, input: MemoryPoolUpdate) {
+  return request<{ data: MemoryPool }>(`/api/resources/pools/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
 

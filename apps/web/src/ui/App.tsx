@@ -39,6 +39,7 @@ import { PathCatalogView } from "./views/PathCatalogView";
 import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
 import { ProxyView } from "./views/ProxyView";
+import { ResourcesView } from "./views/ResourcesView";
 import { PublicStatusView } from "./views/PublicStatusView";
 import { RoutingView } from "./views/RoutingView";
 import { SourceSyncView } from "./views/SourceSyncView";
@@ -301,6 +302,8 @@ export function App() {
           {canUseAdmin && route === "args" && <ArgumentsView />}
 
           {canUseAdmin && route === "paths" && <PathCatalogView />}
+
+          {canUseAdmin && route === "resources" && <ResourcesView />}
 
           {canUseAdmin && route === "endpoints" && <ApiEndpointsView />}
 

@@ -6,6 +6,7 @@ export type AppRoute =
   | "diagnostics"
   | "args"
   | "paths"
+  | "resources"
   | "endpoints"
   | "proxy"
   | "routing"
@@ -51,6 +52,12 @@ export const appRoutes: {
     label: "Paths",
     title: "Path Catalog",
     description: "Shared binary paths for instances",
+  },
+  {
+    id: "resources",
+    label: "Resources",
+    title: "Resources",
+    description: "Memory pools and capacity budgets for instance scheduling",
   },
   {
     id: "endpoints",
