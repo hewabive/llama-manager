@@ -4,18 +4,15 @@ import pino from "pino";
 import { initArgumentDefaults } from "./arguments/defaults-repository.js";
 import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
-import { relocateLegacyConfigFiles } from "./config-relocation.js";
 import { migrate } from "./db/index.js";
 import { app, startApiProxyIdleMaintenanceLoop } from "./http.js";
+import { runMigrations } from "./migrations/index.js";
 import { ensureConfigScaffold } from "./proxy/config-files.js";
-import { migrateProxyConfigToFiles } from "./proxy/legacy-migration.js";
 import { collectApiProxyPipelineGraphWarnings } from "./proxy/pipeline-validation.js";
 import {
   getApiProxyTarget,
   listApiProxyPipelines,
 } from "./proxy/repository.js";
-import { migrateApiProxyRuntimeMetadataToFile } from "./proxy/runtime-metadata-migration.js";
-import { migratePathCatalogToFile } from "./path-catalog/migration.js";
 import { pruneMissingCachedModels } from "./models/cache-repository.js";
 import { listInstances } from "./instances/repository.js";
 import { reconcileProcessRuns } from "./process/reconcile.js";
@@ -28,11 +25,8 @@ const logger = pino({
 });
 
 migrate();
-relocateLegacyConfigFiles();
 ensureConfigScaffold();
-migrateProxyConfigToFiles();
-migrateApiProxyRuntimeMetadataToFile();
-migratePathCatalogToFile();
+const appliedMigrations = runMigrations();
 initAppSettings();
 initArgumentDefaults();
 const prunedArgumentCatalogs = pruneMissingArgumentCatalogs();
@@ -58,6 +52,7 @@ const server = serve(
       {
         address: info.address,
         port: info.port,
+        appliedMigrations,
         reconciliation,
         prunedProcessRuns,
         prunedArgumentCatalogs,

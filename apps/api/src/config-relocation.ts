@@ -38,6 +38,21 @@ function relocatePresets() {
   }
 }
 
+export function hasLegacyConfigFiles(): boolean {
+  const legacySettings = resolve(config.dataDir, "settings.json");
+  const legacyArgumentDefaults = resolve(
+    config.dataDir,
+    "argument-defaults.json",
+  );
+  const legacyPresets = resolve(config.dataDir, "presets");
+  return (
+    (legacySettings !== config.settingsFile && existsSync(legacySettings)) ||
+    (legacyArgumentDefaults !== config.argumentDefaultsFile &&
+      existsSync(legacyArgumentDefaults)) ||
+    (legacyPresets !== config.presetsDir && existsSync(legacyPresets))
+  );
+}
+
 export function relocateLegacyConfigFiles() {
   relocateFile(resolve(config.dataDir, "settings.json"), config.settingsFile);
   relocateFile(
