@@ -1,47 +1,18 @@
-import type {
-  LlamaArgumentOption,
-  LlamaArgumentPresetSupport,
-} from "@llama-manager/core";
+import type { LlamaArgumentOption } from "@llama-manager/core";
 import { ActionIcon, Badge, Button, Group, Popover, Text } from "@mantine/core";
 import { ExternalLink, Info } from "lucide-react";
 
 import { argumentHelpHref } from "../utils/argument-links";
 
-type ArgumentScope = "instance" | "preset";
-
-function presetSupportLabel(support: LlamaArgumentPresetSupport) {
-  if (support === "preset-only") return "preset only";
-  if (support === "model-managed") return "managed field";
-  if (support === "router-managed") return "router level";
-  if (support === "unsupported") return "not for INI";
-  return "INI";
-}
-
-function presetSupportColor(support: LlamaArgumentPresetSupport) {
-  if (support === "preset-only") return "blue";
-  if (support === "model-managed") return "violet";
-  if (support === "router-managed") return "orange";
-  if (support === "unsupported") return "red";
-  return "gray";
-}
-
-export function ArgumentInfo(props: {
-  option: LlamaArgumentOption;
-  scope: ArgumentScope;
-  presetKey?: string;
-}) {
+export function ArgumentInfo(props: { option: LlamaArgumentOption }) {
   const { option } = props;
-  const isPreset = props.scope === "preset";
-  const triggerName = isPreset
-    ? (props.presetKey ?? option.primaryName)
-    : option.primaryName;
   const canOpenEngineeringHelp = Boolean(option.doc.path);
 
   return (
     <Popover width={340} position="bottom-end" withArrow shadow="md">
       <Popover.Target>
         <ActionIcon
-          aria-label={`${triggerName} help`}
+          aria-label={`${option.primaryName} help`}
           variant="subtle"
           color="gray"
         >
@@ -56,15 +27,6 @@ export function ArgumentInfo(props: {
           <Badge variant="outline" size="xs">
             {option.valueType}
           </Badge>
-          {isPreset && (
-            <Badge
-              color={presetSupportColor(option.control.presetSupport)}
-              variant="outline"
-              size="xs"
-            >
-              {presetSupportLabel(option.control.presetSupport)}
-            </Badge>
-          )}
           {!option.compatibility.presentInBinary && (
             <Badge color="red" variant="light" size="xs">
               not in binary
@@ -83,9 +45,7 @@ export function ArgumentInfo(props: {
           </Text>
         )}
         <Text c="dimmed" size="xs" mt={6}>
-          {isPreset
-            ? `INI key: ${props.presetKey ?? ""}`
-            : option.names.join(", ")}
+          {option.names.join(", ")}
         </Text>
         {canOpenEngineeringHelp && (
           <Button

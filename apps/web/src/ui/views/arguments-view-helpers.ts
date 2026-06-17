@@ -10,7 +10,6 @@ import { argumentDefaultFromOption } from "../utils/argument-defaults";
 export const allFilterValue = "__all__";
 export const emptyArgumentDefaults: LlamaArgumentDefaults = {
   instance: [],
-  preset: [],
   updatedAt: null,
 };
 
@@ -60,28 +59,22 @@ export function presetSupportColor(support: LlamaArgumentPresetSupport) {
   return "gray";
 }
 
-export function findDefault(
+export function findInstanceDefault(
   defaults: LlamaArgumentDefaults,
-  scope: "instance" | "preset",
   option: LlamaArgumentOption,
 ) {
-  const key = argumentDefaultFromOption(option, scope).key;
-  return defaults[scope].find((item) => item.key === key) ?? null;
+  const key = argumentDefaultFromOption(option).key;
+  return defaults.instance.find((item) => item.key === key) ?? null;
 }
 
 export function defaultScopeLabel(
   defaults: LlamaArgumentDefaults,
   option: LlamaArgumentOption,
 ) {
-  const scopes = [
-    findDefault(defaults, "instance", option) ? "new instances" : null,
-    findDefault(defaults, "preset", option) ? "new model presets" : null,
-  ].filter(Boolean);
-
-  return scopes.length > 0 ? `Default for ${scopes.join(" and ")}` : null;
+  return findInstanceDefault(defaults, option) ? "Default for new instances" : null;
 }
 
-function canUseAsInstanceDefault(option: LlamaArgumentOption) {
+export function canUseAsInstanceDefault(option: LlamaArgumentOption) {
   return (
     option.primaryName.startsWith("-") &&
     option.control.presetSupport !== "model-managed" &&
@@ -90,36 +83,23 @@ function canUseAsInstanceDefault(option: LlamaArgumentOption) {
   );
 }
 
-function canUseAsPresetDefault(option: LlamaArgumentOption) {
-  return (
-    option.control.presetSupport === "supported" ||
-    option.control.presetSupport === "preset-only"
-  );
-}
-
-export function canUseAsDefault(
-  option: LlamaArgumentOption,
-  scope: "instance" | "preset",
-) {
-  return scope === "instance"
-    ? canUseAsInstanceDefault(option)
-    : canUseAsPresetDefault(option);
-}
-
 export function defaultUnavailableMessage(option: LlamaArgumentOption) {
-  if (canUseAsInstanceDefault(option) || canUseAsPresetDefault(option)) {
+  if (canUseAsInstanceDefault(option)) {
     return null;
   }
   if (option.control.presetSupport === "model-managed") {
-    return "This option is managed by a dedicated model field, so it is not added as a raw default argument.";
+    return "This option is managed by a dedicated model field, so it is not added as a default instance argument.";
+  }
+  if (option.control.presetSupport === "preset-only") {
+    return "This option only applies inside a model preset, not as a llama-server CLI argument.";
   }
   if (option.control.presetSupport === "router-managed") {
-    return "This option belongs to the router process and is not written as a model preset default.";
+    return "This option belongs to the router process and is not added as a default instance argument.";
   }
   if (option.control.presetSupport === "unsupported") {
-    return "This option is not supported as a model preset default.";
+    return "This option is not supported as a default instance argument.";
   }
-  return "This option is not available as a raw default argument in the reference catalog.";
+  return "This option is not available as a default instance argument in the reference catalog.";
 }
 
 export function upsertDefault(
@@ -132,8 +112,8 @@ export function upsertDefault(
   );
 }
 
-export function defaultDraftKey(scope: "instance" | "preset", key: string) {
-  return `${scope}:${key}`;
+export function defaultDraftKey(key: string) {
+  return key;
 }
 
 export function defaultNeedsValue(

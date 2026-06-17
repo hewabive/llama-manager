@@ -19,11 +19,11 @@ import { argumentDefaultFromOption } from "../utils/argument-defaults";
 import { readArgumentHelpRouteParams } from "../utils/argument-links";
 import {
   allFilterValue,
-  canUseAsDefault,
+  canUseAsInstanceDefault,
   defaultDraftKey,
   defaultUnavailableMessage,
   emptyArgumentDefaults,
-  findDefault,
+  findInstanceDefault,
   findOptionByRouteArg,
   optionSearchText,
   upsertDefault,
@@ -129,10 +129,7 @@ export function useArgumentsView() {
   const argumentDefaults =
     argumentDefaultsQuery.data?.data ?? emptyArgumentDefaults;
   const selectedInstanceDefault = selectedOption
-    ? findDefault(argumentDefaults, "instance", selectedOption)
-    : null;
-  const selectedPresetDefault = selectedOption
-    ? findDefault(argumentDefaults, "preset", selectedOption)
+    ? findInstanceDefault(argumentDefaults, selectedOption)
     : null;
 
   useEffect(() => {
@@ -191,21 +188,18 @@ export function useArgumentsView() {
     }
 
     setDefaultValueDrafts((current) => {
-      const next = { ...current };
-      for (const scope of ["instance", "preset"] as const) {
-        const suggested = argumentDefaultFromOption(selectedOption, scope);
-        const saved = findDefault(argumentDefaults, scope, selectedOption);
-        const key = defaultDraftKey(scope, suggested.key);
-        next[key] = saved?.value ?? current[key] ?? suggested.value;
-      }
-      return next;
+      const suggested = argumentDefaultFromOption(selectedOption);
+      const saved = findInstanceDefault(argumentDefaults, selectedOption);
+      const key = defaultDraftKey(suggested.key);
+      return {
+        ...current,
+        [key]: saved?.value ?? current[key] ?? suggested.value,
+      };
     });
   }, [
     selectedOption?.primaryName,
     selectedInstanceDefault?.value,
     selectedInstanceDefault?.valueType,
-    selectedPresetDefault?.value,
-    selectedPresetDefault?.valueType,
   ]);
 
   const defaultsMutation = useMutation({
@@ -251,27 +245,23 @@ export function useArgumentsView() {
       );
   }
 
-  function saveArgumentDefault(
-    scope: "instance" | "preset",
+  function saveInstanceDefault(
     enabled: boolean,
     patch?: Partial<LlamaArgumentDefault>,
   ) {
     if (!selectedOption) {
       return;
     }
-    if (!canUseAsDefault(selectedOption, scope)) {
+    if (!canUseAsInstanceDefault(selectedOption)) {
       notifications.show({
         color: "yellow",
         title: "Default argument is not applicable",
-        message:
-          scope === "instance"
-            ? "This option cannot be passed as a llama-server CLI argument."
-            : "This option cannot be written as a model preset extra argument.",
+        message: "This option cannot be passed as a llama-server CLI argument.",
       });
       return;
     }
-    const base = argumentDefaultFromOption(selectedOption, scope);
-    const current = findDefault(argumentDefaults, scope, selectedOption);
+    const base = argumentDefaultFromOption(selectedOption);
+    const current = findInstanceDefault(argumentDefaults, selectedOption);
     const nextDefault = { ...base, ...current, ...patch };
     const validationError = enabled
       ? validateArgumentDefault(nextDefault)
@@ -285,13 +275,13 @@ export function useArgumentsView() {
       return;
     }
 
-    const nextScope = enabled
-      ? upsertDefault(argumentDefaults[scope], nextDefault)
-      : argumentDefaults[scope].filter((item) => item.key !== base.key);
+    const nextInstance = enabled
+      ? upsertDefault(argumentDefaults.instance, nextDefault)
+      : argumentDefaults.instance.filter((item) => item.key !== base.key);
 
     defaultsMutation.mutate({
       ...argumentDefaults,
-      [scope]: nextScope,
+      instance: nextInstance,
     });
   }
 
@@ -331,11 +321,10 @@ export function useArgumentsView() {
     selectedDoc,
     argumentDefaults,
     selectedInstanceDefault,
-    selectedPresetDefault,
     defaultsMutation,
     selectArgument,
     copyArgumentName,
-    saveArgumentDefault,
+    saveInstanceDefault,
     selectedDefaultUnavailableMessage,
     visibleEngineeringMarkdown,
   };

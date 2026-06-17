@@ -1,4 +1,8 @@
 import {
+  argumentDefaultsHasPresetSection,
+  dropPresetArgumentDefaultsSection,
+} from "../arguments/preset-defaults-migration.js";
+import {
   hasLegacyConfigFiles,
   relocateLegacyConfigFiles,
 } from "../config-relocation.js";
@@ -73,6 +77,15 @@ export const migrations: Migration[] = [
     isApplied: () => !settingsFileHasPresetsSection(),
     apply: () => {
       dropPresetsSettingsSection();
+    },
+  },
+  {
+    id: "0007-drop-preset-argument-defaults",
+    describe:
+      "argument-defaults.json: remove obsolete preset scope (presets edited as raw INI)",
+    isApplied: () => !argumentDefaultsHasPresetSection(),
+    apply: () => {
+      dropPresetArgumentDefaultsSection();
     },
   },
 ];

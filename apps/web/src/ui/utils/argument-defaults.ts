@@ -3,8 +3,6 @@ import type {
   LlamaArgumentOption,
 } from "@llama-manager/core";
 
-import { normalizePresetArgKey } from "./preset-args";
-
 export function argumentAcceptsAutoAll(option: LlamaArgumentOption) {
   const name = option.primaryName.toLowerCase();
   return (
@@ -14,18 +12,12 @@ export function argumentAcceptsAutoAll(option: LlamaArgumentOption) {
   );
 }
 
-export function defaultArgumentValue(
-  option: LlamaArgumentOption,
-  scope: "instance" | "preset",
-) {
-  if (scope === "preset" && option.primaryName === "stop-timeout") {
-    return "10";
-  }
+export function defaultArgumentValue(option: LlamaArgumentOption) {
   if (argumentAcceptsAutoAll(option)) {
     return "auto";
   }
   if (option.valueType === "flag") {
-    return scope === "preset" ? "true" : "";
+    return "";
   }
   if (option.valueType === "boolean") {
     return option.allowedValues.includes("auto")
@@ -37,14 +29,11 @@ export function defaultArgumentValue(
 
 function defaultArgumentValueType(
   option: LlamaArgumentOption,
-  scope: "instance" | "preset",
 ): LlamaArgumentDefault["valueType"] {
   if (argumentAcceptsAutoAll(option)) {
     return "string";
   }
-  if (option.valueType === "flag") {
-    return scope === "preset" ? "boolean" : "flag";
-  }
+  if (option.valueType === "flag") return "flag";
   if (option.valueType === "boolean") return "boolean";
   if (option.valueType === "number") return "number";
   if (option.valueType === "list") return "list";
@@ -53,14 +42,10 @@ function defaultArgumentValueType(
 
 export function argumentDefaultFromOption(
   option: LlamaArgumentOption,
-  scope: "instance" | "preset",
 ): LlamaArgumentDefault {
   return {
-    key:
-      scope === "preset"
-        ? normalizePresetArgKey(option.primaryName)
-        : option.primaryName,
-    value: defaultArgumentValue(option, scope),
-    valueType: defaultArgumentValueType(option, scope),
+    key: option.primaryName,
+    value: defaultArgumentValue(option),
+    valueType: defaultArgumentValueType(option),
   };
 }

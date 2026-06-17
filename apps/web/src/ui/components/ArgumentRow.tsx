@@ -13,16 +13,12 @@ import { Trash2 } from "lucide-react";
 import { ArgumentInfo } from "./ArgumentInfo";
 import { ArgumentValueControl } from "./ArgumentValueControl";
 
-type ArgumentScope = "instance" | "preset";
-
 export function ArgumentRow(props: {
   keyLabel: string;
   option: LlamaArgumentOption | null;
   value: string;
-  scope: ArgumentScope;
   isDefault: boolean;
   active: boolean;
-  presetKey?: string;
   onToggle: (active: boolean) => void;
   onRemove: () => void;
   onValueChange: (value: string) => void;
@@ -72,7 +68,6 @@ export function ArgumentRow(props: {
       {props.option ? (
         <ArgumentValueControl
           option={props.option}
-          scope={props.scope}
           value={props.value}
           disabled={disabled}
           onChange={props.onValueChange}
@@ -88,15 +83,7 @@ export function ArgumentRow(props: {
           size="xs"
         />
       )}
-      {props.option && (
-        <ArgumentInfo
-          option={props.option}
-          scope={props.scope}
-          {...(props.presetKey !== undefined
-            ? { presetKey: props.presetKey }
-            : {})}
-        />
-      )}
+      {props.option && <ArgumentInfo option={props.option} />}
     </Group>
   );
 }

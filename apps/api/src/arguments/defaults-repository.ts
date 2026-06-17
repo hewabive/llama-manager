@@ -44,7 +44,7 @@ function ensureFile() {
   }
   writeFileSync(
     filePath,
-    `${JSON.stringify({ instance: [], preset: [] }, null, 2)}\n`,
+    `${JSON.stringify({ instance: [] }, null, 2)}\n`,
     "utf8",
   );
 }
@@ -60,10 +60,7 @@ function readDefaults(): LlamaArgumentDefaults {
   return LlamaArgumentDefaultsSchema.parse(json);
 }
 
-function writeDefaults(input: {
-  instance: LlamaArgumentDefault[];
-  preset: LlamaArgumentDefault[];
-}) {
+function writeDefaults(input: { instance: LlamaArgumentDefault[] }) {
   const tmp = `${filePath}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(input, null, 2)}\n`, "utf8");
   renameSync(tmp, filePath);
@@ -79,7 +76,6 @@ export function getArgumentDefaults(): LlamaArgumentDefaults {
   const parsed = readDefaults();
   return LlamaArgumentDefaultsSchema.parse({
     instance: parsed.instance,
-    preset: parsed.preset,
     updatedAt: statSync(filePath).mtime.toISOString(),
   });
 }
@@ -90,7 +86,6 @@ export function saveArgumentDefaults(
   const parsed = LlamaArgumentDefaultsSchema.parse(input);
   writeDefaults({
     instance: sanitizeDefaults(parsed.instance),
-    preset: sanitizeDefaults(parsed.preset),
   });
   return getArgumentDefaults();
 }

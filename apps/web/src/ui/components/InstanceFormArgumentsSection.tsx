@@ -110,7 +110,6 @@ export function InstanceFormArgumentsSection({
           keyLabel={option.primaryName}
           option={option}
           value={fm.defaultRowValue(option)}
-          scope="instance"
           isDefault
           active={fm.defaultRowActive(option)}
           onToggle={(nextActive) => fm.setDefaultActive(option, nextActive)}
@@ -140,7 +139,6 @@ export function InstanceFormArgumentsSection({
               keyLabel={option.primaryName}
               option={option}
               value={row.value}
-              scope="instance"
               isDefault={false}
               active
               onToggle={() => undefined}

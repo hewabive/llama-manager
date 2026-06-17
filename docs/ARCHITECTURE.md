@@ -45,7 +45,7 @@
   - `data/settings.json`: `modelScan` / `llamaSource` / `build` sections. The
     canonical local `llama.cpp` repo path lives in `llamaSource` and is shared by
     build, source status and argument-docs sync.
-  - `data/argument-defaults.json`: default instance/preset arguments.
+  - `data/argument-defaults.json`: default instance arguments.
     JSON files seed from git-tracked `config/*.json` and fail loud on malformed JSON.
 - `runtime/logs`: stdout/stderr logs for managed processes
 

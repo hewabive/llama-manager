@@ -203,7 +203,7 @@ export function valueTypeFromArgument(
 }
 
 export function defaultValueForArgument(option: LlamaArgumentOption) {
-  return defaultArgumentValue(option, "instance");
+  return defaultArgumentValue(option);
 }
 
 export function cliNameForArgument(option: LlamaArgumentOption) {

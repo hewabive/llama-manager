@@ -14,8 +14,6 @@ import {
 } from "../utils/argument-defaults";
 import { TouchSelect } from "./TouchCombobox";
 
-type ArgumentValueScope = "instance" | "preset";
-
 function booleanValueOptions(option: LlamaArgumentOption) {
   if (option.allowedValues.length > 0) {
     return option.allowedValues.map((value) => ({ value, label: value }));
@@ -32,24 +30,22 @@ function booleanValueOptions(option: LlamaArgumentOption) {
   ];
 }
 
-function fallbackValue(option: LlamaArgumentOption, scope: ArgumentValueScope) {
-  return defaultArgumentValue(option, scope);
+function fallbackValue(option: LlamaArgumentOption) {
+  return defaultArgumentValue(option);
 }
 
 function commitOrFallback(
   value: string | null,
   option: LlamaArgumentOption,
-  scope: ArgumentValueScope,
   allowEmpty: boolean,
 ) {
-  return value ?? (allowEmpty ? "" : fallbackValue(option, scope));
+  return value ?? (allowEmpty ? "" : fallbackValue(option));
 }
 
 export function ArgumentValueControl(props: {
   option: LlamaArgumentOption;
   value: string;
   onChange: (value: string) => void;
-  scope?: ArgumentValueScope;
   allowEmpty?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
@@ -58,32 +54,13 @@ export function ArgumentValueControl(props: {
   w?: number | string;
   onBlur?: (value: string) => void;
 }) {
-  const scope = props.scope ?? "instance";
   const allowEmpty = props.allowEmpty ?? false;
   const disabled = props.disabled ?? false;
   const size = props.size ?? "xs";
   const ariaLabel = props.ariaLabel ?? `${props.option.primaryName} value`;
 
   if (props.option.valueType === "flag") {
-    if (scope !== "preset") {
-      return null;
-    }
-    return (
-      <Select
-        aria-label={ariaLabel}
-        data={[
-          { value: "true", label: "true" },
-          { value: "false", label: "false" },
-        ]}
-        value={props.value || "true"}
-        allowDeselect={false}
-        onChange={(value) => props.onChange(value ?? "true")}
-        disabled={disabled}
-        style={props.style ?? { flex: 1, minWidth: 110 }}
-        w={props.w}
-        size={size}
-      />
-    );
+    return null;
   }
 
   if (props.option.valueType === "boolean") {
@@ -102,7 +79,7 @@ export function ArgumentValueControl(props: {
           allowEmpty
             ? props.value || null
             : props.value ||
-              fallbackValue(props.option, scope) ||
+              fallbackValue(props.option) ||
               data[0]?.value ||
               "true"
         }
@@ -110,9 +87,7 @@ export function ArgumentValueControl(props: {
         allowDeselect={allowEmpty}
         clearable={allowEmpty}
         onChange={(value) =>
-          props.onChange(
-            commitOrFallback(value, props.option, scope, allowEmpty),
-          )
+          props.onChange(commitOrFallback(value, props.option, allowEmpty))
         }
         onBlur={() => props.onBlur?.(props.value)}
         disabled={disabled}

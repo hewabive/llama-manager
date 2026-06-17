@@ -24,7 +24,7 @@ import { EngineeringMarkdown } from "../components/EngineeringMarkdown";
 import { argumentDefaultFromOption } from "../utils/argument-defaults";
 import { formatLocalDateTime } from "../utils/time";
 import {
-  canUseAsDefault,
+  canUseAsInstanceDefault,
   defaultDraftKey,
   defaultNeedsValue,
   presetSupportColor,
@@ -77,30 +77,37 @@ function ArgumentNames(props: { option: LlamaArgumentOption }) {
   );
 }
 
-function DefaultScopeControl(props: {
-  fm: ArgumentsViewController;
-  scope: "instance" | "preset";
-  label: string;
-  current: LlamaArgumentDefault | null;
-}) {
-  const { fm, scope, label, current } = props;
+function InstanceDefaultsCard({ fm }: { fm: ArgumentsViewController }) {
   const selectedOption = fm.selectedOption;
   if (!selectedOption) {
     return null;
   }
-  if (!canUseAsDefault(selectedOption, scope)) {
-    return null;
-  }
-  const suggested = argumentDefaultFromOption(selectedOption, scope);
-  const value = current?.value ?? suggested.value;
-  const valueType = current?.valueType ?? suggested.valueType;
-  const needsValue = defaultNeedsValue(valueType);
-  const draftKey = defaultDraftKey(scope, suggested.key);
-  const draftValue = fm.defaultValueDrafts[draftKey] ?? value;
+  const canUse = canUseAsInstanceDefault(selectedOption);
+  const current = fm.selectedInstanceDefault;
+  const enabled = Boolean(current);
+  const suggested = argumentDefaultFromOption(selectedOption);
+  const takesValue = defaultNeedsValue(suggested.valueType);
+  const draftKey = defaultDraftKey(suggested.key);
+  const draftValue =
+    fm.defaultValueDrafts[draftKey] ?? current?.value ?? suggested.value;
   const commitOnChange =
     selectedOption.valueType === "boolean" ||
     (selectedOption.valueType === "enum" &&
       selectedOption.allowedValues.length > 0);
+
+  function valueTypeFor(value: string): LlamaArgumentDefault["valueType"] {
+    if (!takesValue) {
+      return suggested.valueType;
+    }
+    return value.trim() ? suggested.valueType : "null";
+  }
+
+  function commit(nextEnabled: boolean, value: string) {
+    fm.saveInstanceDefault(nextEnabled, {
+      value: value.trim(),
+      valueType: valueTypeFor(value),
+    });
+  }
 
   function setDraftValue(nextValue: string) {
     fm.setDefaultValueDrafts((drafts) => ({
@@ -109,54 +116,70 @@ function DefaultScopeControl(props: {
     }));
   }
 
-  function commitValue(nextValue: string) {
-    if (!current) {
-      return;
-    }
-    fm.saveArgumentDefault(scope, true, {
-      value: nextValue,
-      valueType,
-    });
-  }
-
   return (
-    <Group align="center" gap="xs" wrap="wrap">
-      <Switch
-        label={label}
-        checked={Boolean(current)}
-        disabled={fm.defaultsMutation.isPending}
-        onChange={(event) =>
-          fm.saveArgumentDefault(scope, event.currentTarget.checked, {
-            value: draftValue,
-            valueType,
-          })
-        }
-      />
-      {needsValue && (
-        <ArgumentValueControl
-          key={`${scope}-${selectedOption.primaryName}`}
-          option={selectedOption}
-          scope={scope}
-          ariaLabel={`${label} default value`}
-          value={draftValue}
-          allowEmpty
-          disabled={fm.defaultsMutation.isPending}
-          size="xs"
-          style={{ flex: "1 1 180px", minWidth: 160 }}
-          onChange={(nextValue) => {
-            setDraftValue(nextValue);
-            if (commitOnChange) {
-              commitValue(nextValue);
-            }
-          }}
-          onBlur={(nextValue) => {
-            if (!commitOnChange) {
-              commitValue(nextValue);
-            }
-          }}
-        />
-      )}
-    </Group>
+    <Paper withBorder p="sm" radius="sm">
+      <Stack gap="xs">
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Group gap="md" align="center" wrap="wrap">
+            <Text fw={600} size="sm">
+              Defaults
+            </Text>
+            {canUse && (
+              <Switch
+                label="Pre-list in new instances"
+                checked={enabled}
+                disabled={fm.defaultsMutation.isPending}
+                onChange={(event) =>
+                  commit(event.currentTarget.checked, draftValue)
+                }
+              />
+            )}
+          </Group>
+          {fm.argumentDefaults.updatedAt && (
+            <Text c="dimmed" size="xs">
+              Updated {formatLocalDateTime(fm.argumentDefaults.updatedAt)}
+            </Text>
+          )}
+        </Group>
+        {canUse ? (
+          <>
+            <Text c="dimmed" size="xs">
+              Pre-list this argument in new instances so it is one click away.
+              Set a value to pre-fill it, or leave empty to fill in per instance.
+            </Text>
+            {enabled && takesValue && (
+              <ArgumentValueControl
+                key={selectedOption.primaryName}
+                option={selectedOption}
+                ariaLabel="Default value"
+                value={draftValue}
+                allowEmpty
+                disabled={fm.defaultsMutation.isPending}
+                size="xs"
+                style={{ flex: "1 1 180px", minWidth: 160 }}
+                onChange={(nextValue) => {
+                  setDraftValue(nextValue);
+                  if (commitOnChange) {
+                    commit(true, nextValue);
+                  }
+                }}
+                onBlur={(nextValue) => {
+                  if (!commitOnChange) {
+                    commit(true, nextValue);
+                  }
+                }}
+              />
+            )}
+          </>
+        ) : (
+          fm.selectedDefaultUnavailableMessage && (
+            <Text c="dimmed" size="xs">
+              {fm.selectedDefaultUnavailableMessage}
+            </Text>
+          )
+        )}
+      </Stack>
+    </Paper>
   );
 }
 
@@ -193,43 +216,7 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
             <ArgumentNames option={selectedOption} />
           </Stack>
 
-          <Paper withBorder p="sm" radius="sm">
-            <Stack gap="xs">
-              <Group justify="space-between" align="center" wrap="wrap">
-                <div>
-                  <Text fw={600} size="sm">
-                    Defaults
-                  </Text>
-                  <Text c="dimmed" size="xs">
-                    Pre-list this argument in new instances and in the model
-                    preset editor so it is one toggle away.
-                  </Text>
-                </div>
-                {fm.argumentDefaults.updatedAt && (
-                  <Text c="dimmed" size="xs">
-                    Updated {formatLocalDateTime(fm.argumentDefaults.updatedAt)}
-                  </Text>
-                )}
-              </Group>
-              <DefaultScopeControl
-                fm={fm}
-                scope="instance"
-                label="New instance"
-                current={fm.selectedInstanceDefault}
-              />
-              <DefaultScopeControl
-                fm={fm}
-                scope="preset"
-                label="New model preset"
-                current={fm.selectedPresetDefault}
-              />
-              {fm.selectedDefaultUnavailableMessage && (
-                <Text c="dimmed" size="xs">
-                  {fm.selectedDefaultUnavailableMessage}
-                </Text>
-              )}
-            </Stack>
-          </Paper>
+          <InstanceDefaultsCard fm={fm} />
 
           {selectedOption.env.length > 0 && (
             <Stack gap={4}>

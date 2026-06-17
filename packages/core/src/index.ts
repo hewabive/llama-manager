@@ -2363,7 +2363,6 @@ export const LlamaArgumentDefaultSchema = z.object({
 
 export const LlamaArgumentDefaultsSchema = z.object({
   instance: z.array(LlamaArgumentDefaultSchema).default([]),
-  preset: z.array(LlamaArgumentDefaultSchema).default([]),
   updatedAt: z.string().nullable().default(null),
 });
 
