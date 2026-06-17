@@ -65,6 +65,13 @@ export type ApiProxyPublicExecutorInput = {
   restoreSlot?:
     | ((instance: Instance, slotId: number, targetId: string) => Promise<void>)
     | undefined;
+  onRestoreSlotFailed?:
+    | ((
+        targetId: string,
+        slotId: number,
+        message: string,
+      ) => void | Promise<void>)
+    | undefined;
   getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
   sleep?: ((ms: number) => Promise<void>) | undefined;
   options?: Partial<typeof defaultOptions> | undefined;
@@ -260,13 +267,23 @@ export async function executeApiProxyPublicMvpPlan(
           await input.saveSlot(instance, action.slotId, action.targetId);
           preview = await input.getPlanPreview(input.target.id);
           break;
-        case "restore-slot":
+        case "restore-slot": {
           if (!input.restoreSlot || action.slotId === null) {
             return { ok: false, diagnostic: unsupportedDiagnostic(action) };
           }
-          await input.restoreSlot(instance, action.slotId, action.targetId);
+          try {
+            await input.restoreSlot(instance, action.slotId, action.targetId);
+          } catch (error) {
+            if (!input.onRestoreSlotFailed) throw error;
+            await input.onRestoreSlotFailed(
+              action.targetId,
+              action.slotId,
+              (error as Error).message,
+            );
+          }
           preview = await input.getPlanPreview(input.target.id);
           break;
+        }
         case "wait-model-ready": {
           const waited = await waitForPlanChange({
             target: input.target,

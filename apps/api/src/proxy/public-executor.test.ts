@@ -98,6 +98,9 @@ function executorDefaults(
           targetId: string,
         ) => Promise<void>)
       | undefined;
+    onRestoreSlotFailed?:
+      | ((targetId: string, slotId: number, message: string) => void)
+      | undefined;
   } = {},
 ) {
   const previews = [...(update.previews ?? [])];
@@ -111,6 +114,7 @@ function executorDefaults(
     stopInstance: update.stopInstance,
     saveSlot: update.saveSlot,
     restoreSlot: update.restoreSlot,
+    onRestoreSlotFailed: update.onRestoreSlotFailed,
     getPlanPreview: async () => previews.shift() ?? readyPreview,
     sleep: async () => undefined,
     options: {
@@ -313,4 +317,45 @@ test("executeApiProxyPublicMvpPlan restores a slot before reaching ready plan", 
 
   assert.equal(result.ok, true);
   assert.deepEqual(restored, [2]);
+});
+
+test("executeApiProxyPublicMvpPlan drops a stale slot when restore fails, then reaches ready plan", async () => {
+  const dropped: Array<{ targetId: string; slotId: number }> = [];
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("restore-slot", 0),
+        action("route-request"),
+      ]),
+      previews: [readyPreview],
+      restoreSlot: async () => {
+        throw new Error("Unable to restore slot, invalid slot save file");
+      },
+      onRestoreSlotFailed: (targetId, slotId) => {
+        dropped.push({ targetId, slotId });
+      },
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(dropped, [{ targetId: target.id, slotId: 0 }]);
+});
+
+test("executeApiProxyPublicMvpPlan surfaces a 502 when restore fails and no drop handler is wired", async () => {
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: preview([
+        action("restore-slot", 0),
+        action("route-request"),
+      ]),
+      restoreSlot: async () => {
+        throw new Error("Unable to restore slot, invalid slot save file");
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.diagnostic.code, "llama_manager_proxy_upstream_error");
+  }
 });

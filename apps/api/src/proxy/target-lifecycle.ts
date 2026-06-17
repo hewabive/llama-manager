@@ -78,6 +78,9 @@ export function executeApiProxyTargetReadiness(
       }
       removeApiProxySavedSlotId(targetId, slotId);
     },
+    onRestoreSlotFailed: (targetId, slotId) => {
+      removeApiProxySavedSlotId(targetId, slotId);
+    },
     getPlanPreview: (targetId) =>
       getApiProxyPlanPreview({
         mode: "request",
