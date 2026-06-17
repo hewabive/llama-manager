@@ -6,6 +6,8 @@ import type {
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { freemem, totalmem } from "node:os";
+import { detectNumaEnforcement } from "./numa-capability.js";
+import { readNumaTopology, readPciNumaNode } from "./numa.js";
 
 function clampRatio(value: number) {
   if (!Number.isFinite(value)) {
@@ -87,13 +89,16 @@ function percentValue(value: string) {
   return Math.min(100, Math.max(0, parsed));
 }
 
-export function parseNvidiaSmiCsv(contents: string): SystemAccelerator[] {
+export function parseNvidiaSmiCsv(
+  contents: string,
+  resolveNumaNode: (busId: string) => number | null = readPciNumaNode,
+): SystemAccelerator[] {
   return contents
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .flatMap((line): SystemAccelerator[] => {
-      const [id, name, totalMiB, usedMiB, utilization, temperature] = line
+      const [id, name, totalMiB, usedMiB, utilization, temperature, busId] = line
         .split(",")
         .map((part) => part.trim());
       if (!id || !name) {
@@ -125,6 +130,7 @@ export function parseNvidiaSmiCsv(contents: string): SystemAccelerator[] {
           memoryUsedRatio,
           utilizationPercent: utilization ? percentValue(utilization) : null,
           temperatureC: Number.isFinite(temperatureC) ? temperatureC : null,
+          numaNode: busId ? resolveNumaNode(busId) : null,
           source: "nvidia-smi",
         },
       ];
@@ -136,7 +142,7 @@ function readNvidiaAccelerators(): SystemAccelerator[] {
     const output = execFileSync(
       "nvidia-smi",
       [
-        "--query-gpu=index,name,memory.total,memory.used,utilization.gpu,temperature.gpu",
+        "--query-gpu=index,name,memory.total,memory.used,utilization.gpu,temperature.gpu,pci.bus_id",
         "--format=csv,noheader,nounits",
       ],
       {
@@ -155,5 +161,7 @@ export function getSystemResources(): SystemResources {
     checkedAt: new Date().toISOString(),
     memory: readLinuxMemory() ?? readNodeMemory(),
     accelerators: readNvidiaAccelerators(),
+    numaNodes: readNumaTopology(),
+    numaEnforcement: detectNumaEnforcement(),
   };
 }

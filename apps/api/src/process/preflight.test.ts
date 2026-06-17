@@ -457,6 +457,7 @@ test("validateInstancePreflight accepts GPU layers when an NVIDIA device is visi
             memoryUsedRatio: null,
             utilizationPercent: null,
             temperatureC: null,
+            numaNode: null,
             source: "nvidia-smi",
           },
         ],

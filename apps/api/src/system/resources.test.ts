@@ -42,6 +42,18 @@ test("parseNvidiaSmiCsv reads CUDA device inventory", () => {
     memoryUsedRatio: 1024 / 24564,
     utilizationPercent: 12,
     temperatureC: 55,
+    numaNode: null,
     source: "nvidia-smi",
   });
+});
+
+test("parseNvidiaSmiCsv maps pci bus id to a NUMA node via the resolver", () => {
+  const accelerators = parseNvidiaSmiCsv(
+    `0, NVIDIA RTX 4090, 24564, 1024, 12, 55, 00000000:01:00.0\n` +
+      `1, NVIDIA RTX A6000, 49140, 2048, 0, 42, 00000000:81:00.0\n`,
+    (busId) => (busId === "00000000:81:00.0" ? 1 : 0),
+  );
+
+  assert.equal(accelerators[0]?.numaNode, 0);
+  assert.equal(accelerators[1]?.numaNode, 1);
 });

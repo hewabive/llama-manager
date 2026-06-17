@@ -29,6 +29,7 @@ import {
   listInstances,
   updateMemoryPool,
 } from "../../api/client";
+import { NumaTopologyPanel } from "../components/NumaTopologyPanel";
 import { formatBytes } from "../utils/models";
 
 const GIB = 1024 ** 3;
@@ -262,6 +263,10 @@ export function ResourcesView() {
               : "No memory pools detected"}
           </Text>
         </Paper>
+      )}
+
+      {detected && detected.numaNodes.length > 1 && (
+        <NumaTopologyPanel resources={detected} />
       )}
 
       <Modal

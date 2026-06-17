@@ -143,9 +143,16 @@ export function SystemResourcesPanel(props: {
                       <Text fw={600} size="sm" lineClamp={1}>
                         GPU {accelerator.id}: {accelerator.name}
                       </Text>
-                      <Badge variant="light">
-                        {accelerator.vendor ?? accelerator.source}
-                      </Badge>
+                      <Group gap={4} wrap="nowrap">
+                        {accelerator.numaNode !== null && (
+                          <Badge variant="light" color="grape">
+                            node {accelerator.numaNode}
+                          </Badge>
+                        )}
+                        <Badge variant="light">
+                          {accelerator.vendor ?? accelerator.source}
+                        </Badge>
+                      </Group>
                     </Group>
                     <Stack gap={2}>
                       <Group justify="space-between" gap="xs">

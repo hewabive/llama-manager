@@ -2593,13 +2593,26 @@ export const SystemAcceleratorSchema = z.object({
   memoryUsedRatio: z.number().min(0).max(1).nullable(),
   utilizationPercent: z.number().min(0).max(100).nullable(),
   temperatureC: z.number().nullable(),
+  numaNode: z.number().int().min(0).nullable(),
   source: z.string(),
 });
+
+export const NumaNodeSchema = z.object({
+  id: z.number().int().min(0),
+  cpus: z.string(),
+  cpuCount: z.number().int().nonnegative(),
+  memoryBytes: z.number().int().nonnegative(),
+  online: z.boolean(),
+});
+
+export const NumaEnforcementSchema = z.enum(["cgroup-v2", "unavailable"]);
 
 export const SystemResourcesSchema = z.object({
   checkedAt: z.string(),
   memory: SystemMemorySchema,
   accelerators: z.array(SystemAcceleratorSchema),
+  numaNodes: z.array(NumaNodeSchema),
+  numaEnforcement: NumaEnforcementSchema,
 });
 
 export const AuthStateSchema = z.object({
@@ -3106,6 +3119,8 @@ export type NetworkInterfacesResult = z.infer<
 >;
 export type SystemMemory = z.infer<typeof SystemMemorySchema>;
 export type SystemAccelerator = z.infer<typeof SystemAcceleratorSchema>;
+export type NumaNode = z.infer<typeof NumaNodeSchema>;
+export type NumaEnforcement = z.infer<typeof NumaEnforcementSchema>;
 export type SystemResources = z.infer<typeof SystemResourcesSchema>;
 export type AuthState = z.infer<typeof AuthStateSchema>;
 export type AdminLogin = z.infer<typeof AdminLoginSchema>;
