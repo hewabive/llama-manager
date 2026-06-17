@@ -22,7 +22,6 @@ import { AlertTriangle, Copy } from "lucide-react";
 import { ArgumentValueControl } from "../components/ArgumentValueControl";
 import { EngineeringMarkdown } from "../components/EngineeringMarkdown";
 import { argumentDefaultFromOption } from "../utils/argument-defaults";
-import { formatLocalDateTime } from "../utils/time";
 import {
   canUseAsInstanceDefault,
   defaultDraftKey,
@@ -116,70 +115,54 @@ function InstanceDefaultsCard({ fm }: { fm: ArgumentsViewController }) {
     }));
   }
 
+  if (!canUse) {
+    return fm.selectedDefaultUnavailableMessage ? (
+      <Text c="dimmed" size="xs">
+        {fm.selectedDefaultUnavailableMessage}
+      </Text>
+    ) : null;
+  }
+
   return (
-    <Paper withBorder p="sm" radius="sm">
-      <Stack gap="xs">
-        <Group justify="space-between" align="center" wrap="wrap">
-          <Group gap="md" align="center" wrap="wrap">
-            <Text fw={600} size="sm">
-              Defaults
-            </Text>
-            {canUse && (
-              <Switch
-                label="Pre-list in new instances"
-                checked={enabled}
-                disabled={fm.defaultsMutation.isPending}
-                onChange={(event) =>
-                  commit(event.currentTarget.checked, draftValue)
-                }
-              />
-            )}
-          </Group>
-          {fm.argumentDefaults.updatedAt && (
-            <Text c="dimmed" size="xs">
-              Updated {formatLocalDateTime(fm.argumentDefaults.updatedAt)}
-            </Text>
-          )}
-        </Group>
-        {canUse ? (
-          <>
-            <Text c="dimmed" size="xs">
-              Pre-list this argument in new instances so it is one click away.
-              Set a value to pre-fill it, or leave empty to fill in per instance.
-            </Text>
-            {enabled && takesValue && (
-              <ArgumentValueControl
-                key={selectedOption.primaryName}
-                option={selectedOption}
-                ariaLabel="Default value"
-                value={draftValue}
-                allowEmpty
-                disabled={fm.defaultsMutation.isPending}
-                size="xs"
-                style={{ flex: "1 1 180px", minWidth: 160 }}
-                onChange={(nextValue) => {
-                  setDraftValue(nextValue);
-                  if (commitOnChange) {
-                    commit(true, nextValue);
-                  }
-                }}
-                onBlur={(nextValue) => {
-                  if (!commitOnChange) {
-                    commit(true, nextValue);
-                  }
-                }}
-              />
-            )}
-          </>
-        ) : (
-          fm.selectedDefaultUnavailableMessage && (
-            <Text c="dimmed" size="xs">
-              {fm.selectedDefaultUnavailableMessage}
-            </Text>
-          )
-        )}
-      </Stack>
-    </Paper>
+    <Group gap="sm" align="center" wrap="wrap">
+      <Tooltip
+        multiline
+        w={250}
+        withArrow
+        label="Pins this argument in the New-instance form. Set a value to pre-fill it, or leave it empty to fill in per instance."
+      >
+        <Switch
+          label="Pin to new instances"
+          checked={enabled}
+          disabled={fm.defaultsMutation.isPending}
+          onChange={(event) => commit(event.currentTarget.checked, draftValue)}
+        />
+      </Tooltip>
+      {enabled && takesValue && (
+        <ArgumentValueControl
+          key={selectedOption.primaryName}
+          option={selectedOption}
+          ariaLabel="Default value"
+          value={draftValue}
+          allowEmpty
+          disabled={fm.defaultsMutation.isPending}
+          size="xs"
+          w={200}
+          style={{ flex: "0 0 auto" }}
+          onChange={(nextValue) => {
+            setDraftValue(nextValue);
+            if (commitOnChange) {
+              commit(true, nextValue);
+            }
+          }}
+          onBlur={(nextValue) => {
+            if (!commitOnChange) {
+              commit(true, nextValue);
+            }
+          }}
+        />
+      )}
+    </Group>
   );
 }
 
