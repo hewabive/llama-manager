@@ -153,27 +153,49 @@ code {
   min-width: 0;
 }
 
+.args-view {
+  height: calc(100vh - 144px);
+  min-height: 480px;
+}
+
 .args-reference-layout {
   display: grid;
   grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--mantine-spacing-md);
-  align-items: start;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .args-reference-layout > * {
   min-width: 0;
+  min-height: 0;
 }
 
 .args-reference-detail {
-  position: sticky;
-  top: 74px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.args-detail-content {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.args-detail-engineering {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.args-eng-scroll {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .args-reference-list {
-  max-height: calc(100vh - 90px);
   overflow: auto;
-  position: sticky;
-  top: 74px;
 }
 
 .argument-row {
@@ -302,13 +324,36 @@ code {
 }
 
 @media (max-width: 64em) {
+  .args-view {
+    height: auto;
+    min-height: 0;
+  }
+
   .args-reference-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    flex: none;
   }
 
   .args-reference-list,
   .args-reference-detail {
     position: static;
+  }
+
+  .args-reference-detail {
+    display: block;
+    overflow: visible;
+  }
+
+  .args-detail-content,
+  .args-detail-engineering {
+    flex: none;
+    min-height: 0;
+  }
+
+  .args-eng-scroll {
+    flex: none;
+    height: 60vh;
   }
 
   .args-reference-list {

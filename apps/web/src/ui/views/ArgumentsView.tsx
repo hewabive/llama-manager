@@ -21,7 +21,7 @@ export function ArgumentsView() {
   const fm = useArgumentsView();
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" className="args-view">
       {fm.argsCatalogQuery.isError && (
         <Alert color="red" icon={<AlertTriangle size={18} />} variant="light">
           {(fm.argsCatalogQuery.error as Error).message}

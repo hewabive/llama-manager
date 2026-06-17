@@ -21,7 +21,7 @@ export const appRoutes: {
   id: AppRoute;
   label: string;
   title: string;
-  description: string;
+  description?: string;
 }[] = [
   {
     id: "status",
@@ -45,7 +45,6 @@ export const appRoutes: {
     id: "args",
     label: "Args",
     title: "Arguments",
-    description: "Searchable llama-server argument reference",
   },
   {
     id: "paths",

@@ -247,9 +247,11 @@ export function App() {
           <Group justify="space-between">
             <div>
               <Title order={2}>{currentRoute.title}</Title>
-              <Text c="dimmed" size="sm">
-                {currentRoute.description}
-              </Text>
+              {currentRoute.description && (
+                <Text c="dimmed" size="sm">
+                  {currentRoute.description}
+                </Text>
+              )}
             </div>
           </Group>
 

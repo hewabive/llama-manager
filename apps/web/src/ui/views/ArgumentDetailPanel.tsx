@@ -66,16 +66,6 @@ function ArgumentBadges(props: { option: LlamaArgumentOption }) {
   );
 }
 
-function ArgumentNames(props: { option: LlamaArgumentOption }) {
-  return (
-    <Group gap={6} wrap="wrap">
-      {props.option.names.map((name) => (
-        <Code key={name}>{name}</Code>
-      ))}
-    </Group>
-  );
-}
-
 function InstanceDefaultsCard({ fm }: { fm: ArgumentsViewController }) {
   const selectedOption = fm.selectedOption;
   if (!selectedOption) {
@@ -183,14 +173,16 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
   return (
     <Paper withBorder p="md" radius="sm" className="args-reference-detail">
       {selectedOption ? (
-        <Stack gap="sm">
+        <Stack gap="sm" className="args-detail-content">
           <Group justify="space-between" align="flex-start" wrap="nowrap">
-            <div className="argument-name">
+            <Group className="argument-name" gap={8} align="center" wrap="wrap">
               <Title order={4}>{selectedOption.primaryName}</Title>
-              <Text c="dimmed" size="sm">
-                {selectedOption.valueHint || "No explicit value hint"}
-              </Text>
-            </div>
+              {selectedOption.names
+                .filter((name) => name !== selectedOption.primaryName)
+                .map((name) => (
+                  <Code key={name}>{name}</Code>
+                ))}
+            </Group>
             <Tooltip label="Copy argument name">
               <ActionIcon
                 aria-label="Copy argument name"
@@ -203,13 +195,6 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
           </Group>
 
           <ArgumentBadges option={selectedOption} />
-
-          <Stack gap={4}>
-            <Text c="dimmed" size="xs">
-              Names
-            </Text>
-            <ArgumentNames option={selectedOption} />
-          </Stack>
 
           <InstanceDefaultsCard fm={fm} />
 
@@ -260,13 +245,7 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
 
           <Divider />
 
-          <Stack gap="xs">
-            <Group justify="space-between" align="flex-start" wrap="wrap">
-              <Text fw={600} size="sm">
-                Engineering help
-              </Text>
-            </Group>
-
+          <Stack gap="xs" className="args-detail-engineering">
             {fm.selectedDocQuery.isFetching && (
               <Text c="dimmed" size="sm">
                 Loading engineering documentation...
@@ -284,13 +263,13 @@ export function ArgumentDetailPanel({ fm }: { fm: ArgumentsViewController }) {
             )}
 
             {fm.selectedDoc && fm.selectedDoc.exists ? (
-              <Stack gap="xs">
-                <ScrollArea h={520} type="auto" offsetScrollbars>
-                  <EngineeringMarkdown
-                    markdown={fm.visibleEngineeringMarkdown}
-                  />
-                </ScrollArea>
-              </Stack>
+              <ScrollArea
+                className="args-eng-scroll"
+                type="auto"
+                offsetScrollbars
+              >
+                <EngineeringMarkdown markdown={fm.visibleEngineeringMarkdown} />
+              </ScrollArea>
             ) : (
               <Paper withBorder p="sm" radius="sm">
                 <Stack gap={4}>
