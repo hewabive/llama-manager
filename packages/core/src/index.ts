@@ -172,6 +172,7 @@ export const InstanceCreateSchema = z.object({
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
   memory: z.array(InstanceMemoryDrawSchema).default([]),
+  numaNode: z.number().int().min(0).optional(),
 });
 
 export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
@@ -185,6 +186,7 @@ export const InstanceUpdateSchema = z.object({
   args: InstanceArgsSchema.optional(),
   env: InstanceEnvSchema.optional(),
   memory: z.array(InstanceMemoryDrawSchema).optional(),
+  numaNode: z.number().int().min(0).optional(),
 });
 
 export const InstanceSchema = InstanceCreateSchema.extend({
@@ -215,6 +217,7 @@ export const InstanceConfigRecordSchema = z.object({
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
   memory: z.array(InstanceMemoryDrawSchema).default([]),
+  numaNode: z.number().int().min(0).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

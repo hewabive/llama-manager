@@ -12,7 +12,16 @@ import { dirname, resolve } from "node:path";
 import { EventEmitter } from "node:events";
 
 import { config } from "../config.js";
+import { detectNumaEnforcement } from "../system/numa-capability.js";
+import { readNumaTopology } from "../system/numa.js";
 import { argsToCli } from "./args.js";
+import {
+  applyNumaPin,
+  buildPinnedShimArgs,
+  instanceCgroupDir,
+  instanceCgroupExists,
+  removeNumaCgroup,
+} from "./cgroup.js";
 import { filterManagedLlamaLogChunk } from "./log-filter.js";
 import {
   buildLaunchSnapshot,
@@ -49,6 +58,7 @@ type RuntimeProcess = MutableProcessState & {
   runId: string;
   adopted: boolean;
   child: ChildProcess | null;
+  cgroupDir: string | null;
   filteredStream: WriteStream;
   tail: RawLogTail | null;
   exitWaiters: Array<() => void>;
@@ -105,6 +115,30 @@ class ProcessSupervisor extends EventEmitter {
       throw new ProcessPreflightError(preflight);
     }
 
+    const cliArgs = argsToCli(instance.args);
+    const cwd = instance.cwd ?? dirname(instance.binaryPath);
+
+    let spawnBinary = instance.binaryPath;
+    let spawnArgs = cliArgs;
+    let cgroupDir: string | null = null;
+    if (instance.numaNode != null && detectNumaEnforcement() === "cgroup-v2") {
+      const node = readNumaTopology().find(
+        (entry) => entry.id === instance.numaNode,
+      );
+      if (!node) {
+        throw new Error(
+          `NUMA node ${instance.numaNode} is not present on this host`,
+        );
+      }
+      cgroupDir = applyNumaPin(instance.name, node);
+      spawnBinary = "sh";
+      spawnArgs = buildPinnedShimArgs(
+        `${cgroupDir}/cgroup.procs`,
+        instance.binaryPath,
+        cliArgs,
+      );
+    }
+
     const startedAt = nowIso();
     const logName = `${instance.name}-${Date.now()}`;
     const logPath = resolve(config.logsDir, `${logName}.log`);
@@ -131,10 +165,8 @@ class ProcessSupervisor extends EventEmitter {
     );
     const tailStartOffset = statSync(rawLogPath).size;
 
-    const cliArgs = argsToCli(instance.args);
-    const cwd = instance.cwd ?? dirname(instance.binaryPath);
     const childLogFd = openSync(rawLogPath, "a");
-    const child = spawn(instance.binaryPath, cliArgs, {
+    const child = spawn(spawnBinary, spawnArgs, {
       cwd,
       env: { ...process.env, ...instance.env },
       stdio: ["ignore", childLogFd, childLogFd],
@@ -157,6 +189,7 @@ class ProcessSupervisor extends EventEmitter {
       runId,
       adopted: false,
       child,
+      cgroupDir,
       filteredStream,
       tail: null,
       exitWaiters: [],
@@ -225,10 +258,14 @@ class ProcessSupervisor extends EventEmitter {
       `# ${adoptedAt} manager restarted; adopted running pid=${pid} (filtered log has a gap here — see raw log)\n`,
     );
 
+    const cgroupDir = instanceCgroupExists(instance.name)
+      ? instanceCgroupDir(instance.name)
+      : null;
     const runtime: RuntimeProcess = {
       runId: run.id,
       adopted: true,
       child: null,
+      cgroupDir,
       filteredStream,
       tail: null,
       exitWaiters: [],
@@ -448,6 +485,7 @@ class ProcessSupervisor extends EventEmitter {
     });
     this.writeMarker(runtime, `${runtime.stoppedAt} ${input.marker}\n`);
     this.emitEvent(input.event.type, runtime.instanceId, input.event.message);
+    removeNumaCgroup(runtime.cgroupDir);
     for (const waiter of runtime.exitWaiters.splice(0)) {
       waiter();
     }

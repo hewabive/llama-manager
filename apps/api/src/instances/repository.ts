@@ -73,6 +73,7 @@ function toInstance(record: InstanceConfigRecord): Instance {
     args: record.args,
     env: record.env,
     memory: record.memory,
+    ...(record.numaNode !== undefined ? { numaNode: record.numaNode } : {}),
     status: processState?.status ?? durableState.status,
     pid: processState?.pid ?? durableState.pid,
     createdAt: record.createdAt,
@@ -105,6 +106,7 @@ export function createInstance(input: InstanceCreate): Instance {
     args: input.args,
     env: input.env,
     memory: input.memory,
+    ...(input.numaNode !== undefined ? { numaNode: input.numaNode } : {}),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -139,6 +141,7 @@ export function updateInstance(
     args: input.args ?? current.args,
     env: input.env ?? current.env,
     memory: input.memory ?? current.memory,
+    ...(input.numaNode !== undefined ? { numaNode: input.numaNode } : {}),
     createdAt: current.createdAt,
     updatedAt: nowIso(),
   };

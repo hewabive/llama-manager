@@ -8,6 +8,7 @@ export type LaunchSnapshot = {
   cliArgs: string[];
   env: Record<string, string>;
   cwd: string;
+  numaNode: number | null;
 };
 
 export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
@@ -16,6 +17,7 @@ export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
     cliArgs: argsToCli(instance.args),
     env: { ...instance.env },
     cwd: instance.cwd ?? dirname(instance.binaryPath),
+    numaNode: instance.numaNode ?? null,
   };
 }
 
@@ -43,6 +45,7 @@ export function parseLaunchSnapshot(
           : {},
       cwd:
         typeof value.cwd === "string" ? value.cwd : dirname(value.binaryPath),
+      numaNode: typeof value.numaNode === "number" ? value.numaNode : null,
     };
   } catch {
     return null;
@@ -76,6 +79,7 @@ export function hasLaunchSnapshotDrift(
   return (
     current.binaryPath !== snapshot.binaryPath ||
     current.cwd !== snapshot.cwd ||
+    current.numaNode !== snapshot.numaNode ||
     !sameStringArray(current.cliArgs, snapshot.cliArgs) ||
     !sameRecord(current.env, snapshot.env)
   );

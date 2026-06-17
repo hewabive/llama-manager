@@ -162,8 +162,12 @@ memory — uniformly across GPU and CPU domains.
 
 ## Future axes
 
-NUMA / dual-socket: VRAM pools are unaffected; the `host` pool splits into
-per-node pools and gains an affinity field (numactl). Each per-node host pool then
-becomes its own compute domain **automatically** — a domain is just the poolId a
-draw touches, so no coordinator rework is needed. Per-node host budgets are only
-meaningful once the process is pinned, so they stay advisory until pinning lands.
+NUMA / dual-socket: **manual pinning has landed** — an instance can bind to one
+NUMA node, enforced via a cgroup v2 cpuset sibling slice (`docs/NUMA_PINNING.md`).
+Topology and GPU→node affinity are exposed through `SystemResources`. Still
+deferred: VRAM pools are unaffected; the `host` pool splits into per-node pools,
+each becoming its own compute domain **automatically** — a domain is just the
+poolId a draw touches, so no coordinator rework is needed. Per-node host budgets
+are only meaningful with pinning (now present), but admission still treats `host`
+as one pool, so over-subscribing a node's RAM is on the operator until the split
+lands. Auto-deriving a binding from a GPU's PCIe-local node is also a later phase.

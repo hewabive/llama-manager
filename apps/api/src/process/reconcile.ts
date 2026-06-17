@@ -1,6 +1,7 @@
 import type { Instance } from "@llama-manager/core";
 import { readFileSync } from "node:fs";
 
+import { cleanupOrphanNumaCgroups } from "./cgroup.js";
 import { parseLaunchSnapshot } from "./launch-snapshot.js";
 import { isPidAlive } from "./pid.js";
 import { listOpenProcessRuns, updateProcessRun } from "./runs-repository.js";
@@ -62,6 +63,8 @@ export function reconcileProcessRuns(instances: Instance[]) {
     });
     summary.stale += 1;
   }
+
+  cleanupOrphanNumaCgroups();
 
   return summary;
 }

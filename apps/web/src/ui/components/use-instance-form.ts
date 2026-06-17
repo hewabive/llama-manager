@@ -134,6 +134,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   );
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const [memoryRows, setMemoryRows] = useState<MemoryDraftRow[]>([]);
+  const [selectedNumaNode, setSelectedNumaNode] = useState<number | null>(null);
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -407,6 +408,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       return null;
     }
   }, [form.values.envJson]);
+  const numaNodes = systemResourcesQuery.data?.data.numaNodes ?? [];
+  const numaEnforcement =
+    systemResourcesQuery.data?.data.numaEnforcement ?? "unavailable";
   const cudaAccelerators = (
     systemResourcesQuery.data?.data.accelerators ?? []
   ).filter(
@@ -498,6 +502,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args, knownArgByName));
       setMemoryRows(memoryRowsFromDraws(props.instance.memory));
+      setSelectedNumaNode(props.instance.numaNode ?? null);
     } else {
       const modelPath = props.initialModelPath ?? null;
       const port = nextAvailablePort(props.instances);
@@ -516,6 +521,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setStartAfterCreate(false);
       setArgRows(defaultRows(modelPath ?? undefined, port));
       setMemoryRows([]);
+      setSelectedNumaNode(null);
     }
   }, [
     argumentDefaultsQuery.isLoading,
@@ -1116,6 +1122,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         args,
         env: parseEnvJson(values.envJson),
         memory: memoryDrawsFromRows(memoryRows),
+        ...(selectedNumaNode !== null ? { numaNode: selectedNumaNode } : {}),
       };
       mutation.mutate(input);
     } catch (error) {
@@ -1220,6 +1227,10 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     mutation,
     startAfterCreate,
     setStartAfterCreate,
+    numaNodes,
+    numaEnforcement,
+    selectedNumaNode,
+    setSelectedNumaNode,
     memoryRows,
     memoryPoolOptions,
     memoryLedger,

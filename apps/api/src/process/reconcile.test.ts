@@ -47,6 +47,7 @@ function seedOpenRun(input: {
           cliArgs: ["60"],
           env: {},
           cwd: "/bin",
+          numaNode: null,
         })
       : null,
   });
