@@ -10,7 +10,7 @@ import {
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 
-import { getInstance, listInstances } from "../instances/repository.js";
+import { listInstances } from "../instances/repository.js";
 import { getApiEndpointFromCatalog } from "../proxy/endpoints.js";
 import {
   collectApiProxyPipelineRefs,
@@ -36,7 +36,6 @@ import {
   updateApiProxyPipeline,
   updateApiProxyTarget,
 } from "../proxy/repository.js";
-import { isRouterInstance } from "../proxy/target-models.js";
 
 function validateApiProxyTargetRefs(input: {
   endpointId?: string | undefined;
@@ -61,8 +60,7 @@ function validateApiProxyTargetModel(input: {
   if (!input.endpointId || !input.model) {
     return null;
   }
-  const instances = listInstances();
-  const endpoint = getApiEndpointFromCatalog(input.endpointId, instances);
+  const endpoint = getApiEndpointFromCatalog(input.endpointId, listInstances());
   if (
     !endpoint ||
     endpoint.kind !== "managed-instance" ||
@@ -70,11 +68,7 @@ function validateApiProxyTargetModel(input: {
   ) {
     return null;
   }
-  const instance = getInstance(endpoint.instanceId);
-  if (instance && !isRouterInstance(instance)) {
-    return `target ${endpoint.name} is a single-model instance: leave the model empty (it is implied by the instance). A model is only set for router (--models-preset) instances.`;
-  }
-  return null;
+  return `target ${endpoint.name} is a managed instance: leave the model empty (it is implied by the instance).`;
 }
 
 function validateApiProxyRouteToRef(input: {

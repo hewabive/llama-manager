@@ -5,11 +5,9 @@ import {
   type ApiEndpointRecord,
   type ApiProxyTargetModelCatalog,
   type ApiProxyTargetModelGroup,
-  type ApiProxyTargetModelOption,
   type Instance,
 } from "@llama-manager/core";
 
-import { readPreset } from "../presets/repository.js";
 import { listApiEndpointCatalog } from "./endpoints.js";
 
 export const targetModelValueSeparator = "\u001f";
@@ -26,11 +24,6 @@ export function isRouterInstance(instance: Instance): boolean {
   );
 }
 
-function presetNameFromArg(value: string): string {
-  const base = basename(value);
-  return base.toLowerCase().endsWith(".ini") ? base.slice(0, -4) : base;
-}
-
 function optionValue(endpointId: string, storedModel: string | null): string {
   return `${endpointId}${targetModelValueSeparator}${storedModel ?? ""}`;
 }
@@ -43,27 +36,6 @@ function managedGroup(
   instance: Instance,
   endpoint: ApiEndpointRecord,
 ): ApiProxyTargetModelGroup {
-  if (isRouterInstance(instance)) {
-    const presetArg = stringArg(instance, "--models-preset");
-    const preset = presetArg ? readPreset(presetNameFromArg(presetArg)) : null;
-    const options: ApiProxyTargetModelOption[] = (
-      preset?.file.entries ?? []
-    ).map((entry) => ({
-      value: optionValue(endpoint.id, entry.name),
-      endpointId: endpoint.id,
-      storedModel: entry.name,
-      label: entry.name,
-      custom: false,
-    }));
-    return {
-      endpointId: endpoint.id,
-      endpointName: endpoint.name,
-      kind: "managed-router",
-      online: instanceOnline(instance),
-      options,
-    };
-  }
-
   const model = stringArg(instance, "--model");
   return {
     endpointId: endpoint.id,

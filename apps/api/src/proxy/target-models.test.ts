@@ -44,7 +44,7 @@ test("single-model instance yields one option with null storedModel", () => {
   );
 });
 
-test("router instance (preset, no --model) is managed-router", () => {
+test("router instance (preset, no --model) yields one opaque managed option", () => {
   const router = instance("router-B", {
     "--host": "127.0.0.1",
     "--port": 9002,
@@ -55,8 +55,10 @@ test("router instance (preset, no --model) is managed-router", () => {
   const catalog = buildApiProxyTargetModelCatalog([router]);
   const group = catalog.groups.find((item) => item.endpointName === "router-B");
   assert.ok(group);
-  assert.equal(group.kind, "managed-router");
-  assert.deepEqual(group.options, []);
+  assert.equal(group.kind, "managed-single");
+  assert.equal(group.options.length, 1);
+  assert.equal(group.options[0]?.storedModel, null);
+  assert.equal(group.options[0]?.label, "router-B");
 });
 
 test("a configured --model wins over --models-preset (single, not router)", () => {

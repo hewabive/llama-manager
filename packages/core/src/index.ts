@@ -1609,7 +1609,6 @@ export const ApiProxyQuickRouteResultSchema = z.object({
 
 export const ApiProxyTargetModelKindSchema = z.enum([
   "managed-single",
-  "managed-router",
   "external-api",
 ]);
 
