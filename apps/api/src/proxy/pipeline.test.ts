@@ -7,6 +7,7 @@ import {
   apiProxyOutputLimitEditOperations,
   apiProxyReasoningEditOperations,
   applyApiProxyRequestEdits,
+  upgradeLegacyApiProxyPipeline,
   type ApiProxyEditRequestOperation,
   type ApiProxyPipelineNode,
   type ApiProxyPipelineRecord,
@@ -73,40 +74,42 @@ function request(
 }
 
 test("legacy pipeline record upgrades steps and routeTo to a node graph", () => {
-  const record = ApiProxyPipelineRecordSchema.parse({
-    id: "p1",
-    name: "Legacy",
-    enabled: true,
-    nodeType: "replace-text",
-    steps: [
-      {
-        id: "capture",
-        name: "Capture request",
-        enabled: true,
-        type: "capture-request",
-        config: { includeTransformedBody: true },
-      },
-      {
-        id: "replace",
-        name: "Replace text",
-        enabled: true,
-        type: "replace-text",
-        config: {
-          rules: [{ enabled: true, find: "bad text", replace: "good text" }],
+  const record = ApiProxyPipelineRecordSchema.parse(
+    upgradeLegacyApiProxyPipeline({
+      id: "p1",
+      name: "Legacy",
+      enabled: true,
+      nodeType: "replace-text",
+      steps: [
+        {
+          id: "capture",
+          name: "Capture request",
+          enabled: true,
+          type: "capture-request",
+          config: { includeTransformedBody: true },
         },
-      },
-      {
-        id: "off",
-        name: "Disabled",
-        enabled: false,
-        type: "replace-text",
-        config: { rules: [] },
-      },
-    ],
-    routeTo: { type: "target", id: "target-a" },
-    createdAt: "2026-05-30T10:00:00.000Z",
-    updatedAt: "2026-05-30T10:00:00.000Z",
-  });
+        {
+          id: "replace",
+          name: "Replace text",
+          enabled: true,
+          type: "replace-text",
+          config: {
+            rules: [{ enabled: true, find: "bad text", replace: "good text" }],
+          },
+        },
+        {
+          id: "off",
+          name: "Disabled",
+          enabled: false,
+          type: "replace-text",
+          config: { rules: [] },
+        },
+      ],
+      routeTo: { type: "target", id: "target-a" },
+      createdAt: "2026-05-30T10:00:00.000Z",
+      updatedAt: "2026-05-30T10:00:00.000Z",
+    }),
+  );
 
   assert.deepEqual(record.entry, { type: "node", id: "capture" });
   assert.equal(record.nodes.length, 2);
@@ -946,26 +949,102 @@ test("model without route fails with route_unbound", async () => {
 });
 
 test("apiProxyReasoningEditOperations maps effort to protocol-specific fields", () => {
-  assert.deepEqual(apiProxyReasoningEditOperations({ effort: "high", customBudgetTokens: 2048 }, "openai"), [
-    { kind: "set-field", enabled: true, path: "chat_template_kwargs.enable_thinking", value: true },
-    { kind: "set-field", enabled: true, path: "thinking_budget_tokens", value: 8192 },
-  ]);
-  assert.deepEqual(apiProxyReasoningEditOperations({ effort: "off", customBudgetTokens: 2048 }, "openai"), [
-    { kind: "set-field", enabled: true, path: "chat_template_kwargs.enable_thinking", value: false },
-  ]);
-  assert.deepEqual(apiProxyReasoningEditOperations({ effort: "max", customBudgetTokens: 2048 }, "openai"), [
-    { kind: "set-field", enabled: true, path: "chat_template_kwargs.enable_thinking", value: true },
-  ]);
-  assert.deepEqual(apiProxyReasoningEditOperations({ effort: "low", customBudgetTokens: 2048 }, "anthropic"), [
-    { kind: "set-field", enabled: true, path: "thinking", value: { type: "enabled", budget_tokens: 512 } },
-  ]);
-  assert.deepEqual(apiProxyReasoningEditOperations({ effort: "off", customBudgetTokens: 2048 }, "anthropic"), [
-    { kind: "set-field", enabled: true, path: "thinking", value: { type: "disabled" } },
-  ]);
-  assert.deepEqual(apiProxyReasoningEditOperations({ effort: "custom", customBudgetTokens: 1234 }, "openai"), [
-    { kind: "set-field", enabled: true, path: "chat_template_kwargs.enable_thinking", value: true },
-    { kind: "set-field", enabled: true, path: "thinking_budget_tokens", value: 1234 },
-  ]);
+  assert.deepEqual(
+    apiProxyReasoningEditOperations(
+      { effort: "high", customBudgetTokens: 2048 },
+      "openai",
+    ),
+    [
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "chat_template_kwargs.enable_thinking",
+        value: true,
+      },
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "thinking_budget_tokens",
+        value: 8192,
+      },
+    ],
+  );
+  assert.deepEqual(
+    apiProxyReasoningEditOperations(
+      { effort: "off", customBudgetTokens: 2048 },
+      "openai",
+    ),
+    [
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "chat_template_kwargs.enable_thinking",
+        value: false,
+      },
+    ],
+  );
+  assert.deepEqual(
+    apiProxyReasoningEditOperations(
+      { effort: "max", customBudgetTokens: 2048 },
+      "openai",
+    ),
+    [
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "chat_template_kwargs.enable_thinking",
+        value: true,
+      },
+    ],
+  );
+  assert.deepEqual(
+    apiProxyReasoningEditOperations(
+      { effort: "low", customBudgetTokens: 2048 },
+      "anthropic",
+    ),
+    [
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "thinking",
+        value: { type: "enabled", budget_tokens: 512 },
+      },
+    ],
+  );
+  assert.deepEqual(
+    apiProxyReasoningEditOperations(
+      { effort: "off", customBudgetTokens: 2048 },
+      "anthropic",
+    ),
+    [
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "thinking",
+        value: { type: "disabled" },
+      },
+    ],
+  );
+  assert.deepEqual(
+    apiProxyReasoningEditOperations(
+      { effort: "custom", customBudgetTokens: 1234 },
+      "openai",
+    ),
+    [
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "chat_template_kwargs.enable_thinking",
+        value: true,
+      },
+      {
+        kind: "set-field",
+        enabled: true,
+        path: "thinking_budget_tokens",
+        value: 1234,
+      },
+    ],
+  );
 });
 
 function reasoningPipeline(): ApiProxyPipelineRecord[] {
@@ -989,7 +1068,10 @@ function reasoningPipeline(): ApiProxyPipelineRecord[] {
 test("reasoning node sets llama.cpp thinking fields for openai requests", async () => {
   const result = await resolveApiProxyRouteChain({
     request: request({
-      body: { model: "public-model", messages: [{ role: "user", content: "hi" }] },
+      body: {
+        model: "public-model",
+        messages: [{ role: "user", content: "hi" }],
+      },
     }),
     getPipeline: getPipelineFrom(reasoningPipeline()),
   });
@@ -1016,7 +1098,10 @@ test("reasoning node sets the native thinking block for anthropic requests", asy
         routePath: "/v1/messages",
         transport: "http-json",
       },
-      body: { model: "public-model", messages: [{ role: "user", content: "hi" }] },
+      body: {
+        model: "public-model",
+        messages: [{ role: "user", content: "hi" }],
+      },
     }),
     getPipeline: getPipelineFrom(reasoningPipeline()),
   });
@@ -1033,18 +1118,26 @@ test("reasoning node sets the native thinking block for anthropic requests", asy
 
 test("apiProxyOutputLimitEditOperations caps or sets max_tokens", () => {
   const cap = { maxTokens: 4096, mode: "cap" as const };
-  assert.deepEqual(apiProxyOutputLimitEditOperations(cap, { max_tokens: 32000 }), [
-    { kind: "set-field", enabled: true, path: "max_tokens", value: 4096 },
-  ]);
-  assert.deepEqual(apiProxyOutputLimitEditOperations(cap, { max_tokens: 500 }), []);
+  assert.deepEqual(
+    apiProxyOutputLimitEditOperations(cap, { max_tokens: 32000 }),
+    [{ kind: "set-field", enabled: true, path: "max_tokens", value: 4096 }],
+  );
+  assert.deepEqual(
+    apiProxyOutputLimitEditOperations(cap, { max_tokens: 500 }),
+    [],
+  );
   assert.deepEqual(apiProxyOutputLimitEditOperations(cap, {}), [
     { kind: "set-field", enabled: true, path: "max_tokens", value: 4096 },
   ]);
   const set = { maxTokens: 4096, mode: "set" as const };
-  assert.deepEqual(apiProxyOutputLimitEditOperations(set, { max_tokens: 500 }), [
-    { kind: "set-field", enabled: true, path: "max_tokens", value: 4096 },
-  ]);
-  assert.deepEqual(apiProxyOutputLimitEditOperations(set, { max_tokens: 4096 }), []);
+  assert.deepEqual(
+    apiProxyOutputLimitEditOperations(set, { max_tokens: 500 }),
+    [{ kind: "set-field", enabled: true, path: "max_tokens", value: 4096 }],
+  );
+  assert.deepEqual(
+    apiProxyOutputLimitEditOperations(set, { max_tokens: 4096 }),
+    [],
+  );
 });
 
 test("output-limit node caps a runaway max_tokens mid-route", async () => {

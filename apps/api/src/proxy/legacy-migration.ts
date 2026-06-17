@@ -3,6 +3,7 @@ import {
   ApiProxyPipelineRecordSchema,
   ApiProxyRouteToSchema,
   ApiProxyTargetRecordSchema,
+  upgradeLegacyApiProxyPipeline,
 } from "@llama-manager/core";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -113,16 +114,18 @@ function exportPipelines() {
   exportIfAbsent(PIPELINES_FILE, () =>
     (sqlite.prepare("SELECT * FROM api_proxy_pipelines").all() as any[]).map(
       (row) =>
-        ApiProxyPipelineRecordSchema.parse({
-          id: row.id,
-          name: row.name,
-          enabled: parseBool(row.enabled),
-          nodeType: row.node_type,
-          steps: parseJson(row.steps_json) ?? [],
-          routeTo: parseRouteTo(row.route_to_json),
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        }),
+        ApiProxyPipelineRecordSchema.parse(
+          upgradeLegacyApiProxyPipeline({
+            id: row.id,
+            name: row.name,
+            enabled: parseBool(row.enabled),
+            nodeType: row.node_type,
+            steps: parseJson(row.steps_json) ?? [],
+            routeTo: parseRouteTo(row.route_to_json),
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          }),
+        ),
     ),
   );
 }

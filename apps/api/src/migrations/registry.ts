@@ -5,6 +5,10 @@ import {
 import { sqlite } from "../db/index.js";
 import { migratePathCatalogToFile } from "../path-catalog/migration.js";
 import { migrateProxyConfigToFiles } from "../proxy/legacy-migration.js";
+import {
+  hasLegacyPipelineRecords,
+  migratePipelinesToGraphFormat,
+} from "../proxy/pipelines-graph-migration.js";
 import { migrateApiProxyRuntimeMetadataToFile } from "../proxy/runtime-metadata-migration.js";
 import type { Migration } from "./types.js";
 
@@ -49,6 +53,14 @@ export const migrations: Migration[] = [
     isApplied: () => !tableExists("path_catalog"),
     apply: () => {
       migratePathCatalogToFile();
+    },
+  },
+  {
+    id: "0005-pipelines-graph-format",
+    describe: "config/proxy/pipelines.json legacy steps/routeTo → node graph",
+    isApplied: () => !hasLegacyPipelineRecords(),
+    apply: () => {
+      migratePipelinesToGraphFormat();
     },
   },
 ];

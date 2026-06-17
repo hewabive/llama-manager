@@ -644,7 +644,9 @@ export function apiProxyOutputLimitEditOperations(
   if (current === next) {
     return [];
   }
-  return [{ kind: "set-field", enabled: true, path: "max_tokens", value: next }];
+  return [
+    { kind: "set-field", enabled: true, path: "max_tokens", value: next },
+  ];
 }
 
 export const ApiProxyConditionScopeSchema = z.enum([
@@ -862,10 +864,7 @@ export function upgradeLegacyApiProxyPipeline(value: unknown): unknown {
   };
 }
 
-export const ApiProxyPipelineConfigSchema = z.preprocess(
-  upgradeLegacyApiProxyPipeline,
-  ApiProxyPipelineConfigBaseSchema,
-);
+export const ApiProxyPipelineConfigSchema = ApiProxyPipelineConfigBaseSchema;
 
 export type ApiProxyPipelineGraphShape = {
   entry: z.infer<typeof ApiProxyNodePortSchema>;
@@ -1583,13 +1582,11 @@ export const ApiProxyModelRecordSchema = ApiProxyModelConfigSchema.extend({
   updatedAt: z.string(),
 });
 
-export const ApiProxyPipelineRecordSchema = z.preprocess(
-  upgradeLegacyApiProxyPipeline,
+export const ApiProxyPipelineRecordSchema =
   ApiProxyPipelineConfigBaseSchema.extend({
     createdAt: z.string(),
     updatedAt: z.string(),
-  }),
-);
+  });
 
 export const ApiProxyConfigSchema = z.object({
   models: z.array(ApiProxyModelRecordSchema),
