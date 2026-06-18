@@ -11,6 +11,7 @@ import {
 import { Cpu, MemoryStick } from "lucide-react";
 
 import { formatBytes } from "../utils/models";
+import { formatAcceleratorName } from "../utils/pools";
 
 function capabilityBadge(label: string, available: boolean) {
   return (
@@ -83,7 +84,7 @@ export function NumaTopologyPanel(props: { resources: SystemResources }) {
                   ) : (
                     gpus.map((gpu) => (
                       <Badge key={gpu.id} variant="light" color="grape">
-                        GPU {gpu.id}: {gpu.name}
+                        {formatAcceleratorName(gpu)}
                       </Badge>
                     ))
                   )}

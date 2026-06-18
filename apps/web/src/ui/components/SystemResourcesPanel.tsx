@@ -9,6 +9,8 @@ import {
   Text,
 } from "@mantine/core";
 
+import { formatAcceleratorName } from "../utils/pools";
+
 const bytesFormatter = new Intl.NumberFormat("en", {
   maximumFractionDigits: 1,
 });
@@ -141,7 +143,7 @@ export function SystemResourcesPanel(props: {
                   <Stack gap={6}>
                     <Group justify="space-between" gap="xs" wrap="nowrap">
                       <Text fw={600} size="sm" lineClamp={1}>
-                        GPU {accelerator.id}: {accelerator.name}
+                        {formatAcceleratorName(accelerator)}
                       </Text>
                       <Group gap={4} wrap="nowrap">
                         {accelerator.numaNode !== null && (

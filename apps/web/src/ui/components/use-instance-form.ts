@@ -28,6 +28,7 @@ import {
 } from "../../api/client";
 import { useScannedModels } from "../hooks/use-scanned-models";
 import { createUiId } from "../utils/id";
+import { formatMemoryPoolName } from "../utils/pools";
 import {
   compareModelTitles,
   formatBytes,
@@ -162,7 +163,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   const memoryLedger = resourcesQuery.data?.data.ledger.pools ?? [];
   const memoryPoolOptions = memoryPools.map((pool) => ({
     value: pool.id,
-    label: `${pool.name} (${pool.kind})`,
+    label: formatMemoryPoolName(pool),
   }));
 
   function addMemoryRow() {
@@ -1135,7 +1136,12 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         ...(numaMode === "bind" && numaBindNode !== null
           ? { numa: { mode: "bind" as const, node: numaBindNode } }
           : numaMode === "interleave"
-            ? { numa: { mode: "interleave" as const, nodes: numaInterleaveNodes } }
+            ? {
+                numa: {
+                  mode: "interleave" as const,
+                  nodes: numaInterleaveNodes,
+                },
+              }
             : {}),
       };
       mutation.mutate(input);

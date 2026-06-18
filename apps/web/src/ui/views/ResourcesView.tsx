@@ -31,6 +31,7 @@ import {
 } from "../../api/client";
 import { NumaTopologyPanel } from "../components/NumaTopologyPanel";
 import { formatBytes } from "../utils/models";
+import { formatMemoryPoolName } from "../utils/pools";
 
 const GIB = 1024 ** 3;
 
@@ -165,7 +166,7 @@ export function ResourcesView() {
             </ThemeIcon>
             <Stack gap={4}>
               <Group gap="xs" wrap="wrap">
-                <Text fw={650}>{pool.name}</Text>
+                <Text fw={650}>{formatMemoryPoolName(pool)}</Text>
                 <Badge color={poolColor(pool.kind)} variant="light">
                   {pool.kind}
                 </Badge>
