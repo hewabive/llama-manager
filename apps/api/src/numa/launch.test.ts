@@ -2,7 +2,11 @@ import type { Instance } from "@llama-manager/core";
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { resolveNumaLaunch } from "./launch.js";
+import {
+  buildInterleaveArgs,
+  interleaveSpec,
+  resolveNumaLaunch,
+} from "./launch.js";
 
 function instance(numa?: Instance["numa"]): Instance {
   return { name: "srv", numa } as unknown as Instance;
@@ -16,9 +20,19 @@ test("resolveNumaLaunch passes through when there is no numa config", () => {
   });
 });
 
-test("resolveNumaLaunch leaves interleave unwired for now (stage b)", () => {
+test("interleaveSpec maps an empty set to all, else comma-joins", () => {
+  assert.equal(interleaveSpec([]), "all");
+  assert.equal(interleaveSpec([0, 2, 3]), "0,2,3");
+});
+
+test("buildInterleaveArgs wraps the command in numactl --interleave", () => {
   assert.deepEqual(
-    resolveNumaLaunch(instance({ mode: "interleave", nodes: [0, 1] }), "/b", []),
-    { binary: "/b", args: [], cgroupDir: null },
+    buildInterleaveArgs([], "/bin/llama", ["--model", "/m.gguf"]),
+    ["--interleave=all", "--", "/bin/llama", "--model", "/m.gguf"],
   );
+  assert.deepEqual(buildInterleaveArgs([0, 1], "/b", []), [
+    "--interleave=0,1",
+    "--",
+    "/b",
+  ]);
 });

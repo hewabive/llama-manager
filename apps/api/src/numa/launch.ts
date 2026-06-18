@@ -1,6 +1,6 @@
 import type { Instance } from "@llama-manager/core";
 
-import { detectNumaBind } from "./capability.js";
+import { detectNumaBind, detectNumaInterleave } from "./capability.js";
 import { applyNumaPin, buildPinnedShimArgs } from "./cgroup.js";
 import { readNumaTopology } from "./topology.js";
 
@@ -12,6 +12,18 @@ export type NumaLaunch = {
 
 function plain(binary: string, args: string[]): NumaLaunch {
   return { binary, args, cgroupDir: null };
+}
+
+export function interleaveSpec(nodes: number[]): string {
+  return nodes.length > 0 ? nodes.join(",") : "all";
+}
+
+export function buildInterleaveArgs(
+  nodes: number[],
+  binary: string,
+  cliArgs: string[],
+): string[] {
+  return [`--interleave=${interleaveSpec(nodes)}`, "--", binary, ...cliArgs];
 }
 
 export function resolveNumaLaunch(
@@ -40,5 +52,12 @@ export function resolveNumaLaunch(
     };
   }
 
-  return plain(binary, cliArgs);
+  if (!detectNumaInterleave()) {
+    return plain(binary, cliArgs);
+  }
+  return {
+    binary: "numactl",
+    args: buildInterleaveArgs(numa.nodes, binary, cliArgs),
+    cgroupDir: null,
+  };
 }
