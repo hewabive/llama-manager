@@ -87,8 +87,9 @@ with the helper:
 sudo scripts/setup-numa-cgroup-delegation.sh <user-that-runs-llama-manager>
 ```
 
-It writes the drop-in below, `daemon-reload`s, enables linger, applies `+cpuset`
-to the running user manager's `subtree_control`, and verifies:
+It writes the drop-in below, `daemon-reload`s, enables linger, enables `+cpuset`
+down the `cgroup.subtree_control` chain (root → `user.slice` →
+`user-<uid>.slice` → `user@<uid>.service`) so it activates live, and verifies:
 
 ```
 # /etc/systemd/system/user@.service.d/delegate-cpuset.conf
@@ -97,10 +98,13 @@ Delegate=cpu cpuset memory pids
 ```
 
 The drop-in makes delegation persistent across reboots; the `subtree_control`
-nudge makes it active **without a re-login**. (Delegation only puts `cpuset` in
-the unit's `cgroup.controllers` — *available* — but children can use it only once
-it is also in `cgroup.subtree_control`, which systemd otherwise enables only when
-the user manager next starts, i.e. on re-login.) After this the manager creates
+chain-enable makes it active immediately. (Delegation only puts `cpuset` in a
+cgroup's `cgroup.controllers` — *available* — but children can use it only once
+it is also in `cgroup.subtree_control` at every level down to the delegated root.)
+If the live enable can't be applied, the change takes effect when
+`user@<uid>.service` next **restarts** — `systemctl restart user@<uid>.service`
+or a reboot. Note: with linger enabled a plain logout/login does **not** restart
+the user manager, so re-login alone is not enough. After this the manager creates
 and writes cgroups as the normal user — **no sudo at launch**. Without it the
 capability probe reports `unavailable` and bindings stay inert. If the manager
 runs as a *system* service instead, put the same `Delegate=` on that unit.

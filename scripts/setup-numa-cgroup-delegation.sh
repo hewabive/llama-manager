@@ -46,22 +46,29 @@ echo "Reloaded systemd unit files."
 loginctl enable-linger "$TARGET_USER"
 echo "Enabled linger for $TARGET_USER (uid $UID_N)."
 
-USER_AT="/sys/fs/cgroup/user.slice/user-$UID_N.slice/user@$UID_N.service"
+ROOT=/sys/fs/cgroup
+USER_SLICE="$ROOT/user.slice/user-$UID_N.slice"
+USER_AT="$USER_SLICE/user@$UID_N.service"
 SUBTREE="$USER_AT/cgroup.subtree_control"
 
-if [[ -e "$SUBTREE" ]]; then
-  echo +cpuset >"$SUBTREE" 2>/dev/null || true
-fi
+for dir in "$ROOT" "$ROOT/user.slice" "$USER_SLICE" "$USER_AT"; do
+  if [[ -e "$dir/cgroup.subtree_control" ]] &&
+    ! grep -qw cpuset "$dir/cgroup.subtree_control"; then
+    echo +cpuset >"$dir/cgroup.subtree_control" 2>/dev/null || true
+  fi
+done
 
 echo
 if [[ -r "$SUBTREE" ]] && grep -qw cpuset "$SUBTREE"; then
   echo "OK: cpuset is delegated and enabled for $TARGET_USER's child cgroups."
   echo "llama-manager will report numaEnforcement = cgroup-v2 (no re-login needed)."
 else
-  echo "Delegation is written, but the running user manager has not enabled"
-  echo "cpuset for its children yet (cgroup.subtree_control still lacks it)."
-  echo "Activate it by having $TARGET_USER log out and back in"
-  echo "  (or: systemctl restart user@$UID_N.service — this kills session processes)."
+  echo "Delegation is written, but cpuset could not be enabled live on the"
+  echo "running user manager (cgroup.subtree_control still lacks it)."
+  echo "A Delegate= change only applies when user@$UID_N.service (re)starts, and"
+  echo "with linger enabled a logout/login does NOT restart it. Activate with:"
+  echo "  systemctl restart user@$UID_N.service   # kills $TARGET_USER's session processes"
+  echo "or reboot. (A plain re-login is not enough here.)"
   echo
   echo "Verify afterwards:"
   echo "  grep -w cpuset $SUBTREE   # cpuset should be listed"
