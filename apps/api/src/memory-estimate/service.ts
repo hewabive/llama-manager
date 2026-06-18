@@ -53,6 +53,10 @@ function hparamsFromGguf(modelPath: string): MemoryEstimateHparams {
     headCountKv: metadata.headCountKv,
     contextLength: metadata.contextLength,
     slidingWindow: metadata.slidingWindow,
+    ssmConvKernel: metadata.ssmConvKernel,
+    ssmGroupCount: metadata.ssmGroupCount,
+    ssmInnerSize: metadata.ssmInnerSize,
+    ssmStateSize: metadata.ssmStateSize,
     vocabularySize: metadata.vocabularySize,
   };
 }

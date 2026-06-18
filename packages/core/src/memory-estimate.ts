@@ -32,6 +32,10 @@ export type MemoryEstimateHparams = {
   headCountKv: number | null;
   contextLength: number | null;
   slidingWindow: number | null;
+  ssmConvKernel: number | null;
+  ssmGroupCount: number | null;
+  ssmInnerSize: number | null;
+  ssmStateSize: number | null;
   vocabularySize: number | null;
 };
 
@@ -519,10 +523,36 @@ type KvEstimate = {
   bytesByLayer: Map<number, number>;
   totalBytes: number;
   kvLayerCount: number;
+  recurrentLayerCount: number;
+  recurrentBytes: number;
+  recurrentModeled: boolean;
   mla: boolean;
   swa: boolean;
   recurrent: boolean;
 };
+
+function recurrentStateBytesPerLayer(
+  hparams: MemoryEstimateHparams,
+  nSeqMax: number,
+): number | null {
+  const dConv = hparams.ssmConvKernel;
+  const dInner = hparams.ssmInnerSize;
+  const dState = hparams.ssmStateSize;
+  const nGroup = hparams.ssmGroupCount;
+  if (
+    dConv === null ||
+    dInner === null ||
+    dState === null ||
+    nGroup === null ||
+    dInner <= 0 ||
+    dState <= 0
+  ) {
+    return null;
+  }
+  const nEmbdR = Math.max(dConv - 1, 0) * (dInner + 2 * nGroup * dState);
+  const nEmbdS = dState * dInner;
+  return (nEmbdR + nEmbdS) * F32_BYTES * nSeqMax;
+}
 
 function estimateKvCache(
   input: MemoryEstimateInput,
@@ -539,6 +569,9 @@ function estimateKvCache(
       bytesByLayer: new Map(),
       totalBytes: 0,
       kvLayerCount: 0,
+      recurrentLayerCount: 0,
+      recurrentBytes: 0,
+      recurrentModeled: false,
       mla: false,
       swa: false,
       recurrent: false,
@@ -547,6 +580,7 @@ function estimateKvCache(
 
   const kBy = new Map<number, number>();
   const vBy = new Map<number, number>();
+  const recurrentLayers = new Set<number>();
   let mla = false;
   let recurrent = false;
   for (const tensor of input.tensors.tensors) {
@@ -555,6 +589,10 @@ function estimateKvCache(
     }
     if (RECURRENT_PATTERN.test(tensor.name)) {
       recurrent = true;
+      const layer = tensorLayerIndex(tensor.name);
+      if (layer !== null) {
+        recurrentLayers.add(layer);
+      }
     }
     const kMatch = ATTN_K_PATTERN.exec(tensor.name);
     if (kMatch) {
@@ -583,15 +621,41 @@ function estimateKvCache(
     totalBytes += layerBytes;
   }
 
+  const recurrentPerLayer = recurrent
+    ? recurrentStateBytesPerLayer(input.hparams, context.nSeqMax)
+    : null;
+  const recurrentModeled =
+    recurrentPerLayer !== null && recurrentLayers.size > 0;
+  let recurrentBytes = 0;
+  if (recurrentModeled) {
+    for (const layer of recurrentLayers) {
+      bytesByLayer.set(
+        layer,
+        (bytesByLayer.get(layer) ?? 0) + recurrentPerLayer,
+      );
+      recurrentBytes += recurrentPerLayer;
+    }
+    totalBytes += recurrentBytes;
+  }
+
   const blockCount = input.hparams.blockCount ?? kBy.size;
-  if (kBy.size === 0 && (mla || recurrent)) {
+  if (mla && kBy.size === 0) {
     warnings.push(
-      "Model uses MLA or recurrent attention; KV/state cache is not modeled yet (estimate omits it).",
+      "Model uses MLA attention; KV cache is not modeled yet (estimate omits it).",
     );
   }
-  if (kBy.size > 0 && kBy.size < blockCount) {
+  if (recurrent && !recurrentModeled) {
     warnings.push(
-      `Hybrid architecture: ${kBy.size}/${blockCount} layers have a KV cache; recurrent-state memory for the rest is not modeled.`,
+      "Recurrent/SSM layers detected but SSM hyperparameters are missing; recurrent state memory is not modeled.",
+    );
+  } else if (recurrentModeled) {
+    const mib = Math.round(recurrentBytes / (1024 * 1024));
+    warnings.push(
+      `Hybrid architecture: ${kBy.size} attention + ${recurrentLayers.size} recurrent layers; recurrent state cache (~${mib} MiB at --parallel ${context.nSeqMax}) is included and scales with --parallel.`,
+    );
+  } else if (kBy.size > 0 && kBy.size < blockCount) {
+    warnings.push(
+      `Hybrid architecture: ${kBy.size}/${blockCount} layers have a KV cache; the remaining layers' state memory is not modeled.`,
     );
   }
   if (input.hparams.slidingWindow !== null && kBy.size > 0) {
@@ -604,6 +668,9 @@ function estimateKvCache(
     bytesByLayer,
     totalBytes,
     kvLayerCount: kBy.size,
+    recurrentLayerCount: recurrentLayers.size,
+    recurrentBytes,
+    recurrentModeled,
     mla,
     swa: input.hparams.slidingWindow !== null,
     recurrent,
@@ -628,10 +695,16 @@ function resolveConfidence(
   kv: KvEstimate,
   warnings: string[],
 ): MemoryEstimateConfidence {
-  if (kv.mla || kv.recurrent || kv.kvLayerCount === 0) {
+  if (kv.mla) {
     return "low";
   }
-  if (kv.swa || placement.usesGpu) {
+  if (kv.recurrent && !kv.recurrentModeled) {
+    return "low";
+  }
+  if (kv.kvLayerCount === 0 && !kv.recurrentModeled) {
+    return "low";
+  }
+  if (kv.swa || placement.usesGpu || kv.recurrentModeled) {
     return "medium";
   }
   if (warnings.length > 0) {

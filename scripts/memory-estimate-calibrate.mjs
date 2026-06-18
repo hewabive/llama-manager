@@ -110,6 +110,10 @@ function hparamsOf(metadata) {
     headCountKv: metadata.headCountKv,
     contextLength: metadata.contextLength,
     slidingWindow: metadata.slidingWindow,
+    ssmConvKernel: metadata.ssmConvKernel,
+    ssmGroupCount: metadata.ssmGroupCount,
+    ssmInnerSize: metadata.ssmInnerSize,
+    ssmStateSize: metadata.ssmStateSize,
     vocabularySize: metadata.vocabularySize,
   };
 }
@@ -123,8 +127,12 @@ function argsToCli(args) {
   return cli;
 }
 
-function runFitParams(options, modelPath, args) {
-  const cli = ["--model", modelPath, ...argsToCli(args), "-fitp", "on"];
+function runFitParams(options, modelPath, args, nSeqMax) {
+  const withParallel =
+    "--parallel" in args || "-np" in args
+      ? args
+      : { ...args, "--parallel": nSeqMax };
+  const cli = ["--model", modelPath, ...argsToCli(withParallel), "-fitp", "on"];
   const stdout = execFileSync(options.fitParams, cli, {
     encoding: "utf8",
     timeout: 120_000,
@@ -213,7 +221,12 @@ function main() {
       let fit = null;
       let fitError = null;
       try {
-        fit = runFitParams(options, modelPath, config.args);
+        fit = runFitParams(
+          options,
+          modelPath,
+          config.args,
+          estimate.context.nSeqMax,
+        );
       } catch (error) {
         fitError = error.message.split(/\r?\n/)[0];
       }

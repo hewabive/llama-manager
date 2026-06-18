@@ -43,6 +43,10 @@ const HPARAMS: MemoryEstimateHparams = {
   headCountKv: 2,
   contextLength: 1024,
   slidingWindow: null,
+  ssmConvKernel: null,
+  ssmGroupCount: null,
+  ssmInnerSize: null,
+  ssmStateSize: null,
   vocabularySize: 100,
 };
 
@@ -123,6 +127,80 @@ test("hybrid models warn and lose confidence when some layers lack KV", () => {
   });
   assert.equal(estimate.confidence, "medium");
   assert.ok(estimate.warnings.some((warning) => /Hybrid/.test(warning)));
+});
+
+test("hybrid recurrent models include SSM state in the context cache", () => {
+  const tensors = syntheticTable([
+    f16Tensor("blk.2.ssm_conv1d.weight", [4, 8]),
+  ]);
+  const estimate = estimateInstanceMemory({
+    tensors,
+    hparams: {
+      ...HPARAMS,
+      blockCount: 3,
+      ssmConvKernel: 4,
+      ssmGroupCount: 2,
+      ssmInnerSize: 16,
+      ssmStateSize: 8,
+    },
+    args: { "--ctx-size": 256 },
+    pools: HOST_POOLS,
+  });
+
+  const attentionKv = 2 * (8 + 8) * 256;
+  const nEmbdR = (4 - 1) * (16 + 2 * 2 * 8);
+  const nEmbdS = 8 * 16;
+  const recurrent = (nEmbdR + nEmbdS) * 4 * 4;
+  assert.equal(estimate.kvBytesTotal, attentionKv + recurrent);
+  assert.equal(estimate.confidence, "medium");
+  assert.ok(
+    estimate.warnings.some((warning) => /recurrent state/.test(warning)),
+  );
+});
+
+test("recurrent state scales with --parallel", () => {
+  const tensors = syntheticTable([
+    f16Tensor("blk.2.ssm_conv1d.weight", [4, 8]),
+  ]);
+  const hparams = {
+    ...HPARAMS,
+    blockCount: 3,
+    ssmConvKernel: 4,
+    ssmGroupCount: 2,
+    ssmInnerSize: 16,
+    ssmStateSize: 8,
+  };
+  const single = estimateInstanceMemory({
+    tensors,
+    hparams,
+    args: { "--ctx-size": 256, "--parallel": 1 },
+    pools: HOST_POOLS,
+  });
+  const quad = estimateInstanceMemory({
+    tensors,
+    hparams,
+    args: { "--ctx-size": 256, "--parallel": 4 },
+    pools: HOST_POOLS,
+  });
+  const attentionKv = 2 * (8 + 8) * 256;
+  assert.equal(
+    quad.kvBytesTotal - attentionKv,
+    (single.kvBytesTotal - attentionKv) * 4,
+  );
+});
+
+test("recurrent layers without SSM hparams stay unmodeled and low confidence", () => {
+  const tensors = syntheticTable([
+    f16Tensor("blk.2.ssm_conv1d.weight", [4, 8]),
+  ]);
+  const estimate = estimateInstanceMemory({
+    tensors,
+    hparams: { ...HPARAMS, blockCount: 3 },
+    args: { "--ctx-size": 256 },
+    pools: HOST_POOLS,
+  });
+  assert.equal(estimate.confidence, "low");
+  assert.ok(estimate.warnings.some((warning) => /not modeled/.test(warning)));
 });
 
 test("sliding-window models flag KV as an upper bound", () => {

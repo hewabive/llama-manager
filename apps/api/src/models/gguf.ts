@@ -217,7 +217,7 @@ function readQuantization(metadata: Map<string, GgufScalar>) {
   return null;
 }
 
-export const GGUF_PARSER_VERSION = 2;
+export const GGUF_PARSER_VERSION = 3;
 
 function readHeader(reader: FileReader) {
   if (reader.read(4).toString("utf8") !== "GGUF") {
@@ -295,6 +295,10 @@ function extractMetadata(
     headCount: findNumberBySuffix(metadata, ".attention.head_count"),
     headCountKv: findNumberBySuffix(metadata, ".attention.head_count_kv"),
     slidingWindow: findNumberBySuffix(metadata, ".attention.sliding_window"),
+    ssmConvKernel: findNumberBySuffix(metadata, ".ssm.conv_kernel"),
+    ssmGroupCount: findNumberBySuffix(metadata, ".ssm.group_count"),
+    ssmInnerSize: findNumberBySuffix(metadata, ".ssm.inner_size"),
+    ssmStateSize: findNumberBySuffix(metadata, ".ssm.state_size"),
     ropeFreqBase: findNumberBySuffix(metadata, ".rope.freq_base"),
     ropeScalingType: findStringBySuffix(metadata, ".rope.scaling.type"),
     ropeScalingFactor: findNumberBySuffix(metadata, ".rope.scaling.factor"),

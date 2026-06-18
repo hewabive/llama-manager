@@ -55,6 +55,17 @@ and, for the future measured path, its own pinned binary.
   (likewise V). This is exact for GQA and correctly counts only the layers that
   actually have a KV cache (hybrid models). Verified to the MiB against
   `llama-fit-params` across dense models and cache types.
+- **Recurrent state** — for hybrid/SSM architectures (e.g. Qwen3-Next/`qwen35`,
+  Mamba), each recurrent layer holds a fixed-size state cache instead of a KV
+  cache: `(n_embd_r + n_embd_s) * 4 bytes` per layer **per sequence**, where
+  `n_embd_r = (d_conv-1)*(d_inner + 2*n_group*d_state)` (conv state) and
+  `n_embd_s = d_state*d_inner` (SSM state), read from the `*.ssm.*` GGUF
+  hyperparameters. Unlike attention KV under `kv_unified`, this scales linearly
+  with `--parallel` (one copy per sequence). It is folded into the KV/context
+  category and reproduces `llama-fit-params`' `context` column to the MiB across
+  context sizes, cache types and parallelism (verified on `qwen35`). When the
+  `*.ssm.*` hyperparameters are absent the state is left unmodeled and the
+  estimate drops to `low` confidence.
 - **Compute** — dominated by the logits projection, `n_vocab * n_ubatch * 4`
   (verified exact: linear in `n_ubatch`, independent of `n_ctx` and flash-attn),
   plus an `n_embd`-scaled activation term.
@@ -63,10 +74,11 @@ and, for the future measured path, its own pinned binary.
 ## Confidence and warnings
 
 `MemoryEstimate.confidence` is `high` for plain dense/MoE transformers, `medium`
-when sliding-window (SWA) or GPU placement is involved, and `low` for MLA,
-recurrent, or hybrid models whose state/KV is not fully modeled. Each
-approximation adds a `warnings[]` entry (SWA KV is an upper bound; hybrid
-recurrent state is omitted; GPU placement is unvalidated).
+when sliding-window (SWA), GPU placement, or a modeled hybrid recurrent state is
+involved, and `low` for MLA or recurrent/hybrid models whose state is **not**
+modeled (missing `*.ssm.*` hyperparameters). Each approximation adds a
+`warnings[]` entry (SWA KV is an upper bound; recurrent state included/omitted;
+GPU placement is unvalidated).
 
 ## API
 
@@ -84,10 +96,11 @@ per-pool breakdown and an "Apply as draws" button
 
 ## Calibration (open items, hardware-gated)
 
-The analytical engine is verified exact for KV and the dominant compute term on
-CPU. The remaining items need a GPU machine (and the gold
-`llama_memory_breakdown_print` table / process RSS, which the dev box could not
-capture reliably):
+The analytical engine is verified exact for KV, the hybrid recurrent state, and
+the dominant compute term on CPU (all checked against `llama-fit-params`, which
+projects without allocating and runs on the CPU box). The remaining items need a
+GPU machine (and the gold `llama_memory_breakdown_print` table / process RSS,
+which the dev box could not capture reliably):
 
 1. **Resident weights vs the fit-params `model` column.** For some models the
    `fit model` figure is far below the tensor sum (e.g. qwen2.5-0.5b 211 vs 403,
@@ -102,8 +115,11 @@ capture reliably):
    `sliding_window_pattern` array); today SWA KV is an upper bound.
 4. **Compute residual** — the `n_embd`-scaled term under-predicts large models by
    ~10%; refine from measurements.
-5. **Hybrid recurrent state (RS)** — add the recurrent/SSM state cache for hybrid
-   architectures (qwen35, LFM2.5).
+
+**Closed:** the hybrid recurrent state (RS) cache (`qwen35`/Qwen3-Next) is now
+modeled from the `*.ssm.*` hyperparameters and matches the `llama-fit-params`
+`context` column to the MiB across context sizes, cache types and `--parallel`
+(no GPU required — verified on the CPU box).
 
 ## Running the calibration harness
 
