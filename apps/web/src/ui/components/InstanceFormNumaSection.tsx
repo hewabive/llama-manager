@@ -14,7 +14,7 @@ export function InstanceFormNumaSection({
     return null;
   }
 
-  const available = fm.numaEnforcement === "cgroup-v2";
+  const available = fm.numaBind;
   const options = [
     { value: NONE_VALUE, label: "Unbound (scheduler decides)" },
     ...fm.numaNodes.map((node) => ({

@@ -265,7 +265,7 @@ export function ResourcesView() {
         </Paper>
       )}
 
-      {detected && detected.numaNodes.length > 1 && (
+      {detected && detected.numa.nodes.length > 1 && (
         <NumaTopologyPanel resources={detected} />
       )}
 

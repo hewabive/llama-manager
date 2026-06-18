@@ -1,4 +1,4 @@
-import type { NumaEnforcement } from "@llama-manager/core";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 export function parseSelfCgroupV2Path(contents: string): string | null {
@@ -30,16 +30,16 @@ export function findDelegatedRootPath(selfCgroupPath: string): string | null {
   return null;
 }
 
-export function detectNumaEnforcement(): NumaEnforcement {
+export function detectNumaBind(): boolean {
   let self: string | null;
   try {
     readFileSync("/sys/fs/cgroup/cgroup.controllers", "utf8");
     self = parseSelfCgroupV2Path(readFileSync("/proc/self/cgroup", "utf8"));
   } catch {
-    return "unavailable";
+    return false;
   }
   if (self === null) {
-    return "unavailable";
+    return false;
   }
 
   const root = findDelegatedRootPath(self);
@@ -47,10 +47,22 @@ export function detectNumaEnforcement(): NumaEnforcement {
     ? `/sys/fs/cgroup${root}/cgroup.subtree_control`
     : `/sys/fs/cgroup${self === "/" ? "" : self}/cgroup.controllers`;
   try {
-    return cgroupControllersHaveCpuset(readFileSync(probePath, "utf8"))
-      ? "cgroup-v2"
-      : "unavailable";
+    return cgroupControllersHaveCpuset(readFileSync(probePath, "utf8"));
   } catch {
-    return "unavailable";
+    return false;
   }
+}
+
+let interleaveCache: boolean | null = null;
+
+export function detectNumaInterleave(): boolean {
+  if (interleaveCache === null) {
+    try {
+      execFileSync("numactl", ["--show"], { stdio: "ignore", timeout: 1_000 });
+      interleaveCache = true;
+    } catch {
+      interleaveCache = false;
+    }
+  }
+  return interleaveCache;
 }

@@ -8,10 +8,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import {
-  findDelegatedRootPath,
-  parseSelfCgroupV2Path,
-} from "../system/numa-capability.js";
+import { findDelegatedRootPath, parseSelfCgroupV2Path } from "./capability.js";
 
 const CGROUP_ROOT = "/sys/fs/cgroup";
 const INSTANCES_GROUP = "llama-manager-instances";

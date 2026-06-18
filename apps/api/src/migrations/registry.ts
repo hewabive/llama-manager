@@ -7,6 +7,10 @@ import {
   relocateLegacyConfigFiles,
 } from "../config-relocation.js";
 import { sqlite } from "../db/index.js";
+import {
+  instanceConfigsHaveLegacyNumaNode,
+  migrateInstanceNumaNodeToNuma,
+} from "../instances/numa-migration.js";
 import { migratePathCatalogToFile } from "../path-catalog/migration.js";
 import { migrateProxyConfigToFiles } from "../proxy/legacy-migration.js";
 import {
@@ -86,6 +90,14 @@ export const migrations: Migration[] = [
     isApplied: () => !argumentDefaultsHasPresetSection(),
     apply: () => {
       dropPresetArgumentDefaultsSection();
+    },
+  },
+  {
+    id: "0008-instance-numa-node-to-numa",
+    describe: "config/instances/*.json: numaNode → numa { mode: bind, node }",
+    isApplied: () => !instanceConfigsHaveLegacyNumaNode(),
+    apply: () => {
+      migrateInstanceNumaNodeToNuma();
     },
   },
 ];

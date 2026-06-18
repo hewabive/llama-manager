@@ -408,9 +408,10 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       return null;
     }
   }, [form.values.envJson]);
-  const numaNodes = systemResourcesQuery.data?.data.numaNodes ?? [];
-  const numaEnforcement =
-    systemResourcesQuery.data?.data.numaEnforcement ?? "unavailable";
+  const numaNodes = systemResourcesQuery.data?.data.numa.nodes ?? [];
+  const numaBind = systemResourcesQuery.data?.data.numa.bind ?? false;
+  const numaInterleave =
+    systemResourcesQuery.data?.data.numa.interleave ?? false;
   const cudaAccelerators = (
     systemResourcesQuery.data?.data.accelerators ?? []
   ).filter(
@@ -502,7 +503,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args, knownArgByName));
       setMemoryRows(memoryRowsFromDraws(props.instance.memory));
-      setSelectedNumaNode(props.instance.numaNode ?? null);
+      setSelectedNumaNode(
+        props.instance.numa?.mode === "bind" ? props.instance.numa.node : null,
+      );
     } else {
       const modelPath = props.initialModelPath ?? null;
       const port = nextAvailablePort(props.instances);
@@ -1122,7 +1125,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         args,
         env: parseEnvJson(values.envJson),
         memory: memoryDrawsFromRows(memoryRows),
-        ...(selectedNumaNode !== null ? { numaNode: selectedNumaNode } : {}),
+        ...(selectedNumaNode !== null
+          ? { numa: { mode: "bind" as const, node: selectedNumaNode } }
+          : {}),
       };
       mutation.mutate(input);
     } catch (error) {
@@ -1228,7 +1233,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     startAfterCreate,
     setStartAfterCreate,
     numaNodes,
-    numaEnforcement,
+    numaBind,
+    numaInterleave,
     selectedNumaNode,
     setSelectedNumaNode,
     memoryRows,

@@ -1,4 +1,4 @@
-import type { Instance } from "@llama-manager/core";
+import { InstanceNumaSchema, type Instance, type InstanceNuma } from "@llama-manager/core";
 import { dirname } from "node:path";
 
 import { argsToCli } from "./args.js";
@@ -8,7 +8,7 @@ export type LaunchSnapshot = {
   cliArgs: string[];
   env: Record<string, string>;
   cwd: string;
-  numaNode: number | null;
+  numa: InstanceNuma | null;
 };
 
 export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
@@ -17,7 +17,7 @@ export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
     cliArgs: argsToCli(instance.args),
     env: { ...instance.env },
     cwd: instance.cwd ?? dirname(instance.binaryPath),
-    numaNode: instance.numaNode ?? null,
+    numa: instance.numa ?? null,
   };
 }
 
@@ -45,11 +45,24 @@ export function parseLaunchSnapshot(
           : {},
       cwd:
         typeof value.cwd === "string" ? value.cwd : dirname(value.binaryPath),
-      numaNode: typeof value.numaNode === "number" ? value.numaNode : null,
+      numa: InstanceNumaSchema.safeParse(value.numa).data ?? null,
     };
   } catch {
     return null;
   }
+}
+
+function sameNuma(left: InstanceNuma | null, right: InstanceNuma | null) {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  if (left.mode === "bind") {
+    return right.mode === "bind" && left.node === right.node;
+  }
+  return (
+    right.mode === "interleave" &&
+    sameStringArray(left.nodes.map(String), right.nodes.map(String))
+  );
 }
 
 function sameStringArray(left: string[], right: string[]) {
@@ -79,7 +92,7 @@ export function hasLaunchSnapshotDrift(
   return (
     current.binaryPath !== snapshot.binaryPath ||
     current.cwd !== snapshot.cwd ||
-    current.numaNode !== snapshot.numaNode ||
+    !sameNuma(current.numa, snapshot.numa) ||
     !sameStringArray(current.cliArgs, snapshot.cliArgs) ||
     !sameRecord(current.env, snapshot.env)
   );

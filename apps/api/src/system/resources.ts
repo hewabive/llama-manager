@@ -6,8 +6,12 @@ import type {
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { freemem, totalmem } from "node:os";
-import { detectNumaEnforcement } from "./numa-capability.js";
-import { readNumaTopology, readPciNumaNode } from "./numa.js";
+import {
+  detectNumaBind,
+  detectNumaInterleave,
+  readNumaTopology,
+  readPciNumaNode,
+} from "../numa/index.js";
 
 function clampRatio(value: number) {
   if (!Number.isFinite(value)) {
@@ -161,7 +165,10 @@ export function getSystemResources(): SystemResources {
     checkedAt: new Date().toISOString(),
     memory: readLinuxMemory() ?? readNodeMemory(),
     accelerators: readNvidiaAccelerators(),
-    numaNodes: readNumaTopology(),
-    numaEnforcement: detectNumaEnforcement(),
+    numa: {
+      nodes: readNumaTopology(),
+      bind: detectNumaBind(),
+      interleave: detectNumaInterleave(),
+    },
   };
 }

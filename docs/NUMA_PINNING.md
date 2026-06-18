@@ -12,14 +12,22 @@ fitting a node's RAM is the operator's responsibility (see "Scope" below).
   `cpuset.cpus`/`cpuset.mems` ceiling overrides any `sched_setaffinity` the
   process makes itself, unlike the soft `--numa`/`--cpu-mask` flags).
 - **otherwise** → the feature is off and the instance launches exactly as before
-  (kernel schedules across all nodes). A stored `numaNode` is inert on such a
-  host. There is deliberately no `numactl`/`taskset` fallback.
+  (kernel schedules across all nodes). A stored `numa` binding is inert on such a
+  host. There is deliberately no soft `numactl`/`taskset` fallback for `bind`.
 
-Capability is probed at startup (`apps/api/src/system/numa-capability.ts`):
-cgroup v2 unified is present **and** `cpuset` is enabled in the delegated
-`user@<uid>.service` `cgroup.subtree_control` (i.e. children we create there can
-actually use it — not merely that the controller is *available*). The result is
-`SystemResources.numaEnforcement` (`cgroup-v2` | `unavailable`), shown in the UI.
+`instance.numa` is a discriminated union: `{ mode: "bind", node }` (this doc) and
+`{ mode: "interleave", nodes }` (memory interleaved across nodes via `numactl
+--interleave` — the high-throughput mode for big CPU models; no cgroup needed).
+The whole concern lives in the `numa/` domain (`topology`/`capability`/`cgroup`/
+`launch`), and `resolveNumaLaunch(instance, …)` is the single place that turns a
+config into a spawn wrapper.
+
+Capabilities are probed at startup (`apps/api/src/numa/capability.ts`) into
+`SystemResources.numa.{ bind, interleave }` (booleans, shown in the UI): `bind`
+needs cgroup v2 unified **and** `cpuset` enabled in the delegated
+`user@<uid>.service` `cgroup.subtree_control` (children we create there can
+actually use it — not merely that the controller is *available*); `interleave`
+needs only `numactl` on `PATH`.
 
 ## Why cgroup, not numactl
 
@@ -42,7 +50,7 @@ restart with the default `KillMode=control-group` does not reap the children:
 ```
 
 Only `user@<uid>.service` is delegated (writable) — `user-<uid>.slice` is not — so
-`resolveInstancesGroupDir` (`apps/api/src/process/cgroup.ts`) anchors there: it
+`resolveInstancesGroupDir` (`apps/api/src/numa/cgroup.ts`) anchors there: it
 reads `/proc/self/cgroup` and, whether self is a session scope under the slice or
 already inside `user@<uid>.service`, resolves the group under that delegated root.
 Overridable with `LLAMA_MANAGER_NUMA_CGROUP_ROOT` (e.g. for the system-service
@@ -106,20 +114,30 @@ If the live enable can't be applied, the change takes effect when
 or a reboot. Note: with linger enabled a plain logout/login does **not** restart
 the user manager, so re-login alone is not enough. After this the manager creates
 and writes cgroups as the normal user — **no sudo at launch**. Without it the
-capability probe reports `unavailable` and bindings stay inert. If the manager
-runs as a *system* service instead, put the same `Delegate=` on that unit.
+`bind` capability is `false` and bindings stay inert. If the manager runs as a
+*system* service instead, put the same `Delegate=` on that unit.
+
+**The manager must run inside that delegated user session.** Delegation only
+grants the `user@<uid>.service` subtree; a process started from a shell that
+landed in `system.slice` (e.g. SSH with logind not registering sessions, common
+on AD/SSSD servers) cannot create/move cgroups into the delegated subtree (the
+cross-tree move needs root over the common ancestor). Run the manager as a
+`systemctl --user` service (lingering already on) or via `systemd-run --user
+--scope` so it lives under `user@<uid>.service`. `bind` reports `false` otherwise.
 
 ## Drift
 
-`numaNode` is part of the launch snapshot, so changing an instance's binding
-while it runs raises the existing `configDrift` badge (a live process cannot be
-re-pinned without restart — `cpuset.mems` changes do not migrate resident pages).
+`numa` is part of the launch snapshot, so changing an instance's binding while it
+runs raises the existing `configDrift` badge (a live process cannot be re-pinned
+without restart — `cpuset.mems` changes do not migrate resident pages).
 
 ## Config & update semantics
 
-`numaNode` is an optional field on the instance config (file-backed, portable;
-inert on hosts without enforcement). The web form submits the full desired state,
-so updates use **replace** semantics: an omitted `numaNode` clears the binding.
+`numa` is an optional discriminated-union field on the instance config
+(file-backed, portable; inert on hosts without the capability). It replaced the
+flat `numaNode` field (migration `0008` rewrites `numaNode: N` → `{ mode: "bind",
+node: N }` and drops the source). The web form submits the full desired state, so
+updates use **replace** semantics: an omitted `numa` clears the binding.
 
 ## Scope (what is intentionally absent)
 

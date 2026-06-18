@@ -1,7 +1,7 @@
 import type { Instance } from "@llama-manager/core";
 import { readFileSync } from "node:fs";
 
-import { cleanupOrphanNumaCgroups } from "./cgroup.js";
+import { cleanupOrphanNumaCgroups } from "../numa/index.js";
 import { parseLaunchSnapshot } from "./launch-snapshot.js";
 import { isPidAlive } from "./pid.js";
 import { listOpenProcessRuns, updateProcessRun } from "./runs-repository.js";

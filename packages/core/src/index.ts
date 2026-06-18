@@ -165,6 +165,14 @@ export function checkDrawAdmission(
   return { ok: shortfalls.length === 0, shortfalls };
 }
 
+export const InstanceNumaSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("bind"), node: z.number().int().min(0) }),
+  z.object({
+    mode: z.literal("interleave"),
+    nodes: z.array(z.number().int().min(0)).default([]),
+  }),
+]);
+
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
   binaryPathRefId: PathCatalogIdSchema,
@@ -172,7 +180,7 @@ export const InstanceCreateSchema = z.object({
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
   memory: z.array(InstanceMemoryDrawSchema).default([]),
-  numaNode: z.number().int().min(0).optional(),
+  numa: InstanceNumaSchema.optional(),
 });
 
 export const InstancePreflightPreviewSchema = InstanceCreateSchema.extend({
@@ -186,7 +194,7 @@ export const InstanceUpdateSchema = z.object({
   args: InstanceArgsSchema.optional(),
   env: InstanceEnvSchema.optional(),
   memory: z.array(InstanceMemoryDrawSchema).optional(),
-  numaNode: z.number().int().min(0).optional(),
+  numa: InstanceNumaSchema.optional(),
 });
 
 export const InstanceSchema = InstanceCreateSchema.extend({
@@ -217,7 +225,7 @@ export const InstanceConfigRecordSchema = z.object({
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
   memory: z.array(InstanceMemoryDrawSchema).default([]),
-  numaNode: z.number().int().min(0).optional(),
+  numa: InstanceNumaSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -2608,14 +2616,17 @@ export const NumaNodeSchema = z.object({
   online: z.boolean(),
 });
 
-export const NumaEnforcementSchema = z.enum(["cgroup-v2", "unavailable"]);
+export const NumaCapabilitiesSchema = z.object({
+  nodes: z.array(NumaNodeSchema),
+  bind: z.boolean(),
+  interleave: z.boolean(),
+});
 
 export const SystemResourcesSchema = z.object({
   checkedAt: z.string(),
   memory: SystemMemorySchema,
   accelerators: z.array(SystemAcceleratorSchema),
-  numaNodes: z.array(NumaNodeSchema),
-  numaEnforcement: NumaEnforcementSchema,
+  numa: NumaCapabilitiesSchema,
 });
 
 export const AuthStateSchema = z.object({
@@ -3123,7 +3134,8 @@ export type NetworkInterfacesResult = z.infer<
 export type SystemMemory = z.infer<typeof SystemMemorySchema>;
 export type SystemAccelerator = z.infer<typeof SystemAcceleratorSchema>;
 export type NumaNode = z.infer<typeof NumaNodeSchema>;
-export type NumaEnforcement = z.infer<typeof NumaEnforcementSchema>;
+export type NumaCapabilities = z.infer<typeof NumaCapabilitiesSchema>;
+export type InstanceNuma = z.infer<typeof InstanceNumaSchema>;
 export type SystemResources = z.infer<typeof SystemResourcesSchema>;
 export type AuthState = z.infer<typeof AuthStateSchema>;
 export type AdminLogin = z.infer<typeof AdminLoginSchema>;

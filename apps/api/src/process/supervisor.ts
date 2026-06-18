@@ -12,16 +12,13 @@ import { dirname, resolve } from "node:path";
 import { EventEmitter } from "node:events";
 
 import { config } from "../config.js";
-import { detectNumaEnforcement } from "../system/numa-capability.js";
-import { readNumaTopology } from "../system/numa.js";
-import { argsToCli } from "./args.js";
 import {
-  applyNumaPin,
-  buildPinnedShimArgs,
   instanceCgroupDir,
   instanceCgroupExists,
   removeNumaCgroup,
-} from "./cgroup.js";
+  resolveNumaLaunch,
+} from "../numa/index.js";
+import { argsToCli } from "./args.js";
 import { filterManagedLlamaLogChunk } from "./log-filter.js";
 import {
   buildLaunchSnapshot,
@@ -117,27 +114,7 @@ class ProcessSupervisor extends EventEmitter {
 
     const cliArgs = argsToCli(instance.args);
     const cwd = instance.cwd ?? dirname(instance.binaryPath);
-
-    let spawnBinary = instance.binaryPath;
-    let spawnArgs = cliArgs;
-    let cgroupDir: string | null = null;
-    if (instance.numaNode != null && detectNumaEnforcement() === "cgroup-v2") {
-      const node = readNumaTopology().find(
-        (entry) => entry.id === instance.numaNode,
-      );
-      if (!node) {
-        throw new Error(
-          `NUMA node ${instance.numaNode} is not present on this host`,
-        );
-      }
-      cgroupDir = applyNumaPin(instance.name, node);
-      spawnBinary = "sh";
-      spawnArgs = buildPinnedShimArgs(
-        `${cgroupDir}/cgroup.procs`,
-        instance.binaryPath,
-        cliArgs,
-      );
-    }
+    const launch = resolveNumaLaunch(instance, instance.binaryPath, cliArgs);
 
     const startedAt = nowIso();
     const logName = `${instance.name}-${Date.now()}`;
@@ -166,7 +143,7 @@ class ProcessSupervisor extends EventEmitter {
     const tailStartOffset = statSync(rawLogPath).size;
 
     const childLogFd = openSync(rawLogPath, "a");
-    const child = spawn(spawnBinary, spawnArgs, {
+    const child = spawn(launch.binary, launch.args, {
       cwd,
       env: { ...process.env, ...instance.env },
       stdio: ["ignore", childLogFd, childLogFd],
@@ -189,7 +166,7 @@ class ProcessSupervisor extends EventEmitter {
       runId,
       adopted: false,
       child,
-      cgroupDir,
+      cgroupDir: launch.cgroupDir,
       filteredStream,
       tail: null,
       exitWaiters: [],

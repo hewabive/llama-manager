@@ -5,12 +5,12 @@ import {
   cgroupControllersHaveCpuset,
   findDelegatedRootPath,
   parseSelfCgroupV2Path,
-} from "./numa-capability.js";
+} from "./capability.js";
 import {
   normalizePciAddress,
   parseCpuListCount,
   parseNodeMemTotalBytes,
-} from "./numa.js";
+} from "./topology.js";
 
 test("parseCpuListCount sums ranges and singletons", () => {
   assert.equal(parseCpuListCount("0-17,36-53"), 36);

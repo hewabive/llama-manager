@@ -12,15 +12,17 @@ import { Cpu, MemoryStick } from "lucide-react";
 
 import { formatBytes } from "../utils/models";
 
-function enforcementBadge(enforcement: SystemResources["numaEnforcement"]) {
-  return enforcement === "cgroup-v2"
-    ? { color: "green", label: "pinning ready (cgroup v2)" }
-    : { color: "gray", label: "pinning unavailable" };
+function capabilityBadge(label: string, available: boolean) {
+  return (
+    <Badge variant="light" color={available ? "green" : "gray"}>
+      {label} {available ? "ready" : "n/a"}
+    </Badge>
+  );
 }
 
 export function NumaTopologyPanel(props: { resources: SystemResources }) {
-  const { numaNodes, numaEnforcement, accelerators } = props.resources;
-  const badge = enforcementBadge(numaEnforcement);
+  const { numa, accelerators } = props.resources;
+  const numaNodes = numa.nodes;
   const unmapped = accelerators.filter(
     (accelerator) => accelerator.numaNode === null,
   );
@@ -32,9 +34,10 @@ export function NumaTopologyPanel(props: { resources: SystemResources }) {
           <Title order={3}>NUMA topology</Title>
           <Badge variant="light">{numaNodes.length} nodes</Badge>
         </Group>
-        <Badge variant="light" color={badge.color}>
-          {badge.label}
-        </Badge>
+        <Group gap="xs" wrap="wrap">
+          {capabilityBadge("bind", numa.bind)}
+          {capabilityBadge("interleave", numa.interleave)}
+        </Group>
       </Group>
       <Text c="dimmed" size="sm" mt={6}>
         Per-socket cores, memory and the GPUs attached to each node. Bind an
