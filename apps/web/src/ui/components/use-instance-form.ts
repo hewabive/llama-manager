@@ -134,7 +134,11 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   );
   const [startAfterCreate, setStartAfterCreate] = useState(false);
   const [memoryRows, setMemoryRows] = useState<MemoryDraftRow[]>([]);
-  const [selectedNumaNode, setSelectedNumaNode] = useState<number | null>(null);
+  const [numaMode, setNumaMode] = useState<"none" | "bind" | "interleave">(
+    "none",
+  );
+  const [numaBindNode, setNumaBindNode] = useState<number | null>(null);
+  const [numaInterleaveNodes, setNumaInterleaveNodes] = useState<number[]>([]);
   const form = useForm({
     initialValues: {
       name: "local-router",
@@ -503,9 +507,10 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setStartAfterCreate(false);
       setArgRows(argsToRows(props.instance.args, knownArgByName));
       setMemoryRows(memoryRowsFromDraws(props.instance.memory));
-      setSelectedNumaNode(
-        props.instance.numa?.mode === "bind" ? props.instance.numa.node : null,
-      );
+      const numa = props.instance.numa;
+      setNumaMode(numa?.mode ?? "none");
+      setNumaBindNode(numa?.mode === "bind" ? numa.node : null);
+      setNumaInterleaveNodes(numa?.mode === "interleave" ? numa.nodes : []);
     } else {
       const modelPath = props.initialModelPath ?? null;
       const port = nextAvailablePort(props.instances);
@@ -524,7 +529,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setStartAfterCreate(false);
       setArgRows(defaultRows(modelPath ?? undefined, port));
       setMemoryRows([]);
-      setSelectedNumaNode(null);
+      setNumaMode("none");
+      setNumaBindNode(null);
+      setNumaInterleaveNodes([]);
     }
   }, [
     argumentDefaultsQuery.isLoading,
@@ -1125,9 +1132,11 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         args,
         env: parseEnvJson(values.envJson),
         memory: memoryDrawsFromRows(memoryRows),
-        ...(selectedNumaNode !== null
-          ? { numa: { mode: "bind" as const, node: selectedNumaNode } }
-          : {}),
+        ...(numaMode === "bind" && numaBindNode !== null
+          ? { numa: { mode: "bind" as const, node: numaBindNode } }
+          : numaMode === "interleave"
+            ? { numa: { mode: "interleave" as const, nodes: numaInterleaveNodes } }
+            : {}),
       };
       mutation.mutate(input);
     } catch (error) {
@@ -1235,8 +1244,12 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     numaNodes,
     numaBind,
     numaInterleave,
-    selectedNumaNode,
-    setSelectedNumaNode,
+    numaMode,
+    setNumaMode,
+    numaBindNode,
+    setNumaBindNode,
+    numaInterleaveNodes,
+    setNumaInterleaveNodes,
     memoryRows,
     memoryPoolOptions,
     memoryLedger,

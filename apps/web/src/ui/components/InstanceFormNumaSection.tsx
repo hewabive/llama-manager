@@ -1,9 +1,17 @@
-import { Box, Group, Paper, Stack, Text } from "@mantine/core";
+import {
+  Box,
+  Checkbox,
+  Paper,
+  SegmentedControl,
+  SimpleGrid,
+  Stack,
+  Text,
+} from "@mantine/core";
 
 import { TouchSelect } from "./TouchCombobox";
 import { type InstanceFormController } from "./use-instance-form";
 
-const NONE_VALUE = "__none__";
+type NumaMode = "none" | "bind" | "interleave";
 
 export function InstanceFormNumaSection({
   fm,
@@ -14,50 +22,89 @@ export function InstanceFormNumaSection({
     return null;
   }
 
-  const available = fm.numaBind;
-  const options = [
-    { value: NONE_VALUE, label: "Unbound (scheduler decides)" },
-    ...fm.numaNodes.map((node) => ({
-      value: String(node.id),
-      label: `node ${node.id} · ${node.cpuCount} cores`,
-    })),
+  const modeData = [
+    { value: "none", label: "None" },
+    { value: "bind", label: "Bind", disabled: !fm.numaBind },
+    { value: "interleave", label: "Interleave", disabled: !fm.numaInterleave },
   ];
+  const nodeOptions = fm.numaNodes.map((node) => ({
+    value: String(node.id),
+    label: `node ${node.id} · ${node.cpuCount} cores`,
+  }));
 
   return (
     <Paper withBorder p="sm" radius="sm">
       <Stack gap="xs">
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <Box>
-            <Text fw={600} size="sm">
-              NUMA binding
-            </Text>
-            <Text c="dimmed" size="xs">
-              Pin this instance's CPUs and memory to one NUMA node (cgroup v2
-              cpuset). Bind to the node hosting its GPU to keep host-side
-              traffic local.
-            </Text>
-          </Box>
-        </Group>
-        <TouchSelect
-          label="Node"
-          value={
-            fm.selectedNumaNode === null
-              ? NONE_VALUE
-              : String(fm.selectedNumaNode)
-          }
-          onChange={(value) =>
-            fm.setSelectedNumaNode(
-              value === null || value === NONE_VALUE ? null : Number(value),
-            )
-          }
-          data={options}
-        />
-        {!available && (
-          <Text c="yellow" size="xs">
-            Pinning is unavailable on this host (needs cgroup v2 with a
-            delegated cpuset controller). The binding is stored but not
-            enforced.
+        <Box>
+          <Text fw={600} size="sm">
+            NUMA placement
           </Text>
+          <Text c="dimmed" size="xs">
+            Bind confines CPUs+memory to one node (locality / co-tenancy; needs a
+            delegated cgroup v2 cpuset). Interleave spreads memory across nodes
+            for full bandwidth on big CPU models (needs numactl).
+          </Text>
+        </Box>
+
+        <SegmentedControl
+          value={fm.numaMode}
+          onChange={(value) => fm.setNumaMode(value as NumaMode)}
+          data={modeData}
+        />
+
+        {fm.numaMode === "bind" && (
+          <>
+            <TouchSelect
+              label="Node"
+              placeholder="Select a node"
+              value={fm.numaBindNode === null ? null : String(fm.numaBindNode)}
+              onChange={(value) =>
+                fm.setNumaBindNode(value === null ? null : Number(value))
+              }
+              data={nodeOptions}
+            />
+            {!fm.numaBind && (
+              <Text c="yellow" size="xs">
+                Pinning is unavailable here (needs cgroup v2 with a delegated
+                cpuset controller, manager running inside the user session). The
+                binding is stored but not enforced.
+              </Text>
+            )}
+          </>
+        )}
+
+        {fm.numaMode === "interleave" && (
+          <>
+            <Text c="dimmed" size="xs">
+              Nodes to interleave across (none selected = all nodes):
+            </Text>
+            <Checkbox.Group
+              value={fm.numaInterleaveNodes.map(String)}
+              onChange={(values) =>
+                fm.setNumaInterleaveNodes(values.map(Number))
+              }
+            >
+              <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
+                {nodeOptions.map((option) => (
+                  <Checkbox
+                    key={option.value}
+                    value={option.value}
+                    label={`node ${option.value}`}
+                  />
+                ))}
+              </SimpleGrid>
+            </Checkbox.Group>
+            <Text c="dimmed" size="xs">
+              Tip: also add <code>--numa distribute</code> to arguments for best
+              interleave throughput.
+            </Text>
+            {!fm.numaInterleave && (
+              <Text c="yellow" size="xs">
+                numactl was not found on this host; interleave is stored but not
+                applied.
+              </Text>
+            )}
+          </>
         )}
       </Stack>
     </Paper>
