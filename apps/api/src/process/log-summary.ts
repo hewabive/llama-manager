@@ -1,4 +1,5 @@
 import type {
+  Instance,
   InstanceLoadProgress,
   InstanceLogSummary,
   InstanceMemoryLayout,
@@ -150,7 +151,26 @@ function isCapabilityProbeRejection(line: string) {
   );
 }
 
-function errorLines(lines: string[], limit: number) {
+function isExpectedCudaInitFailure(line: string) {
+  return /ggml_cuda_init:\s*failed to initialize CUDA:\s*no CUDA-capable device is detected/i.test(
+    line,
+  );
+}
+
+export function instanceCudaDevicesDisabled(instance: Instance) {
+  const raw = instance.env?.CUDA_VISIBLE_DEVICES;
+  if (raw === undefined) {
+    return false;
+  }
+  const normalized = raw.trim();
+  return normalized === "" || normalized === "-1";
+}
+
+function errorLines(
+  lines: string[],
+  limit: number,
+  cudaDevicesDisabled: boolean,
+) {
   const lastReadyIndex = lastIndex(lines, READY_LOG_PATTERN);
   return interestingLinesByPredicate(
     lines,
@@ -165,6 +185,9 @@ function errorLines(lines: string[], limit: number) {
         return false;
       }
       if (isCapabilityProbeRejection(line)) {
+        return false;
+      }
+      if (cudaDevicesDisabled && isExpectedCudaInitFailure(line)) {
         return false;
       }
       return !(
@@ -551,6 +574,7 @@ function parseLoadProgress(lines: string[]): InstanceLoadProgress {
 export async function summarizeInstanceLog(input: {
   instanceId: string;
   runtime: RuntimeState | undefined;
+  cudaDevicesDisabled?: boolean;
 }): Promise<InstanceLogSummary> {
   const latestRun = latestProcessRun(input.instanceId);
   const runtime =
@@ -594,7 +618,7 @@ export async function summarizeInstanceLog(input: {
       slots: parseSlots(lines),
       ready: isReady(lines),
       warnings: interestingLines(lines, /\b(warn|warning)\b/i, 8),
-      errors: errorLines(lines, 8),
+      errors: errorLines(lines, 8, input.cudaDevicesDisabled ?? false),
       notices: interestingLines(
         lines,
         /\b(server is listening|http server listening|offload|loaded|warming up|cache|slot|ready)\b/i,

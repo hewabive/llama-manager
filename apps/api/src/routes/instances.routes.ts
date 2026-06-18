@@ -20,7 +20,10 @@ import {
 } from "../instances/repository.js";
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
 import { getInstanceHealthSummary } from "../process/health-summary.js";
-import { summarizeInstanceLog } from "../process/log-summary.js";
+import {
+  instanceCudaDevicesDisabled,
+  summarizeInstanceLog,
+} from "../process/log-summary.js";
 import { tailInstanceLog } from "../process/logs.js";
 import { validateInstanceStartPreflight } from "../process/preflight.js";
 import { latestProcessRun } from "../process/runs-repository.js";
@@ -224,6 +227,7 @@ export function registerInstanceRoutes(app: Hono) {
       data: await summarizeInstanceLog({
         instanceId: instance.name,
         runtime: supervisor.getState(instance.name),
+        cudaDevicesDisabled: instanceCudaDevicesDisabled(instance),
       }),
     });
   });

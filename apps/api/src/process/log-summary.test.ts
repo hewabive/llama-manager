@@ -393,3 +393,52 @@ test("summarizeInstanceLog ignores the multimodal capability probe failure", asy
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("summarizeInstanceLog ignores the CUDA init failure when devices are disabled", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.00.060.896 E ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected",
+        "0.01.273.782 I srv  llama_server: model loaded",
+        "0.01.273.793 I srv  llama_server: server is listening on http://127.0.0.1:9002",
+      ].join("\n"),
+    );
+
+    const summary = await summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+      cudaDevicesDisabled: true,
+    });
+
+    assert.deepEqual(summary.errors, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("summarizeInstanceLog keeps the CUDA init failure when devices are not disabled", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-log-summary-"));
+  const logPath = join(dir, "llama-server.log");
+  try {
+    writeFileSync(
+      logPath,
+      [
+        "0.00.060.896 E ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected",
+        "0.01.273.782 I srv  llama_server: model loaded",
+        "0.01.273.793 I srv  llama_server: server is listening on http://127.0.0.1:9002",
+      ].join("\n"),
+    );
+
+    const summary = await summarizeInstanceLog({
+      instanceId: "test-instance",
+      runtime: runtime(logPath),
+    });
+
+    assert.equal(summary.errors.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

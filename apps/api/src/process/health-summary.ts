@@ -13,7 +13,10 @@ import {
   hasLaunchSnapshotDrift,
   parseLaunchSnapshot,
 } from "./launch-snapshot.js";
-import { summarizeInstanceLog } from "./log-summary.js";
+import {
+  instanceCudaDevicesDisabled,
+  summarizeInstanceLog,
+} from "./log-summary.js";
 import {
   validateInstancePreflight,
   validateInstanceStartPreflight,
@@ -308,7 +311,11 @@ export async function getInstanceHealthSummary(
     shouldProbe
       ? probeLlamaServer(instance)
       : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
-    summarizeInstanceLog({ instanceId: instance.name, runtime }),
+    summarizeInstanceLog({
+      instanceId: instance.name,
+      runtime,
+      cudaDevicesDisabled: instanceCudaDevicesDisabled(instance),
+    }),
     shouldProbe ? getInstanceSwapBytes(runtime) : Promise.resolve(null),
   ]);
   const preflightErrors = preflight.issues.filter(
