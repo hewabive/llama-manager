@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   cgroupControllersHaveCpuset,
+  findDelegatedRootPath,
   parseSelfCgroupV2Path,
 } from "./numa-capability.js";
 import {
@@ -42,4 +43,18 @@ test("parseSelfCgroupV2Path extracts the unified path", () => {
 test("cgroupControllersHaveCpuset detects the cpuset controller", () => {
   assert.equal(cgroupControllersHaveCpuset("cpuset cpu io memory pids"), true);
   assert.equal(cgroupControllersHaveCpuset("cpu memory pids"), false);
+});
+
+test("findDelegatedRootPath resolves the delegated user@ root", () => {
+  assert.equal(
+    findDelegatedRootPath("/user.slice/user-1001.slice/session-3.scope"),
+    "/user.slice/user-1001.slice/user@1001.service",
+  );
+  assert.equal(
+    findDelegatedRootPath(
+      "/user.slice/user-1001.slice/user@1001.service/app.slice/x.service",
+    ),
+    "/user.slice/user-1001.slice/user@1001.service",
+  );
+  assert.equal(findDelegatedRootPath("/system.slice/x.service"), null);
 });

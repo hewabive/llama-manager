@@ -26,13 +26,23 @@ test("buildPinnedShimArgs joins the cgroup before exec", () => {
   );
 });
 
-test("resolveInstancesGroupDir places the group beside the manager cgroup", () => {
+test("resolveInstancesGroupDir anchors a login session at the delegated user@ root", () => {
   assert.equal(
     resolveInstancesGroupDir(
       "/user.slice/user-1001.slice/session-3.scope",
       undefined,
     ),
-    "/sys/fs/cgroup/user.slice/user-1001.slice/llama-manager-instances",
+    "/sys/fs/cgroup/user.slice/user-1001.slice/user@1001.service/llama-manager-instances",
+  );
+});
+
+test("resolveInstancesGroupDir anchors at user@ when already inside it", () => {
+  assert.equal(
+    resolveInstancesGroupDir(
+      "/user.slice/user-1001.slice/user@1001.service/app.slice/llama-manager.service",
+      undefined,
+    ),
+    "/sys/fs/cgroup/user.slice/user-1001.slice/user@1001.service/llama-manager-instances",
   );
 });
 

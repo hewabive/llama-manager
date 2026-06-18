@@ -17,22 +17,39 @@ export function cgroupControllersHaveCpuset(contents: string): boolean {
     .includes("cpuset");
 }
 
+export function findDelegatedRootPath(selfCgroupPath: string): string | null {
+  const userService = /^(.*\/user@\d+\.service)(?:\/|$)/.exec(selfCgroupPath);
+  if (userService) {
+    return userService[1]!;
+  }
+  const userSlice = /\/user-(\d+)\.slice(?:\/|$)/.exec(selfCgroupPath);
+  if (userSlice) {
+    const uid = userSlice[1];
+    return `/user.slice/user-${uid}.slice/user@${uid}.service`;
+  }
+  return null;
+}
+
 export function detectNumaEnforcement(): NumaEnforcement {
-  let path: string | null;
+  let self: string | null;
   try {
     readFileSync("/sys/fs/cgroup/cgroup.controllers", "utf8");
-    path = parseSelfCgroupV2Path(readFileSync("/proc/self/cgroup", "utf8"));
+    self = parseSelfCgroupV2Path(readFileSync("/proc/self/cgroup", "utf8"));
   } catch {
     return "unavailable";
   }
-  if (path === null) {
+  if (self === null) {
     return "unavailable";
   }
 
-  const dir = path === "/" ? "/sys/fs/cgroup" : `/sys/fs/cgroup${path}`;
+  const root = findDelegatedRootPath(self);
+  const probePath = root
+    ? `/sys/fs/cgroup${root}/cgroup.subtree_control`
+    : `/sys/fs/cgroup${self === "/" ? "" : self}/cgroup.controllers`;
   try {
-    const controllers = readFileSync(`${dir}/cgroup.controllers`, "utf8");
-    return cgroupControllersHaveCpuset(controllers) ? "cgroup-v2" : "unavailable";
+    return cgroupControllersHaveCpuset(readFileSync(probePath, "utf8"))
+      ? "cgroup-v2"
+      : "unavailable";
   } catch {
     return "unavailable";
   }

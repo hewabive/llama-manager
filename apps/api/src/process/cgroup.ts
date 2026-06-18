@@ -8,7 +8,10 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { parseSelfCgroupV2Path } from "../system/numa-capability.js";
+import {
+  findDelegatedRootPath,
+  parseSelfCgroupV2Path,
+} from "../system/numa-capability.js";
 
 const CGROUP_ROOT = "/sys/fs/cgroup";
 const INSTANCES_GROUP = "llama-manager-instances";
@@ -35,6 +38,12 @@ export function resolveInstancesGroupDir(
   if (override && override.trim()) {
     return override.trim();
   }
+
+  const root = findDelegatedRootPath(selfCgroupPath);
+  if (root) {
+    return `${CGROUP_ROOT}${root}/${INSTANCES_GROUP}`;
+  }
+
   const selfDir =
     selfCgroupPath === "/" ? CGROUP_ROOT : `${CGROUP_ROOT}${selfCgroupPath}`;
   return `${dirname(selfDir)}/${INSTANCES_GROUP}`;

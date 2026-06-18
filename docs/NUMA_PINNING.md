@@ -16,9 +16,10 @@ fitting a node's RAM is the operator's responsibility (see "Scope" below).
   host. There is deliberately no `numactl`/`taskset` fallback.
 
 Capability is probed at startup (`apps/api/src/system/numa-capability.ts`):
-cgroup v2 unified is present **and** `cpuset` appears in our own cgroup's
-`cgroup.controllers`. The result is `SystemResources.numaEnforcement`
-(`cgroup-v2` | `unavailable`), shown in the UI.
+cgroup v2 unified is present **and** `cpuset` is enabled in the delegated
+`user@<uid>.service` `cgroup.subtree_control` (i.e. children we create there can
+actually use it — not merely that the controller is *available*). The result is
+`SystemResources.numaEnforcement` (`cgroup-v2` | `unavailable`), shown in the UI.
 
 ## Why cgroup, not numactl
 
@@ -31,17 +32,21 @@ budgeting must eventually land; until then it is on the operator).
 
 ## cgroup layout
 
-Instance cgroups live in a sibling slice next to the manager's own cgroup, never
-under it — so running the manager as a systemd unit with the default
-`KillMode=control-group` does not reap the children on restart:
+Instance cgroups live under the **delegated user manager root**, not under the
+manager's own cgroup — so they are writable regardless of how the manager was
+launched (login `session.scope` or a `user@.service` unit), and a manager
+restart with the default `KillMode=control-group` does not reap the children:
 
 ```
-<parent-of-manager-cgroup>/llama-manager-instances/<instance-name>/
+/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/llama-manager-instances/<instance-name>/
 ```
 
-The base is derived from `/proc/self/cgroup` (`resolveInstancesGroupDir` in
-`apps/api/src/process/cgroup.ts`) and overridable with
-`LLAMA_MANAGER_NUMA_CGROUP_ROOT`. On start the manager `mkdir`s the group,
+Only `user@<uid>.service` is delegated (writable) — `user-<uid>.slice` is not — so
+`resolveInstancesGroupDir` (`apps/api/src/process/cgroup.ts`) anchors there: it
+reads `/proc/self/cgroup` and, whether self is a session scope under the slice or
+already inside `user@<uid>.service`, resolves the group under that delegated root.
+Overridable with `LLAMA_MANAGER_NUMA_CGROUP_ROOT` (e.g. for the system-service
+model). On start the manager `mkdir`s the group,
 enables `+cpuset` in its `cgroup.subtree_control`, creates the per-instance
 cgroup, and writes `cpuset.mems = <node id>` then `cpuset.cpus = <node cpulist>`.
 
@@ -82,7 +87,8 @@ with the helper:
 sudo scripts/setup-numa-cgroup-delegation.sh <user-that-runs-llama-manager>
 ```
 
-It writes the drop-in below, `daemon-reload`s, enables linger, and verifies:
+It writes the drop-in below, `daemon-reload`s, enables linger, applies `+cpuset`
+to the running user manager's `subtree_control`, and verifies:
 
 ```
 # /etc/systemd/system/user@.service.d/delegate-cpuset.conf
@@ -90,11 +96,14 @@ It writes the drop-in below, `daemon-reload`s, enables linger, and verifies:
 Delegate=cpu cpuset memory pids
 ```
 
-The change takes effect after the user manager restarts — the cleanest is for the
-user to log out and back in. After that the manager creates and writes cgroups as
-the normal user — **no sudo at launch**. Without this delegation the capability
-probe reports `unavailable` and bindings stay inert. If the manager runs as a
-*system* service instead, put the same `Delegate=` on that unit.
+The drop-in makes delegation persistent across reboots; the `subtree_control`
+nudge makes it active **without a re-login**. (Delegation only puts `cpuset` in
+the unit's `cgroup.controllers` — *available* — but children can use it only once
+it is also in `cgroup.subtree_control`, which systemd otherwise enables only when
+the user manager next starts, i.e. on re-login.) After this the manager creates
+and writes cgroups as the normal user — **no sudo at launch**. Without it the
+capability probe reports `unavailable` and bindings stay inert. If the manager
+runs as a *system* service instead, put the same `Delegate=` on that unit.
 
 ## Drift
 
