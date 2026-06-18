@@ -2736,6 +2736,7 @@ export const GgufMetadataSchema = z.object({
   headCount: z.number().nullable(),
   headCountKv: z.number().nullable(),
   slidingWindow: z.number().nullable(),
+  sharedKvLayers: z.number().nullable(),
   ssmConvKernel: z.number().nullable(),
   ssmGroupCount: z.number().nullable(),
   ssmInnerSize: z.number().nullable(),

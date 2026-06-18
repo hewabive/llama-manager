@@ -32,6 +32,7 @@ export type MemoryEstimateHparams = {
   headCountKv: number | null;
   contextLength: number | null;
   slidingWindow: number | null;
+  sharedKvLayers: number | null;
   ssmConvKernel: number | null;
   ssmGroupCount: number | null;
   ssmInnerSize: number | null;
@@ -605,16 +606,42 @@ function estimateKvCache(
     }
   }
 
-  const nStream = context.kvUnified ? 1 : context.nSeqMax;
-  const kvSize = context.nCtxSeq;
+  const blockCount = input.hparams.blockCount ?? kBy.size;
+  const sharedKv = input.hparams.sharedKvLayers ?? 0;
+  const uniqueLayers =
+    sharedKv > 0 && sharedKv < blockCount ? blockCount - sharedKv : blockCount;
+  const kvSharingModeled = uniqueLayers < blockCount;
+
+  const swaWindow = input.hparams.slidingWindow;
+  const maxKDim = kBy.size > 0 ? Math.max(...kBy.values()) : 0;
+  const globalStream = context.kvUnified ? 1 : context.nSeqMax;
+  const globalSize = context.nCtxSeq;
+  const swaSize =
+    swaWindow !== null
+      ? Math.min(
+          context.nCtx,
+          context.nSeqMax * pad(swaWindow + context.nUbatch, KV_PAD),
+        )
+      : 0;
+
   const bytesByLayer = new Map<number, number>();
   let totalBytes = 0;
+  let swaModeled = false;
   for (const [layer, kDim] of kBy) {
-    const kBytes = (ggmlRowSizeBytes(typeKId, kDim) ?? 0) * kvSize * nStream;
+    if (layer >= uniqueLayers) {
+      continue;
+    }
+    const isSwa = swaWindow !== null && kDim < maxKDim;
+    if (isSwa) {
+      swaModeled = true;
+    }
+    const size = isSwa ? swaSize : globalSize;
+    const stream = isSwa ? 1 : globalStream;
+    const kBytes = (ggmlRowSizeBytes(typeKId, kDim) ?? 0) * size * stream;
     const vDim = vBy.get(layer);
     const vBytes =
       vDim !== undefined
-        ? (ggmlRowSizeBytes(typeVId, vDim) ?? 0) * kvSize * nStream
+        ? (ggmlRowSizeBytes(typeVId, vDim) ?? 0) * size * stream
         : 0;
     const layerBytes = kBytes + vBytes;
     bytesByLayer.set(layer, layerBytes);
@@ -638,7 +665,6 @@ function estimateKvCache(
     totalBytes += recurrentBytes;
   }
 
-  const blockCount = input.hparams.blockCount ?? kBy.size;
   if (mla && kBy.size === 0) {
     warnings.push(
       "Model uses MLA attention; KV cache is not modeled yet (estimate omits it).",
@@ -658,9 +684,22 @@ function estimateKvCache(
       `Hybrid architecture: ${kBy.size}/${blockCount} layers have a KV cache; the remaining layers' state memory is not modeled.`,
     );
   }
-  if (input.hparams.slidingWindow !== null && kBy.size > 0) {
+  if (swaWindow !== null && kBy.size > 0) {
+    if (swaModeled) {
+      const sharing = kvSharingModeled
+        ? `; ${sharedKv} of ${blockCount} layers share KV (allocate none)`
+        : "";
+      warnings.push(
+        `Sliding-window (SWA) model: SWA layers are capped at the ${swaWindow}-token window and scale with --parallel${sharing}.`,
+      );
+    } else {
+      warnings.push(
+        "Sliding-window (SWA) model: KV is an upper bound; per-layer SWA reduction is not modeled for this architecture.",
+      );
+    }
+  } else if (kvSharingModeled && kBy.size > 0) {
     warnings.push(
-      "Sliding-window (SWA) model: KV is an upper bound; per-layer SWA reduction is not modeled yet.",
+      `${sharedKv} of ${blockCount} layers share KV (allocate none).`,
     );
   }
 

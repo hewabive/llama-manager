@@ -43,6 +43,7 @@ const HPARAMS: MemoryEstimateHparams = {
   headCountKv: 2,
   contextLength: 1024,
   slidingWindow: null,
+  sharedKvLayers: null,
   ssmConvKernel: null,
   ssmGroupCount: null,
   ssmInnerSize: null,
@@ -211,7 +212,83 @@ test("sliding-window models flag KV as an upper bound", () => {
     pools: HOST_POOLS,
   });
   assert.equal(estimate.confidence, "medium");
-  assert.ok(estimate.warnings.some((warning) => /SWA/.test(warning)));
+  assert.ok(estimate.warnings.some((warning) => /upper bound/.test(warning)));
+});
+
+function gemmaLikeTable(): GgufTensorTable {
+  const tensors: GgufTensorInfo[] = [
+    f16Tensor("token_embd.weight", [8, 100]),
+    f16Tensor("output.weight", [8, 100]),
+    f16Tensor("blk.0.attn_k.weight", [32, 16]),
+    f16Tensor("blk.0.attn_v.weight", [32, 16]),
+    f16Tensor("blk.1.attn_k.weight", [32, 8]),
+    f16Tensor("blk.1.attn_v.weight", [32, 8]),
+    f16Tensor("blk.2.attn_k.weight", [32, 16]),
+    f16Tensor("blk.2.attn_v.weight", [32, 16]),
+    f16Tensor("blk.3.attn_k.weight", [32, 8]),
+    f16Tensor("blk.3.attn_v.weight", [32, 8]),
+  ];
+  return {
+    path: "gemma.gguf",
+    tensorCount: tensors.length,
+    totalBytes: tensors.reduce((sum, tensor) => sum + tensor.bytes, 0),
+    unknownTypeIds: [],
+    tensors,
+  };
+}
+
+test("SWA + KV sharing caps sliding-window layers and drops shared layers", () => {
+  const estimate = estimateInstanceMemory({
+    tensors: gemmaLikeTable(),
+    hparams: {
+      ...HPARAMS,
+      blockCount: 4,
+      slidingWindow: 1024,
+      sharedKvLayers: 2,
+    },
+    args: { "--ctx-size": 8192, "--parallel": 2 },
+    pools: HOST_POOLS,
+  });
+
+  const globalLayer = (16 * 2 + 16 * 2) * 8192;
+  const swaPad = Math.ceil((1024 + 512) / 256) * 256;
+  const swaTokens = Math.min(8192, 2 * swaPad);
+  const swaLayer = (8 * 2 + 8 * 2) * swaTokens;
+  assert.equal(estimate.kvBytesTotal, globalLayer + swaLayer);
+  assert.equal(estimate.confidence, "medium");
+  assert.ok(estimate.warnings.some((warning) => /share KV/.test(warning)));
+});
+
+test("SWA cache scales with --parallel and is capped by context", () => {
+  const wide = estimateInstanceMemory({
+    tensors: gemmaLikeTable(),
+    hparams: {
+      ...HPARAMS,
+      blockCount: 4,
+      slidingWindow: 1024,
+      sharedKvLayers: 2,
+    },
+    args: { "--ctx-size": 65536, "--parallel": 4 },
+    pools: HOST_POOLS,
+  });
+  const narrow = estimateInstanceMemory({
+    tensors: gemmaLikeTable(),
+    hparams: {
+      ...HPARAMS,
+      blockCount: 4,
+      slidingWindow: 1024,
+      sharedKvLayers: 2,
+    },
+    args: { "--ctx-size": 65536, "--parallel": 1 },
+    pools: HOST_POOLS,
+  });
+  const globalLayer = (16 * 2 + 16 * 2) * 65536;
+  const swaPad = Math.ceil((1024 + 512) / 256) * 256;
+  assert.equal(wide.kvBytesTotal - globalLayer, 32 * 4 * swaPad);
+  assert.equal(
+    wide.kvBytesTotal - globalLayer,
+    (narrow.kvBytesTotal - globalLayer) * 4,
+  );
 });
 
 test("full GPU offload places weights, KV and compute on the GPU pool", () => {

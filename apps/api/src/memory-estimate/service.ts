@@ -53,6 +53,7 @@ function hparamsFromGguf(modelPath: string): MemoryEstimateHparams {
     headCountKv: metadata.headCountKv,
     contextLength: metadata.contextLength,
     slidingWindow: metadata.slidingWindow,
+    sharedKvLayers: metadata.sharedKvLayers,
     ssmConvKernel: metadata.ssmConvKernel,
     ssmGroupCount: metadata.ssmGroupCount,
     ssmInnerSize: metadata.ssmInnerSize,

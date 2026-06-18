@@ -120,6 +120,7 @@ function emptyMetadata(): GgufMetadata {
     headCount: null,
     headCountKv: null,
     slidingWindow: null,
+    sharedKvLayers: null,
     ssmConvKernel: null,
     ssmGroupCount: null,
     ssmInnerSize: null,

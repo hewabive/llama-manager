@@ -55,6 +55,18 @@ and, for the future measured path, its own pinned binary.
   (likewise V). This is exact for GQA and correctly counts only the layers that
   actually have a KV cache (hybrid models). Verified to the MiB against
   `llama-fit-params` across dense models and cache types.
+- **Sliding-window attention (SWA) + KV sharing** — for SWA architectures with
+  distinct global/SWA head dims (e.g. Gemma 3n/`gemma4`), SWA layers (the smaller
+  `attn_k` dim) are capped at the window instead of the full context:
+  `tokens = min(n_ctx, n_seq_max * pad(sliding_window + n_ubatch, 256))`, and like
+  the recurrent state they scale with `--parallel` (global layers stay on a single
+  `n_ctx` stream under `kv_unified`). When `*.attention.shared_kv_layers` is set,
+  the last `shared_kv_layers` layers reuse earlier layers' cache and allocate
+  none, so only `block_count - shared_kv_layers` layers count. Reproduces the
+  `llama-fit-params` `context` column to the MiB (verified on `gemma4` across
+  context sizes, cache types, `--ubatch-size` and `--parallel`). SWA models
+  **without** distinct dims (single-dim, scalar-period pattern — e.g. Gemma 2/3)
+  are left at the full-context upper bound with a warning.
 - **Recurrent state** — for hybrid/SSM architectures (e.g. Qwen3-Next/`qwen35`,
   Mamba), each recurrent layer holds a fixed-size state cache instead of a KV
   cache: `(n_embd_r + n_embd_s) * 4 bytes` per layer **per sequence**, where
@@ -96,30 +108,32 @@ per-pool breakdown and an "Apply as draws" button
 
 ## Calibration (open items, hardware-gated)
 
-The analytical engine is verified exact for KV, the hybrid recurrent state, and
-the dominant compute term on CPU (all checked against `llama-fit-params`, which
-projects without allocating and runs on the CPU box). The remaining items need a
-GPU machine (and the gold `llama_memory_breakdown_print` table / process RSS,
-which the dev box could not capture reliably):
+The analytical engine is verified exact for KV, the hybrid recurrent state, the
+SWA + KV-sharing cache, and the dominant compute term on CPU (all checked against
+`llama-fit-params`, which projects without allocating and runs on the CPU box).
+The remaining items need a GPU machine (and the gold `llama_memory_breakdown_print`
+table / process RSS, which the dev box could not capture reliably):
 
 1. **Resident weights vs the fit-params `model` column.** For some models the
-   `fit model` figure is far below the tensor sum (e.g. qwen2.5-0.5b 211 vs 403,
-   LFM2.5 52 vs 207) and this is **not** mmap-related (`--no-mmap` unchanged).
-   The estimator deliberately reports the full resident footprint (safer for
-   "will it fit / will it swap"); confirm against actual RSS and the gold
-   breakdown table, then decide whether to expose a separate "non-mmap resident"
-   number.
+   `fit model` figure differs from the tensor sum in both directions (qwen2.5-0.5b
+   211 vs 403; gemma-4-E2B 2482 vs 2317) and the qwen case is **not** mmap-related
+   (`--no-mmap` unchanged). The estimator deliberately reports the full resident
+   footprint (safer for "will it fit / will it swap"); confirm against actual RSS
+   and the gold breakdown table, then decide whether to expose a separate
+   "non-mmap resident" number.
 2. **GPU CUDA-context overhead** — replace the rough per-GPU constant with a
    measured value.
-3. **Per-layer SWA reduction** — model the sliding-window cache (needs the
-   `sliding_window_pattern` array); today SWA KV is an upper bound.
-4. **Compute residual** — the `n_embd`-scaled term under-predicts large models by
+3. **Compute residual** — the `n_embd`-scaled term under-predicts large models by
    ~10%; refine from measurements.
 
-**Closed:** the hybrid recurrent state (RS) cache (`qwen35`/Qwen3-Next) is now
-modeled from the `*.ssm.*` hyperparameters and matches the `llama-fit-params`
-`context` column to the MiB across context sizes, cache types and `--parallel`
-(no GPU required — verified on the CPU box).
+**Closed (no GPU required — verified on the CPU box against `llama-fit-params`):**
+
+- Hybrid recurrent state (RS) cache (`qwen35`/Qwen3-Next), modeled from the
+  `*.ssm.*` hyperparameters; matches the `context` column to the MiB across
+  context sizes, cache types and `--parallel`.
+- SWA + KV-sharing cache (`gemma4`/Gemma 3n): SWA layers capped at the window,
+  `shared_kv_layers` reused layers dropped; matches the `context` column to the
+  MiB across context sizes, cache types, `--ubatch-size` and `--parallel`.
 
 ## Running the calibration harness
 
