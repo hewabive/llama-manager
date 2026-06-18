@@ -75,17 +75,26 @@ already has; cgroups do not worsen it.
 
 ## Privilege: a one-time delegation, no per-launch sudo
 
-`cpuset` is **not** delegated to user sessions by default. Enable it once as root:
+`cpuset` is **not** delegated to user sessions by default. Enable it once as root
+with the helper:
 
 ```
-# /etc/systemd/system/user@.service.d/delegate.conf
+sudo scripts/setup-numa-cgroup-delegation.sh <user-that-runs-llama-manager>
+```
+
+It writes the drop-in below, `daemon-reload`s, enables linger, and verifies:
+
+```
+# /etc/systemd/system/user@.service.d/delegate-cpuset.conf
 [Service]
 Delegate=cpu cpuset memory pids
 ```
 
-`systemctl daemon-reload` + re-login. After that the manager creates and writes
-cgroups as the normal user — **no sudo at launch**. Without this drop-in the
-capability probe reports `unavailable` and bindings stay inert.
+The change takes effect after the user manager restarts — the cleanest is for the
+user to log out and back in. After that the manager creates and writes cgroups as
+the normal user — **no sudo at launch**. Without this delegation the capability
+probe reports `unavailable` and bindings stay inert. If the manager runs as a
+*system* service instead, put the same `Delegate=` on that unit.
 
 ## Drift
 

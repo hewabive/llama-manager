@@ -32,6 +32,25 @@ Relevant environment variables:
 - `LLAMA_MANAGER_STOP_MANAGED_ON_EXIT=false`: leave supervised `llama-server` processes running when the API exits; they will be reconciled as stale on the next API start.
 - `LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS`: graceful stop timeout for managed processes, default `10000`.
 
+## NUMA pinning (multi-socket hosts)
+
+On a host with more than one NUMA node you can bind an instance to a single node
+so its CPUs and memory stay local. The instance form shows a NUMA-node selector,
+and the Resources page shows the topology with which GPU hangs off which node.
+
+Enforcement uses a cgroup v2 cpuset, which requires the `cpuset` controller to be
+delegated to the user session once (as root):
+
+```bash
+sudo scripts/setup-numa-cgroup-delegation.sh <user-that-runs-llama-manager>
+```
+
+The script writes the `user@.service` `Delegate=cpu cpuset memory pids` drop-in,
+reloads systemd, enables linger, and verifies. After the user logs out and back
+in, pinning is active (no `sudo` at launch). Without it, a stored binding is kept
+but not enforced. There is no per-node memory budgeting yet — fitting a node's RAM
+is up to you. See [docs/NUMA_PINNING.md](docs/NUMA_PINNING.md).
+
 ## Public/admin mode
 
 The default route is `/#/status`: a public, redacted diagnostics page. It shows aggregate instance state, RAM usage and sanitized instance names/statuses, but not paths, arguments, logs, PIDs or process details.
