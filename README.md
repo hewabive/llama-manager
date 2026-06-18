@@ -32,24 +32,36 @@ Relevant environment variables:
 - `LLAMA_MANAGER_STOP_MANAGED_ON_EXIT=false`: leave supervised `llama-server` processes running when the API exits; they will be reconciled as stale on the next API start.
 - `LLAMA_MANAGER_SHUTDOWN_TIMEOUT_MS`: graceful stop timeout for managed processes, default `10000`.
 
-## NUMA pinning (multi-socket hosts)
+## NUMA placement (multi-socket hosts)
 
-On a host with more than one NUMA node you can bind an instance to a single node
-so its CPUs and memory stay local. The instance form shows a NUMA-node selector,
-and the Resources page shows the topology with which GPU hangs off which node.
+On a host with more than one NUMA node, each instance can declare a NUMA policy
+(form selector, shown only when >1 node). The Resources page shows the topology
+and which GPU hangs off which node.
 
-Enforcement uses a cgroup v2 cpuset, which requires the `cpuset` controller to be
-delegated to the user session once (as root):
+- **Bind** — confine an instance's CPUs and memory to one node (locality,
+  co-tenancy isolation, GPU instances pinned to their card's node). Uses a cgroup
+  v2 cpuset, so it needs a one-time `cpuset` delegation, applied as root:
 
-```bash
-sudo scripts/setup-numa-cgroup-delegation.sh <user-that-runs-llama-manager>
-```
+  ```bash
+  sudo scripts/setup-numa-cgroup-delegation.sh <user-that-runs-llama-manager>
+  ```
 
-The script writes the `user@.service` `Delegate=cpu cpuset memory pids` drop-in,
-reloads systemd, enables linger, and verifies. After the user logs out and back
-in, pinning is active (no `sudo` at launch). Without it, a stored binding is kept
-but not enforced. There is no per-node memory budgeting yet — fitting a node's RAM
-is up to you. See [docs/NUMA_PINNING.md](docs/NUMA_PINNING.md).
+  The script writes the `user@.service` `Delegate=cpu cpuset memory pids`
+  drop-in, enables linger, and turns `cpuset` on live. Two caveats that bite on
+  servers: under linger a plain **logout/login does not activate it** (restart
+  `user@<uid>.service` or reboot if the script can't apply it live), and the
+  **manager itself must run inside that user session** — one started from an SSH
+  shell that lands in `system.slice` cannot pin. Run it as a `systemctl --user`
+  service (or `systemd-run --user --scope`). Otherwise a binding is stored but
+  not enforced.
+
+- **Interleave** — spread an instance's memory evenly across nodes for full
+  aggregate bandwidth (the fast, jitter-free mode for big CPU-resident models).
+  Needs only `numactl` on `PATH` — no delegation, no cgroup. Pair it with
+  `--numa distribute` in the instance arguments.
+
+No per-node memory budgeting yet — fitting a node's RAM is up to you. See
+[docs/NUMA_PINNING.md](docs/NUMA_PINNING.md).
 
 ## Public/admin mode
 
