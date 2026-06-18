@@ -45,6 +45,8 @@ import type {
   InstancePreflightPreview,
   InstanceUpdate,
   InstanceLogSummary,
+  MemoryEstimate,
+  MemoryEstimateRequest,
   LlamaCapabilitiesResult,
   ApiLabProbeProfile,
   ApiLabProbeTargetRequest,
@@ -272,6 +274,16 @@ export async function updateMemoryPool(id: string, input: MemoryPoolUpdate) {
     method: "PUT",
     body: JSON.stringify(input),
   });
+}
+
+export async function estimateInstanceMemory(input: MemoryEstimateRequest) {
+  return request<{ data: { modelPath: string; estimate: MemoryEstimate } }>(
+    "/api/memory-estimate",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function getApiProxyConfig() {

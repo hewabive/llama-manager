@@ -6,6 +6,7 @@ import {
   type InstancePreflightPreview,
   type InstanceUpdate,
   type LlamaArgumentOption,
+  type MemoryEstimate,
 } from "@llama-manager/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
@@ -15,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   createInstance,
+  estimateInstanceMemory,
   getDefaultLlamaServerBinary,
   getLlamaArgumentDefaults,
   getLlamaArguments,
@@ -619,6 +621,42 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     staleTime: 1_000,
     retry: false,
   });
+
+  const estimateArgs = draftPreview.input?.args ?? null;
+  const estimateArgsKey = estimateArgs ? JSON.stringify(estimateArgs) : null;
+  const canEstimateMemory = Boolean(
+    estimateArgs &&
+    typeof estimateArgs["--model"] === "string" &&
+    estimateArgs["--model"],
+  );
+  const [memoryEstimate, setMemoryEstimate] = useState<{
+    modelPath: string;
+    estimate: MemoryEstimate;
+  } | null>(null);
+
+  useEffect(() => {
+    setMemoryEstimate(null);
+  }, [estimateArgsKey]);
+
+  const memoryEstimateMutation = useMutation({
+    mutationFn: () => {
+      if (!estimateArgs) {
+        throw new Error("Configure a model before estimating memory");
+      }
+      return estimateInstanceMemory({ args: estimateArgs });
+    },
+    onSuccess: (result) => setMemoryEstimate(result.data),
+  });
+
+  function runMemoryEstimate() {
+    memoryEstimateMutation.mutate();
+  }
+
+  function applyEstimateAsDraws() {
+    if (memoryEstimate) {
+      setMemoryRows(memoryRowsFromDraws(memoryEstimate.estimate.draws));
+    }
+  }
 
   function applyLaunchMode(mode: LaunchMode) {
     setLaunchMode(mode);
@@ -1263,6 +1301,15 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     addMemoryRow,
     updateMemoryRow,
     removeMemoryRow,
+    canEstimateMemory,
+    memoryEstimate,
+    runMemoryEstimate,
+    applyEstimateAsDraws,
+    memoryEstimatePending: memoryEstimateMutation.isPending,
+    memoryEstimateError: memoryEstimateMutation.isError
+      ? ((memoryEstimateMutation.error as Error)?.message ??
+        "Failed to estimate memory")
+      : null,
     submit,
   };
 }

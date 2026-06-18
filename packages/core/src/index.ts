@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export * from "./ggml.js";
+export * from "./memory-estimate.js";
+
 export const InstanceArgValueSchema = z.union([
   z.string(),
   z.number(),
@@ -196,6 +199,12 @@ export const InstanceUpdateSchema = z.object({
   memory: z.array(InstanceMemoryDrawSchema).optional(),
   numa: InstanceNumaSchema.optional(),
 });
+
+export const MemoryEstimateRequestSchema = z.object({
+  instanceId: z.string().min(1).optional(),
+  args: InstanceArgsSchema.optional(),
+});
+export type MemoryEstimateRequest = z.infer<typeof MemoryEstimateRequestSchema>;
 
 export const InstanceSchema = InstanceCreateSchema.extend({
   binaryPath: z.string(),
@@ -2323,6 +2332,7 @@ export const BuildJobStepNameSchema = z.enum([
   "clean-build-dir",
   "configure",
   "build",
+  "build-fit-params",
 ]);
 export const BuildJobStepStatusSchema = z.enum([
   "pending",

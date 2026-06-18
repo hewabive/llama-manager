@@ -1,4 +1,9 @@
-import type { GgufMetadata } from "@llama-manager/core";
+import type {
+  GgufMetadata,
+  GgufTensorInfo,
+  GgufTensorTable,
+} from "@llama-manager/core";
+import { ggmlTensorBytes, ggmlTypeName } from "@llama-manager/core";
 import { closeSync, openSync, readSync } from "node:fs";
 
 type GgufScalar = string | number | boolean | null;
@@ -328,6 +333,60 @@ export function readGgufParameterCount(path: string): number {
     const { tensorCount, kvCount } = readHeader(reader);
     readKv(reader, kvCount);
     return readTensorParameterCount(reader, tensorCount);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function readTensorInfos(
+  reader: FileReader,
+  tensorCount: number,
+): GgufTensorInfo[] {
+  const tensors: GgufTensorInfo[] = [];
+  for (let index = 0; index < tensorCount; index += 1) {
+    const name = reader.string();
+    const dimensions = reader.u32();
+    const dims: number[] = [];
+    for (let dim = 0; dim < dimensions; dim += 1) {
+      dims.push(reader.u64Number());
+    }
+    const typeId = reader.u32();
+    reader.u64Number();
+    const elements = dims.reduce((product, dim) => product * dim, 1);
+    const bytes = ggmlTensorBytes(typeId, dims);
+    tensors.push({
+      name,
+      typeId,
+      type: ggmlTypeName(typeId) ?? `type${typeId}`,
+      dims,
+      elements,
+      bytes: bytes ?? 0,
+    });
+  }
+  return tensors;
+}
+
+export function readGgufTensorTable(path: string): GgufTensorTable {
+  const fd = openSync(path, "r");
+  try {
+    const reader = new FileReader(fd);
+    const { tensorCount, kvCount } = readHeader(reader);
+    readKv(reader, kvCount);
+    const tensors = readTensorInfos(reader, tensorCount);
+    const unknownTypeIds = [
+      ...new Set(
+        tensors
+          .filter((tensor) => ggmlTypeName(tensor.typeId) === null)
+          .map((tensor) => tensor.typeId),
+      ),
+    ].sort((left, right) => left - right);
+    return {
+      path,
+      tensorCount,
+      totalBytes: tensors.reduce((sum, tensor) => sum + tensor.bytes, 0),
+      unknownTypeIds,
+      tensors,
+    };
   } finally {
     closeSync(fd);
   }

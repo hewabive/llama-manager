@@ -37,7 +37,7 @@ Every mutating handler parses the body with a core Zod schema via `safeParse` an
 
 ### Domain modules (`apps/api/src/`)
 
-Each subdirectory is a domain with a `repository.ts` (DB access) and logic/test files: `instances`, `process` (supervisor, preflight, reconcile, stale, logs, health-summary), `proxy`, `arguments`, `build`, `models` (gguf/scanner/cache), `presets`, `llama` (probe + source repo), `path-catalog`, `resources` (memory pools + capacity ledger), `system`, `api-lab`, `filesystem`.
+Each subdirectory is a domain with a `repository.ts` (DB access) and logic/test files: `instances`, `process` (supervisor, preflight, reconcile, stale, logs, health-summary), `proxy`, `arguments`, `build`, `models` (gguf/scanner/cache), `presets`, `llama` (probe + source repo), `path-catalog`, `resources` (memory pools + capacity ledger), `memory-estimate` (a-priori per-pool footprint from GGUF + args, `docs/MEMORY_ESTIMATION.md`), `system`, `api-lab`, `filesystem`.
 
 ### Process supervision
 

@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Button,
+  Divider,
   Group,
   NumberInput,
   Paper,
@@ -12,6 +13,7 @@ import {
 import { Plus, Trash2 } from "lucide-react";
 
 import { formatBytes } from "../utils/models";
+import { InstanceFormMemoryEstimate } from "./InstanceFormMemoryEstimate";
 import { type InstanceFormController } from "./use-instance-form";
 
 export function InstanceFormMemorySection({
@@ -93,6 +95,9 @@ export function InstanceFormMemorySection({
             </Group>
           );
         })}
+
+        <Divider my="xs" />
+        <InstanceFormMemoryEstimate fm={fm} />
       </Stack>
     </Paper>
   );

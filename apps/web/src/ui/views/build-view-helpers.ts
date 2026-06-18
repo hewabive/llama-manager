@@ -24,6 +24,7 @@ export function buildStepLabel(name: BuildJob["steps"][number]["name"]) {
   if (name === "git-checkout") return "git checkout";
   if (name === "git-pull") return "git pull";
   if (name === "clean-build-dir") return "clean build dir";
+  if (name === "build-fit-params") return "build fit-params";
   return name;
 }
 

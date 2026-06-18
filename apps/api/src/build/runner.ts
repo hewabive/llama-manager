@@ -38,8 +38,14 @@ type RunningBuild = {
   canceled: boolean;
 };
 
+const FIT_PARAMS_TARGET = "llama-fit-params";
+
 function nowIso() {
   return new Date().toISOString();
+}
+
+function fitParamsSourceDir(settings: BuildSettings) {
+  return resolve(settings.repoPath, "tools", "fit-params");
 }
 
 function step(name: BuildJobStepName, command: string[]): BuildJobStep {
@@ -244,6 +250,22 @@ export function buildSteps(
       command.push("-j", String(settings.parallelJobs));
     }
     steps.push(step("build", command));
+
+    if (target !== FIT_PARAMS_TARGET) {
+      const companion = [
+        "cmake",
+        "--build",
+        settings.buildDir,
+        "--config",
+        settings.buildType,
+        "--target",
+        FIT_PARAMS_TARGET,
+      ];
+      if (settings.parallelJobs) {
+        companion.push("-j", String(settings.parallelJobs));
+      }
+      steps.push(step("build-fit-params", companion));
+    }
   }
 
   return steps;
@@ -479,6 +501,21 @@ class LlamaBuildRunner {
           return;
         }
 
+        if (
+          plannedStep.name === "build-fit-params" &&
+          !existsSync(fitParamsSourceDir(job.settings))
+        ) {
+          this.markStep(jobId, plannedStep.name, {
+            status: "skipped",
+            finishedAt: nowIso(),
+            exitCode: null,
+          });
+          logStream.write(
+            `# ${plannedStep.name}: llama-fit-params is not present in this llama.cpp ref; skipping companion tool build\n\n`,
+          );
+          continue;
+        }
+
         job = this.markStep(jobId, plannedStep.name, {
           status: "running",
           startedAt: nowIso(),
@@ -513,6 +550,17 @@ class LlamaBuildRunner {
         }
 
         if (exitCode !== 0) {
+          if (plannedStep.name === "build-fit-params") {
+            this.markStep(jobId, plannedStep.name, {
+              status: "skipped",
+              finishedAt: nowIso(),
+              exitCode,
+            });
+            logStream.write(
+              `\n# ${plannedStep.name} did not build (exit ${exitCode}); the exact memory estimate will be unavailable for binaries from this build — continuing (non-fatal)\n\n`,
+            );
+            continue;
+          }
           this.markStep(jobId, plannedStep.name, {
             status: "failed",
             finishedAt: nowIso(),

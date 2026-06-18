@@ -131,6 +131,43 @@ test("buildSteps passes --target when target is set", () => {
   assert.equal(build.command[targetIndex + 1], "llama-cli");
 });
 
+test("buildSteps appends a non-fatal llama-fit-params companion build", () => {
+  const steps = buildSteps(
+    { ...settings({}), target: "llama-server" },
+    jobStart({ build: true }),
+    {},
+  );
+
+  const companion = steps.find((item) => item.name === "build-fit-params");
+  assert.ok(companion);
+  const targetIndex = companion.command.indexOf("--target");
+  assert.equal(companion.command[targetIndex + 1], "llama-fit-params");
+  assert.equal(steps[steps.length - 1]?.name, "build-fit-params");
+});
+
+test("buildSteps does not duplicate the companion when target is llama-fit-params", () => {
+  const steps = buildSteps(
+    { ...settings({}), target: "llama-fit-params" },
+    jobStart({ build: true }),
+    {},
+  );
+
+  assert.equal(
+    steps.filter((item) => item.name === "build-fit-params").length,
+    0,
+  );
+});
+
+test("buildSteps omits the companion build when build is disabled", () => {
+  const steps = buildSteps(
+    { ...settings({}) },
+    jobStart({ configure: true }),
+    {},
+  );
+
+  assert.ok(!steps.some((item) => item.name === "build-fit-params"));
+});
+
 test("buildSteps applies selected CUDA and optional CMake definitions", () => {
   const [configure] = buildSteps(
     {

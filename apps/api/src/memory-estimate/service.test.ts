@@ -1,0 +1,142 @@
+import { strict as assert } from "node:assert";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+
+import { estimateMemory } from "./service.js";
+
+function u32(value: number) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeUInt32LE(value, 0);
+  return buffer;
+}
+
+function u64(value: number) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(BigInt(value), 0);
+  return buffer;
+}
+
+function ggufString(value: string) {
+  const bytes = Buffer.from(value, "utf8");
+  return Buffer.concat([u64(bytes.length), bytes]);
+}
+
+function kvU32(key: string, value: number) {
+  return Buffer.concat([ggufString(key), u32(4), u32(value)]);
+}
+
+function kvString(key: string, value: string) {
+  return Buffer.concat([ggufString(key), u32(8), ggufString(value)]);
+}
+
+function kvStringArray(key: string, count: number) {
+  const elements = Array.from({ length: count }, () => ggufString("t"));
+  return Buffer.concat([
+    ggufString(key),
+    u32(9),
+    u32(8),
+    u64(count),
+    ...elements,
+  ]);
+}
+
+function f16Tensor(name: string, dims: number[]) {
+  return Buffer.concat([
+    ggufString(name),
+    u32(dims.length),
+    ...dims.map((dim) => u64(dim)),
+    u32(1),
+    u64(0),
+  ]);
+}
+
+function writeSyntheticModel(path: string) {
+  const kv = [
+    kvString("general.architecture", "llama"),
+    kvU32("llama.block_count", 2),
+    kvU32("llama.embedding_length", 8),
+    kvU32("llama.attention.head_count", 4),
+    kvU32("llama.attention.head_count_kv", 2),
+    kvU32("llama.context_length", 1024),
+    kvStringArray("tokenizer.ggml.tokens", 100),
+  ];
+  const tensors = [
+    f16Tensor("token_embd.weight", [8, 100]),
+    f16Tensor("output.weight", [8, 100]),
+    f16Tensor("blk.0.attn_k.weight", [8, 4]),
+    f16Tensor("blk.0.attn_v.weight", [8, 4]),
+    f16Tensor("blk.0.ffn_down.weight", [16, 8]),
+    f16Tensor("blk.1.attn_k.weight", [8, 4]),
+    f16Tensor("blk.1.attn_v.weight", [8, 4]),
+    f16Tensor("blk.1.ffn_down.weight", [16, 8]),
+  ];
+  writeFileSync(
+    path,
+    Buffer.concat([
+      Buffer.from("GGUF", "utf8"),
+      u32(3),
+      u64(tensors.length),
+      u64(kv.length),
+      ...kv,
+      ...tensors,
+    ]),
+  );
+}
+
+test("estimateMemory produces a breakdown for a local model", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-estsvc-"));
+  const path = join(dir, "model.gguf");
+  try {
+    writeSyntheticModel(path);
+    const result = estimateMemory({ args: { "--model": path } });
+    assert.equal(result.ok, true);
+    if (!result.ok) {
+      return;
+    }
+    assert.equal(result.modelPath, path);
+    assert.equal(result.estimate.weightsBytesTotal, 3968);
+    assert.equal(result.estimate.kvBytesTotal, 2 * (8 + 8) * 1024);
+    assert.equal(
+      result.estimate.computeBytesTotal,
+      100 * 512 * 4 + 8 * 512 * 4,
+    );
+    assert.equal(result.estimate.confidence, "high");
+    assert.ok(result.estimate.draws.length >= 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("estimateMemory reports a missing model file", () => {
+  const result = estimateMemory({ args: { "--model": "/no/such/model.gguf" } });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.reason, /Model file not found/);
+  }
+});
+
+test("estimateMemory rejects router presets", () => {
+  const result = estimateMemory({ args: { "--models-preset": "router.ini" } });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.reason, /Router/);
+  }
+});
+
+test("estimateMemory rejects remote models", () => {
+  const result = estimateMemory({ args: { "--hf-repo": "org/model:Q4_K_M" } });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.reason, /Remote/);
+  }
+});
+
+test("estimateMemory reports an unknown instance", () => {
+  const result = estimateMemory({ instanceId: "does-not-exist" });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.reason, /instance not found/);
+  }
+});
