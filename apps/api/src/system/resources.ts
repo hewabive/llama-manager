@@ -3,15 +3,18 @@ import type {
   SystemMemory,
   SystemResources,
 } from "@llama-manager/core";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { freemem, totalmem } from "node:os";
+import { promisify } from "node:util";
 import {
   detectNumaBind,
   detectNumaInterleave,
   readNumaTopology,
   readPciNumaNode,
 } from "../numa/index.js";
+
+const execFileAsync = promisify(execFile);
 
 function clampRatio(value: number) {
   if (!Number.isFinite(value)) {
@@ -141,30 +144,80 @@ export function parseNvidiaSmiCsv(
     });
 }
 
-function readNvidiaAccelerators(): SystemAccelerator[] {
+const NVIDIA_SMI_QUERY_ARGS = [
+  "--query-gpu=index,name,memory.total,memory.used,utilization.gpu,temperature.gpu,pci.bus_id",
+  "--format=csv,noheader,nounits",
+];
+
+const ACCELERATORS_CACHE_MS = 3_000;
+
+let acceleratorsCache: {
+  value: SystemAccelerator[];
+  expiresAt: number;
+} | null = null;
+let acceleratorsRefresh: Promise<SystemAccelerator[]> | null = null;
+
+function readNvidiaAcceleratorsSync(): SystemAccelerator[] {
   try {
-    const output = execFileSync(
-      "nvidia-smi",
-      [
-        "--query-gpu=index,name,memory.total,memory.used,utilization.gpu,temperature.gpu,pci.bus_id",
-        "--format=csv,noheader,nounits",
-      ],
-      {
+    return parseNvidiaSmiCsv(
+      execFileSync("nvidia-smi", NVIDIA_SMI_QUERY_ARGS, {
         encoding: "utf8",
         timeout: 2_000,
-      },
+      }),
     );
-    return parseNvidiaSmiCsv(output);
   } catch {
     return [];
   }
+}
+
+async function readNvidiaAcceleratorsAsync(): Promise<SystemAccelerator[]> {
+  try {
+    const { stdout } = await execFileAsync("nvidia-smi", NVIDIA_SMI_QUERY_ARGS, {
+      encoding: "utf8",
+      timeout: 2_000,
+    });
+    return parseNvidiaSmiCsv(stdout);
+  } catch {
+    return [];
+  }
+}
+
+function refreshAccelerators(): Promise<SystemAccelerator[]> {
+  if (acceleratorsRefresh) {
+    return acceleratorsRefresh;
+  }
+  acceleratorsRefresh = readNvidiaAcceleratorsAsync()
+    .then((value) => {
+      acceleratorsCache = {
+        value,
+        expiresAt: Date.now() + ACCELERATORS_CACHE_MS,
+      };
+      return value;
+    })
+    .finally(() => {
+      acceleratorsRefresh = null;
+    });
+  return acceleratorsRefresh;
+}
+
+function cachedAccelerators(): SystemAccelerator[] {
+  const now = Date.now();
+  if (!acceleratorsCache) {
+    const value = readNvidiaAcceleratorsSync();
+    acceleratorsCache = { value, expiresAt: now + ACCELERATORS_CACHE_MS };
+    return value;
+  }
+  if (acceleratorsCache.expiresAt <= now) {
+    void refreshAccelerators();
+  }
+  return acceleratorsCache.value;
 }
 
 export function getSystemResources(): SystemResources {
   return {
     checkedAt: new Date().toISOString(),
     memory: readLinuxMemory() ?? readNodeMemory(),
-    accelerators: readNvidiaAccelerators(),
+    accelerators: cachedAccelerators(),
     numa: {
       nodes: readNumaTopology(),
       bind: detectNumaBind(),
