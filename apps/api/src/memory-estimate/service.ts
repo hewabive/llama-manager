@@ -10,7 +10,7 @@ import {
 import { existsSync } from "node:fs";
 
 import { getInstance } from "../instances/repository.js";
-import { readGgufMetadata, readGgufTensorTable } from "../models/gguf.js";
+import { readGgufMetadata, readGgufModelTensorTable } from "../models/gguf.js";
 import { listMemoryPools } from "../resources/repository.js";
 
 export type MemoryEstimateResolution =
@@ -105,7 +105,7 @@ export function estimateMemory(
   let estimate: MemoryEstimate;
   try {
     estimate = estimateInstanceMemory({
-      tensors: readGgufTensorTable(modelPath),
+      tensors: readGgufModelTensorTable(modelPath),
       hparams: hparamsFromGguf(modelPath),
       args,
       pools: poolsForEstimate(),

@@ -4,7 +4,10 @@ import type {
   GgufTensorTable,
 } from "@llama-manager/core";
 import { ggmlTensorBytes, ggmlTypeName } from "@llama-manager/core";
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+
+import { parseSplitInfo, splitShardName } from "./split.js";
 
 type GgufScalar = string | number | boolean | null;
 
@@ -395,4 +398,41 @@ export function readGgufTensorTable(path: string): GgufTensorTable {
   } finally {
     closeSync(fd);
   }
+}
+
+export function resolveGgufShardPaths(modelPath: string): string[] {
+  const split = parseSplitInfo(basename(modelPath));
+  if (!split) {
+    return [modelPath];
+  }
+  const directory = dirname(modelPath);
+  const shards: string[] = [];
+  for (let index = 1; index <= split.count; index += 1) {
+    const shardPath = join(
+      directory,
+      splitShardName(split, index, split.count),
+    );
+    if (existsSync(shardPath)) {
+      shards.push(shardPath);
+    }
+  }
+  return shards.length > 0 ? shards : [modelPath];
+}
+
+export function readGgufModelTensorTable(modelPath: string): GgufTensorTable {
+  const shards = resolveGgufShardPaths(modelPath);
+  if (shards.length <= 1) {
+    return readGgufTensorTable(modelPath);
+  }
+  const tables = shards.map((shardPath) => readGgufTensorTable(shardPath));
+  const unknownTypeIds = [
+    ...new Set(tables.flatMap((table) => table.unknownTypeIds)),
+  ].sort((left, right) => left - right);
+  return {
+    path: modelPath,
+    tensorCount: tables.reduce((sum, table) => sum + table.tensorCount, 0),
+    totalBytes: tables.reduce((sum, table) => sum + table.totalBytes, 0),
+    unknownTypeIds,
+    tensors: tables.flatMap((table) => table.tensors),
+  };
 }

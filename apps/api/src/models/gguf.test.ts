@@ -10,7 +10,12 @@ import {
   ggmlTypeName,
 } from "@llama-manager/core";
 
-import { ggufFileTypeLabel, readGgufTensorTable } from "./gguf.js";
+import {
+  ggufFileTypeLabel,
+  readGgufModelTensorTable,
+  readGgufTensorTable,
+  resolveGgufShardPaths,
+} from "./gguf.js";
 
 test("ggufFileTypeLabel maps llama.cpp file types", () => {
   assert.equal(ggufFileTypeLabel(2), "Q4_0");
@@ -94,6 +99,66 @@ test("readGgufTensorTable parses the tensor section and sizes tensors", () => {
     assert.equal(ffn?.name, "blk.0.ffn_down.weight");
     assert.equal(ffn?.type, "q4_0");
     assert.equal(ffn?.bytes, 36);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function shardFile(tensors: Buffer[]) {
+  return Buffer.concat([
+    Buffer.from("GGUF", "utf8"),
+    u32(3),
+    u64(tensors.length),
+    u64(0),
+    ...tensors,
+  ]);
+}
+
+test("readGgufModelTensorTable sums every shard of a split GGUF", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-gguf-split-"));
+  const shard1 = join(dir, "model-00001-of-00002.gguf");
+  const shard2 = join(dir, "model-00002-of-00002.gguf");
+  try {
+    writeFileSync(
+      shard1,
+      shardFile([tensorInfo("blk.0.attn_k.weight", [4, 8], 1)]),
+    );
+    writeFileSync(
+      shard2,
+      shardFile([
+        tensorInfo("blk.1.attn_k.weight", [4, 8], 1),
+        tensorInfo("blk.1.ffn_down.weight", [32, 2], 2),
+      ]),
+    );
+
+    assert.deepEqual(resolveGgufShardPaths(shard1), [shard1, shard2]);
+
+    const single = readGgufTensorTable(shard1);
+    assert.equal(single.tensorCount, 1);
+    assert.equal(single.totalBytes, 64);
+
+    const full = readGgufModelTensorTable(shard1);
+    assert.equal(full.path, shard1);
+    assert.equal(full.tensorCount, 3);
+    assert.equal(full.totalBytes, 64 + 64 + 36);
+    assert.deepEqual(
+      full.tensors.map((tensor) => tensor.name),
+      ["blk.0.attn_k.weight", "blk.1.attn_k.weight", "blk.1.ffn_down.weight"],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveGgufShardPaths returns the lone path for non-split models", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-gguf-plain-"));
+  const path = join(dir, "plain.gguf");
+  try {
+    writeFileSync(
+      path,
+      shardFile([tensorInfo("blk.0.attn_k.weight", [4, 8], 1)]),
+    );
+    assert.deepEqual(resolveGgufShardPaths(path), [path]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

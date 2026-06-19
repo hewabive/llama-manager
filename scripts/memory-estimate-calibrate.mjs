@@ -1,13 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { estimateInstanceMemory } from "../packages/core/dist/index.js";
 import {
   readGgufMetadata,
-  readGgufTensorTable,
+  readGgufModelTensorTable,
 } from "../apps/api/dist/models/gguf.js";
+import { parseSplitInfo } from "../apps/api/dist/models/split.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIB = 1024 * 1024;
@@ -80,16 +81,25 @@ function parseArgs(argv) {
   return options;
 }
 
+function collapseShards(paths) {
+  return paths.filter((path) => {
+    const split = parseSplitInfo(basename(path));
+    return !split || split.index === 1;
+  });
+}
+
 function discoverModels(options) {
   if (options.paths.length > 0) {
-    return options.paths.map((path) => resolve(path));
+    return collapseShards(options.paths.map((path) => resolve(path)));
   }
   if (!existsSync(options.models)) {
     return [];
   }
-  return readdirSync(options.models)
-    .filter((name) => name.endsWith(".gguf"))
-    .map((name) => join(options.models, name));
+  return collapseShards(
+    readdirSync(options.models)
+      .filter((name) => name.endsWith(".gguf"))
+      .map((name) => join(options.models, name)),
+  );
 }
 
 function poolsFor(options) {
@@ -137,7 +147,7 @@ function runFitParams(options, modelPath, args, nSeqMax) {
   const stdout = execFileSync(options.fitParams, cli, {
     encoding: "utf8",
     timeout: 120_000,
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, LD_LIBRARY_PATH: dirname(options.fitParams) },
   });
   const devices = [];
@@ -173,6 +183,14 @@ function fmtPct(value) {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+function lastLines(text, count) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== "");
+  return lines.slice(-count);
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!existsSync(options.fitParams)) {
@@ -198,7 +216,7 @@ function main() {
     let tensors;
     try {
       metadata = readGgufMetadata(modelPath);
-      tensors = readGgufTensorTable(modelPath);
+      tensors = readGgufModelTensorTable(modelPath);
     } catch (error) {
       console.error(`skip ${modelPath}: ${error.message}`);
       continue;
@@ -229,7 +247,11 @@ function main() {
           estimate.context.nSeqMax,
         );
       } catch (error) {
-        fitError = error.message.split(/\r?\n/)[0];
+        const stderr =
+          error.stderr !== undefined && error.stderr !== null
+            ? String(error.stderr).trim()
+            : "";
+        fitError = stderr || error.message;
       }
       rows.push({
         model: name,
@@ -295,6 +317,22 @@ function main() {
     "\nLegend: A=analytic estimate, F=llama-fit-params projection (MiB). " +
       "Δ = (analytic-fit)/fit. Known gaps documented in docs/MEMORY_ESTIMATION.md.",
   );
+
+  const errorRows = rows.filter((row) => row.fitError);
+  if (errorRows.length > 0) {
+    console.log("\nllama-fit-params errors:");
+    const seen = new Set();
+    for (const row of errorRows) {
+      const tail = lastLines(row.fitError, 4);
+      const signature = `${row.model}\0${tail.join("\n")}`;
+      if (seen.has(signature)) continue;
+      seen.add(signature);
+      console.log(`  ${row.model} [${row.config}]:`);
+      for (const line of tail) {
+        console.log(`    ${line}`);
+      }
+    }
+  }
 
   if (options.out) {
     writeFileSync(

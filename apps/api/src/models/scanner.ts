@@ -14,6 +14,7 @@ import {
   saveCachedModel,
 } from "./cache-repository.js";
 import { readGgufMetadata, readGgufParameterCount } from "./gguf.js";
+import { parseSplitInfo, splitShardName, type SplitInfo } from "./split.js";
 
 const IGNORED_DIRS = new Set([
   ".git",
@@ -36,14 +37,6 @@ type FoundFile = {
   path: string;
   name: string;
   directory: string;
-};
-
-type SplitInfo = {
-  prefix: string;
-  index: number;
-  count: number;
-  indexWidth: number;
-  countWidth: number;
 };
 
 type ModelFile = FoundFile & {
@@ -133,45 +126,6 @@ function emptyMetadata(): GgufMetadata {
     hasChatTemplate: false,
     vocabularySize: null,
   };
-}
-
-function parseSplitInfo(name: string): SplitInfo | null {
-  const match = /^(?<prefix>.+)-(?<index>\d+)-of-(?<count>\d+)\.gguf$/i.exec(
-    name,
-  );
-  const groups = match?.groups;
-  if (!groups) {
-    return null;
-  }
-
-  const prefix = groups.prefix;
-  const indexText = groups.index;
-  const countText = groups.count;
-  const index = Number(indexText);
-  const count = Number(countText);
-  if (!prefix || !indexText || !countText) {
-    return null;
-  }
-  if (!Number.isInteger(index) || !Number.isInteger(count)) {
-    return null;
-  }
-  if (count <= 1 || index < 1 || index > count) {
-    return null;
-  }
-
-  return {
-    prefix,
-    index,
-    count,
-    indexWidth: indexText.length,
-    countWidth: countText.length,
-  };
-}
-
-function splitShardName(split: SplitInfo, index: number, count: number) {
-  const indexText = String(index).padStart(split.indexWidth, "0");
-  const countText = String(count).padStart(split.countWidth, "0");
-  return `${split.prefix}-${indexText}-of-${countText}.gguf`;
 }
 
 function compareModelNames(
