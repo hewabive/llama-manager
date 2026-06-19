@@ -331,3 +331,110 @@ test("no-kv-offload keeps KV on the host pool under GPU offload", () => {
   assert.equal(gpu?.kvBytes, 0);
   assert.ok((host?.kvBytes ?? 0) > 0);
 });
+
+test("multimodal projector weights are added to the footprint", () => {
+  const mmproj = syntheticTable([f16Tensor("mm.proj.weight", [100, 100])]);
+  const base = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: {},
+    pools: HOST_POOLS,
+  });
+  const withMmproj = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: {},
+    pools: HOST_POOLS,
+    mmproj: { tensors: mmproj },
+  });
+
+  assert.equal(withMmproj.mmprojBytesTotal, mmproj.totalBytes);
+  assert.equal(
+    withMmproj.weightsBytesTotal,
+    base.weightsBytesTotal + mmproj.totalBytes,
+  );
+  assert.equal(withMmproj.totalBytes, base.totalBytes + mmproj.totalBytes);
+  assert.equal(base.confidence, "high");
+  assert.equal(withMmproj.confidence, "medium");
+  assert.ok(withMmproj.warnings.some((warning) => /projector/.test(warning)));
+});
+
+test("multimodal projector offloads to the GPU and respects --no-mmproj-offload", () => {
+  const mmproj = syntheticTable();
+  const pools = [
+    { id: "gpu0", kind: "gpu" as const, deviceIndex: 0 },
+    { id: "host", kind: "host" as const },
+  ];
+  const offloaded = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: {},
+    pools,
+    mmproj: { tensors: mmproj },
+  });
+  const gpu = offloaded.pools.find((pool) => pool.poolId === "gpu0");
+  assert.equal(gpu?.weightsBytes, mmproj.totalBytes);
+  assert.ok((gpu?.overheadBytes ?? 0) > 0);
+
+  const host = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: { "--no-mmproj-offload": "on" },
+    pools,
+    mmproj: { tensors: mmproj },
+  });
+  assert.equal(
+    host.pools.find((pool) => pool.poolId === "gpu0"),
+    undefined,
+  );
+});
+
+test("speculative draft model adds a second resident model", () => {
+  const base = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: { "--ctx-size": 256 },
+    pools: HOST_POOLS,
+  });
+  const draftAlone = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: { "--ctx-size": 256 },
+    pools: HOST_POOLS,
+  });
+  const withDraft = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: { "--ctx-size": 256 },
+    pools: HOST_POOLS,
+    draft: { tensors: syntheticTable(), hparams: HPARAMS },
+  });
+
+  const draftExpect =
+    draftAlone.weightsBytesTotal +
+    draftAlone.kvBytesTotal +
+    draftAlone.computeBytesTotal;
+  assert.equal(withDraft.draftBytesTotal, draftExpect);
+  assert.equal(withDraft.totalBytes, base.totalBytes + draftExpect);
+  assert.ok(withDraft.warnings.some((warning) => /draft/i.test(warning)));
+});
+
+test("draft model honors --spec-draft-ngl independently of the main model", () => {
+  const pools = [
+    { id: "gpu0", kind: "gpu" as const, deviceIndex: 0 },
+    { id: "host", kind: "host" as const },
+  ];
+  const estimate = estimateInstanceMemory({
+    tensors: syntheticTable(),
+    hparams: HPARAMS,
+    args: { "--ctx-size": 256, "--spec-draft-ngl": 99 },
+    pools,
+    draft: { tensors: syntheticTable(), hparams: HPARAMS },
+  });
+
+  const gpu = estimate.pools.find((pool) => pool.poolId === "gpu0");
+  const host = estimate.pools.find((pool) => pool.poolId === "host");
+  assert.ok(gpu);
+  assert.ok(gpu.weightsBytes > 0);
+  assert.ok((host?.weightsBytes ?? 0) > 0);
+});

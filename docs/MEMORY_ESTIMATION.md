@@ -87,7 +87,23 @@ and, for the future measured path, its own pinned binary.
 - **Compute** — dominated by the logits projection, `n_vocab * n_ubatch * 4`
   (verified exact: linear in `n_ubatch`, independent of `n_ctx` and flash-attn),
   plus an `n_embd`-scaled activation term.
-- **Overhead** — a per-GPU CUDA-context margin (rough constant, flagged).
+- **Multimodal projector (`--mmproj`)** — a vision/audio adapter is a separate
+  GGUF (`clip` architecture) that `llama-server` loads alongside the model. Its
+  weights (the per-tensor sum of the projector file, read via the shard-aware
+  reader) are folded into the footprint: on the **GPU** by default, on the
+  **host** when `--no-mmproj-offload` is set. The projector has no KV cache; the
+  vision **compute** buffer at image-encode time is not modeled (flagged).
+  `llama-fit-params` cannot anchor this — it rejects `--mmproj` — so it is
+  analytical-only. Surfaced as `mmprojBytesTotal`.
+- **Speculative draft model (`--spec-draft-model`/`-md`)** — a second resident
+  model loaded for speculative decoding. It is estimated recursively by the same
+  engine over the draft GGUF, with the draft-specific args remapped onto the
+  standard keys (`--spec-draft-ngl`→`-ngl`, `--spec-draft-type-k/v`→cache types;
+  context/parallel/batch shared with the target). Its weights + KV + compute are
+  added to the per-pool draws and reported as `draftBytesTotal`.
+- **Overhead** — a per-GPU CUDA-context margin (rough constant, flagged), added
+  once per GPU pool that holds any bytes (so the draft/projector share the
+  target's CUDA context, not a second one).
 
 ## Confidence and warnings
 

@@ -51,6 +51,8 @@ export type MemoryEstimateInput = {
   hparams: MemoryEstimateHparams;
   args: MemoryEstimateArgs;
   pools: MemoryEstimatePoolInput[];
+  mmproj?: { tensors: GgufTensorTable };
+  draft?: { tensors: GgufTensorTable; hparams: MemoryEstimateHparams };
 };
 
 export const ResolvedContextParamsSchema = z.object({
@@ -91,6 +93,8 @@ export const MemoryEstimateSchema = z.object({
   kvBytesTotal: z.number().int().nonnegative(),
   computeBytesTotal: z.number().int().nonnegative(),
   overheadBytesTotal: z.number().int().nonnegative(),
+  mmprojBytesTotal: z.number().int().nonnegative(),
+  draftBytesTotal: z.number().int().nonnegative(),
   totalBytes: z.number().int().nonnegative(),
   context: ResolvedContextParamsSchema,
   confidence: MemoryEstimateConfidenceSchema,
@@ -392,23 +396,27 @@ function emptyAccumulator(): PoolAccumulator {
   return { weightsBytes: 0, kvBytes: 0, computeBytes: 0, overheadBytes: 0 };
 }
 
-export function estimateInstanceMemory(
-  input: MemoryEstimateInput,
-): MemoryEstimate {
-  const warnings: string[] = [];
-  const context = resolveContextParams(input.args, input.hparams);
-  const placement = buildPlacement(input, context);
-  const layerAll = (input.hparams.blockCount ?? 0) + 1;
+function mib(bytes: number): number {
+  return Math.round(bytes / (1024 * 1024));
+}
 
-  const accumulators = new Map<string, PoolAccumulator>();
-  const ensure = (poolId: string): PoolAccumulator => {
-    let accumulator = accumulators.get(poolId);
-    if (!accumulator) {
-      accumulator = emptyAccumulator();
-      accumulators.set(poolId, accumulator);
-    }
-    return accumulator;
-  };
+type ModelAccumulation = {
+  context: ResolvedContextParams;
+  placement: Placement;
+  kv: KvEstimate;
+  computeBytes: number;
+  weightsBytes: number;
+  layerAll: number;
+};
+
+function accumulateModel(
+  model: MemoryEstimateInput,
+  ensure: (poolId: string) => PoolAccumulator,
+  warnings: string[],
+): ModelAccumulation {
+  const context = resolveContextParams(model.args, model.hparams);
+  const placement = buildPlacement(model, context);
+  const layerAll = (model.hparams.blockCount ?? 0) + 1;
 
   const weightDevice = (tensor: GgufTensorInfo): string => {
     const layer = tensorLayerIndex(tensor.name);
@@ -431,11 +439,13 @@ export function estimateInstanceMemory(
     return placement.hostPoolId;
   };
 
-  for (const tensor of input.tensors.tensors) {
+  let weightsBytes = 0;
+  for (const tensor of model.tensors.tensors) {
     ensure(weightDevice(tensor)).weightsBytes += tensor.bytes;
+    weightsBytes += tensor.bytes;
   }
 
-  const kv = estimateKvCache(input, context, warnings);
+  const kv = estimateKvCache(model, context, warnings);
   for (const [layer, bytes] of kv.bytesByLayer) {
     const device = context.offloadKqv
       ? placement.layerDevice(layer)
@@ -443,11 +453,111 @@ export function estimateInstanceMemory(
     ensure(device).kvBytes += bytes;
   }
 
-  const computeBytes = estimateComputeBytes(input, context);
+  const computeBytes = estimateComputeBytes(model, context);
   const computePoolId = placement.usesGpu
     ? placement.layerDevice(layerAll - 1)
     : placement.hostPoolId;
   ensure(computePoolId).computeBytes += computeBytes;
+
+  return { context, placement, kv, computeBytes, weightsBytes, layerAll };
+}
+
+function mmprojPlacement(
+  input: MemoryEstimateInput,
+  hostPoolId: string,
+): { poolId: string; isGpu: boolean } {
+  const gpuPools = gpuPoolsSorted(input.pools);
+  const offloadDisabled =
+    (argFlag(input.args, ["--no-mmproj-offload"]) ?? false) ||
+    argFlag(input.args, ["--mmproj-offload"]) === false;
+  const firstGpu = gpuPools[0];
+  if (firstGpu && !offloadDisabled) {
+    return { poolId: firstGpu.id, isGpu: true };
+  }
+  return { poolId: hostPoolId, isGpu: false };
+}
+
+function remapDraftArgs(args: MemoryEstimateArgs): MemoryEstimateArgs {
+  const draft: MemoryEstimateArgs = {};
+  const copy = (target: string, keys: string[]) => {
+    const value = argRaw(args, keys);
+    if (value !== undefined) {
+      draft[target] = value;
+    }
+  };
+  copy("--ctx-size", ["--ctx-size", "-c", "--context-size"]);
+  copy("--parallel", ["--parallel", "-np"]);
+  copy("--batch-size", ["--batch-size", "-b"]);
+  copy("--ubatch-size", ["--ubatch-size", "-ub"]);
+  copy("--flash-attn", ["--flash-attn", "-fa"]);
+  copy("--n-gpu-layers", [
+    "--spec-draft-ngl",
+    "-ngld",
+    "--n-gpu-layers-draft",
+    "--gpu-layers-draft",
+  ]);
+  copy("--cache-type-k", ["--spec-draft-type-k"]);
+  copy("--cache-type-v", ["--spec-draft-type-v"]);
+  return draft;
+}
+
+export function estimateInstanceMemory(
+  input: MemoryEstimateInput,
+): MemoryEstimate {
+  const warnings: string[] = [];
+
+  const accumulators = new Map<string, PoolAccumulator>();
+  const ensure = (poolId: string): PoolAccumulator => {
+    let accumulator = accumulators.get(poolId);
+    if (!accumulator) {
+      accumulator = emptyAccumulator();
+      accumulators.set(poolId, accumulator);
+    }
+    return accumulator;
+  };
+
+  const main = accumulateModel(input, ensure, warnings);
+  const { context, placement, kv } = main;
+
+  let mmprojBytesTotal = 0;
+  let mmprojOnGpu = false;
+  if (input.mmproj) {
+    const target = mmprojPlacement(input, placement.hostPoolId);
+    mmprojOnGpu = target.isGpu;
+    for (const tensor of input.mmproj.tensors.tensors) {
+      mmprojBytesTotal += tensor.bytes;
+    }
+    ensure(target.poolId).weightsBytes += mmprojBytesTotal;
+    warnings.push(
+      `Multimodal projector (--mmproj): ~${mib(mmprojBytesTotal)} MiB of weights included on ${
+        target.isGpu ? "the GPU" : "the host"
+      }; the vision compute buffer at image time is not modeled.`,
+    );
+  }
+
+  let draftBytesTotal = 0;
+  let draftUsesGpu = false;
+  if (input.draft) {
+    const draftWarnings: string[] = [];
+    const draftModel: MemoryEstimateInput = {
+      tensors: input.draft.tensors,
+      hparams: input.draft.hparams,
+      args: remapDraftArgs(input.args),
+      pools: input.pools,
+    };
+    const draft = accumulateModel(draftModel, ensure, draftWarnings);
+    draftUsesGpu = draft.placement.usesGpu;
+    draftBytesTotal =
+      draft.weightsBytes + draft.kv.totalBytes + draft.computeBytes;
+    warnings.push(
+      `Speculative draft model (--spec-draft-model): a second resident model (weights + KV + compute, ~${mib(
+        draftBytesTotal,
+      )} MiB) is included.`,
+    );
+    for (const warning of draftWarnings) {
+      warnings.push(`Draft model: ${warning}`);
+    }
+  }
 
   for (const [poolId, accumulator] of accumulators) {
     const pool = input.pools.find((candidate) => candidate.id === poolId);
@@ -462,7 +572,7 @@ export function estimateInstanceMemory(
     }
   }
 
-  if (placement.usesGpu) {
+  if (placement.usesGpu || draftUsesGpu || mmprojOnGpu) {
     warnings.push(
       "GPU placement (split, compute attribution, CUDA-context overhead) is source-derived and not yet validated on hardware.",
     );
@@ -501,21 +611,33 @@ export function estimateInstanceMemory(
     (sum, pool) => sum + pool.weightsBytes,
     0,
   );
+  const kvBytesTotal = pools.reduce((sum, pool) => sum + pool.kvBytes, 0);
+  const computeBytesTotal = pools.reduce(
+    (sum, pool) => sum + pool.computeBytes,
+    0,
+  );
   const overheadBytesTotal = pools.reduce(
     (sum, pool) => sum + pool.overheadBytes,
     0,
   );
 
+  let confidence = resolveConfidence(input, context, placement, kv, warnings);
+  if (input.mmproj && confidence === "high") {
+    confidence = "medium";
+  }
+
   return {
     draws,
     pools,
     weightsBytesTotal,
-    kvBytesTotal: kv.totalBytes,
-    computeBytesTotal: computeBytes,
+    kvBytesTotal,
+    computeBytesTotal,
+    mmprojBytesTotal,
+    draftBytesTotal,
     overheadBytesTotal,
     totalBytes: pools.reduce((sum, pool) => sum + pool.totalBytes, 0),
     context,
-    confidence: resolveConfidence(input, context, placement, kv, warnings),
+    confidence,
     warnings,
   };
 }

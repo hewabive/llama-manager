@@ -89,6 +89,20 @@ export function InstanceFormMemoryEstimate({
             ngl {result.estimate.context.nGpuLayers}
           </Text>
 
+          {(result.estimate.mmprojBytesTotal > 0 ||
+            result.estimate.draftBytesTotal > 0) && (
+            <Text c="dimmed" size="xs">
+              incl.
+              {result.estimate.mmprojBytesTotal > 0 &&
+                ` mmproj ${formatBytes(result.estimate.mmprojBytesTotal)}`}
+              {result.estimate.mmprojBytesTotal > 0 &&
+                result.estimate.draftBytesTotal > 0 &&
+                " ·"}
+              {result.estimate.draftBytesTotal > 0 &&
+                ` draft ${formatBytes(result.estimate.draftBytesTotal)}`}
+            </Text>
+          )}
+
           <Table withTableBorder withColumnBorders verticalSpacing={4} fz="xs">
             <Table.Thead>
               <Table.Tr>

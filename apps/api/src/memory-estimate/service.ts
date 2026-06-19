@@ -27,15 +27,24 @@ function poolsForEstimate(): MemoryEstimatePoolInput[] {
   });
 }
 
-function resolveModelPath(args: MemoryEstimateArgs): string | null {
-  const model = args["--model"] ?? args["-m"];
-  if (typeof model === "string") {
-    const trimmed = model.trim();
-    if (trimmed && existsSync(trimmed)) {
-      return trimmed;
+function resolveExistingPath(
+  args: MemoryEstimateArgs,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed && existsSync(trimmed)) {
+        return trimmed;
+      }
     }
   }
   return null;
+}
+
+function resolveModelPath(args: MemoryEstimateArgs): string | null {
+  return resolveExistingPath(args, ["--model", "-m"]);
 }
 
 function hasArg(args: MemoryEstimateArgs, key: string): boolean {
@@ -102,6 +111,13 @@ export function estimateMemory(
     return { ok: false, reason: "No --model is configured." };
   }
 
+  const mmprojPath = resolveExistingPath(args, ["--mmproj"]);
+  const draftPath = resolveExistingPath(args, [
+    "--spec-draft-model",
+    "-md",
+    "--model-draft",
+  ]);
+
   let estimate: MemoryEstimate;
   try {
     estimate = estimateInstanceMemory({
@@ -109,6 +125,17 @@ export function estimateMemory(
       hparams: hparamsFromGguf(modelPath),
       args,
       pools: poolsForEstimate(),
+      ...(mmprojPath
+        ? { mmproj: { tensors: readGgufModelTensorTable(mmprojPath) } }
+        : {}),
+      ...(draftPath
+        ? {
+            draft: {
+              tensors: readGgufModelTensorTable(draftPath),
+              hparams: hparamsFromGguf(draftPath),
+            },
+          }
+        : {}),
     });
   } catch (error) {
     return {
