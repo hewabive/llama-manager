@@ -96,23 +96,23 @@ and, for the future measured path, its own pinned binary.
   `llama-fit-params` cannot anchor this — it rejects `--mmproj` — so it is
   analytical-only. Surfaced as `mmprojBytesTotal`.
 - **Speculative draft model (`--spec-draft-model`/`-md`)** — a second resident
-  model loaded for speculative decoding. It is estimated recursively by the same
-  engine over the draft GGUF, with the draft-specific args remapped onto the
+  model loaded for speculative decoding. It is estimated recursively by the **same
+  engine** over the draft GGUF, with the draft-specific args remapped onto the
   standard keys (`--spec-draft-ngl`→`-ngl`, `--spec-draft-type-k/v`→cache types;
   context/parallel/batch shared with the target). Its weights + KV + compute are
-  added to the per-pool draws and reported as `draftBytesTotal`. Two draft-only
-  rules, both source-derived (`tools/server/server-context.cpp`): (a) the draft
-  context caps `n_outputs_max` at `--parallel` (not `--ubatch`), so its **logits
-  buffer is `n_vocab × n_parallel × 4`**, a fraction of the target's compute —
-  the engine sizes the draft compute the same way. (b) NextN/MTP heads (e.g.
-  `gemma4-assistant`, arch with no `attn_k`/`attn_v` tensors) **share the target's
-  KV cache** (`ctx_other`/`LLAMA_CONTEXT_TYPE_MTP`), so they allocate no separate
-  KV — the geometry reader already yields 0 because such a head has no `attn_k`
-  tensors. Verified on the gemma-4-E2B MTP head (Q8_0, 78 MiB weights): the
-  server logs `llama_kv_cache: layer N: sharing with layer M` for every draft
-  layer, confirming KV sharing; measured marginal RSS for the loaded draft was
-  ~200 MiB (78 MiB weights + ~120 MiB compute-graph/prompt-cache scratch that is
-  not separately modeled — see open item 3).
+  added to the per-pool draws and reported as `draftBytesTotal`. The draft compute
+  is sized **exactly like the target's** (`n_vocab × n_ubatch × 4`): `llama-fit-params`
+  shows the draft/MTP compute reservation scales with `n_ubatch`, not `--parallel`
+  (the `n_outputs_max = n_parallel` cap in `tools/server/server-context.cpp` only
+  shrinks the small final-logits output buffer, not the dominant `n_ubatch`-wide
+  graph). **NextN/MTP heads** (e.g. `gemma4-assistant`, arch with no `attn_k`/`attn_v`
+  tensors) **share the target's KV cache** (`ctx_other`/`LLAMA_CONTEXT_TYPE_MTP`),
+  so they allocate no separate KV — the geometry reader already yields 0 because
+  such a head has no `attn_k` tensors. Verified on the gemma-4-E2B MTP head (Q8_0,
+  78 MiB weights): the server logs `llama_kv_cache: layer N: sharing with layer M`
+  for every draft layer, confirming KV sharing. (An earlier change capped the draft
+  logits at `--parallel`; it was reverted because it under-counts the draft compute
+  for every target — see the host-RSS note in Calibration.)
 - **Overhead** — a per-GPU CUDA-context margin (rough constant, flagged), added
   once per GPU pool that holds any bytes (so the draft/projector share the
   target's CUDA context, not a second one).
@@ -140,25 +140,57 @@ The instance form surfaces this as an "Estimate footprint" panel with the
 per-pool breakdown and an "Apply as draws" button
 (`apps/web/src/ui/components/InstanceFormMemoryEstimate.tsx`).
 
-## Calibration (open items, hardware-gated)
+## What the estimate targets: fit-params, not RSS
 
-The analytical engine is verified exact for KV, the hybrid recurrent state, the
-SWA + KV-sharing cache, and the dominant compute term on CPU (all checked against
-`llama-fit-params`, which projects without allocating and runs on the CPU box).
-The remaining items need a GPU machine (and the gold `llama_memory_breakdown_print`
-table / process RSS, which the dev box could not capture reliably):
+The analytical engine is a **conservative `llama-fit-params` projection**, not a
+predictor of resident set size (RSS). This is deliberate: per-instance RSS on the
+host is not derivable from the GGUF alone (see the host-RSS note below), so the
+estimator over-projects in a way that stays safe for "will it fit / will it swap"
+admission. True per-instance RSS is the job of the future **measured engine**
+(probe the real binary), not this analytical path.
 
-1. **Resident weights vs the fit-params `model` column.** For some models the
-   `fit model` figure differs from the tensor sum in both directions (qwen2.5-0.5b
-   211 vs 403; gemma-4-E2B 2482 vs 2317) and the qwen case is **not** mmap-related
-   (`--no-mmap` unchanged). The estimator deliberately reports the full resident
-   footprint (safer for "will it fit / will it swap"); confirm against actual RSS
-   and the gold breakdown table, then decide whether to expose a separate
-   "non-mmap resident" number.
-2. **GPU CUDA-context overhead** — replace the rough per-GPU constant with a
+### Host-RSS investigation (2026-06-19, CPU box) — why compute stays at the fit reservation
+
+Triggered by the gemma-4-E2B MTP draft test, a full RSS + `llama-fit-params`
+sweep (gemma Q3_K_S, qwen2.5-0.5B Q4_0, SmolLM2-360M Q4_K_M) established:
+
+- **Compute is two different numbers.** The compute buffer is *reserved* at
+  `~n_vocab × n_ubatch × 4` (the fit-params `compute` column; gemma ub128/512/1024
+  → 145/581/1164 MiB, linear in `n_ubatch`, independent of `n_ctx`), but only
+  `~n_vocab × n_ubatch × 1 byte` ever becomes *resident* (RSS-touched; gemma ub512
+  → 116 MiB, since real `n_outputs` is tiny so most of the reserved logits buffer
+  is never written). The engine reports the **reserved** number — it is what GPU
+  VRAM actually needs, and on the host the reserved-but-untouched pages are
+  overcommitted (no swap).
+- **Resident weights are not analytically predictable.** On the CPU backend
+  (`REPACK=1`) the resident weight footprint is dominated by quant-dependent
+  repack: gemma Q3_K +7% over the tensor sum, SmolLM Q4_K +20%, qwen0.5 Q4_0
+  **+77%** (RSS idle 713 MiB vs tensor sum 403 — the repacked copy is held
+  alongside the mmap original). The `fit-params` `model` column is itself
+  unreliable here (qwen0.5 reports 211, *excluding* layer weights). No single
+  factor over the GGUF tensor sum is safe.
+- **Linux nuance:** mmap'd weights (our tensor-sum number) are reclaimable
+  file-backed page cache — they do **not** cause swap; the anonymous repack copies
+  do. So the "correct" host number is neither the tensor sum nor the fit `model`.
+- **The conservatism is load-bearing.** The compute over-projection
+  (reserved `×4` ≫ touched) roughly *cancels* the weight under-projection
+  (tensor-sum < resident), and both scale with model/vocab — so the instance-level
+  estimate stays conservative across models without modeling either precisely.
+  Calibrating compute down to the RSS-touched value **in isolation** would break
+  this and make the host total unsafe. This is why the draft compute is kept at
+  the target's `n_vocab × n_ubatch × 4` (a `--parallel`-capped variant was tried
+  and reverted).
+
+### Open items (GPU machine + gold `llama_memory_breakdown_print` table)
+
+1. **GPU CUDA-context overhead** — replace the rough per-GPU constant with a
    measured value.
-3. **Compute residual** — the `n_embd`-scaled term under-predicts large models by
-   ~10%; refine from measurements.
+2. **Compute residual** — the `n_embd`-scaled term under-predicts the fit
+   `compute` column by ~10–13% (gemma fit ≈ `1.13 × n_vocab × n_ubatch`); refine
+   from the gold breakdown.
+3. **Measured engine** — to report real host RSS (vs the conservative projection),
+   probe the actual instance: resident weights (repack + mmap reclaim), compute
+   touched, base process overhead. Not derivable analytically.
 
 **Closed (no GPU required — verified on the CPU box against `llama-fit-params`):**
 

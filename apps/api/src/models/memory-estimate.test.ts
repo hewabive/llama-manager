@@ -2,7 +2,6 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 
 import {
-  estimateComputeBytes,
   estimateInstanceMemory,
   resolveContextParams,
   type GgufTensorInfo,
@@ -411,56 +410,13 @@ test("speculative draft model adds a second resident model", () => {
     draft: { tensors: syntheticTable(), hparams: HPARAMS },
   });
 
-  const ctx = resolveContextParams({ "--ctx-size": 256 }, HPARAMS);
-  const draftCompute = estimateComputeBytes(
-    { tensors: syntheticTable(), hparams: HPARAMS, args: {}, pools: HOST_POOLS },
-    ctx,
-    Math.min(ctx.nSeqMax, ctx.nUbatch),
-  );
   const draftExpect =
-    draftAlone.weightsBytesTotal + draftAlone.kvBytesTotal + draftCompute;
+    draftAlone.weightsBytesTotal +
+    draftAlone.kvBytesTotal +
+    draftAlone.computeBytesTotal;
   assert.equal(withDraft.draftBytesTotal, draftExpect);
   assert.equal(withDraft.totalBytes, base.totalBytes + draftExpect);
   assert.ok(withDraft.warnings.some((warning) => /draft/i.test(warning)));
-});
-
-test("draft logits buffer scales with --parallel outputs, not --ubatch", () => {
-  const draft = { tensors: syntheticTable(), hparams: HPARAMS };
-  const single = estimateInstanceMemory({
-    tensors: syntheticTable(),
-    hparams: HPARAMS,
-    args: { "--ctx-size": 256, "--parallel": 1 },
-    pools: HOST_POOLS,
-    draft,
-  });
-  const quad = estimateInstanceMemory({
-    tensors: syntheticTable(),
-    hparams: HPARAMS,
-    args: { "--ctx-size": 256, "--parallel": 4 },
-    pools: HOST_POOLS,
-    draft,
-  });
-  assert.equal(quad.draftBytesTotal - single.draftBytesTotal, 100 * (4 - 1) * 4);
-
-  const wideUbatch = estimateInstanceMemory({
-    tensors: syntheticTable(),
-    hparams: HPARAMS,
-    args: { "--ctx-size": 4096, "--parallel": 1, "--ubatch-size": 512 },
-    pools: HOST_POOLS,
-    draft,
-  });
-  const narrowUbatch = estimateInstanceMemory({
-    tensors: syntheticTable(),
-    hparams: HPARAMS,
-    args: { "--ctx-size": 4096, "--parallel": 1, "--ubatch-size": 128 },
-    pools: HOST_POOLS,
-    draft,
-  });
-  const ubatchDelta = (512 - 128) * 8 * 4;
-  assert.equal(
-    wideUbatch.draftBytesTotal - narrowUbatch.draftBytesTotal,
-    ubatchDelta,
-  );
 });
 
 test("draft model honors --spec-draft-ngl independently of the main model", () => {

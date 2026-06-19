@@ -413,7 +413,6 @@ function accumulateModel(
   model: MemoryEstimateInput,
   ensure: (poolId: string) => PoolAccumulator,
   warnings: string[],
-  isDraft = false,
 ): ModelAccumulation {
   const context = resolveContextParams(model.args, model.hparams);
   const placement = buildPlacement(model, context);
@@ -454,10 +453,7 @@ function accumulateModel(
     ensure(device).kvBytes += bytes;
   }
 
-  const logitTokens = isDraft
-    ? Math.min(context.nSeqMax, context.nUbatch)
-    : context.nUbatch;
-  const computeBytes = estimateComputeBytes(model, context, logitTokens);
+  const computeBytes = estimateComputeBytes(model, context);
   const computePoolId = placement.usesGpu
     ? placement.layerDevice(layerAll - 1)
     : placement.hostPoolId;
@@ -549,7 +545,7 @@ export function estimateInstanceMemory(
       args: remapDraftArgs(input.args),
       pools: input.pools,
     };
-    const draft = accumulateModel(draftModel, ensure, draftWarnings, true);
+    const draft = accumulateModel(draftModel, ensure, draftWarnings);
     draftUsesGpu = draft.placement.usesGpu;
     draftBytesTotal =
       draft.weightsBytes + draft.kv.totalBytes + draft.computeBytes;
@@ -845,11 +841,10 @@ function estimateKvCache(
 export function estimateComputeBytes(
   input: MemoryEstimateInput,
   context: ResolvedContextParams,
-  logitTokens: number = context.nUbatch,
 ): number {
   const nVocab = input.hparams.vocabularySize ?? 0;
   const nEmbd = input.hparams.embeddingLength ?? 0;
-  const logits = nVocab * logitTokens * F32_BYTES;
+  const logits = nVocab * context.nUbatch * F32_BYTES;
   const activation = nEmbd * context.nUbatch * F32_BYTES;
   return logits + activation;
 }
