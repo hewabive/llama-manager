@@ -38,6 +38,7 @@ const ignoredEndpoints = new Map<string, string>([
   ["/chat/completions/control", "Router-mode control channel"],
   ["/models/load", "Router model management (handled separately)"],
   ["/models/unload", "Router model management (handled separately)"],
+  ["/models/sse", "Router model-state event stream (handled separately)"],
   ["/slots/:id_slot", "Slot cache save/restore/erase, handled by slot actions"],
   ["/v1/audio/speech", "Text-to-speech, requires a dedicated talker model"],
   ["/audio/speech", "Text-to-speech, requires a dedicated talker model"],
