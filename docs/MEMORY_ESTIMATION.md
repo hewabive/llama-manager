@@ -100,7 +100,19 @@ and, for the future measured path, its own pinned binary.
   engine over the draft GGUF, with the draft-specific args remapped onto the
   standard keys (`--spec-draft-ngl`→`-ngl`, `--spec-draft-type-k/v`→cache types;
   context/parallel/batch shared with the target). Its weights + KV + compute are
-  added to the per-pool draws and reported as `draftBytesTotal`.
+  added to the per-pool draws and reported as `draftBytesTotal`. Two draft-only
+  rules, both source-derived (`tools/server/server-context.cpp`): (a) the draft
+  context caps `n_outputs_max` at `--parallel` (not `--ubatch`), so its **logits
+  buffer is `n_vocab × n_parallel × 4`**, a fraction of the target's compute —
+  the engine sizes the draft compute the same way. (b) NextN/MTP heads (e.g.
+  `gemma4-assistant`, arch with no `attn_k`/`attn_v` tensors) **share the target's
+  KV cache** (`ctx_other`/`LLAMA_CONTEXT_TYPE_MTP`), so they allocate no separate
+  KV — the geometry reader already yields 0 because such a head has no `attn_k`
+  tensors. Verified on the gemma-4-E2B MTP head (Q8_0, 78 MiB weights): the
+  server logs `llama_kv_cache: layer N: sharing with layer M` for every draft
+  layer, confirming KV sharing; measured marginal RSS for the loaded draft was
+  ~200 MiB (78 MiB weights + ~120 MiB compute-graph/prompt-cache scratch that is
+  not separately modeled — see open item 3).
 - **Overhead** — a per-GPU CUDA-context margin (rough constant, flagged), added
   once per GPU pool that holds any bytes (so the draft/projector share the
   target's CUDA context, not a second one).
