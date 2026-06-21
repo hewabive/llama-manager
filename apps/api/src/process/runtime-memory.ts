@@ -14,6 +14,8 @@ const execFileAsync = promisify(execFile);
 const KIB = 1024;
 const MIB = 1024 * 1024;
 const TELEMETRY_CACHE_MS = 2_000;
+const PS_TIMEOUT_MS = 1_000;
+const NVIDIA_SMI_TIMEOUT_MS = 2_000;
 
 type ProcessInfo = {
   pid: number;
@@ -34,15 +36,38 @@ export type ProcMemoryUsage = {
   fileBytes: number;
 };
 
-let processTableCache: {
-  expiresAt: number;
-  processes: Promise<ProcessInfo[]>;
-} | null = null;
+export function createStaleWhileRevalidate<T>(
+  fetcher: () => Promise<T>,
+  options: { ttlMs: number; empty: T },
+): { get: () => T } {
+  let snapshot: { data: T } | null = null;
+  let lastAttemptAt = 0;
+  let inFlight: Promise<void> | null = null;
 
-let nvidiaComputeAppsCache: {
-  expiresAt: number;
-  apps: Promise<NvidiaComputeApp[]>;
-} | null = null;
+  const refresh = () => {
+    if (inFlight) {
+      return;
+    }
+    lastAttemptAt = Date.now();
+    inFlight = fetcher()
+      .then((data) => {
+        snapshot = { data };
+      })
+      .catch(() => {})
+      .finally(() => {
+        inFlight = null;
+      });
+  };
+
+  return {
+    get() {
+      if (Date.now() - lastAttemptAt >= options.ttlMs) {
+        refresh();
+      }
+      return snapshot?.data ?? options.empty;
+    },
+  };
+}
 
 function mibToBytes(value: string) {
   const match = /([0-9]+(?:\.[0-9]+)?)/.exec(value);
@@ -106,33 +131,25 @@ export function parsePsOutput(stdout: string): ProcessInfo[] {
 }
 
 async function readProcessTable(): Promise<ProcessInfo[]> {
-  try {
-    const { stdout } = await execFileAsync(
-      "ps",
-      ["-eo", "pid=,ppid=,comm=,args="],
-      {
-        encoding: "utf8",
-        timeout: 1_000,
-      },
-    );
-    return parsePsOutput(stdout);
-  } catch {
-    return [];
-  }
+  const { stdout } = await execFileAsync(
+    "ps",
+    ["-eo", "pid=,ppid=,comm=,args="],
+    {
+      encoding: "utf8",
+      timeout: PS_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    },
+  );
+  return parsePsOutput(stdout);
 }
 
-function cachedProcessTable(): Promise<ProcessInfo[]> {
-  const now = Date.now();
-  if (processTableCache && processTableCache.expiresAt > now) {
-    return processTableCache.processes;
-  }
+const processTable = createStaleWhileRevalidate(readProcessTable, {
+  ttlMs: TELEMETRY_CACHE_MS,
+  empty: [] as ProcessInfo[],
+});
 
-  const processes = readProcessTable();
-  processTableCache = {
-    expiresAt: now + TELEMETRY_CACHE_MS,
-    processes,
-  };
-  return processes;
+function cachedProcessTable(): ProcessInfo[] {
+  return processTable.get();
 }
 
 export function parseNvidiaComputeAppsCsv(
@@ -162,36 +179,28 @@ export function parseNvidiaComputeAppsCsv(
 }
 
 async function readNvidiaComputeApps(): Promise<NvidiaComputeApp[]> {
-  try {
-    const { stdout } = await execFileAsync(
-      "nvidia-smi",
-      [
-        "--query-compute-apps=pid,process_name,used_memory",
-        "--format=csv,noheader,nounits",
-      ],
-      {
-        encoding: "utf8",
-        timeout: 2_000,
-      },
-    );
-    return parseNvidiaComputeAppsCsv(stdout);
-  } catch {
-    return [];
-  }
+  const { stdout } = await execFileAsync(
+    "nvidia-smi",
+    [
+      "--query-compute-apps=pid,process_name,used_memory",
+      "--format=csv,noheader,nounits",
+    ],
+    {
+      encoding: "utf8",
+      timeout: NVIDIA_SMI_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    },
+  );
+  return parseNvidiaComputeAppsCsv(stdout);
 }
 
-function cachedNvidiaComputeApps(): Promise<NvidiaComputeApp[]> {
-  const now = Date.now();
-  if (nvidiaComputeAppsCache && nvidiaComputeAppsCache.expiresAt > now) {
-    return nvidiaComputeAppsCache.apps;
-  }
+const nvidiaComputeApps = createStaleWhileRevalidate(readNvidiaComputeApps, {
+  ttlMs: TELEMETRY_CACHE_MS,
+  empty: [] as NvidiaComputeApp[],
+});
 
-  const apps = readNvidiaComputeApps();
-  nvidiaComputeAppsCache = {
-    expiresAt: now + TELEMETRY_CACHE_MS,
-    apps,
-  };
-  return apps;
+function cachedNvidiaComputeApps(): NvidiaComputeApp[] {
+  return nvidiaComputeApps.get();
 }
 
 export function parseProcStatusRss(
@@ -349,7 +358,7 @@ async function candidatePids(input: {
   }
 
   const ports = runtimeMayBeActive ? extractRouterChildPorts(input.lines) : [];
-  const processes = await cachedProcessTable();
+  const processes = cachedProcessTable();
   if (processes.length === 0) {
     return [...candidates];
   }
@@ -445,7 +454,7 @@ export async function getRuntimeMemoryLayout(input: {
     number,
     { bytes: number; processNames: Set<string> }
   >();
-  for (const app of await cachedNvidiaComputeApps()) {
+  for (const app of cachedNvidiaComputeApps()) {
     if (!pidSet.has(app.pid)) {
       continue;
     }

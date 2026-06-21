@@ -2,12 +2,15 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 
 import {
+  createStaleWhileRevalidate,
   extractRouterChildPorts,
   parseNvidiaComputeAppsCsv,
   parseProcStatusRss,
   parseProcStatusSwap,
   parsePsOutput,
 } from "./runtime-memory.js";
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 test("parseNvidiaComputeAppsCsv parses per-process VRAM usage", () => {
   const apps = parseNvidiaComputeAppsCsv(`
@@ -98,4 +101,56 @@ test("extractRouterChildPorts finds router child server ports", () => {
     ]),
     [57117, 57118],
   );
+});
+
+test("createStaleWhileRevalidate never blocks the caller on the fetcher", () => {
+  const cache = createStaleWhileRevalidate(
+    () => new Promise<number[]>(() => {}),
+    { ttlMs: 0, empty: [] as number[] },
+  );
+
+  assert.deepEqual(cache.get(), []);
+});
+
+test("createStaleWhileRevalidate dedupes overlapping refreshes", async () => {
+  let calls = 0;
+  let resolveCurrent: ((value: number[]) => void) | null = null;
+  const cache = createStaleWhileRevalidate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        calls += 1;
+        resolveCurrent = resolve;
+      }),
+    { ttlMs: 0, empty: [] as number[] },
+  );
+
+  assert.deepEqual(cache.get(), []);
+  assert.deepEqual(cache.get(), []);
+  assert.equal(calls, 1);
+
+  resolveCurrent!([1, 2, 3]);
+  await tick();
+  assert.deepEqual(cache.get(), [1, 2, 3]);
+});
+
+test("createStaleWhileRevalidate keeps the last good value when a refresh fails", async () => {
+  let rejectCurrent: ((reason: unknown) => void) | null = null;
+  let resolveCurrent: ((value: number[]) => void) | null = null;
+  const cache = createStaleWhileRevalidate(
+    () =>
+      new Promise<number[]>((resolve, reject) => {
+        resolveCurrent = resolve;
+        rejectCurrent = reject;
+      }),
+    { ttlMs: 0, empty: [] as number[] },
+  );
+
+  cache.get();
+  resolveCurrent!([7, 8, 9]);
+  await tick();
+  assert.deepEqual(cache.get(), [7, 8, 9]);
+
+  rejectCurrent!(new Error("ps killed after timeout"));
+  await tick();
+  assert.deepEqual(cache.get(), [7, 8, 9]);
 });
