@@ -13,6 +13,7 @@ import {
   readNumaTopology,
   readPciNumaNode,
 } from "../numa/index.js";
+import { readDiskActivity } from "./disk.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -218,6 +219,7 @@ export function getSystemResources(): SystemResources {
     checkedAt: new Date().toISOString(),
     memory: readLinuxMemory() ?? readNodeMemory(),
     accelerators: cachedAccelerators(),
+    disk: readDiskActivity(),
     numa: {
       nodes: readNumaTopology(),
       bind: detectNumaBind(),

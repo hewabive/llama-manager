@@ -2632,10 +2632,38 @@ export const NumaCapabilitiesSchema = z.object({
   interleave: z.boolean(),
 });
 
+export const SystemDiskDeviceSchema = z.object({
+  name: z.string(),
+  model: z.string().nullable(),
+  type: z.enum(["ssd", "hdd", "unknown"]),
+  readBytesPerSec: z.number().nonnegative().nullable(),
+  writeBytesPerSec: z.number().nonnegative().nullable(),
+  readIops: z.number().nonnegative().nullable(),
+  writeIops: z.number().nonnegative().nullable(),
+  utilPercent: z.number().min(0).max(100).nullable(),
+  avgReadLatencyMs: z.number().nonnegative().nullable(),
+  avgWriteLatencyMs: z.number().nonnegative().nullable(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+});
+
+export const SystemIoPressureSchema = z.object({
+  avg10: z.number().min(0).max(100),
+  avg60: z.number().min(0).max(100),
+});
+
+export const SystemDiskActivitySchema = z.object({
+  devices: z.array(SystemDiskDeviceSchema),
+  totalReadBytesPerSec: z.number().nonnegative().nullable(),
+  totalWriteBytesPerSec: z.number().nonnegative().nullable(),
+  ioPressure: SystemIoPressureSchema.nullable(),
+  intervalMs: z.number().nonnegative().nullable(),
+});
+
 export const SystemResourcesSchema = z.object({
   checkedAt: z.string(),
   memory: SystemMemorySchema,
   accelerators: z.array(SystemAcceleratorSchema),
+  disk: SystemDiskActivitySchema.nullable(),
   numa: NumaCapabilitiesSchema,
 });
 
@@ -3148,6 +3176,9 @@ export type NetworkInterfacesResult = z.infer<
 >;
 export type SystemMemory = z.infer<typeof SystemMemorySchema>;
 export type SystemAccelerator = z.infer<typeof SystemAcceleratorSchema>;
+export type SystemDiskDevice = z.infer<typeof SystemDiskDeviceSchema>;
+export type SystemIoPressure = z.infer<typeof SystemIoPressureSchema>;
+export type SystemDiskActivity = z.infer<typeof SystemDiskActivitySchema>;
 export type NumaNode = z.infer<typeof NumaNodeSchema>;
 export type NumaCapabilities = z.infer<typeof NumaCapabilitiesSchema>;
 export type InstanceNuma = z.infer<typeof InstanceNumaSchema>;

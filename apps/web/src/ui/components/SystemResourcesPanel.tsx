@@ -1,4 +1,4 @@
-import type { SystemResources } from "@llama-manager/core";
+import type { SystemDiskDevice, SystemResources } from "@llama-manager/core";
 import {
   Badge,
   Group,
@@ -37,6 +37,26 @@ function formatRatio(value: number | undefined) {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatRate(value: number | null | undefined) {
+  if (value === undefined || value === null) {
+    return "-";
+  }
+  return `${formatBytes(value)}/s`;
+}
+
+function diskTypeLabel(type: SystemDiskDevice["type"]) {
+  if (type === "ssd") return "SSD/NVMe";
+  if (type === "hdd") return "HDD";
+  return "disk";
+}
+
+function ioPressureColor(avg10: number) {
+  if (avg10 >= 50) return "red";
+  if (avg10 >= 20) return "orange";
+  if (avg10 >= 5) return "yellow";
+  return "gray";
+}
+
 function memoryColor(usedRatio: number | undefined) {
   if (usedRatio === undefined) return "gray";
   if (usedRatio >= 0.9) return "red";
@@ -73,6 +93,7 @@ export function SystemResourcesPanel(props: {
   const memory = props.resources?.memory;
   const memoryPercent = memory ? Math.round(memory.usedRatio * 100) : 0;
   const accelerators = props.resources?.accelerators ?? [];
+  const disk = props.resources?.disk ?? null;
 
   return (
     <Paper withBorder p="md" radius="sm">
@@ -83,7 +104,7 @@ export function SystemResourcesPanel(props: {
               System resources
             </Text>
             <Text c="dimmed" size="sm">
-              RAM and accelerator inventory
+              RAM, accelerator, and disk activity
             </Text>
           </div>
           <Badge color={props.fetching ? "blue" : "gray"} variant="light">
@@ -207,6 +228,115 @@ export function SystemResourcesPanel(props: {
             </SimpleGrid>
           )}
         </Stack>
+
+        {disk && (
+          <Stack gap="xs">
+            <Group gap="xs" justify="space-between">
+              <Group gap="xs">
+                <Text c="dimmed" size="sm">
+                  Disk activity
+                </Text>
+                <Badge
+                  variant="outline"
+                  color={disk.devices.length ? "blue" : "gray"}
+                >
+                  {disk.devices.length
+                    ? `${disk.devices.length} ${disk.devices.length === 1 ? "disk" : "disks"}`
+                    : "none detected"}
+                </Badge>
+                {disk.ioPressure && (
+                  <Badge
+                    variant="light"
+                    color={ioPressureColor(disk.ioPressure.avg10)}
+                  >
+                    I/O pressure {disk.ioPressure.avg10.toFixed(1)}%
+                  </Badge>
+                )}
+              </Group>
+              <Group gap="md">
+                <Text c="dimmed" size="xs">
+                  read {formatRate(disk.totalReadBytesPerSec)}
+                </Text>
+                <Text c="dimmed" size="xs">
+                  write {formatRate(disk.totalWriteBytesPerSec)}
+                </Text>
+              </Group>
+            </Group>
+            {disk.devices.length === 0 ? (
+              <Text c="dimmed" size="xs">
+                No physical disks reported by /proc/diskstats.
+              </Text>
+            ) : (
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
+                {disk.devices.map((device) => (
+                  <Paper key={device.name} withBorder p="xs" radius="sm">
+                    <Stack gap={6}>
+                      <Group justify="space-between" gap="xs" wrap="nowrap">
+                        <Text fw={600} size="sm" lineClamp={1}>
+                          {device.name}
+                          {device.model ? ` · ${device.model}` : ""}
+                        </Text>
+                        <Group gap={4} wrap="nowrap">
+                          {device.sizeBytes !== null && (
+                            <Badge variant="light" color="gray">
+                              {formatBytes(device.sizeBytes)}
+                            </Badge>
+                          )}
+                          <Badge variant="light">
+                            {diskTypeLabel(device.type)}
+                          </Badge>
+                        </Group>
+                      </Group>
+                      <Stack gap={2}>
+                        <Group justify="space-between" gap="xs">
+                          <Text c="dimmed" size="xs" tt="uppercase">
+                            Active time
+                          </Text>
+                          <Text c="dimmed" size="xs">
+                            {device.utilPercent === null
+                              ? "-"
+                              : `${Math.round(device.utilPercent)}%`}
+                          </Text>
+                        </Group>
+                        <Progress
+                          value={device.utilPercent ?? 0}
+                          color={memoryColor((device.utilPercent ?? 0) / 100)}
+                          size="sm"
+                          radius="xs"
+                        />
+                      </Stack>
+                      <SimpleGrid cols={2} spacing="xs" verticalSpacing={2}>
+                        <Text size="xs">
+                          <Text span c="dimmed">
+                            R{" "}
+                          </Text>
+                          {formatRate(device.readBytesPerSec)}
+                        </Text>
+                        <Text size="xs">
+                          <Text span c="dimmed">
+                            W{" "}
+                          </Text>
+                          {formatRate(device.writeBytesPerSec)}
+                        </Text>
+                      </SimpleGrid>
+                      {(device.readIops !== null ||
+                        device.avgReadLatencyMs !== null) && (
+                        <Text c="dimmed" size="xs">
+                          {device.readIops !== null
+                            ? `${Math.round(device.readIops + (device.writeIops ?? 0))} IOPS`
+                            : ""}
+                          {device.avgReadLatencyMs !== null
+                            ? ` · ${device.avgReadLatencyMs.toFixed(2)} ms read`
+                            : ""}
+                        </Text>
+                      )}
+                    </Stack>
+                  </Paper>
+                ))}
+              </SimpleGrid>
+            )}
+          </Stack>
+        )}
       </Stack>
     </Paper>
   );
