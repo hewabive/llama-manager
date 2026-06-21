@@ -65,12 +65,6 @@ code {
   flex: 0 0 auto;
 }
 
-.app-header__nav {
-  flex: 1 1 auto;
-  justify-content: center;
-  min-width: 0;
-}
-
 .section-heading {
   min-width: 0;
 }
@@ -393,22 +387,6 @@ code {
   .app-header__actions .mantine-Button-root {
     padding-left: 10px;
     padding-right: 10px;
-  }
-
-  .app-header__nav {
-    order: 3;
-    flex: 1 0 100%;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding-bottom: 2px;
-  }
-
-  .app-header__nav .mantine-Button-root {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding-left: 8px;
-    padding-right: 8px;
   }
 
   .instances-mobile-list,

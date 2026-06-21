@@ -4,130 +4,211 @@ export type AppRoute =
   | "status"
   | "instances"
   | "diagnostics"
-  | "args"
-  | "paths"
-  | "resources"
-  | "endpoints"
+  | "processes"
   | "proxy"
-  | "routing"
-  | "sources"
-  | "api-lab"
   | "models"
   | "presets"
+  | "paths"
+  | "args"
   | "build"
   | "source-sync"
-  | "processes";
+  | "api-lab";
 
-export const appRoutes: {
-  id: AppRoute;
+export type NavLeaf = {
+  route: AppRoute;
+  subpath?: string;
   label: string;
   title: string;
   description?: string;
-}[] = [
+};
+
+export type NavSection = {
+  id: string;
+  label?: string;
+  items: NavLeaf[];
+};
+
+export const navSections: NavSection[] = [
   {
-    id: "status",
-    label: "Status",
-    title: "Public Status",
-    description: "Redacted diagnostics for this llama-manager node",
+    id: "overview",
+    items: [
+      {
+        route: "status",
+        label: "Status",
+        title: "Public Status",
+        description: "Redacted diagnostics for this llama-manager node",
+      },
+    ],
   },
   {
     id: "instances",
     label: "Instances",
-    title: "Instances",
-    description: "Process control for local llama-server binaries",
-  },
-  {
-    id: "diagnostics",
-    label: "Diag",
-    title: "Diagnostics",
-    description: "Runtime state, llama-server probes and logs",
-  },
-  {
-    id: "args",
-    label: "Args",
-    title: "Arguments",
-  },
-  {
-    id: "paths",
-    label: "Paths",
-    title: "Path Catalog",
-    description: "Shared binary paths for instances",
-  },
-  {
-    id: "resources",
-    label: "Resources",
-    title: "Resources",
-    description: "Memory pools and capacity budgets for instance scheduling",
-  },
-  {
-    id: "endpoints",
-    label: "Endpoints",
-    title: "API Endpoints",
-    description: "Registered external APIs and generated local endpoints",
+    items: [
+      {
+        route: "instances",
+        label: "Instances",
+        title: "Instances",
+        description: "Process control for local llama-server binaries",
+      },
+      {
+        route: "diagnostics",
+        label: "Diagnostics",
+        title: "Diagnostics",
+        description: "Runtime state, llama-server probes and logs",
+      },
+      {
+        route: "processes",
+        label: "Processes",
+        title: "Processes",
+        description: "Inspect unmanaged llama-server processes",
+      },
+    ],
   },
   {
     id: "proxy",
     label: "Proxy",
-    title: "API Proxy",
-    description: "Live proxy health: target runtime, scheduler plans, stats",
+    items: [
+      {
+        route: "proxy",
+        label: "Dashboard",
+        title: "API Proxy",
+        description: "Live proxy health: topology, scheduler plans, stats",
+      },
+      {
+        route: "proxy",
+        subpath: "models",
+        label: "Models",
+        title: "Proxy Models",
+        description:
+          "Published model IDs exposed on /v1/models and where they route",
+      },
+      {
+        route: "proxy",
+        subpath: "pipelines",
+        label: "Pipelines",
+        title: "Pipelines",
+        description:
+          "Node graphs that transform and conditionally route requests to targets",
+      },
+      {
+        route: "proxy",
+        subpath: "targets",
+        label: "Targets",
+        title: "Proxy Targets",
+        description:
+          "Managed instances and external APIs that receive routed requests",
+      },
+      {
+        route: "proxy",
+        subpath: "endpoints",
+        label: "Endpoints",
+        title: "API Endpoints",
+        description: "Registered external APIs and generated local endpoints",
+      },
+      {
+        route: "proxy",
+        subpath: "sources",
+        label: "Sources",
+        title: "Request Sources",
+        description:
+          "Label proxy requests by API key to track and route by origin",
+      },
+      {
+        route: "proxy",
+        subpath: "resources",
+        label: "Resources",
+        title: "Resources",
+        description:
+          "Memory pools and capacity budgets for instance scheduling",
+      },
+    ],
   },
   {
-    id: "routing",
-    label: "Routing",
-    title: "Request Routing",
-    description:
-      "Publish API models and build pipeline graphs that route them to targets",
+    id: "source",
+    label: "Source & Build",
+    items: [
+      {
+        route: "models",
+        label: "Model files",
+        title: "Models",
+        description: "Scan GGUF files and reuse them in instances or presets",
+      },
+      {
+        route: "presets",
+        label: "Presets",
+        title: "Presets",
+        description: "Edit the llama-server --models-preset INI file directly",
+      },
+      {
+        route: "paths",
+        label: "Paths",
+        title: "Path Catalog",
+        description: "Shared binary paths for instances",
+      },
+      {
+        route: "args",
+        label: "Arguments",
+        title: "Arguments",
+      },
+      {
+        route: "build",
+        label: "Build",
+        title: "Build",
+        description: "Update llama.cpp and build llama-server with CMake",
+      },
+      {
+        route: "source-sync",
+        label: "Source Sync",
+        title: "Source Sync",
+        description:
+          "Divergences between llama-manager and the llama.cpp checkout",
+      },
+    ],
   },
   {
-    id: "sources",
-    label: "Sources",
-    title: "Request Sources",
-    description: "Label proxy requests by API key to track and route by origin",
-  },
-  {
-    id: "api-lab",
-    label: "Lab",
-    title: "API Lab",
-    description: "Manual probes for OpenAI-compatible and llama.cpp APIs",
-  },
-  {
-    id: "models",
-    label: "Models",
-    title: "Models",
-    description: "Scan GGUF files and reuse them in instances or presets",
-  },
-  {
-    id: "presets",
-    label: "Presets",
-    title: "Presets",
-    description: "Edit the llama-server --models-preset INI file directly",
-  },
-  {
-    id: "build",
-    label: "Build",
-    title: "Build",
-    description: "Update llama.cpp and build llama-server with CMake",
-  },
-  {
-    id: "source-sync",
-    label: "Sync",
-    title: "Source Sync",
-    description: "Divergences between llama-manager and the llama.cpp checkout",
-  },
-  {
-    id: "processes",
-    label: "System",
-    title: "Processes",
-    description: "Inspect unmanaged llama-server processes",
+    id: "tools",
+    label: "Tools",
+    items: [
+      {
+        route: "api-lab",
+        label: "API Lab",
+        title: "API Lab",
+        description: "Manual probes for OpenAI-compatible and llama.cpp APIs",
+      },
+    ],
   },
 ];
 
-const routeIds = new Set(appRoutes.map((route) => route.id));
+const navLeaves = navSections.flatMap((section) => section.items);
+const routeIds = new Set<AppRoute>(navLeaves.map((leaf) => leaf.route));
+
+const legacyAlias: Record<string, { route: AppRoute; subpath: string }> = {
+  routing: { route: "proxy", subpath: "pipelines" },
+  endpoints: { route: "proxy", subpath: "endpoints" },
+  sources: { route: "proxy", subpath: "sources" },
+  resources: { route: "proxy", subpath: "resources" },
+};
+
+function parseHash(): { route: AppRoute; subpath: string } {
+  const path = window.location.hash.replace(/^#\/?/, "").split("?")[0] ?? "";
+  const segments = path.split("/").filter(Boolean);
+  const head = segments[0] ?? "";
+  const rest = segments.slice(1).join("/");
+  const alias = legacyAlias[head];
+  if (alias) {
+    return {
+      route: alias.route,
+      subpath: rest ? `${alias.subpath}/${rest}` : alias.subpath,
+    };
+  }
+  if (routeIds.has(head as AppRoute)) {
+    return { route: head as AppRoute, subpath: rest };
+  }
+  return { route: "status", subpath: "" };
+}
 
 function routeFromHash(): AppRoute {
-  const routePath = window.location.hash.replace(/^#\/?/, "").split("?")[0];
-  const raw = (routePath ?? "").split("/")[0] ?? "";
-  return routeIds.has(raw as AppRoute) ? (raw as AppRoute) : "status";
+  return parseHash().route;
 }
 
 export function useHashRoute() {
@@ -148,10 +229,8 @@ export function useHashRoute() {
 }
 
 function subpathFromHash(route: AppRoute): string {
-  const routePath =
-    window.location.hash.replace(/^#\/?/, "").split("?")[0] ?? "";
-  const segments = routePath.split("/");
-  return segments[0] === route ? segments.slice(1).join("/") : "";
+  const parsed = parseHash();
+  return parsed.route === route ? parsed.subpath : "";
 }
 
 export function useHashSubpath(route: AppRoute) {
@@ -170,4 +249,34 @@ export function useHashSubpath(route: AppRoute) {
   }
 
   return [subpath, setSubpath] as const;
+}
+
+export function navigateToLeaf(leaf: NavLeaf) {
+  window.location.hash = leaf.subpath
+    ? `/${leaf.route}/${leaf.subpath}`
+    : `/${leaf.route}`;
+}
+
+export function navigateProxy(subpath: string) {
+  window.location.hash = subpath ? `/proxy/${subpath}` : "/proxy";
+}
+
+export function isLeafActive(
+  leaf: NavLeaf,
+  route: AppRoute,
+  subpath: string,
+): boolean {
+  if (leaf.route !== route) {
+    return false;
+  }
+  const head = subpath.split("/")[0] ?? "";
+  return (leaf.subpath ?? "") === head;
+}
+
+export function activeLeaf(route: AppRoute, subpath: string): NavLeaf {
+  const match = navLeaves.find((leaf) => isLeafActive(leaf, route, subpath));
+  if (match) {
+    return match;
+  }
+  return navLeaves.find((leaf) => leaf.route === route) ?? navLeaves[0]!;
 }

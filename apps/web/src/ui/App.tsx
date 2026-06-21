@@ -3,8 +3,10 @@ import {
   ActionIcon,
   AppShell,
   Badge,
-  Button,
+  Burger,
   Group,
+  NavLink,
+  ScrollArea,
   Stack,
   Text,
   Title,
@@ -12,6 +14,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogOut, Moon, RefreshCw, Sun } from "lucide-react";
@@ -24,11 +27,17 @@ import {
   logoutAdmin,
 } from "../api/client";
 import { InstanceFormModal } from "./components/InstanceFormModal";
-import { appRoutes, useHashRoute } from "./routing";
+import {
+  activeLeaf,
+  isLeafActive,
+  navSections,
+  navigateToLeaf,
+  useHashRoute,
+  useHashSubpath,
+  type NavLeaf,
+} from "./routing";
 import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { ApiLabView } from "./views/ApiLabView";
-import { ApiEndpointsView } from "./views/ApiEndpointsView";
-import { ApiProxySourcesView } from "./views/ApiProxySourcesView";
 import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
 import { DiagnosticsView } from "./views/DiagnosticsView";
@@ -38,14 +47,15 @@ import { ModelsView } from "./views/ModelsView";
 import { PathCatalogView } from "./views/PathCatalogView";
 import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
-import { ProxyView } from "./views/ProxyView";
-import { ResourcesView } from "./views/ResourcesView";
+import { ProxySection } from "./views/ProxySection";
 import { PublicStatusView } from "./views/PublicStatusView";
-import { RoutingView } from "./views/RoutingView";
 import { SourceSyncView } from "./views/SourceSyncView";
 
 export function App() {
   const [route, setRoute] = useHashRoute();
+  const [proxySubpath] = useHashSubpath("proxy");
+  const [mobileNavOpened, { toggle: toggleNav, close: closeNav }] =
+    useDisclosure(false);
   const [createOpened, setCreateOpened] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [initialModelPath, setInitialModelPath] = useState<string | null>(null);
@@ -104,8 +114,12 @@ export function App() {
     : null;
   const selectedLaunchMonitor =
     selectedInstance?.name === launchMonitor?.instanceId ? launchMonitor : null;
-  const currentRoute =
-    appRoutes.find((item) => item.id === route) ?? appRoutes[0]!;
+  const currentRoute = activeLeaf(route, proxySubpath);
+
+  function goToLeaf(leaf: NavLeaf) {
+    navigateToLeaf(leaf);
+    closeNav();
+  }
 
   useEffect(() => {
     if (!launchMonitor) {
@@ -169,26 +183,29 @@ export function App() {
   });
 
   return (
-    <AppShell header={{ height: { base: 148, sm: 58 } }} padding="md">
+    <AppShell
+      header={{ height: 58 }}
+      navbar={{
+        width: 250,
+        breakpoint: "sm",
+        collapsed: { mobile: !mobileNavOpened },
+      }}
+      padding="md"
+    >
       <AppShell.Header>
         <Group className="app-header__inner" h="100%" px="md">
           <Group className="app-header__brand" gap="sm">
+            <Burger
+              opened={mobileNavOpened}
+              onClick={toggleNav}
+              hiddenFrom="sm"
+              size="sm"
+              aria-label="Toggle navigation"
+            />
             <Title className="app-header__title" order={3}>
               llama-manager
             </Title>
             <Badge variant="light">local</Badge>
-          </Group>
-          <Group className="app-header__nav" gap={4}>
-            {appRoutes.map((item) => (
-              <Button
-                key={item.id}
-                size="xs"
-                variant={route === item.id ? "light" : "subtle"}
-                onClick={() => setRoute(item.id)}
-              >
-                {item.label}
-              </Button>
-            ))}
           </Group>
           <Group className="app-header__actions" gap="xs">
             <Tooltip
@@ -242,6 +259,34 @@ export function App() {
           </Group>
         </Group>
       </AppShell.Header>
+
+      <AppShell.Navbar p="xs">
+        <AppShell.Section grow component={ScrollArea}>
+          {navSections.map((section) => {
+            const leaves = section.items.map((leaf) => (
+              <NavLink
+                key={`${leaf.route}:${leaf.subpath ?? ""}`}
+                label={leaf.label}
+                active={isLeafActive(leaf, route, proxySubpath)}
+                onClick={() => goToLeaf(leaf)}
+              />
+            ));
+            if (!section.label) {
+              return <div key={section.id}>{leaves}</div>;
+            }
+            return (
+              <NavLink
+                key={section.id}
+                label={section.label}
+                defaultOpened
+                childrenOffset={12}
+              >
+                {leaves}
+              </NavLink>
+            );
+          })}
+        </AppShell.Section>
+      </AppShell.Navbar>
 
       <AppShell.Main>
         <Stack gap="md">
@@ -303,15 +348,7 @@ export function App() {
 
           {canUseAdmin && route === "paths" && <PathCatalogView />}
 
-          {canUseAdmin && route === "resources" && <ResourcesView />}
-
-          {canUseAdmin && route === "endpoints" && <ApiEndpointsView />}
-
-          {canUseAdmin && route === "proxy" && <ProxyView />}
-
-          {canUseAdmin && route === "routing" && <RoutingView />}
-
-          {canUseAdmin && route === "sources" && <ApiProxySourcesView />}
+          {canUseAdmin && route === "proxy" && <ProxySection />}
 
           {canUseAdmin && apiLabVisited && (
             <div style={{ display: route === "api-lab" ? "contents" : "none" }}>
