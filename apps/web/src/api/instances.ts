@@ -1,0 +1,81 @@
+import type {
+  Instance,
+  InstanceBulkActionRequest,
+  InstanceBulkActionResult,
+  InstanceCreate,
+  InstanceHealthSummary,
+  InstancePreflightPreview,
+  InstanceUpdate,
+  ProcessPreflightResult,
+  RuntimeState,
+} from "@llama-manager/core";
+
+import { request } from "./http.js";
+
+export async function createInstance(input: InstanceCreate) {
+  return request<{ data: Instance }>("/api/instances", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function previewInstancePreflight(
+  input: InstancePreflightPreview,
+) {
+  return request<{ data: ProcessPreflightResult }>("/api/instances/preflight", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateInstance(id: string, input: InstanceUpdate) {
+  return request<{ data: Instance }>(`/api/instances/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function instanceAction(
+  id: string,
+  action: "start" | "stop" | "restart",
+) {
+  return request<{ data: unknown }>(`/api/instances/${id}/${action}`, {
+    method: "POST",
+  });
+}
+
+export async function startInstance(id: string, force = false) {
+  return request<{ data: unknown }>(`/api/instances/${id}/start`, {
+    method: "POST",
+    body: JSON.stringify({ force }),
+  });
+}
+
+export async function bulkInstanceAction(input: InstanceBulkActionRequest) {
+  return request<{ data: InstanceBulkActionResult }>("/api/instances/actions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteInstance(id: string) {
+  return request<{ data: { deleted: boolean } }>(`/api/instances/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getRuntime(id: string) {
+  return request<{ data: RuntimeState }>(`/api/instances/${id}/runtime`);
+}
+
+export async function getInstancePreflight(id: string) {
+  return request<{ data: ProcessPreflightResult }>(
+    `/api/instances/${id}/preflight`,
+  );
+}
+
+export async function getInstanceHealthSummary(id: string) {
+  return request<{ data: InstanceHealthSummary }>(
+    `/api/instances/${id}/health-summary`,
+  );
+}
