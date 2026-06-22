@@ -1,0 +1,55 @@
+import { Badge, Button, Group, Paper } from "@mantine/core";
+import { Plus, Zap } from "lucide-react";
+
+type ProxyHeaderProps = {
+  modelsCount: number;
+  pipelinesCount: number;
+  targetsCount: number;
+  onQuickRoute: () => void;
+  onAddModel: () => void;
+  onAddPipeline: () => void;
+  onAddTarget: () => void;
+};
+
+export function ProxyHeader(props: ProxyHeaderProps) {
+  return (
+    <Paper withBorder p="md" radius="sm">
+      <Group justify="space-between" align="flex-start" wrap="wrap">
+        <Group gap="xs" wrap="wrap">
+          <Badge variant="light">{props.modelsCount} models</Badge>
+          <Badge variant="light">{props.pipelinesCount} pipelines</Badge>
+          <Badge variant="light">{props.targetsCount} targets</Badge>
+          <Badge color="gray" variant="outline">
+            guarded forwarding
+          </Badge>
+        </Group>
+        <Group gap="xs" wrap="wrap">
+          <Button leftSection={<Zap size={16} />} onClick={props.onQuickRoute}>
+            Quick route
+          </Button>
+          <Button
+            variant="light"
+            leftSection={<Plus size={16} />}
+            onClick={props.onAddModel}
+          >
+            Add model
+          </Button>
+          <Button
+            variant="light"
+            leftSection={<Plus size={16} />}
+            onClick={props.onAddPipeline}
+          >
+            Add pipeline
+          </Button>
+          <Button
+            variant="light"
+            leftSection={<Plus size={16} />}
+            onClick={props.onAddTarget}
+          >
+            Add target
+          </Button>
+        </Group>
+      </Group>
+    </Paper>
+  );
+}

@@ -24,7 +24,7 @@ import {
   targetModelSeparator,
   unboundTargetValue,
 } from "./forms";
-import type { SelectOption } from "./sections";
+import type { SelectOption } from "./sections/index";
 import { TouchSelect } from "../components/TouchCombobox";
 
 function suggestedTargetName(

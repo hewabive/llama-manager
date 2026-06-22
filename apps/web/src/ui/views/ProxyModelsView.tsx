@@ -30,7 +30,7 @@ import {
   type QuickRouteDraft,
 } from "../proxy/forms";
 import { ModelEditorModal, QuickRouteModal } from "../proxy/editors";
-import { ExternalModelsSection } from "../proxy/sections";
+import { ExternalModelsSection } from "../proxy/sections/index";
 import { navigateProxy } from "../routing";
 
 function suggestPipelineName(

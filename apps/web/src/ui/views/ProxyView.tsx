@@ -10,7 +10,7 @@ import {
   previewApiProxyPlan,
 } from "../../api/client";
 import { useProxyConfig } from "../proxy/data";
-import { SchedulerSection, StatsSection } from "../proxy/sections";
+import { SchedulerSection, StatsSection } from "../proxy/sections/index";
 import { Topology } from "../proxy/Topology";
 import { navigateProxy } from "../routing";
 

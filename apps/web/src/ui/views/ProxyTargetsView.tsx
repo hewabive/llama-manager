@@ -25,7 +25,7 @@ import {
   type TargetEditor,
 } from "../proxy/forms";
 import { TargetEditorModal } from "../proxy/editors";
-import { ProxyTargetsSection } from "../proxy/sections";
+import { ProxyTargetsSection } from "../proxy/sections/index";
 
 export function ProxyTargetsView() {
   const { targets, endpointById, proxyUsage, invalidate } = useProxyConfig();

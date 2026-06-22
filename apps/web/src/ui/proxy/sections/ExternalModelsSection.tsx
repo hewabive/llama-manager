@@ -1,0 +1,195 @@
+import type {
+  ApiProxyModelRecord,
+  ApiProxyPipelineRecord,
+  ApiProxyTargetRecord,
+} from "@llama-manager/core";
+import {
+  ActionIcon,
+  Badge,
+  Code,
+  Group,
+  Paper,
+  Stack,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { GitBranchPlus, Pencil, Trash2, Workflow } from "lucide-react";
+
+import { modelDirectTargetId } from "../forms";
+import { formatLocalDateTime } from "../../utils/time";
+import { targetStatusColor } from "../display";
+
+type ExternalModelsSectionProps = {
+  models: ApiProxyModelRecord[];
+  pipelineById: Map<string, ApiProxyPipelineRecord>;
+  targetById: Map<string, ApiProxyTargetRecord>;
+  deletePending: boolean;
+  createPipelinePending: boolean;
+  onEdit: (model: ApiProxyModelRecord) => void;
+  onDelete: (id: string) => void;
+  onOpenPipeline: (pipelineId: string) => void;
+  onCreatePipeline: (model: ApiProxyModelRecord) => void;
+};
+
+export function ExternalModelsSection(props: ExternalModelsSectionProps) {
+  return (
+    <Paper withBorder p="md" radius="sm">
+      <Stack gap="sm">
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Text fw={600}>External models</Text>
+          <Group gap="xs" wrap="wrap">
+            <Code>/proxy/v1/models</Code>
+            <Code>/v1/models</Code>
+            <Code>/v1/responses</Code>
+            <Code>/v1/messages</Code>
+          </Group>
+        </Group>
+        <Text c="dimmed" size="sm">
+          Published model IDs are shared by OpenAI-compatible and
+          Anthropic-compatible public facades. OpenAI-compatible requests can
+          start, load and forward through bound targets.
+        </Text>
+        <Table.ScrollContainer minWidth={900}>
+          <Table striped highlightOnHover verticalSpacing="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Model ID</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Route to</Table.Th>
+                <Table.Th>Owned by</Table.Th>
+                <Table.Th>Description</Table.Th>
+                <Table.Th>Updated</Table.Th>
+                <Table.Th />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {props.models.map((model) => {
+                const directTargetId = modelDirectTargetId(model);
+                return (
+                  <Table.Tr key={model.id}>
+                    <Table.Td>
+                      <Code>{model.modelId}</Code>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={targetStatusColor(model.enabled)}
+                        variant="light"
+                      >
+                        {model.enabled ? "enabled" : "disabled"}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {routeToLabel(
+                        model.routeTo ??
+                          (model.targetId
+                            ? { type: "target", id: model.targetId }
+                            : null),
+                        props.targetById,
+                        props.pipelineById,
+                      )}
+                    </Table.Td>
+                    <Table.Td>{model.ownedBy}</Table.Td>
+                    <Table.Td>
+                      {model.description ? (
+                        <Text size="sm">{model.description}</Text>
+                      ) : (
+                        <Text c="dimmed" size="sm">
+                          none
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{formatLocalDateTime(model.updatedAt)}</Table.Td>
+                    <Table.Td>
+                      <Group gap={4} justify="flex-end" wrap="nowrap">
+                        {model.routeTo?.type === "pipeline" &&
+                          props.pipelineById.has(model.routeTo.id) && (
+                            <Tooltip label="Open pipeline">
+                              <ActionIcon
+                                aria-label="Open bound pipeline"
+                                variant="subtle"
+                                color="teal"
+                                onClick={() => {
+                                  const routeTo = model.routeTo;
+                                  if (routeTo?.type === "pipeline") {
+                                    props.onOpenPipeline(routeTo.id);
+                                  }
+                                }}
+                              >
+                                <Workflow size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                        {directTargetId &&
+                          props.targetById.has(directTargetId) && (
+                            <Tooltip label="Create pipeline between model and target">
+                              <ActionIcon
+                                aria-label="Create pipeline between model and target"
+                                variant="subtle"
+                                color="teal"
+                                loading={props.createPipelinePending}
+                                onClick={() => props.onCreatePipeline(model)}
+                              >
+                                <GitBranchPlus size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                        <Tooltip label="Edit model">
+                          <ActionIcon
+                            aria-label="Edit proxy model"
+                            variant="subtle"
+                            onClick={() => props.onEdit(model)}
+                          >
+                            <Pencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Delete model">
+                          <ActionIcon
+                            aria-label="Delete proxy model"
+                            variant="subtle"
+                            color="red"
+                            loading={props.deletePending}
+                            onClick={() => props.onDelete(model.id)}
+                          >
+                            <Trash2 size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+              {props.models.length === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={7}>
+                    <Text c="dimmed" ta="center" py="lg">
+                      No external models configured
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+    </Paper>
+  );
+}
+
+function routeToLabel(
+  routeTo: ApiProxyModelRecord["routeTo"],
+  targetById: Map<string, ApiProxyTargetRecord>,
+  pipelineById: Map<string, ApiProxyPipelineRecord>,
+) {
+  if (!routeTo) {
+    return (
+      <Text c="dimmed" size="sm">
+        unbound
+      </Text>
+    );
+  }
+  if (routeTo.type === "target") {
+    return targetById.get(routeTo.id)?.name ?? routeTo.id;
+  }
+  return pipelineById.get(routeTo.id)?.name ?? routeTo.id;
+}

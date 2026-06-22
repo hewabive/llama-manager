@@ -23,7 +23,7 @@ import {
   type PipelineDraft,
 } from "../proxy/forms";
 import { PipelinePanel } from "../proxy/PipelinePanel";
-import { PipelinesSection } from "../proxy/sections";
+import { PipelinesSection } from "../proxy/sections/index";
 import { TestBench } from "../proxy/TestBench";
 
 const newPipelineSubpath = "new";
