@@ -2,7 +2,6 @@ import {
   InstanceArgsSchema,
   type Instance,
   type InstanceCreate,
-  type InstanceMemoryDraw,
   type InstancePreflightPreview,
   type InstanceUpdate,
   type LlamaArgumentOption,
@@ -43,7 +42,6 @@ import {
   type ArgRow,
   argsToRows,
   canonicalOptionForRow,
-  cliNameForArgument,
   defaultRows,
   defaultValueForArgument,
   removeArgRow,
@@ -51,7 +49,6 @@ import {
   rowValue,
   rowsToArgsWithCatalog,
   upsertArgRow,
-  valueTypeFromArgument,
 } from "./InstanceArgumentRows";
 import {
   argString,
@@ -75,31 +72,15 @@ import {
   type LaunchMode,
   type RemoteSource,
 } from "./instance-form-helpers";
-
-const MEMORY_GIB = 1024 ** 3;
-
-export type MemoryDraftRow = {
-  id: string;
-  poolId: string;
-  gib: number | string;
-};
-
-function memoryRowsFromDraws(draws: InstanceMemoryDraw[]): MemoryDraftRow[] {
-  return draws.map((draw) => ({
-    id: createUiId(),
-    poolId: draw.poolId,
-    gib: Math.round((draw.bytes / MEMORY_GIB) * 100) / 100,
-  }));
-}
-
-function memoryDrawsFromRows(rows: MemoryDraftRow[]): InstanceMemoryDraw[] {
-  return rows
-    .filter((row) => row.poolId && Number(row.gib) > 0)
-    .map((row) => ({
-      poolId: row.poolId,
-      bytes: Math.round(Number(row.gib) * MEMORY_GIB),
-    }));
-}
+import {
+  type MemoryDraftRow,
+  memoryDrawsFromRows,
+  memoryRowsFromDraws,
+} from "./instance-form-memory";
+import {
+  setDefaultActiveRows,
+  setDefaultValueRows,
+} from "./instance-form-arg-rows";
 
 export type InstanceFormModalProps = {
   opened: boolean;
@@ -718,53 +699,15 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   }
 
   function setDefaultActive(option: LlamaArgumentOption, active: boolean) {
-    setArgRows((rows) => {
-      const without = rows.filter(
-        (row) =>
-          canonicalOptionForRow(row, knownArgByName)?.primaryName !==
-          option.primaryName,
-      );
-      if (!active) {
-        return without;
-      }
-      const existing = rows.find(
-        (row) =>
-          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
-          option.primaryName,
-      );
-      return [
-        ...without,
-        {
-          id: existing?.id ?? createUiId(),
-          key: cliNameForArgument(option),
-          value: existing?.value || defaultValueForArgument(option),
-          valueType: valueTypeFromArgument(option),
-        },
-      ];
-    });
+    setArgRows((rows) =>
+      setDefaultActiveRows(rows, option, knownArgByName, active),
+    );
   }
 
   function setDefaultValue(option: LlamaArgumentOption, value: string) {
-    setArgRows((rows) => {
-      const next: ArgRow = {
-        id: createUiId(),
-        key: cliNameForArgument(option),
-        value,
-        valueType: valueTypeFromArgument(option),
-      };
-      let replaced = false;
-      const mapped = rows.map((row) => {
-        if (
-          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
-          option.primaryName
-        ) {
-          replaced = true;
-          return { ...next, id: row.id };
-        }
-        return row;
-      });
-      return replaced ? mapped : [...mapped, next];
-    });
+    setArgRows((rows) =>
+      setDefaultValueRows(rows, option, knownArgByName, value),
+    );
   }
 
   function applyPresetSelection(presetName: string | null) {
