@@ -7,6 +7,10 @@ import type {
   RuntimeState,
 } from "@llama-manager/core";
 
+import {
+  compareMemoryPlacements,
+  emptyMemoryPlacement,
+} from "./memory-placement.js";
 import { latestProcessRun } from "./runs-repository.js";
 import { getRuntimeMemoryLayout } from "./runtime-memory.js";
 import { readTailLines } from "../utils/log-tail.js";
@@ -275,23 +279,6 @@ function loadProgress(
   return { stage, percent, message, estimated };
 }
 
-function emptyMemoryPlacement(
-  label: string,
-  kind: InstanceMemoryPlacement["kind"],
-): InstanceMemoryPlacement {
-  return {
-    label,
-    kind,
-    modelBytes: 0,
-    contextBytes: 0,
-    computeBytes: 0,
-    outputBytes: 0,
-    adapterBytes: 0,
-    otherBytes: 0,
-    totalBytes: 0,
-  };
-}
-
 function emptyMemoryLayout(): InstanceMemoryLayout {
   return {
     source: "none",
@@ -338,20 +325,6 @@ function memoryFieldFromBufferKind(kind: string): MemoryByteField {
   if (normalized === "output") return "outputBytes";
   if (normalized === "lora") return "adapterBytes";
   return "otherBytes";
-}
-
-function compareMemoryPlacements(
-  left: InstanceMemoryPlacement,
-  right: InstanceMemoryPlacement,
-) {
-  const order = { device: 0, host: 1, other: 2 };
-  return (
-    order[left.kind] - order[right.kind] ||
-    left.label.localeCompare(right.label, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    })
-  );
 }
 
 function parseProjectedHostMemory(lines: string[]) {

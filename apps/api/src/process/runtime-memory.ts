@@ -7,6 +7,10 @@ import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { promisify } from "node:util";
 
+import {
+  compareMemoryPlacements,
+  emptyMemoryPlacement,
+} from "./memory-placement.js";
 import { isPidAlive } from "./pid.js";
 
 const execFileAsync = promisify(execFile);
@@ -385,38 +389,12 @@ async function candidatePids(input: {
     .sort((left, right) => left - right);
 }
 
-function emptyMemoryPlacement(
-  label: string,
-  kind: InstanceMemoryPlacement["kind"],
-): InstanceMemoryPlacement {
-  return {
-    label,
-    kind,
-    modelBytes: 0,
-    contextBytes: 0,
-    computeBytes: 0,
-    outputBytes: 0,
-    adapterBytes: 0,
-    otherBytes: 0,
-    totalBytes: 0,
-  };
-}
-
 function layoutFromEntries(input: {
   entries: InstanceMemoryPlacement[];
   baseLayout: InstanceMemoryLayout;
   processIds: number[];
 }): InstanceMemoryLayout {
-  const entries = input.entries.sort((left, right) => {
-    const order = { device: 0, host: 1, other: 2 };
-    return (
-      order[left.kind] - order[right.kind] ||
-      left.label.localeCompare(right.label, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      })
-    );
-  });
+  const entries = input.entries.sort(compareMemoryPlacements);
 
   return {
     source: "process-telemetry",
