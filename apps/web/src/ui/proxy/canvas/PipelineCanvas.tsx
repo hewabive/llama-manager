@@ -58,7 +58,7 @@ import {
   pipelineNodeTypeLabel,
   pipelineNodeTypeOptions,
   type PipelineEditorContext,
-} from "../node-fields";
+} from "../node-fields/index";
 import { TouchSelect } from "../../components/TouchCombobox";
 import { useNarrowScreen } from "../../hooks/use-narrow-screen";
 

@@ -36,7 +36,7 @@ import {
   pipelineNodeTypeLabel,
   pipelineNodeTypeOptions,
   type PipelineEditorContext,
-} from "./node-fields";
+} from "./node-fields/index";
 import { TouchSelect } from "../components/TouchCombobox";
 
 export type PipelinePanelProps = {
