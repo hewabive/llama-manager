@@ -9,7 +9,7 @@ import { requireAdmin } from "./auth.js";
 import {
   registerAnthropicProxyRoutes,
   registerOpenAiProxyRoutes,
-} from "./proxy/protocol-endpoint.js";
+} from "./proxy/protocol-routes.js";
 import { registerArgumentRoutes } from "./routes/arguments.routes.js";
 import { registerAuthRoutes } from "./routes/auth.routes.js";
 import { registerBuildRoutes } from "./routes/build.routes.js";

@@ -1,24 +1,6 @@
-import {
-  ApiProxyRequestTraceSchema,
-  type ApiProxyRouteTraceStep,
-  type ApiProxyTraceFile,
-} from "@llama-manager/core";
-import type { Context, Hono } from "hono";
+import { ApiProxyRequestTraceSchema } from "@llama-manager/core";
+import type { Context } from "hono";
 
-import { getInstance, listInstances } from "../instances/repository.js";
-import {
-  llamaEndpointErrorMessage,
-  requestLlamaModelAction,
-  requestLlamaSlotAction,
-} from "../llama/probe.js";
-import {
-  ProcessActionHttpError,
-  actionErrorProxyMessage,
-  startOrRecoverManagedInstance,
-  stopManagedInstance,
-} from "../process/managed-lifecycle.js";
-import { newId } from "../utils/id.js";
-import { anthropicProtocolAdapter } from "./anthropic.js";
 import { observeBodyCompletion } from "./body-completion.js";
 import { buildDomainAdmissionDecider } from "./domain-admission.js";
 import {
@@ -27,7 +9,6 @@ import {
   type DomainLease,
 } from "./domain-coordinator.js";
 import { requestComputeDomains } from "./resource-domains.js";
-import { apiEndpointAuthHeaders, listApiEndpointCatalog } from "./endpoints.js";
 import { apiProxyForwardUrl, forwardApiProxyRequest } from "./forwarder.js";
 import { CLIENT_ABORT_STATUS, describeFetchError } from "./http.js";
 import { apiProxyInflight, type ApiProxyInflightHandle } from "./inflight.js";
@@ -36,11 +17,7 @@ import {
   buildApiProxyPlanRequest,
   getApiProxyPlanPreview,
 } from "./idle-maintenance.js";
-import {
-  openAiModelsList,
-  openAiProtocolAdapter,
-  openAiResponsesUsageCodec,
-} from "./openai.js";
+import { openAiResponsesUsageCodec } from "./openai.js";
 import { executeApiProxyFusion } from "./fusion.js";
 import {
   resolveApiProxyRouteChain,
@@ -50,18 +27,21 @@ import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
   type ApiProxyProtocolOperation,
-  type ApiProxyProtocolTransport,
   type ApiProxyResumableCodec,
 } from "./protocol.js";
-import { executeApiProxyPublicMvpPlan } from "./public-executor.js";
 import {
-  addApiProxySavedSlotId,
-  apiProxySlotFilename,
+  applyServerGenerationTiming,
+  createProxyTrace,
+  errorBodyMessage,
+  resumableTraceUsage,
+  safeJsonParse,
+  type ProxyTraceAccumulator,
+  type ProxyTraceRecorder,
+} from "./protocol-trace.js";
+import {
   getApiProxyModelByModelId,
   getApiProxyPipeline,
   getApiProxyTarget,
-  listApiProxyModels,
-  removeApiProxySavedSlotId,
 } from "./repository.js";
 import { saveApiProxyRequestFile } from "./request-files.js";
 import {
@@ -70,18 +50,18 @@ import {
   finalFromState,
   runResumableForward,
   runResumableUpstreamAttempt,
-  type ResumableBufferState,
 } from "./resumable-forward.js";
 import { executeApiProxyTargetReadiness } from "./target-lifecycle.js";
-import { resolveApiProxyUpstreamContext } from "./upstream-context.js";
+import {
+  resolveApiProxyUpstreamContext,
+  type ApiProxyUpstreamContext,
+} from "./upstream-context.js";
 import { apiProxySlotTracker } from "./slot-tracker.js";
 import { extractRequestApiKey, resolveApiProxySourceByKey } from "./sources.js";
 import { apiProxyStats } from "./stats.js";
-import { resolveApiProxyTarget } from "./targets.js";
 import {
   createAnthropicTranslationStream,
   prepareUpstreamExchange,
-  shouldTranslateAnthropicMessages,
   translateOpenAiErrorText,
   translateOpenAiResponseText,
   translatedAnthropicResumableCodec,
@@ -106,20 +86,6 @@ async function safeJsonBody(c: Context) {
   }
 }
 
-function protocolOperation(input: {
-  protocol: ApiProxyProtocolOperation["protocol"];
-  endpoint: string;
-  routePath: string;
-  transport?: ApiProxyProtocolTransport;
-}): ApiProxyProtocolOperation {
-  return {
-    protocol: input.protocol,
-    endpoint: input.endpoint,
-    routePath: input.routePath,
-    transport: input.transport ?? "http-json",
-  };
-}
-
 const resumableEndpoints = new Set(["chat.completions", "messages"]);
 
 type StreamUsageMeter = {
@@ -128,15 +94,8 @@ type StreamUsageMeter = {
   strip: boolean;
 };
 
-type UpstreamContext = {
-  baseUrl: string;
-  instanceId: string | null;
-  authHeaders: Record<string, string>;
-  translateAnthropic: boolean;
-};
-
 type UpstreamContextResolution =
-  | { ok: true; context: UpstreamContext }
+  | { ok: true; context: ApiProxyUpstreamContext }
   | { ok: false; response: Response };
 
 function resolveStreamUsageMeter(
@@ -158,167 +117,7 @@ function resolveStreamUsageMeter(
   return null;
 }
 
-type ProxyTraceAccumulator = {
-  id: string;
-  at: string;
-  protocol: ApiProxyProtocolOperation["protocol"];
-  translated: boolean;
-  endpoint: string;
-  routePath: string;
-  modelId: string;
-  sourceId: string | null;
-  sourceName: string | null;
-  stream: boolean | null;
-  targetId: string | null;
-  targetName: string | null;
-  slotId: number | null;
-  cacheOrigin: "live" | "restored" | "fresh" | null;
-  textReplacementCount: number;
-  routeTrace: ApiProxyRouteTraceStep[];
-  files: ApiProxyTraceFile[];
-  schedulerActions: string[];
-  usage: {
-    promptTokens: number | null;
-    cacheReadTokens: number | null;
-    cacheCreationTokens: number | null;
-    completionTokens: number;
-    genMs: number;
-    ratePerSecond: number | null;
-    prefillMs: number | null;
-    promptPerSecond: number | null;
-  } | null;
-  status: number;
-  ok: boolean;
-  errorCode: string | null;
-  errorMessage: string | null;
-  durationMs: number;
-  queueMs: number | null;
-  ttftMs: number | null;
-};
-
-function createProxyTrace(
-  operation: ApiProxyProtocolOperation,
-): ProxyTraceAccumulator {
-  return {
-    id: newId(),
-    at: new Date().toISOString(),
-    protocol: operation.protocol,
-    translated: false,
-    endpoint: operation.endpoint,
-    routePath: operation.routePath,
-    modelId: "",
-    sourceId: null,
-    sourceName: null,
-    stream: null,
-    targetId: null,
-    targetName: null,
-    slotId: null,
-    cacheOrigin: null,
-    textReplacementCount: 0,
-    routeTrace: [],
-    files: [],
-    schedulerActions: [],
-    usage: null,
-    status: 0,
-    ok: false,
-    errorCode: null,
-    errorMessage: null,
-    durationMs: 0,
-    queueMs: null,
-    ttftMs: null,
-  };
-}
-
-function safeJsonParse(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-function errorBodyMessage(body: unknown): string | null {
-  if (body && typeof body === "object") {
-    const err = (body as { error?: unknown }).error;
-    if (err && typeof err === "object") {
-      const message = (err as { message?: unknown }).message;
-      if (typeof message === "string" && message.trim()) {
-        return message;
-      }
-    }
-  }
-  return null;
-}
-
-type ProxyTraceRecorder = {
-  record: (response: Response | undefined) => void;
-  markDeferred: () => void;
-};
-
-const SERVER_TIMING_WAIT_MS = 1500;
-
-async function applyServerGenerationTiming(
-  trace: ProxyTraceAccumulator,
-  instanceId: string | null,
-  task: number | null,
-): Promise<void> {
-  if (instanceId === null || task === null) {
-    return;
-  }
-  const timing = await apiProxySlotTracker.awaitTiming(
-    instanceId,
-    task,
-    SERVER_TIMING_WAIT_MS,
-  );
-  if (!timing) {
-    return;
-  }
-  if (trace.usage) {
-    trace.usage.genMs = Math.round(timing.genMs);
-    trace.usage.ratePerSecond = timing.tokensPerSecond;
-    if (timing.prefillMs !== null) {
-      trace.usage.prefillMs = Math.round(timing.prefillMs);
-    }
-    if (timing.promptPerSecond !== null) {
-      trace.usage.promptPerSecond = timing.promptPerSecond;
-    }
-    if (trace.usage.promptTokens === null && timing.promptTokens !== null) {
-      trace.usage.promptTokens = timing.promptTokens;
-    }
-  } else {
-    trace.usage = {
-      promptTokens: timing.promptTokens,
-      cacheReadTokens: null,
-      cacheCreationTokens: null,
-      completionTokens: timing.completionTokens,
-      genMs: Math.round(timing.genMs),
-      ratePerSecond: timing.tokensPerSecond,
-      prefillMs:
-        timing.prefillMs === null ? null : Math.round(timing.prefillMs),
-      promptPerSecond: timing.promptPerSecond,
-    };
-  }
-}
-
-function resumableTraceUsage(
-  state: ResumableBufferState,
-): NonNullable<ProxyTraceAccumulator["usage"]> {
-  return {
-    promptTokens: state.promptTokens,
-    cacheReadTokens: state.cacheReadTokens,
-    cacheCreationTokens: state.cacheCreationTokens,
-    completionTokens: state.completionTokens,
-    genMs: Math.round(state.genMs),
-    ratePerSecond:
-      state.completionTokens > 0 && state.genMs > 0
-        ? state.completionTokens / (state.genMs / 1000)
-        : null,
-    prefillMs: null,
-    promptPerSecond: null,
-  };
-}
-
-async function proxyProtocolEndpoint(
+export async function proxyProtocolEndpoint(
   c: Context,
   adapter: ApiProxyProtocolAdapter,
   operation: ApiProxyProtocolOperation,
@@ -1050,80 +849,4 @@ async function proxyProtocolEndpointInner(
     heldLease.release();
     throw error;
   }
-}
-
-export function registerOpenAiProxyRoutes(app: Hono, prefix: string) {
-  app.get(`${prefix}/models`, (c) => {
-    return c.json(openAiModelsList(listApiProxyModels()));
-  });
-
-  app.post(`${prefix}/chat/completions`, (c) =>
-    proxyProtocolEndpoint(
-      c,
-      openAiProtocolAdapter,
-      protocolOperation({
-        protocol: "openai",
-        endpoint: "chat.completions",
-        routePath: `${prefix}/chat/completions`,
-      }),
-    ),
-  );
-  app.post(`${prefix}/completions`, (c) =>
-    proxyProtocolEndpoint(
-      c,
-      openAiProtocolAdapter,
-      protocolOperation({
-        protocol: "openai",
-        endpoint: "completions",
-        routePath: `${prefix}/completions`,
-      }),
-    ),
-  );
-  app.post(`${prefix}/embeddings`, (c) =>
-    proxyProtocolEndpoint(
-      c,
-      openAiProtocolAdapter,
-      protocolOperation({
-        protocol: "openai",
-        endpoint: "embeddings",
-        routePath: `${prefix}/embeddings`,
-      }),
-    ),
-  );
-  app.post(`${prefix}/responses`, (c) =>
-    proxyProtocolEndpoint(
-      c,
-      openAiProtocolAdapter,
-      protocolOperation({
-        protocol: "openai",
-        endpoint: "responses",
-        routePath: `${prefix}/responses`,
-      }),
-    ),
-  );
-}
-
-export function registerAnthropicProxyRoutes(app: Hono, prefix: string) {
-  app.post(`${prefix}/messages`, (c) =>
-    proxyProtocolEndpoint(
-      c,
-      anthropicProtocolAdapter,
-      protocolOperation({
-        protocol: "anthropic",
-        endpoint: "messages",
-        routePath: `${prefix}/messages`,
-      }),
-    ),
-  );
-  app.post(`${prefix}/messages/count_tokens`, (c) =>
-    proxyProtocolEndpoint(
-      c,
-      anthropicProtocolAdapter,
-      protocolOperation({
-        protocol: "anthropic",
-        endpoint: "messages.count_tokens",
-        routePath: `${prefix}/messages/count_tokens`,
-      }),
-    ),
-  );
 }

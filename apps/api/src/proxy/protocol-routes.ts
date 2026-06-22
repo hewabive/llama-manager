@@ -1,0 +1,100 @@
+import type { Hono } from "hono";
+
+import { anthropicProtocolAdapter } from "./anthropic.js";
+import { openAiModelsList, openAiProtocolAdapter } from "./openai.js";
+import { proxyProtocolEndpoint } from "./protocol-endpoint.js";
+import type {
+  ApiProxyProtocolOperation,
+  ApiProxyProtocolTransport,
+} from "./protocol.js";
+import { listApiProxyModels } from "./repository.js";
+
+function protocolOperation(input: {
+  protocol: ApiProxyProtocolOperation["protocol"];
+  endpoint: string;
+  routePath: string;
+  transport?: ApiProxyProtocolTransport;
+}): ApiProxyProtocolOperation {
+  return {
+    protocol: input.protocol,
+    endpoint: input.endpoint,
+    routePath: input.routePath,
+    transport: input.transport ?? "http-json",
+  };
+}
+
+export function registerOpenAiProxyRoutes(app: Hono, prefix: string) {
+  app.get(`${prefix}/models`, (c) => {
+    return c.json(openAiModelsList(listApiProxyModels()));
+  });
+
+  app.post(`${prefix}/chat/completions`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "chat.completions",
+        routePath: `${prefix}/chat/completions`,
+      }),
+    ),
+  );
+  app.post(`${prefix}/completions`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "completions",
+        routePath: `${prefix}/completions`,
+      }),
+    ),
+  );
+  app.post(`${prefix}/embeddings`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "embeddings",
+        routePath: `${prefix}/embeddings`,
+      }),
+    ),
+  );
+  app.post(`${prefix}/responses`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "responses",
+        routePath: `${prefix}/responses`,
+      }),
+    ),
+  );
+}
+
+export function registerAnthropicProxyRoutes(app: Hono, prefix: string) {
+  app.post(`${prefix}/messages`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      anthropicProtocolAdapter,
+      protocolOperation({
+        protocol: "anthropic",
+        endpoint: "messages",
+        routePath: `${prefix}/messages`,
+      }),
+    ),
+  );
+  app.post(`${prefix}/messages/count_tokens`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      anthropicProtocolAdapter,
+      protocolOperation({
+        protocol: "anthropic",
+        endpoint: "messages.count_tokens",
+        routePath: `${prefix}/messages/count_tokens`,
+      }),
+    ),
+  );
+}
