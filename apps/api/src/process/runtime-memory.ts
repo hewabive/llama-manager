@@ -1,12 +1,16 @@
 import type {
+  Instance,
   InstanceMemoryLayout,
   InstanceMemoryPlacement,
+  NumaPlacement,
   RuntimeState,
 } from "@llama-manager/core";
 import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { promisify } from "node:util";
 
+import { computeNumaPlacement, parseNumaMaps } from "../numa/placement.js";
+import { readNumaTopology } from "../numa/topology.js";
 import {
   compareMemoryPlacements,
   emptyMemoryPlacement,
@@ -264,6 +268,84 @@ export async function getInstanceSwapBytes(
     }
   }
   return total;
+}
+
+function readProcNumaMaps(pid: number): string | null {
+  if (process.platform !== "linux") {
+    return null;
+  }
+  try {
+    return readFileSync(`/proc/${pid}/numa_maps`, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+const NUMA_PLACEMENT_CACHE_LIMIT = 128;
+const numaPlacementCache = new Map<string, NumaPlacement>();
+
+function rememberNumaPlacement(key: string, placement: NumaPlacement) {
+  numaPlacementCache.set(key, placement);
+  while (numaPlacementCache.size > NUMA_PLACEMENT_CACHE_LIMIT) {
+    const oldest = numaPlacementCache.keys().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    numaPlacementCache.delete(oldest);
+  }
+}
+
+export async function getInstanceNumaPlacement(input: {
+  instance: Instance;
+  runtime: RuntimeState | undefined;
+  runId: string | null;
+}): Promise<NumaPlacement | null> {
+  const numa = input.instance.numa;
+  if (process.platform !== "linux" || numa?.mode !== "interleave") {
+    return null;
+  }
+
+  const interleaveNodeCount =
+    numa.nodes.length > 0 ? numa.nodes.length : readNumaTopology().length;
+  if (interleaveNodeCount <= 1) {
+    return null;
+  }
+
+  const cacheKey =
+    input.runId ?? (input.runtime?.pid ? `pid:${input.runtime.pid}` : null);
+  if (cacheKey) {
+    const cached = numaPlacementCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const pids = await candidatePids({ runtime: input.runtime, lines: [] });
+  if (pids.length === 0) {
+    return null;
+  }
+
+  const perNodeBytes = new Map<number, number>();
+  let measured = false;
+  for (const pid of pids) {
+    const content = readProcNumaMaps(pid);
+    if (content === null) {
+      continue;
+    }
+    measured = true;
+    for (const [node, bytes] of parseNumaMaps(content)) {
+      perNodeBytes.set(node, (perNodeBytes.get(node) ?? 0) + bytes);
+    }
+  }
+  if (!measured) {
+    return null;
+  }
+
+  const placement = computeNumaPlacement({ perNodeBytes, interleaveNodeCount });
+  if (placement && cacheKey) {
+    rememberNumaPlacement(cacheKey, placement);
+  }
+  return placement;
 }
 
 function readProcMemory(pid: number): ProcMemoryUsage | null {

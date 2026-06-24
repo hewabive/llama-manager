@@ -26,7 +26,7 @@ Capabilities are probed at startup (`apps/api/src/numa/capability.ts`) into
 `SystemResources.numa.{ bind, interleave }` (booleans, shown in the UI): `bind`
 needs cgroup v2 unified **and** `cpuset` enabled in the delegated
 `user@<uid>.service` `cgroup.subtree_control` (children we create there can
-actually use it — not merely that the controller is *available*); `interleave`
+actually use it — not merely that the controller is _available_); `interleave`
 needs only `numactl` on `PATH`.
 
 ## Why cgroup, not numactl
@@ -60,7 +60,7 @@ cgroup, and writes `cpuset.mems = <node id>` then `cpuset.cpus = <node cpulist>`
 
 ## Race-free join via a shim
 
-To bind the *first* allocation (so weight faulting lands on the node), the
+To bind the _first_ allocation (so weight faulting lands on the node), the
 process must start already inside the cgroup. The supervisor therefore launches
 
 ```
@@ -107,7 +107,7 @@ Delegate=cpu cpuset memory pids
 
 The drop-in makes delegation persistent across reboots; the `subtree_control`
 chain-enable makes it active immediately. (Delegation only puts `cpuset` in a
-cgroup's `cgroup.controllers` — *available* — but children can use it only once
+cgroup's `cgroup.controllers` — _available_ — but children can use it only once
 it is also in `cgroup.subtree_control` at every level down to the delegated root.)
 If the live enable can't be applied, the change takes effect when
 `user@<uid>.service` next **restarts** — `systemctl restart user@<uid>.service`
@@ -115,7 +115,7 @@ or a reboot. Note: with linger enabled a plain logout/login does **not** restart
 the user manager, so re-login alone is not enough. After this the manager creates
 and writes cgroups as the normal user — **no sudo at launch**. Without it the
 `bind` capability is `false` and bindings stay inert. If the manager runs as a
-*system* service instead, put the same `Delegate=` on that unit.
+_system_ service instead, put the same `Delegate=` on that unit.
 
 **The manager must run inside that delegated user session.** Delegation only
 grants the `user@<uid>.service` subtree; a process started from a shell that
@@ -130,6 +130,33 @@ cross-tree move needs root over the common ancestor). Run the manager as a
 `numa` is part of the launch snapshot, so changing an instance's binding while it
 runs raises the existing `configDrift` badge (a live process cannot be re-pinned
 without restart — `cpuset.mems` changes do not migrate resident pages).
+
+## Interleave placement skew (the page-cache trap)
+
+`numactl --interleave` (and `--no-mmap` / `--numa distribute`) only place memory
+evenly **if every target node has free pages at fault time**. A node whose RAM is
+already full of clean page cache — classically after a bulk file copy that floods
+one node's cache via a single-threaded reader — cannot take its interleave share,
+so with the default `vm.zone_reclaim_mode=0` the allocator falls back to other
+nodes instead of reclaiming. The weight buffer ends up lopsided, memory bandwidth
+collapses to a single controller (~30% throughput loss), and the skew **survives
+process restarts** because the polluting page cache is system-wide and clean.
+`sync; echo 1 | sudo tee /proc/sys/vm/drop_caches` (or copying with `nocache`)
+clears it; `vm.zone_reclaim_mode=1` prevents it structurally on a dedicated box.
+
+Two read-only signals surface this without a CLI:
+
+- **System resources** shows per-node free RAM and page cache (`FilePages`) from
+  `node*/meminfo`, with the cache badge reddening as a node fills — the predictor.
+- **Health summary** measures the actual layout once per run: when an
+  `interleave` instance is `running` and healthy, `getInstanceNumaPlacement`
+  reads `/proc/<pid>/numa_maps` (summing `N<node>=` weighted by
+  `kernelpagesize_kB` across the instance's pids), computes the max-node share vs
+  the ideal `1/nodes`, and caches it by run id. A node holding more than
+  `1.5 × ideal` flips `numaPlacement.even` to false, turning the otherwise-healthy
+  instance `degraded` with a `numa skew` badge. The page-table walk is the reason
+  the measurement is one-shot-per-run and gated on `health.ok` (post-load), not
+  polled on every health tick.
 
 ## Config & update semantics
 

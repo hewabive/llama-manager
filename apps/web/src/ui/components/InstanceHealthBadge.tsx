@@ -36,6 +36,27 @@ export function InstanceConfigDriftBadge(props: {
   );
 }
 
+export function InstanceNumaSkewBadge(props: {
+  health: InstanceHealthSummary | undefined;
+}) {
+  const placement = props.health?.numaPlacement;
+  if (!placement || placement.even) {
+    return null;
+  }
+  return (
+    <Tooltip
+      label={`Interleave instance memory is uneven: ${placement.maxNodeSharePct}% sits on one node (ideal ~${placement.idealSharePct}% across ${placement.interleaveNodeCount} nodes). Often caused by page cache (e.g. a bulk file copy) starving a node — clear it and restart.`}
+      withArrow
+      multiline
+      w={320}
+    >
+      <Badge color="orange" variant="light">
+        numa skew {placement.maxNodeSharePct}%
+      </Badge>
+    </Tooltip>
+  );
+}
+
 export function InstanceHealthBadge(props: {
   instance: Instance;
   health: InstanceHealthSummary | undefined;
@@ -56,6 +77,7 @@ export function InstanceHealthBadge(props: {
         </Badge>
       </Tooltip>
       <InstanceConfigDriftBadge health={health} />
+      <InstanceNumaSkewBadge health={health} />
     </>
   );
 }

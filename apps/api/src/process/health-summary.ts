@@ -5,6 +5,7 @@ import type {
   InstanceHealthSummaryStatus,
   LlamaEndpointProbe,
   LlamaProbe,
+  NumaPlacement,
   RuntimeState,
 } from "@llama-manager/core";
 
@@ -23,7 +24,10 @@ import {
 } from "./preflight.js";
 import { promptCacheTracker } from "./prompt-cache-tracker.js";
 import { latestProcessRun, type ProcessRun } from "./runs-repository.js";
-import { getInstanceSwapBytes } from "./runtime-memory.js";
+import {
+  getInstanceNumaPlacement,
+  getInstanceSwapBytes,
+} from "./runtime-memory.js";
 import { supervisor } from "./supervisor.js";
 
 const SWAP_DEGRADED_THRESHOLD_BYTES = 64 * 1024 * 1024;
@@ -155,6 +159,7 @@ function deriveStatus(input: {
   logErrors: number;
   logWarnings: number;
   swapBytes: number | null;
+  numaPlacement: NumaPlacement | null;
 }): { status: InstanceHealthSummaryStatus; reason: string } {
   if (input.runtime.status === "stale") {
     if (input.healthOk) {
@@ -233,11 +238,14 @@ function deriveStatus(input: {
     const swappedOut =
       input.swapBytes !== null &&
       input.swapBytes >= SWAP_DEGRADED_THRESHOLD_BYTES;
+    const numaSkewed =
+      input.numaPlacement !== null && !input.numaPlacement.even;
     if (
       input.logErrors > 0 ||
       input.logWarnings > 0 ||
       input.preflightWarnings > 0 ||
-      swappedOut
+      swappedOut ||
+      numaSkewed
     ) {
       const issues = [
         input.logErrors > 0
@@ -251,6 +259,9 @@ function deriveStatus(input: {
           : null,
         swappedOut
           ? `${Math.round((input.swapBytes ?? 0) / (1024 * 1024))} MiB of process memory in swap`
+          : null,
+        numaSkewed
+          ? `uneven NUMA interleave placement (${input.numaPlacement?.maxNodeSharePct}% of memory on one node, ideal ~${input.numaPlacement?.idealSharePct}%)`
           : null,
       ].filter(Boolean);
       return {
@@ -322,6 +333,16 @@ export async function getInstanceHealthSummary(
     (issue) => issue.level === "error",
   ).length;
   const preflightWarnings = preflight.issues.length - preflightErrors;
+  const numaPlacement =
+    instance.numa?.mode === "interleave" &&
+    runtime.status === "running" &&
+    llama.health.ok
+      ? await getInstanceNumaPlacement({
+          instance,
+          runtime,
+          runId: latestRun?.id ?? null,
+        })
+      : null;
   const derived = deriveStatus({
     runtime,
     preflightOk: preflight.ok,
@@ -333,6 +354,7 @@ export async function getInstanceHealthSummary(
     logErrors: logSummary.errors.length,
     logWarnings: logSummary.warnings.length,
     swapBytes,
+    numaPlacement,
   });
 
   return {
@@ -347,6 +369,7 @@ export async function getInstanceHealthSummary(
     promptCache: promptCacheTracker.get(instance.name),
     configDrift: detectConfigDrift(instance, runtime, latestRun),
     swapBytes,
+    numaPlacement,
     checkedAt: nowIso(),
   };
 }

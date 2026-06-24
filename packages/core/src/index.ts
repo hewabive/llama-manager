@@ -1421,6 +1421,20 @@ export const PromptCacheStateSchema = z.object({
   at: z.string(),
 });
 
+export const NumaPlacementSchema = z.object({
+  perNode: z.array(
+    z.object({
+      node: z.number().int().min(0),
+      bytes: z.number().int().nonnegative(),
+    }),
+  ),
+  totalBytes: z.number().int().nonnegative(),
+  maxNodeSharePct: z.number().int().min(0).max(100),
+  idealSharePct: z.number().int().min(0).max(100),
+  even: z.boolean(),
+  interleaveNodeCount: z.number().int().min(1),
+});
+
 export const InstanceHealthSummarySchema = z.object({
   instanceId: z.string(),
   status: InstanceHealthSummaryStatusSchema,
@@ -1433,6 +1447,7 @@ export const InstanceHealthSummarySchema = z.object({
   promptCache: PromptCacheStateSchema.nullable().default(null),
   configDrift: z.boolean().default(false),
   swapBytes: z.number().int().min(0).nullable().default(null),
+  numaPlacement: NumaPlacementSchema.nullable().default(null),
   checkedAt: z.string(),
 });
 
@@ -2305,6 +2320,7 @@ export type InstanceHealthSummaryStatus = z.infer<
 >;
 export type InstanceHealthActions = z.infer<typeof InstanceHealthActionsSchema>;
 export type InstanceHealthSummary = z.infer<typeof InstanceHealthSummarySchema>;
+export type NumaPlacement = z.infer<typeof NumaPlacementSchema>;
 export type PromptCacheState = z.infer<typeof PromptCacheStateSchema>;
 export type InstanceBulkActionName = z.infer<
   typeof InstanceBulkActionNameSchema
