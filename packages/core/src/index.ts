@@ -1831,6 +1831,8 @@ export const NumaNodeSchema = z.object({
   cpus: z.string(),
   cpuCount: z.number().int().nonnegative(),
   memoryBytes: z.number().int().nonnegative(),
+  memFreeBytes: z.number().int().nonnegative().default(0),
+  filePagesBytes: z.number().int().nonnegative().default(0),
   online: z.boolean(),
 });
 

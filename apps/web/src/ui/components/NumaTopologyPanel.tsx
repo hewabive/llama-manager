@@ -1,4 +1,4 @@
-import type { SystemResources } from "@llama-manager/core";
+import type { NumaNode, SystemResources } from "@llama-manager/core";
 import {
   Badge,
   Group,
@@ -7,8 +7,9 @@ import {
   Text,
   ThemeIcon,
   Title,
+  Tooltip,
 } from "@mantine/core";
-import { Cpu, MemoryStick } from "lucide-react";
+import { Cpu, Database, MemoryStick } from "lucide-react";
 
 import { formatBytes } from "../utils/models";
 import { formatAcceleratorName } from "../utils/pools";
@@ -18,6 +19,57 @@ function capabilityBadge(label: string, available: boolean) {
     <Badge variant="light" color={available ? "green" : "gray"}>
       {label} {available ? "ready" : "n/a"}
     </Badge>
+  );
+}
+
+function freeColor(freeRatio: number) {
+  if (freeRatio < 0.05) {
+    return "red";
+  }
+  if (freeRatio < 0.15) {
+    return "yellow";
+  }
+  return "gray";
+}
+
+function cacheColor(cacheRatio: number) {
+  if (cacheRatio > 0.6) {
+    return "orange";
+  }
+  if (cacheRatio > 0.3) {
+    return "yellow";
+  }
+  return "gray";
+}
+
+function NodeMemoryBadges(props: { node: NumaNode }) {
+  const { node } = props;
+  if (node.memoryBytes <= 0) {
+    return null;
+  }
+  const freeRatio = node.memFreeBytes / node.memoryBytes;
+  const cacheRatio = node.filePagesBytes / node.memoryBytes;
+  return (
+    <>
+      <Tooltip label={`${Math.round(freeRatio * 100)}% free`}>
+        <Badge variant="light" color={freeColor(freeRatio)}>
+          {formatBytes(node.memFreeBytes)} free
+        </Badge>
+      </Tooltip>
+      <Tooltip
+        label={`Page cache on this node — ${Math.round(
+          cacheRatio * 100,
+        )}% of node memory. A node heavily filled by cache (e.g. after a bulk file copy) starves even interleave placement.`}
+      >
+        <Badge
+          variant="light"
+          color={cacheColor(cacheRatio)}
+          leftSection={<Database size={12} />}
+        >
+          {formatBytes(node.filePagesBytes)} cache
+        </Badge>
+      </Tooltip>
+    </>
   );
 }
 
@@ -41,8 +93,10 @@ export function NumaTopologyPanel(props: { resources: SystemResources }) {
         </Group>
       </Group>
       <Text c="dimmed" size="sm" mt={6}>
-        Per-socket cores, memory and the GPUs attached to each node. Bind an
-        instance to the node hosting its GPU to keep host-side traffic local.
+        Per-socket cores, memory, free RAM, page cache and the GPUs attached to
+        each node. Bind an instance to the node hosting its GPU to keep host-side
+        traffic local; watch for a single node dominated by page cache, which
+        skews interleave placement.
       </Text>
 
       <Stack gap="sm" mt="md">
@@ -70,6 +124,7 @@ export function NumaTopologyPanel(props: { resources: SystemResources }) {
                       >
                         {formatBytes(node.memoryBytes)}
                       </Badge>
+                      <NodeMemoryBadges node={node} />
                     </Group>
                     <Text c="dimmed" size="xs">
                       cpus {node.cpus || "—"}

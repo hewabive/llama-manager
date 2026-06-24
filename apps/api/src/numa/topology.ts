@@ -23,9 +23,23 @@ export function parseCpuListCount(cpulist: string): number {
   return count;
 }
 
-export function parseNodeMemTotalBytes(meminfo: string): number {
-  const match = /MemTotal:\s+(\d+)\s+kB/i.exec(meminfo);
+export type NodeMeminfo = {
+  memTotalBytes: number;
+  memFreeBytes: number;
+  filePagesBytes: number;
+};
+
+function parseNodeMeminfoField(meminfo: string, key: string): number {
+  const match = new RegExp(`${key}:\\s+(\\d+)\\s+kB`, "i").exec(meminfo);
   return match ? Number(match[1]) * 1024 : 0;
+}
+
+export function parseNodeMeminfo(meminfo: string): NodeMeminfo {
+  return {
+    memTotalBytes: parseNodeMeminfoField(meminfo, "MemTotal"),
+    memFreeBytes: parseNodeMeminfoField(meminfo, "MemFree"),
+    filePagesBytes: parseNodeMeminfoField(meminfo, "FilePages"),
+  };
 }
 
 export function normalizePciAddress(busId: string): string | null {
@@ -80,18 +94,24 @@ export function readNumaTopology(): NumaNode[] {
       cpus = "";
     }
 
-    let memoryBytes = 0;
+    let meminfo: NodeMeminfo = {
+      memTotalBytes: 0,
+      memFreeBytes: 0,
+      filePagesBytes: 0,
+    };
     try {
-      memoryBytes = parseNodeMemTotalBytes(readFileSync(`${base}/meminfo`, "utf8"));
+      meminfo = parseNodeMeminfo(readFileSync(`${base}/meminfo`, "utf8"));
     } catch {
-      memoryBytes = 0;
+      meminfo = { memTotalBytes: 0, memFreeBytes: 0, filePagesBytes: 0 };
     }
 
     nodes.push({
       id,
       cpus,
       cpuCount: parseCpuListCount(cpus),
-      memoryBytes,
+      memoryBytes: meminfo.memTotalBytes,
+      memFreeBytes: meminfo.memFreeBytes,
+      filePagesBytes: meminfo.filePagesBytes,
       online: true,
     });
   }

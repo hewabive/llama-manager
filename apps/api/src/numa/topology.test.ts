@@ -9,7 +9,7 @@ import {
 import {
   normalizePciAddress,
   parseCpuListCount,
-  parseNodeMemTotalBytes,
+  parseNodeMeminfo,
 } from "./topology.js";
 
 test("parseCpuListCount sums ranges and singletons", () => {
@@ -18,12 +18,22 @@ test("parseCpuListCount sums ranges and singletons", () => {
   assert.equal(parseCpuListCount(""), 0);
 });
 
-test("parseNodeMemTotalBytes reads the per-node MemTotal line", () => {
-  assert.equal(
-    parseNodeMemTotalBytes("Node 0 MemTotal:      134217728 kB\nNode 0 MemFree: 1 kB"),
-    134217728 * 1024,
-  );
-  assert.equal(parseNodeMemTotalBytes("Node 1 MemFree: 1 kB"), 0);
+test("parseNodeMeminfo reads per-node MemTotal, MemFree and FilePages", () => {
+  const meminfo = [
+    "Node 0 MemTotal:      134217728 kB",
+    "Node 0 MemFree:         1048576 kB",
+    "Node 0 FilePages:      67108864 kB",
+  ].join("\n");
+  assert.deepEqual(parseNodeMeminfo(meminfo), {
+    memTotalBytes: 134217728 * 1024,
+    memFreeBytes: 1048576 * 1024,
+    filePagesBytes: 67108864 * 1024,
+  });
+  assert.deepEqual(parseNodeMeminfo("Node 1 MemTotal: 0 kB"), {
+    memTotalBytes: 0,
+    memFreeBytes: 0,
+    filePagesBytes: 0,
+  });
 });
 
 test("normalizePciAddress shrinks the nvidia-smi domain to sysfs form", () => {
