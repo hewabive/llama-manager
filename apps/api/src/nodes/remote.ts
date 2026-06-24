@@ -25,6 +25,32 @@ export function nodeApiUrl(node: FleetNode, apiPath: string): string {
   return `${base}/api/${path}`;
 }
 
+export async function fetchNodeJson<T>(
+  node: FleetNode,
+  apiPath: string,
+  timeoutMs = 5000,
+): Promise<T> {
+  const headers = new Headers({ accept: "application/json" });
+  const token = nodeToken(node.id);
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+  const res = await fetch(nodeApiUrl(node, apiPath), {
+    headers,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as { data?: T; error?: unknown };
+  if (body.error !== undefined) {
+    throw new Error(
+      typeof body.error === "string" ? body.error : "node returned an error",
+    );
+  }
+  return body.data as T;
+}
+
 export function nodeProxyRest(node: FleetNode, requestPath: string): string {
   const prefix = `/api/nodes/${node.id}/`;
   return requestPath.startsWith(prefix)

@@ -14,6 +14,7 @@ import {
   nodeHasToken,
   updateNode,
 } from "../nodes/repository.js";
+import { fleetResources, fleetSystem } from "../nodes/fleet.js";
 import { forwardToNode } from "../nodes/remote.js";
 
 function toView(node: FleetNode): FleetNodeView {
@@ -21,6 +22,14 @@ function toView(node: FleetNode): FleetNodeView {
 }
 
 export function registerNodeRoutes(app: Hono) {
+  app.get("/api/fleet/system", async (c) => {
+    return c.json({ data: await fleetSystem() });
+  });
+
+  app.get("/api/fleet/resources", async (c) => {
+    return c.json({ data: await fleetResources() });
+  });
+
   app.get("/api/nodes", (c) => {
     return c.json({ data: listNodes().map(toView) });
   });

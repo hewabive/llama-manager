@@ -1929,6 +1929,32 @@ export const SystemResourcesSchema = z.object({
   numa: NumaCapabilitiesSchema,
 });
 
+export const FleetNodeResultMetaSchema = z.object({
+  nodeId: z.string(),
+  nodeName: z.string(),
+  self: z.boolean(),
+  baseUrl: z.string().nullable(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+});
+
+export const FleetSystemEntrySchema = FleetNodeResultMetaSchema.extend({
+  data: SystemResourcesSchema.nullable(),
+});
+export type FleetSystemEntry = z.infer<typeof FleetSystemEntrySchema>;
+
+export const FleetResourcesPayloadSchema = z.object({
+  pools: z.array(MemoryPoolSchema),
+  ledger: ResourceLedgerSchema,
+  detected: SystemResourcesSchema,
+});
+export type FleetResourcesPayload = z.infer<typeof FleetResourcesPayloadSchema>;
+
+export const FleetResourcesEntrySchema = FleetNodeResultMetaSchema.extend({
+  data: FleetResourcesPayloadSchema.nullable(),
+});
+export type FleetResourcesEntry = z.infer<typeof FleetResourcesEntrySchema>;
+
 export const AuthStateSchema = z.object({
   enabled: z.boolean(),
   authenticated: z.boolean(),

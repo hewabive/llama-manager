@@ -12,6 +12,7 @@ import {
   resetNodesCache,
   updateNode,
 } from "./repository.js";
+import { fleetSystem } from "./fleet.js";
 import { nodeApiUrl, nodeProxyRest } from "./remote.js";
 
 test("createNode normalizes baseUrl and stores the token as a secret", () => {
@@ -64,6 +65,31 @@ test("deleteNode removes the node and its token", () => {
   assert.equal(nodeToken(node.id), null);
   assert.equal(deleteNode(node.id), false);
   assert.ok(!listNodes().some((entry) => entry.id === node.id));
+});
+
+test("fleetSystem always includes a healthy self entry and marks a disabled peer", async () => {
+  resetNodesCache();
+  const disabled = createNode({
+    name: "z-disabled",
+    baseUrl: "http://10.0.0.9:8787",
+    enabled: false,
+  });
+
+  const entries = await fleetSystem();
+
+  const self = entries.find((entry) => entry.self);
+  assert.ok(self);
+  assert.equal(self.nodeId, "self");
+  assert.equal(self.ok, true);
+  assert.ok(self.data);
+
+  const peer = entries.find((entry) => entry.nodeId === disabled.id);
+  assert.ok(peer);
+  assert.equal(peer.ok, false);
+  assert.equal(peer.error, "node is disabled");
+  assert.equal(peer.data, null);
+
+  deleteNode(disabled.id);
 });
 
 test("nodeApiUrl and nodeProxyRest map the proxy prefix to the peer /api path", () => {
