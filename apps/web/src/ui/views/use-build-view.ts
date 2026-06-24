@@ -70,6 +70,7 @@ export function useBuildView() {
   const target = form?.target ?? "";
   const parallelJobs = form?.parallelJobs ?? "";
   const cuda = form?.cuda ?? false;
+  const rpc = form?.rpc ?? false;
   const native = form?.native ?? false;
   const cudaArchitectureMode = form?.cudaArchitectureMode ?? "default";
   const cudaArchitectureValue = form?.cudaArchitectureValue ?? "";
@@ -145,6 +146,7 @@ export function useBuildView() {
       buildType: form.buildType,
       buildProfile: form.buildProfile,
       cuda: form.cuda,
+      rpc: form.rpc,
       native: form.native,
       cudaArchitectures: cudaArchitecturesFromForm(form),
       cudaFaAllQuants: form.cudaFaAllQuants,
@@ -304,6 +306,7 @@ export function useBuildView() {
     target,
     parallelJobs,
     cuda,
+    rpc,
     native,
     cudaArchitectureMode,
     cudaArchitectureValue,

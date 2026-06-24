@@ -1530,6 +1530,7 @@ export const BuildSettingsSchema = z.object({
   buildType: z.enum(["Release", "Debug", "RelWithDebInfo", "MinSizeRel"]),
   buildProfile: BuildProfileSchema.default("server"),
   cuda: z.boolean(),
+  rpc: z.boolean().default(false),
   native: z.boolean(),
   cudaArchitectures: z.string().trim().min(1).nullable().default(null),
   cudaFaAllQuants: z.boolean().default(false),
@@ -1556,6 +1557,7 @@ export const BuildJobStepNameSchema = z.enum([
   "configure",
   "build",
   "build-fit-params",
+  "build-rpc-server",
 ]);
 export const BuildJobStepStatusSchema = z.enum([
   "pending",

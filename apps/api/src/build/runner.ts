@@ -23,8 +23,10 @@ import {
   cleanBuildDirectory,
   commandCwd,
   detectBinaryPath,
+  detectRpcServerBinaryPath,
   fitParamsSourceDir,
   resolveBuildRef,
+  rpcSourceDir,
   slugifyRef,
   uiDirectory,
   validateBuildDirectoryCleanTarget,
@@ -179,6 +181,21 @@ class LlamaBuildRunner {
           continue;
         }
 
+        if (
+          plannedStep.name === "build-rpc-server" &&
+          !existsSync(rpcSourceDir(job.settings))
+        ) {
+          this.markStep(jobId, plannedStep.name, {
+            status: "skipped",
+            finishedAt: nowIso(),
+            exitCode: null,
+          });
+          logStream.write(
+            `# ${plannedStep.name}: tools/rpc is not present in this llama.cpp ref; skipping rpc-server build\n\n`,
+          );
+          continue;
+        }
+
         job = this.markStep(jobId, plannedStep.name, {
           status: "running",
           startedAt: nowIso(),
@@ -224,6 +241,17 @@ class LlamaBuildRunner {
             );
             continue;
           }
+          if (plannedStep.name === "build-rpc-server") {
+            this.markStep(jobId, plannedStep.name, {
+              status: "skipped",
+              finishedAt: nowIso(),
+              exitCode,
+            });
+            logStream.write(
+              `\n# ${plannedStep.name} did not build (exit ${exitCode}); the rpc-server worker for multi-machine offload will be unavailable from this build — continuing (non-fatal)\n\n`,
+            );
+            continue;
+          }
           this.markStep(jobId, plannedStep.name, {
             status: "failed",
             finishedAt: nowIso(),
@@ -249,10 +277,17 @@ class LlamaBuildRunner {
 
       const binaryPath = detectBinaryPath(job.settings);
       this.finish(jobId, "succeeded", 0, binaryPath, null);
-      if (binaryPath) {
+      const builtBinaries = [
+        binaryPath,
+        ...(job.settings.rpc ? [detectRpcServerBinaryPath(job.settings)] : []),
+      ];
+      for (const path of builtBinaries) {
+        if (!path) {
+          continue;
+        }
         try {
           const entry = registerBuiltBinaryInCatalog(
-            binaryPath,
+            path,
             job.settings.repoPath,
             basename(job.settings.buildDir),
           );

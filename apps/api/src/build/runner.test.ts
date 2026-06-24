@@ -32,6 +32,7 @@ function settings(env: Record<string, string>): BuildSettings {
     buildType: "Release",
     buildProfile: "server",
     cuda: true,
+    rpc: false,
     native: false,
     cudaArchitectures: null,
     cudaFaAllQuants: false,
@@ -105,6 +106,58 @@ test("buildSteps applies server build profile CMake definitions", () => {
   assert.ok(configure.command.includes("-DLLAMA_BUILD_APP=OFF"));
   assert.ok(configure.command.includes("-DLLAMA_BUILD_TOOLS=ON"));
   assert.ok(configure.command.includes("-DLLAMA_BUILD_SERVER=ON"));
+});
+
+test("buildSteps configures GGML_RPC off by default and on when enabled", () => {
+  const [off] = buildSteps(
+    { ...settings({}), cuda: false },
+    jobStart({ configure: true }),
+    {},
+  );
+  assert.ok(off?.command.includes("-DGGML_RPC=OFF"));
+
+  const [on] = buildSteps(
+    { ...settings({}), cuda: false, rpc: true },
+    jobStart({ configure: true }),
+    {},
+  );
+  assert.ok(on?.command.includes("-DGGML_RPC=ON"));
+});
+
+test("buildSteps appends an rpc-server companion build when rpc is enabled", () => {
+  const steps = buildSteps(
+    { ...settings({}), rpc: true, target: "llama-server" },
+    jobStart({ build: true }),
+    {},
+  );
+
+  const companion = steps.find((item) => item.name === "build-rpc-server");
+  assert.ok(companion);
+  const targetIndex = companion.command.indexOf("--target");
+  assert.equal(companion.command[targetIndex + 1], "rpc-server");
+});
+
+test("buildSteps omits the rpc-server companion when rpc is disabled", () => {
+  const steps = buildSteps(
+    { ...settings({}), rpc: false, target: "llama-server" },
+    jobStart({ build: true }),
+    {},
+  );
+
+  assert.ok(!steps.some((item) => item.name === "build-rpc-server"));
+});
+
+test("buildSteps does not duplicate the rpc-server companion when target is rpc-server", () => {
+  const steps = buildSteps(
+    { ...settings({}), rpc: true, target: "rpc-server" },
+    jobStart({ build: true }),
+    {},
+  );
+
+  assert.equal(
+    steps.filter((item) => item.name === "build-rpc-server").length,
+    0,
+  );
 });
 
 test("buildSteps omits --target when target is empty", () => {

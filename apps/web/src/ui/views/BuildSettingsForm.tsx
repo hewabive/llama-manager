@@ -341,6 +341,13 @@ export function BuildSettingsForm({ fm }: { fm: BuildViewController }) {
             onChange={(value) => fm.setFormField("cuda", value)}
           />
           <BuildSwitch
+            label="RPC backend"
+            tooltip="Configures GGML_RPC=ON and builds the rpc-server worker for distributing a model across several machines."
+            checked={fm.rpc}
+            disabled={!fm.settingsReady}
+            onChange={(value) => fm.setFormField("rpc", value)}
+          />
+          <BuildSwitch
             label="Native CPU"
             tooltip="Configures GGML_NATIVE=ON; the binary may be optimized for this CPU and less portable."
             checked={fm.native}

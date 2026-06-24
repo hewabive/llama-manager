@@ -25,6 +25,7 @@ export function buildStepLabel(name: BuildJob["steps"][number]["name"]) {
   if (name === "git-pull") return "git pull";
   if (name === "clean-build-dir") return "clean build dir";
   if (name === "build-fit-params") return "build fit-params";
+  if (name === "build-rpc-server") return "build rpc-server";
   return name;
 }
 
@@ -56,6 +57,7 @@ export type BuildFormState = {
   target: string;
   parallelJobs: number | "";
   cuda: boolean;
+  rpc: boolean;
   native: boolean;
   cudaArchitectureMode: "default" | "native" | "custom";
   cudaArchitectureValue: string;
@@ -84,6 +86,7 @@ export function buildFormFromSettings(settings: BuildSettings): BuildFormState {
     target: settings.target,
     parallelJobs: settings.parallelJobs ?? "",
     cuda: settings.cuda,
+    rpc: settings.rpc,
     native: settings.native,
     cudaArchitectureMode,
     cudaArchitectureValue:

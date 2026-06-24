@@ -41,6 +41,7 @@ function defaultSettings(
     buildType: "Release",
     buildProfile: "server",
     cuda: isCudaToolkitAvailable(),
+    rpc: false,
     native: true,
     cudaArchitectures: null,
     cudaFaAllQuants: false,

@@ -22,9 +22,14 @@ import {
 import { findNvcc } from "./cuda.js";
 
 export const FIT_PARAMS_TARGET = "llama-fit-params";
+export const RPC_SERVER_TARGET = "rpc-server";
 
 export function fitParamsSourceDir(settings: BuildSettings) {
   return resolve(settings.repoPath, "tools", "fit-params");
+}
+
+export function rpcSourceDir(settings: BuildSettings) {
+  return resolve(settings.repoPath, "tools", "rpc");
 }
 
 function step(name: BuildJobStepName, command: string[]): BuildJobStep {
@@ -161,6 +166,7 @@ export function buildSteps(
         settings.buildDir,
         `-DCMAKE_BUILD_TYPE=${settings.buildType}`,
         `-DGGML_CUDA=${settings.cuda ? "ON" : "OFF"}`,
+        `-DGGML_RPC=${settings.rpc ? "ON" : "OFF"}`,
         `-DGGML_NATIVE=${settings.native ? "ON" : "OFF"}`,
         ...(settings.buildProfile === "server"
           ? serverBuildProfileDefinitions(settings.extraCmakeArgs)
@@ -248,6 +254,22 @@ export function buildSteps(
         companion.push("-j", String(settings.parallelJobs));
       }
       steps.push(step("build-fit-params", companion));
+    }
+
+    if (settings.rpc && target !== RPC_SERVER_TARGET) {
+      const rpcCompanion = [
+        "cmake",
+        "--build",
+        settings.buildDir,
+        "--config",
+        settings.buildType,
+        "--target",
+        RPC_SERVER_TARGET,
+      ];
+      if (settings.parallelJobs) {
+        rpcCompanion.push("-j", String(settings.parallelJobs));
+      }
+      steps.push(step("build-rpc-server", rpcCompanion));
     }
   }
 
@@ -352,16 +374,27 @@ function binaryCandidateName(target: string) {
   return `${target}.exe`;
 }
 
-export function detectBinaryPath(settings: BuildSettings) {
-  const target = binaryCandidateName(settings.target.trim() || "llama-server");
+function detectTargetBinaryPath(settings: BuildSettings, target: string) {
+  const name = binaryCandidateName(target);
   const candidates = [
-    resolve(settings.buildDir, "bin", target),
-    resolve(settings.buildDir, "bin", settings.buildType, target),
-    resolve(settings.buildDir, settings.buildType, target),
-    resolve(settings.buildDir, target),
+    resolve(settings.buildDir, "bin", name),
+    resolve(settings.buildDir, "bin", settings.buildType, name),
+    resolve(settings.buildDir, settings.buildType, name),
+    resolve(settings.buildDir, name),
   ];
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+export function detectBinaryPath(settings: BuildSettings) {
+  return detectTargetBinaryPath(
+    settings,
+    settings.target.trim() || "llama-server",
+  );
+}
+
+export function detectRpcServerBinaryPath(settings: BuildSettings) {
+  return detectTargetBinaryPath(settings, RPC_SERVER_TARGET);
 }
 
 export function writeHeader(
@@ -375,6 +408,9 @@ export function writeHeader(
   stream.write(`# build ${job.settings.buildDir}\n`);
   if (job.settings.cuda) {
     stream.write(`# CUDA compiler ${env.CUDACXX ?? "not detected"}\n`);
+  }
+  if (job.settings.rpc) {
+    stream.write(`# RPC backend ON (rpc-server worker built for multi-machine offload)\n`);
   }
   const envKeys = Object.keys(job.settings.env).sort();
   if (envKeys.length > 0) {
