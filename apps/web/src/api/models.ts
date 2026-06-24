@@ -1,16 +1,15 @@
 import type { ModelScanSettings, ModelScanResult } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { buildQuery, request } from "./http.js";
 
 export async function scanModels(input?: {
   refresh?: boolean;
   cached?: boolean;
 }) {
-  const params = new URLSearchParams({
-    ...(input?.refresh ? { refresh: "true" } : {}),
-    ...(input?.cached ? { cached: "true" } : {}),
+  const query = buildQuery({
+    refresh: input?.refresh ? "true" : undefined,
+    cached: input?.cached ? "true" : undefined,
   });
-  const query = params.size > 0 ? `?${params.toString()}` : "";
   return request<{ data: ModelScanResult }>(`/api/models${query}`);
 }
 

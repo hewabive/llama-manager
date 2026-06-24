@@ -7,14 +7,13 @@ import type {
   LlamaSourceSyncReport,
 } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { buildQuery, request } from "./http.js";
 
 export async function getLlamaArguments(binaryPath?: string, refresh = false) {
-  const params = new URLSearchParams({
-    ...(binaryPath ? { binaryPath } : {}),
-    ...(refresh ? { refresh: "true" } : {}),
+  const query = buildQuery({
+    binaryPath,
+    refresh: refresh ? "true" : undefined,
   });
-  const query = params.size > 0 ? `?${params.toString()}` : "";
   return request<{ data: LlamaArgumentCatalog }>(`/api/llama-args${query}`);
 }
 

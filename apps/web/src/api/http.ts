@@ -1,5 +1,17 @@
 import { apiBase } from "./base.js";
 
+export function buildQuery(
+  params: Record<string, string | undefined>,
+): string {
+  const parts = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== "")
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`,
+    );
+  return parts.length > 0 ? `?${parts.join("&")}` : "";
+}
+
 export function formatApiErrorValue(value: unknown): string | null {
   if (!value) return null;
   if (typeof value === "string") return value;

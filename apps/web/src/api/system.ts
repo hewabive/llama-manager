@@ -8,7 +8,7 @@ import type {
   SystemResources,
 } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { buildQuery, request } from "./http.js";
 
 export async function listNetworkInterfaces() {
   return request<{ data: NetworkInterfacesResult }>("/api/network/interfaces");
@@ -19,16 +19,14 @@ export async function getSystemResources() {
 }
 
 export async function listFilesystemDirectory(path?: string) {
-  const params = new URLSearchParams(path ? { path } : {});
-  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const query = buildQuery({ path });
   return request<{ data: FileSystemListResult }>(
     `/api/filesystem/list${query}`,
   );
 }
 
 export async function listPathCatalog(kind?: PathCatalogKind) {
-  const params = new URLSearchParams(kind ? { kind } : {});
-  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const query = buildQuery({ kind });
   return request<{ data: PathCatalogEntry[] }>(`/api/path-catalog${query}`);
 }
 
