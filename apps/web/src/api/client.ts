@@ -3,6 +3,7 @@ export * from "./sse.js";
 export * from "./auth.js";
 export * from "./system.js";
 export * from "./resources.js";
+export * from "./nodes.js";
 export * from "./proxy.js";
 export * from "./llama-args.js";
 export * from "./build.js";

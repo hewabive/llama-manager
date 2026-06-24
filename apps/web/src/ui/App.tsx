@@ -44,6 +44,7 @@ import { DiagnosticsView } from "./views/DiagnosticsView";
 import { InstancesView } from "./views/InstancesView";
 import { LoginView } from "./views/LoginView";
 import { ModelsView } from "./views/ModelsView";
+import { NodesView } from "./views/NodesView";
 import { PathCatalogView } from "./views/PathCatalogView";
 import { PresetsView } from "./views/PresetsView";
 import { ProcessesView } from "./views/ProcessesView";
@@ -329,6 +330,8 @@ export function App() {
               onLaunchStopped={clearLaunchMonitor}
             />
           )}
+
+          {canUseAdmin && route === "nodes" && <NodesView />}
 
           {canUseAdmin && route === "build" && <BuildView />}
 
