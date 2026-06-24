@@ -1482,6 +1482,41 @@ export const InstanceBulkActionResultSchema = z.object({
   items: z.array(InstanceBulkActionItemSchema),
 });
 
+export const FleetNodeIdSchema = z.string().regex(/^[A-Za-z0-9._-]+$/);
+export const FleetNodeNameSchema = z.string().trim().min(1).max(80);
+export const FleetNodeBaseUrlSchema = z.string().trim().url();
+
+export const FleetNodeSchema = z.object({
+  id: FleetNodeIdSchema,
+  name: FleetNodeNameSchema,
+  baseUrl: FleetNodeBaseUrlSchema,
+  enabled: z.boolean().default(true),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type FleetNode = z.infer<typeof FleetNodeSchema>;
+
+export const FleetNodeCreateSchema = z.object({
+  name: FleetNodeNameSchema,
+  baseUrl: FleetNodeBaseUrlSchema,
+  enabled: z.boolean().default(true),
+  token: z.string().min(1).optional(),
+});
+export type FleetNodeCreate = z.infer<typeof FleetNodeCreateSchema>;
+
+export const FleetNodeUpdateSchema = z.object({
+  name: FleetNodeNameSchema.optional(),
+  baseUrl: FleetNodeBaseUrlSchema.optional(),
+  enabled: z.boolean().optional(),
+  token: z.string().optional(),
+});
+export type FleetNodeUpdate = z.infer<typeof FleetNodeUpdateSchema>;
+
+export const FleetNodeViewSchema = FleetNodeSchema.extend({
+  hasToken: z.boolean(),
+});
+export type FleetNodeView = z.infer<typeof FleetNodeViewSchema>;
+
 export const BuildProfileSchema = z.enum(["server", "full"]);
 export const CmakeBooleanModeSchema = z.enum(["default", "on", "off"]);
 

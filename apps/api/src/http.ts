@@ -21,6 +21,7 @@ import { registerLabRoutes } from "./routes/lab.routes.js";
 import { registerLlamaSourceRoutes } from "./routes/llama-source.routes.js";
 import { registerMemoryEstimateRoutes } from "./routes/memory-estimate.routes.js";
 import { registerModelRoutes } from "./routes/models.routes.js";
+import { registerNodeRoutes } from "./routes/nodes.routes.js";
 import { registerPathCatalogRoutes } from "./routes/path-catalog.routes.js";
 import { registerPresetRoutes } from "./routes/presets.routes.js";
 import { registerProxyRoutes } from "./routes/proxy.routes.js";
@@ -51,6 +52,7 @@ registerAnthropicProxyRoutes(app, "/proxy/anthropic/v1");
 registerAnthropicProxyRoutes(app, "/v1");
 
 registerPathCatalogRoutes(app);
+registerNodeRoutes(app);
 registerResourceRoutes(app);
 registerMemoryEstimateRoutes(app);
 registerProxyRoutes(app);

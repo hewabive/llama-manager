@@ -113,8 +113,24 @@ function verifySessionToken(token: string | undefined) {
   }
 }
 
+function bearerToken(c: Context): string | undefined {
+  const header = c.req.header("authorization");
+  if (!header) {
+    return undefined;
+  }
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match?.[1];
+}
+
 export function isRequestAuthenticated(c: Context) {
-  return verifySessionToken(getCookie(c, cookieName));
+  if (verifySessionToken(getCookie(c, cookieName))) {
+    return true;
+  }
+  if (!isAuthEnabled()) {
+    return false;
+  }
+  const token = bearerToken(c);
+  return token !== undefined && verifyAdminPassword(token);
 }
 
 export function setSessionCookie(c: Context) {
