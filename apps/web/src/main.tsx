@@ -9,6 +9,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { App } from "./ui/App";
+import { NodeProvider } from "./ui/NodeContext";
 
 const queryClient = new QueryClient();
 
@@ -61,12 +62,14 @@ class RootErrorBoundary extends React.Component<
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={theme} defaultColorScheme="dark">
-        <RootErrorBoundary>
-          <Notifications position="top-right" />
-          <App />
-        </RootErrorBoundary>
-      </MantineProvider>
+      <NodeProvider>
+        <MantineProvider theme={theme} defaultColorScheme="dark">
+          <RootErrorBoundary>
+            <Notifications position="top-right" />
+            <App />
+          </RootErrorBoundary>
+        </MantineProvider>
+      </NodeProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

@@ -6,10 +6,10 @@ import type {
   PublicStatus,
 } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { nodeRequest, request } from "./http.js";
 
 export async function listInstances() {
-  return request<{ data: Instance[] }>("/api/instances");
+  return nodeRequest<{ data: Instance[] }>("/api/instances");
 }
 
 export async function getPublicStatus() {
@@ -34,7 +34,7 @@ export async function logoutAdmin() {
 }
 
 export async function listInstanceHealthSummaries() {
-  return request<{ data: InstanceHealthSummary[] }>(
+  return nodeRequest<{ data: InstanceHealthSummary[] }>(
     "/api/instances/health-summary",
   );
 }

@@ -10,7 +10,7 @@ import type {
   RuntimeState,
 } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { nodeRequest as request } from "./http.js";
 
 export async function createInstance(input: InstanceCreate) {
   return request<{ data: Instance }>("/api/instances", {

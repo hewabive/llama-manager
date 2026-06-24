@@ -27,6 +27,7 @@ import {
   logoutAdmin,
 } from "../api/client";
 import { InstanceFormModal } from "./components/InstanceFormModal";
+import { NodeSwitcher } from "./components/NodeSwitcher";
 import {
   activeLeaf,
   isLeafActive,
@@ -209,6 +210,7 @@ export function App() {
             <Badge variant="light">local</Badge>
           </Group>
           <Group className="app-header__actions" gap="xs">
+            {canUseAdmin && <NodeSwitcher />}
             <Tooltip
               label={
                 colorScheme === "dark" ? "Switch to light" : "Switch to dark"

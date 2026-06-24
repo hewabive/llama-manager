@@ -1,7 +1,7 @@
 import type { InstanceLogSummary, LogTail } from "@llama-manager/core";
 
-import { apiBase } from "./base.js";
-import { request } from "./http.js";
+import { activeNodeScopedPath, apiBase } from "./base.js";
+import { nodeRequest as request } from "./http.js";
 
 export async function getInstanceLogs(
   id: string,
@@ -20,5 +20,5 @@ export async function getInstanceStatusSummary(id: string) {
 }
 
 export function instanceEventsUrl(id: string) {
-  return `${apiBase}/api/instances/${id}/events`;
+  return `${apiBase}${activeNodeScopedPath(`/api/instances/${id}/events`)}`;
 }

@@ -8,7 +8,7 @@ import type {
   LlamaSourceStatus,
 } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { nodeRequest as request } from "./http.js";
 
 export async function getBuildSettings() {
   return request<{ data: BuildSettings }>("/api/build/settings");

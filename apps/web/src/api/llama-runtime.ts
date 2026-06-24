@@ -13,8 +13,8 @@ import type {
   LlamaProbe,
 } from "@llama-manager/core";
 
-import { apiBase } from "./base.js";
-import { formatApiErrorValue, request } from "./http.js";
+import { activeNodeScopedPath, apiBase } from "./base.js";
+import { formatApiErrorValue, nodeRequest as request } from "./http.js";
 import { readApiProbeStream, type ApiProbeStreamCallbacks } from "./sse.js";
 
 export async function getLlamaProbe(id: string) {
@@ -63,7 +63,7 @@ export async function streamInstanceApiProbe(
   signal?: AbortSignal,
 ) {
   const response = await fetch(
-    `${apiBase}/api/instances/${id}/llama/probe/stream`,
+    `${apiBase}${activeNodeScopedPath(`/api/instances/${id}/llama/probe/stream`)}`,
     {
       method: "POST",
       credentials: "include",
@@ -94,7 +94,9 @@ export async function streamApiLabProbe(
   callbacks: ApiProbeStreamCallbacks,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(`${apiBase}/api/lab/probe/stream`, {
+  const response = await fetch(
+    `${apiBase}${activeNodeScopedPath("/api/lab/probe/stream")}`,
+    {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },

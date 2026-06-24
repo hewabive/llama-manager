@@ -8,7 +8,7 @@ import type {
   SystemResources,
 } from "@llama-manager/core";
 
-import { buildQuery, request } from "./http.js";
+import { buildQuery, nodeRequest as request } from "./http.js";
 
 export async function listNetworkInterfaces() {
   return request<{ data: NetworkInterfacesResult }>("/api/network/interfaces");

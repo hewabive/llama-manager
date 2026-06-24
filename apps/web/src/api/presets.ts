@@ -5,8 +5,8 @@ import type {
   ModelPresetWrite,
 } from "@llama-manager/core";
 
-import { apiBase } from "./base.js";
-import { request } from "./http.js";
+import { activeNodeScopedPath, apiBase } from "./base.js";
+import { nodeRequest as request } from "./http.js";
 
 export async function listPresets() {
   return request<{ data: ModelPresetSummary[] }>("/api/presets");
@@ -34,7 +34,7 @@ export async function savePreset(
   input: ModelPresetWrite,
 ): Promise<SavePresetResult> {
   const response = await fetch(
-    `${apiBase}/api/presets/${encodeURIComponent(name)}`,
+    `${apiBase}${activeNodeScopedPath(`/api/presets/${encodeURIComponent(name)}`)}`,
     {
       method: "PUT",
       headers: { "content-type": "application/json" },

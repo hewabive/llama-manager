@@ -1,6 +1,6 @@
 import type { ModelScanSettings, ModelScanResult } from "@llama-manager/core";
 
-import { buildQuery, request } from "./http.js";
+import { buildQuery, nodeRequest as request } from "./http.js";
 
 export async function scanModels(input?: {
   refresh?: boolean;

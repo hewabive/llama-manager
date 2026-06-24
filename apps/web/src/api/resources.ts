@@ -8,7 +8,7 @@ import type {
 } from "@llama-manager/core";
 
 import { nodeScopedPath } from "./base.js";
-import { request } from "./http.js";
+import { nodeRequest, request } from "./http.js";
 
 export type ResourcesSnapshot = {
   pools: MemoryPool[];
@@ -17,7 +17,7 @@ export type ResourcesSnapshot = {
 };
 
 export async function getResources() {
-  return request<{ data: ResourcesSnapshot }>("/api/resources");
+  return nodeRequest<{ data: ResourcesSnapshot }>("/api/resources");
 }
 
 export async function updateMemoryPool(
@@ -35,7 +35,7 @@ export async function updateMemoryPool(
 }
 
 export async function estimateInstanceMemory(input: MemoryEstimateRequest) {
-  return request<{ data: { modelPath: string; estimate: MemoryEstimate } }>(
+  return nodeRequest<{ data: { modelPath: string; estimate: MemoryEstimate } }>(
     "/api/memory-estimate",
     {
       method: "POST",

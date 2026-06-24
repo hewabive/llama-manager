@@ -1,4 +1,4 @@
-import { apiBase } from "./base.js";
+import { activeNodeScopedPath, apiBase } from "./base.js";
 
 export function buildQuery(
   params: Record<string, string | undefined>,
@@ -59,6 +59,13 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+export async function nodeRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  return request<T>(activeNodeScopedPath(path), init);
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
