@@ -96,8 +96,12 @@ export function InstanceFormMemorySection({
           );
         })}
 
-        <Divider my="xs" />
-        <InstanceFormMemoryEstimate fm={fm} />
+        {!fm.isWorker && (
+          <>
+            <Divider my="xs" />
+            <InstanceFormMemoryEstimate fm={fm} />
+          </>
+        )}
       </Stack>
     </Paper>
   );

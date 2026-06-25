@@ -5,6 +5,7 @@ import {
   JsonInput,
   Modal,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Switch,
   Text,
@@ -54,6 +55,16 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
     >
       <form onSubmit={fm.form.onSubmit(fm.submit)}>
         <Stack gap="sm">
+          <SegmentedControl
+            fullWidth
+            value={fm.kind}
+            onChange={(value) => fm.setKind(value as typeof fm.kind)}
+            disabled={fm.isEdit}
+            data={[
+              { label: "llama-server", value: "llama-server" },
+              { label: "rpc-worker", value: "rpc-worker" },
+            ]}
+          />
           <TextInput
             label="Name"
             required
@@ -82,8 +93,12 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
                 or build llama.cpp first.
               </Text>
             )}
-          <InstanceFormModelSection fm={fm} />
-          <InstanceFormSpecSection fm={fm} />
+          {!fm.isWorker && (
+            <>
+              <InstanceFormModelSection fm={fm} />
+              <InstanceFormSpecSection fm={fm} />
+            </>
+          )}
           <InstanceFormArgumentsSection fm={fm} />
           <InstanceFormPreflightSection fm={fm} />
           <InstanceFormCudaSection fm={fm} />

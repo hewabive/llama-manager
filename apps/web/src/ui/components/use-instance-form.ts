@@ -2,6 +2,7 @@ import {
   InstanceArgsSchema,
   type Instance,
   type InstanceCreate,
+  type InstanceKind,
   type InstancePreflightPreview,
   type InstanceUpdate,
   type LlamaArgumentOption,
@@ -105,6 +106,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
     null,
   );
+  const [kind, setKind] = useState<InstanceKind>("llama-server");
   const [launchMode, setLaunchMode] = useState<LaunchMode>("model");
   const [remoteSource, setRemoteSource] = useState<RemoteSource>("hf");
   const [specEnabled, setSpecEnabled] = useState(false);
@@ -467,6 +469,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         name: props.instance.name,
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
+      setKind(props.instance.kind);
       setSelectedBinaryPathRefId(props.instance.binaryPathRefId);
       setSelectedModelPath(modelPath);
       setSelectedPresetName(presetName);
@@ -502,6 +505,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         name: modelPath ? instanceNameFromModelPath(modelPath) : "local-server",
         envJson: JSON.stringify({}, null, 2),
       });
+      setKind("llama-server");
       setSelectedBinaryPathRefId(null);
       setSelectedModelPath(modelPath);
       setSelectedPresetName(null);
@@ -576,7 +580,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       }
       const input: InstancePreflightPreview = {
         name: form.values.name,
-        kind: "llama-server",
+        kind,
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env,
@@ -590,6 +594,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     argRows,
     form.values.envJson,
     form.values.name,
+    kind,
     knownArgByName,
     memoryRows,
     props.instance?.name,
@@ -1083,6 +1088,31 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       if (!selectedBinaryPathRefId) {
         throw new Error("Select a binary from the catalog");
       }
+      if (kind === "rpc-worker") {
+        const workerArgs = InstanceArgsSchema.parse(
+          rowsToArgsWithCatalog(argRows, knownArgByName),
+        );
+        const workerInput: InstanceCreate = {
+          name: values.name,
+          kind: "rpc-worker",
+          binaryPathRefId: selectedBinaryPathRefId,
+          args: workerArgs,
+          env: parseEnvJson(values.envJson),
+          memory: memoryDrawsFromRows(memoryRows),
+          ...(numaMode === "bind" && numaBindNode !== null
+            ? { numa: { mode: "bind" as const, node: numaBindNode } }
+            : numaMode === "interleave"
+              ? {
+                  numa: {
+                    mode: "interleave" as const,
+                    nodes: numaInterleaveNodes,
+                  },
+                }
+              : {}),
+        };
+        mutation.mutate(workerInput);
+        return;
+      }
       if (launchMode === "router" && !selectedPresetName) {
         throw new Error("Router preset is not selected");
       }
@@ -1142,13 +1172,15 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     !props.instance &&
     initializedFormKey === null &&
     argumentDefaultsQuery.isLoading;
-  const modalTitle = isEdit
-    ? "Edit llama-server instance"
-    : "New llama-server instance";
+  const kindLabel = kind === "rpc-worker" ? "rpc-worker" : "llama-server";
+  const modalTitle = `${isEdit ? "Edit" : "New"} ${kindLabel} instance`;
 
   return {
     form,
     isEdit,
+    kind,
+    setKind,
+    isWorker: kind === "rpc-worker",
     waitingForInitialDefaults,
     modalTitle,
     argRows,
