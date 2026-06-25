@@ -2,7 +2,11 @@ import type { Instance } from "@llama-manager/core";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { validateRpcWorkerReadiness } from "./rpc-preflight.js";
+import {
+  fabricIssue,
+  RPC_SLOW_FABRIC_RTT_MS,
+  validateRpcWorkerReadiness,
+} from "./rpc-preflight.js";
 
 function instance(overrides: Partial<Instance>): Instance {
   return {
@@ -66,6 +70,23 @@ test("passes when the referenced worker is running and free", async () => {
     ),
     [],
   );
+});
+
+test("fabricIssue warns about an unreachable running worker", () => {
+  const issue = fabricIssue("w1", null);
+  assert.equal(issue?.level, "warning");
+  assert.match(issue!.message, /did not answer a probe/);
+});
+
+test("fabricIssue warns about a slow fabric above the threshold", () => {
+  const issue = fabricIssue("w1", RPC_SLOW_FABRIC_RTT_MS + 75);
+  assert.equal(issue?.level, "warning");
+  assert.match(issue!.message, /80 ms away/);
+  assert.match(issue!.message, /fast LAN/);
+});
+
+test("fabricIssue is silent for a fast fabric", () => {
+  assert.equal(fabricIssue("w1", 1), null);
 });
 
 test("errors when the worker is already held by another running orchestrator", async () => {
