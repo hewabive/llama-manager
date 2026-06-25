@@ -72,10 +72,8 @@ test("passes when the referenced worker is running and free", async () => {
   );
 });
 
-test("fabricIssue warns about an unreachable running worker", () => {
-  const issue = fabricIssue("w1", null);
-  assert.equal(issue?.level, "warning");
-  assert.match(issue!.message, /did not answer a probe/);
+test("fabricIssue is silent when the probe could not be measured", () => {
+  assert.equal(fabricIssue("w1", null), null);
 });
 
 test("fabricIssue warns about a slow fabric above the threshold", () => {

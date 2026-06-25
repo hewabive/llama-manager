@@ -66,11 +66,7 @@ export function fabricIssue(
   rttMs: number | null,
 ): ProcessPreflightIssue | null {
   if (rttMs === null) {
-    return {
-      level: "warning",
-      field: "rpcWorkers",
-      message: `rpc worker "${instanceName}" is running on its node but did not answer a probe from this node; the orchestrator may hang on start — check the firewall and that the port is reachable from here.`,
-    };
+    return null;
   }
   if (rttMs > RPC_SLOW_FABRIC_RTT_MS) {
     return {
