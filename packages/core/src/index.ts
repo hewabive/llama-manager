@@ -1715,6 +1715,31 @@ export const UpdateLogTailSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const UpdateUpstreamSchema = z.object({
+  commit: z.string(),
+  shortCommit: z.string(),
+  committedAt: z.string().nullable(),
+  ref: z.string().nullable(),
+  lastCheckedAt: z.string(),
+});
+
+export const UpdateFleetNodeSchema = z.object({
+  nodeId: z.string(),
+  nodeName: z.string(),
+  self: z.boolean(),
+  baseUrl: z.string().nullable(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+  version: ManagerVersionSchema.nullable(),
+  outdated: z.boolean(),
+  behindCount: z.number().int().nullable(),
+});
+
+export const UpdateFleetSchema = z.object({
+  upstream: UpdateUpstreamSchema.nullable(),
+  nodes: z.array(UpdateFleetNodeSchema),
+});
+
 export const LlamaArgumentValueTypeSchema = z.enum([
   "flag",
   "boolean",
@@ -2512,6 +2537,9 @@ export type UpdateJobStep = z.infer<typeof UpdateJobStepSchema>;
 export type UpdateJob = z.infer<typeof UpdateJobSchema>;
 export type UpdateJobStart = z.infer<typeof UpdateJobStartSchema>;
 export type UpdateLogTail = z.infer<typeof UpdateLogTailSchema>;
+export type UpdateUpstream = z.infer<typeof UpdateUpstreamSchema>;
+export type UpdateFleetNode = z.infer<typeof UpdateFleetNodeSchema>;
+export type UpdateFleet = z.infer<typeof UpdateFleetSchema>;
 export type LlamaArgumentValueType = z.infer<
   typeof LlamaArgumentValueTypeSchema
 >;

@@ -2,6 +2,7 @@ import {
   ManagerVersionSchema,
   type ManagerRunMode,
   type ManagerVersion,
+  type UpdateUpstream,
 } from "@llama-manager/core";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -109,6 +110,34 @@ export function getManagerVersion(): ManagerVersion {
 
 export function currentCommit(): string | null {
   return isGitRepo() ? tryGit(["rev-parse", "HEAD"]) : null;
+}
+
+export function currentUpstream(): UpdateUpstream | null {
+  const check = lastCheck;
+  if (!check?.upstreamCommit) {
+    return null;
+  }
+  const commit = check.upstreamCommit;
+  return {
+    commit,
+    shortCommit: commit.slice(0, 7),
+    committedAt: tryGit(["log", "-1", "--format=%cI", commit]),
+    ref: tryGit(["rev-parse", "--abbrev-ref", "@{u}"]),
+    lastCheckedAt: check.lastCheckedAt,
+  };
+}
+
+export function commitsBehind(commit: string | null): number | null {
+  const upstream = lastCheck?.upstreamCommit;
+  if (!commit || !upstream) {
+    return null;
+  }
+  if (commit === upstream) {
+    return 0;
+  }
+  const count = tryGit(["rev-list", "--count", `${commit}..${upstream}`]);
+  const parsed = count !== null ? Number(count) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function checkForUpdate(): {

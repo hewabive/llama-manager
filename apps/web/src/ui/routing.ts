@@ -51,7 +51,7 @@ export const navSections: NavSection[] = [
         label: "Updates",
         title: "Manager Updates",
         description:
-          "Version of this node and one-click update to the latest revision",
+          "Per-node version across the fleet and one-click update to the latest revision",
       },
     ],
   },

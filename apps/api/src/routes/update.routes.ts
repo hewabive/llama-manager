@@ -1,6 +1,7 @@
 import { UpdateJobStartSchema } from "@llama-manager/core";
 import type { Hono } from "hono";
 
+import { updateFleet } from "../update/fleet.js";
 import { tailUpdateLog } from "../update/logs.js";
 import { getUpdateJob, latestUpdateJob } from "../update/repository.js";
 import { updateRunner } from "../update/runner.js";
@@ -9,6 +10,10 @@ import { checkForUpdate, getManagerVersion } from "../update/version.js";
 export function registerUpdateRoutes(app: Hono) {
   app.get("/api/version", (c) => {
     return c.json({ data: getManagerVersion() });
+  });
+
+  app.get("/api/update/fleet", async (c) => {
+    return c.json({ data: await updateFleet() });
   });
 
   app.post("/api/update/check", (c) => {

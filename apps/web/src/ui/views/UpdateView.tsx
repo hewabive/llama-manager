@@ -4,10 +4,9 @@ import {
   Button,
   Card,
   Code,
-  Divider,
+  Collapse,
   Group,
   Loader,
-  Modal,
   ScrollArea,
   Stack,
   Text,
@@ -15,26 +14,24 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import type {
-  ManagerVersion,
+  UpdateFleetNode,
   UpdateJob,
   UpdateJobStep,
 } from "@llama-manager/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  cancelUpdateJob,
+  cancelNodeUpdateJob,
   checkForUpdate,
-  getLatestUpdateJob,
-  getManagerVersion,
-  getUpdateJob,
-  getUpdateJobLogs,
-  startUpdate,
+  getNodeUpdateJob,
+  getNodeUpdateJobLogs,
+  getUpdateFleet,
+  startNodeUpdate,
 } from "../../api/client";
-import { useActiveNode } from "../NodeContext";
 import { formatLocalDateTime } from "../utils/time";
 
-function modeColor(mode: ManagerVersion["mode"]): string {
+function modeColor(mode: string): string {
   return mode === "serve" ? "teal" : mode === "dev" ? "yellow" : "gray";
 }
 
@@ -61,44 +58,214 @@ function stepColor(status: UpdateJobStep["status"]): string {
       return "blue";
     case "failed":
       return "red";
-    case "skipped":
-      return "gray";
     default:
       return "gray";
   }
 }
 
+function isEligible(node: UpdateFleetNode): boolean {
+  return Boolean(
+    node.ok && node.outdated && node.version?.canUpdate && !node.version?.dirty,
+  );
+}
+
 export function UpdateView() {
   const queryClient = useQueryClient();
-  const { activeNodeId } = useActiveNode();
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [confirmOpen, confirm] = useDisclosure(false);
+  const [activeJobs, setActiveJobs] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const autoCheckedRef = useRef(false);
 
-  const versionQuery = useQuery({
-    queryKey: ["manager-version", activeNodeId],
-    queryFn: () => getManagerVersion(),
+  const busy = Object.keys(activeJobs).length > 0;
+
+  const fleetQuery = useQuery({
+    queryKey: ["update-fleet"],
+    queryFn: () => getUpdateFleet(),
+    retry: 1,
+    refetchInterval: () => (busy ? 2500 : false),
   });
-  const version = versionQuery.data?.data;
+  const fleet = fleetQuery.data?.data;
+  const upstream = fleet?.upstream ?? null;
 
-  const latestJobQuery = useQuery({
-    queryKey: ["update-latest", activeNodeId],
-    queryFn: () => getLatestUpdateJob(),
+  const checkMutation = useMutation({
+    mutationFn: () => checkForUpdate(),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["update-fleet"] }),
   });
 
   useEffect(() => {
-    if (activeJobId) {
+    if (autoCheckedRef.current) {
       return;
     }
-    const latest = latestJobQuery.data?.data;
-    if (latest && latest.status === "running") {
-      setActiveJobId(latest.id);
+    autoCheckedRef.current = true;
+    checkMutation.mutate();
+  }, [checkMutation]);
+
+  const startOne = useCallback(async (node: UpdateFleetNode) => {
+    const result = await startNodeUpdate(
+      node.nodeId,
+      Boolean(node.version?.supervised),
+    );
+    setActiveJobs((prev) => ({ ...prev, [node.nodeId]: result.data.id }));
+  }, []);
+
+  const onJobSettled = useCallback(
+    (nodeId: string) => {
+      setActiveJobs((prev) => {
+        if (!(nodeId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[nodeId];
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: ["update-fleet"] });
+    },
+    [queryClient],
+  );
+
+  const startNode = useCallback(
+    (node: UpdateFleetNode) => {
+      setActionError(null);
+      startOne(node).catch((error) => setActionError((error as Error).message));
+    },
+    [startOne],
+  );
+
+  const eligible = (fleet?.nodes ?? []).filter(isEligible);
+
+  const startAll = useCallback(async () => {
+    setActionError(null);
+    const peers = eligible.filter((node) => !node.self);
+    const selves = eligible.filter((node) => node.self);
+    try {
+      for (const node of peers) {
+        await startOne(node);
+      }
+      for (const node of selves) {
+        await startOne(node);
+      }
+    } catch (error) {
+      setActionError((error as Error).message);
     }
-  }, [activeJobId, latestJobQuery.data]);
+  }, [eligible, startOne]);
+
+  return (
+    <Stack gap="md">
+      <Card withBorder radius="md" padding="md">
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <Stack gap={2}>
+            <Group gap="xs">
+              <Text fw={600}>Remote</Text>
+              {upstream ? (
+                <>
+                  <Text size="sm" c="dimmed">
+                    {upstream.ref ?? "upstream"}
+                  </Text>
+                  <Code>{upstream.shortCommit}</Code>
+                  {upstream.committedAt && (
+                    <Text size="sm" c="dimmed">
+                      · {formatLocalDateTime(upstream.committedAt)}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  not checked yet
+                </Text>
+              )}
+            </Group>
+            <Text size="xs" c="dimmed">
+              {upstream?.lastCheckedAt
+                ? `checked ${formatLocalDateTime(upstream.lastCheckedAt)}`
+                : checkMutation.isPending
+                  ? "checking…"
+                  : "never checked"}
+            </Text>
+          </Stack>
+          <Group gap="xs">
+            <Button
+              variant="default"
+              loading={checkMutation.isPending}
+              onClick={() => checkMutation.mutate()}
+            >
+              Check for updates
+            </Button>
+            <Button
+              color="blue"
+              disabled={eligible.length === 0}
+              onClick={() => void startAll()}
+            >
+              Update all ({eligible.length})
+            </Button>
+          </Group>
+        </Group>
+        {checkMutation.data?.fetchError && (
+          <Alert color="yellow" mt="sm" variant="light">
+            git fetch reported: {checkMutation.data.fetchError}
+          </Alert>
+        )}
+        {actionError && (
+          <Alert color="red" mt="sm" variant="light">
+            {actionError}
+          </Alert>
+        )}
+      </Card>
+
+      {fleetQuery.isLoading ? (
+        <Group justify="center" py="xl">
+          <Loader size="sm" />
+        </Group>
+      ) : (
+        <Stack gap="xs">
+          {(fleet?.nodes ?? []).map((node) => (
+            <NodeUpdateCard
+              key={node.nodeId}
+              node={node}
+              activeJobId={activeJobs[node.nodeId] ?? null}
+              onStart={startNode}
+              onSettled={onJobSettled}
+            />
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+function disabledReason(node: UpdateFleetNode): string | null {
+  if (!node.ok) {
+    return node.error ?? "unreachable";
+  }
+  if (node.version?.dirty) {
+    return "working tree is dirty";
+  }
+  if (!node.version?.canUpdate) {
+    return node.version?.updateBlockedReason ?? "update unavailable";
+  }
+  if (!node.outdated) {
+    return "already up to date";
+  }
+  return null;
+}
+
+function NodeUpdateCard({
+  node,
+  activeJobId,
+  onStart,
+  onSettled,
+}: {
+  node: UpdateFleetNode;
+  activeJobId: string | null;
+  onStart: (node: UpdateFleetNode) => void;
+  onSettled: (nodeId: string) => void;
+}) {
+  const [logsOpen, logs] = useDisclosure(false);
+  const version = node.version;
+  const supervised = Boolean(version?.supervised);
 
   const jobQuery = useQuery({
-    queryKey: ["update-job", activeNodeId, activeJobId],
-    queryFn: () => getUpdateJob(activeJobId!),
+    queryKey: ["update-job", node.nodeId, activeJobId],
+    queryFn: () => getNodeUpdateJob(node.nodeId, activeJobId!),
     enabled: Boolean(activeJobId),
     retry: 1,
     refetchInterval: (query) =>
@@ -112,321 +279,183 @@ export function UpdateView() {
     job.status === "running" &&
     (job.currentStep === "restart" || jobQuery.isError),
   );
-  const restartApplied = Boolean(
-    isRestarting &&
-    version &&
-    version.commit &&
-    job?.fromCommit &&
+  const applied = Boolean(
+    job &&
+    job.fromCommit &&
+    version?.commit &&
     version.commit !== job.fromCommit,
   );
-
-  const logsQuery = useQuery({
-    queryKey: ["update-logs", activeNodeId, activeJobId],
-    queryFn: () => getUpdateJobLogs(activeJobId!),
-    enabled: Boolean(activeJobId),
-    retry: 1,
-    refetchInterval: () =>
-      job?.status === "running" && !isRestarting ? 1500 : false,
-  });
+  const settled =
+    job !== null &&
+    (applied ||
+      (job.status === "succeeded" && !job.willRestart) ||
+      job.status === "failed" ||
+      job.status === "canceled");
 
   useEffect(() => {
-    if (!isRestarting || restartApplied) {
-      return;
+    if (activeJobId && settled) {
+      onSettled(node.nodeId);
     }
-    const timer = setInterval(() => {
-      void queryClient.invalidateQueries({
-        queryKey: ["manager-version", activeNodeId],
-      });
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [isRestarting, restartApplied, activeNodeId, queryClient]);
+  }, [activeJobId, settled, node.nodeId, onSettled]);
 
-  const checkMutation = useMutation({
-    mutationFn: () => checkForUpdate(),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["manager-version", activeNodeId],
-      });
-    },
-  });
-
-  const startMutation = useMutation({
-    mutationFn: (restart: boolean) => startUpdate({ restart }),
-    onSuccess: (result) => {
-      setActionError(null);
-      setActiveJobId(result.data.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["update-latest", activeNodeId],
-      });
-    },
-    onError: (error) => setActionError((error as Error).message),
+  const logsQuery = useQuery({
+    queryKey: ["update-logs", node.nodeId, activeJobId],
+    queryFn: () => getNodeUpdateJobLogs(node.nodeId, activeJobId!),
+    enabled: Boolean(activeJobId) && logsOpen,
+    retry: 1,
+    refetchInterval: () =>
+      logsOpen && job?.status === "running" && !isRestarting ? 1500 : false,
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => cancelUpdateJob(id),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({
-        queryKey: ["update-job", activeNodeId, activeJobId],
-      }),
+    mutationFn: () => cancelNodeUpdateJob(node.nodeId, activeJobId!),
   });
 
-  function runUpdate() {
-    confirm.close();
-    startMutation.mutate(Boolean(version?.supervised));
-  }
-
-  const supervised = Boolean(version?.supervised);
-  const updateLabel = supervised
-    ? "Update & restart"
-    : "Update (no auto-restart)";
+  const reason = disabledReason(node);
+  const updating = Boolean(activeJobId) && !settled;
 
   return (
-    <Stack gap="md">
-      <Card withBorder radius="md" padding="lg">
-        <Group justify="space-between" align="flex-start">
-          <Stack gap={4}>
-            <Text fw={600}>This node</Text>
-            {versionQuery.isLoading ? (
-              <Loader size="sm" />
-            ) : version ? (
-              <Group gap="xs">
-                <Code>{version.shortCommit ?? "unknown"}</Code>
-                {version.branch && (
-                  <Text size="sm" c="dimmed">
-                    {version.branch}
-                  </Text>
-                )}
-                {version.committedAt && (
-                  <Text size="sm" c="dimmed">
-                    · {formatLocalDateTime(version.committedAt)}
-                  </Text>
-                )}
-              </Group>
-            ) : (
-              <Text c="red" size="sm">
-                version unavailable
-              </Text>
-            )}
-          </Stack>
-          <Group gap="xs">
-            {version && (
-              <Badge color={modeColor(version.mode)} variant="light">
-                {version.mode}
+    <Card withBorder radius="md" padding="sm">
+      <Group justify="space-between" wrap="wrap" gap="xs">
+        <Group gap="xs">
+          <Text fw={600}>{node.nodeName}</Text>
+          {node.self && (
+            <Badge size="sm" variant="light" color="gray">
+              self
+            </Badge>
+          )}
+          {version && (
+            <Badge size="sm" variant="light" color={modeColor(version.mode)}>
+              {version.mode}
+            </Badge>
+          )}
+          {version && !supervised && version.mode === "serve" && (
+            <Tooltip label="no supervisor; update will not auto-restart">
+              <Badge size="sm" variant="outline" color="gray">
+                unsupervised
               </Badge>
-            )}
-            {version && (
-              <Tooltip
-                label={
-                  version.supervised
-                    ? "running under systemd; can self-restart"
-                    : "no supervisor detected; update will not auto-restart"
-                }
-              >
-                <Badge
-                  color={version.supervised ? "teal" : "gray"}
-                  variant="outline"
-                >
-                  {version.supervised ? "supervised" : "unsupervised"}
-                </Badge>
-              </Tooltip>
-            )}
-            {version?.dirty && (
-              <Badge color="red" variant="light">
-                dirty tree
-              </Badge>
-            )}
-          </Group>
-        </Group>
-
-        <Divider my="md" />
-
-        <Group justify="space-between" align="center">
-          <Stack gap={2}>
-            {version?.updateAvailable ? (
-              <Text size="sm" c="orange" fw={600}>
-                {version.behindCount} commit
-                {version.behindCount === 1 ? "" : "s"} behind upstream
-              </Text>
-            ) : version?.behindCount === 0 ? (
-              <Text size="sm" c="teal">
-                up to date
-              </Text>
-            ) : (
-              <Text size="sm" c="dimmed">
-                update status not checked
-              </Text>
-            )}
-            <Text size="xs" c="dimmed">
-              {version?.lastCheckedAt
-                ? `checked ${formatLocalDateTime(version.lastCheckedAt)}`
-                : "never checked"}
-            </Text>
-          </Stack>
-          <Group gap="xs">
-            <Button
-              variant="default"
-              loading={checkMutation.isPending}
-              onClick={() => checkMutation.mutate()}
-            >
-              Check for updates
-            </Button>
-            <Tooltip
-              label={version?.updateBlockedReason ?? ""}
-              disabled={!version?.updateBlockedReason}
-              multiline
-              maw={360}
-            >
-              <Button
-                color={supervised ? "blue" : "yellow"}
-                disabled={
-                  !version?.canUpdate ||
-                  version?.dirty ||
-                  job?.status === "running"
-                }
-                loading={startMutation.isPending}
-                onClick={confirm.open}
-              >
-                {updateLabel}
-              </Button>
             </Tooltip>
-          </Group>
+          )}
+          {version?.dirty && (
+            <Badge size="sm" variant="light" color="red">
+              dirty
+            </Badge>
+          )}
         </Group>
 
-        {version?.updateBlockedReason && (
-          <Alert color="gray" mt="md" variant="light">
-            {version.updateBlockedReason}
-          </Alert>
-        )}
-        {version?.canUpdate && !supervised && (
-          <Alert color="yellow" mt="md" variant="light">
-            No supervisor detected. The update will pull, install and build, but
-            will not restart automatically — restart the manager afterwards to
-            apply. Install the systemd unit (scripts/install-service.sh) for
-            one-click self-restart.
-          </Alert>
-        )}
-        {version?.dirty && (
-          <Alert color="red" mt="md" variant="light">
-            The working tree has uncommitted changes; git pull --ff-only would
-            fail. Commit or discard them before updating.
-          </Alert>
-        )}
-        {checkMutation.data?.fetchError && (
-          <Alert color="yellow" mt="md" variant="light">
-            git fetch reported: {checkMutation.data.fetchError}
-          </Alert>
-        )}
-        {actionError && (
-          <Alert color="red" mt="md" variant="light">
-            {actionError}
-          </Alert>
-        )}
-      </Card>
-
-      {job && (
-        <Card withBorder radius="md" padding="lg">
-          <Group justify="space-between" mb="sm">
-            <Group gap="xs">
-              <Text fw={600}>Update job</Text>
-              <Badge color={jobColor(job.status)} variant="light">
-                {job.status}
-              </Badge>
-              {isRestarting && !restartApplied && (
-                <Group gap={6}>
-                  <Loader size="xs" />
-                  <Text size="sm" c="blue">
-                    restarting…
-                  </Text>
-                </Group>
+        <Group gap="sm">
+          {!node.ok ? (
+            <Tooltip label={node.error ?? "unreachable"} multiline maw={320}>
+              <Text size="sm" c="red">
+                unreachable
+              </Text>
+            </Tooltip>
+          ) : node.outdated ? (
+            <Group gap={6}>
+              <Code>{version?.shortCommit ?? "?"}</Code>
+              {version?.committedAt && (
+                <Text size="xs" c="dimmed">
+                  {formatLocalDateTime(version.committedAt)}
+                </Text>
               )}
+              <Text size="sm" c="orange" fw={600}>
+                {node.behindCount === null
+                  ? "behind"
+                  : `behind ${node.behindCount}`}
+              </Text>
             </Group>
-            {job.status === "running" && !isRestarting && (
+          ) : (
+            <Text size="sm" c="teal">
+              up to date
+            </Text>
+          )}
+
+          {updating ? (
+            <Badge color={jobColor(job?.status ?? "running")} variant="light">
+              {isRestarting ? "restarting…" : (job?.currentStep ?? "starting…")}
+            </Badge>
+          ) : (
+            <Tooltip
+              label={reason ?? ""}
+              disabled={!reason}
+              multiline
+              maw={320}
+            >
               <Button
                 size="xs"
-                variant="subtle"
-                color="red"
-                loading={cancelMutation.isPending}
-                onClick={() => cancelMutation.mutate(job.id)}
+                color={supervised ? "blue" : "yellow"}
+                disabled={reason !== null}
+                onClick={() => onStart(node)}
               >
-                Cancel
+                {supervised ? "Update & restart" : "Update"}
               </Button>
-            )}
-          </Group>
+            </Tooltip>
+          )}
+        </Group>
+      </Group>
 
-          {restartApplied && (
-            <Alert color="teal" mb="sm" variant="light">
-              Updated to {version?.shortCommit}. The node is back up on the new
-              revision.
-            </Alert>
+      {activeJobId && job && (
+        <Stack gap={6} mt="sm">
+          {applied && (
+            <Text size="sm" c="teal">
+              updated to {version?.shortCommit}
+            </Text>
           )}
           {job.status === "succeeded" && !job.willRestart && (
-            <Alert color="teal" mb="sm" variant="light">
-              Update built successfully. Restart the manager to apply the new
-              code.
-            </Alert>
+            <Text size="sm" c="teal">
+              built; restart the node to apply
+            </Text>
           )}
           {job.error && (
-            <Alert color="red" mb="sm" variant="light">
+            <Text size="sm" c="red">
               {job.error}
-            </Alert>
+            </Text>
           )}
-
-          <Group gap={6} mb="sm">
+          <Group gap={6}>
             {job.steps.map((step) => (
               <Badge
                 key={step.name}
-                color={stepColor(step.status)}
+                size="sm"
                 variant="outline"
+                color={stepColor(step.status)}
               >
                 {step.name}
               </Badge>
             ))}
-          </Group>
-
-          <Text size="xs" c="dimmed" mb={4}>
-            {job.logPath ?? "no log file"}
-          </Text>
-          <ScrollArea h={280} type="auto" offsetScrollbars>
-            <Stack gap={2}>
-              {logsQuery.data?.data.lines.map((line, index) => (
-                <Code key={`${job.id}-${index}`} block>
-                  {line}
-                </Code>
-              ))}
-              {(!logsQuery.data || logsQuery.data.data.lines.length === 0) && (
-                <Text c="dimmed" size="sm" ta="center" py="lg">
-                  no log output yet
-                </Text>
-              )}
-            </Stack>
-          </ScrollArea>
-        </Card>
-      )}
-
-      <Modal
-        opened={confirmOpen}
-        onClose={confirm.close}
-        title="Update this node"
-        centered
-      >
-        <Stack gap="sm">
-          <Text size="sm">
-            This will run <Code>git pull --ff-only</Code>,{" "}
-            <Code>pnpm install</Code> and <Code>pnpm build</Code> on this node
-            {supervised
-              ? ", then restart the manager. Managed llama-server instances keep running across the restart."
-              : ". The manager will not restart automatically."}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={confirm.close}>
-              Cancel
+            <Button size="compact-xs" variant="subtle" onClick={logs.toggle}>
+              {logsOpen ? "hide log" : "log"}
             </Button>
-            <Button color={supervised ? "blue" : "yellow"} onClick={runUpdate}>
-              {updateLabel}
-            </Button>
+            {job.status === "running" && !isRestarting && (
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                color="red"
+                loading={cancelMutation.isPending}
+                onClick={() => cancelMutation.mutate()}
+              >
+                cancel
+              </Button>
+            )}
           </Group>
+          <Collapse in={logsOpen}>
+            <ScrollArea h={220} type="auto" offsetScrollbars>
+              <Stack gap={2}>
+                {logsQuery.data?.data.lines.map((line, index) => (
+                  <Code key={`${node.nodeId}-${index}`} block>
+                    {line}
+                  </Code>
+                ))}
+                {(!logsQuery.data ||
+                  logsQuery.data.data.lines.length === 0) && (
+                  <Text c="dimmed" size="sm" ta="center" py="md">
+                    no log output yet
+                  </Text>
+                )}
+              </Stack>
+            </ScrollArea>
+          </Collapse>
         </Stack>
-      </Modal>
-    </Stack>
+      )}
+    </Card>
   );
 }

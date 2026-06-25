@@ -69,19 +69,33 @@ Two unit settings are load-bearing:
 
 ## API
 
-All routes are node-scoped, so the entry node can drive a peer through the
-reverse proxy (`/api/nodes/<id>/update`) — the basis for fleet rollout (F2).
+The per-job routes are node-scoped, so the entry node drives a peer through the
+reverse proxy (`/api/nodes/<id>/update`). The `/fleet` aggregation runs on the
+entry node only.
 
 - `GET  /api/version` — version + run mode + cached update-availability (cheap, offline-safe).
-- `POST /api/update/check` — `git fetch` then report commits behind upstream.
+- `POST /api/update/check` — `git fetch` then report commits behind upstream. **Only the entry node fetches.**
+- `GET  /api/update/fleet` — aggregate: cached `upstream` + every node's `/api/version`, with per-node `outdated`/`behindCount` computed on the entry node.
 - `POST /api/update` — start an update job (`{ restart }`).
 - `GET  /api/update/latest`, `GET /api/update/jobs/:id`, `…/logs`, `POST …/cancel`.
 
-## Fleet rollout (later)
+## Fleet view
 
-Phase 2 fans `POST /api/update` out to every peer **with the entry node last**
-(restarting it severs the UI and the reverse proxy to peers); the UI polls each
-node's `/api/version` until it returns on the new commit. Peers in `dev` mode
-report `canUpdate: false` and are skipped rather than failing. This rides on the
-F1 remote-control layer; the per-node endpoint here is already
-reverse-proxy-reachable.
+The Manager Updates page is a **Network page** (ignores the node switcher). It
+shows one card per node — self plus every registered peer — and the latest
+remote commit at the top.
+
+- The remote state is fetched **once, on the entry node** (`/api/update/check`,
+  run automatically on page load, then on demand). Peers never fetch; their
+  `/api/version` just reports their own HEAD, and the entry node compares each
+  HEAD to the cached upstream to derive `outdated`/`behindCount`.
+- A card shows its commit + date only when the node is **behind**; an up-to-date
+  node shows just a marker. Per-card **Update** is enabled only when the node is
+  `outdated && canUpdate && !dirty`.
+- **Update all** updates every eligible node **peers first, entry node last**
+  (restarting the entry node severs the UI and the reverse proxy to peers); the
+  fleet view then polls until each node returns on the new commit. Dev / dirty /
+  unreachable nodes are shown as such and skipped.
+
+This rides on the F0 reverse-proxy transport; deeper remote control (logs,
+lifecycle parity) is the F1 federation layer.

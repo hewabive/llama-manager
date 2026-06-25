@@ -1,14 +1,15 @@
 import type {
   ManagerVersion,
+  UpdateFleet,
   UpdateJob,
-  UpdateJobStart,
   UpdateLogTail,
 } from "@llama-manager/core";
 
-import { nodeRequest as request } from "./http.js";
+import { nodeScopedPath } from "./base.js";
+import { request } from "./http.js";
 
-export async function getManagerVersion() {
-  return request<{ data: ManagerVersion }>("/api/version");
+export async function getUpdateFleet() {
+  return request<{ data: UpdateFleet }>("/api/update/fleet");
 }
 
 export async function checkForUpdate() {
@@ -18,29 +19,38 @@ export async function checkForUpdate() {
   );
 }
 
-export async function getLatestUpdateJob() {
-  return request<{ data: UpdateJob | null }>("/api/update/latest");
-}
-
-export async function startUpdate(input: UpdateJobStart) {
-  return request<{ data: UpdateJob }>("/api/update", {
+export async function startNodeUpdate(nodeId: string, restart: boolean) {
+  return request<{ data: UpdateJob }>(nodeScopedPath(nodeId, "/api/update"), {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ restart }),
   });
 }
 
-export async function getUpdateJob(id: string) {
-  return request<{ data: UpdateJob }>(`/api/update/jobs/${id}`);
+export async function getNodeLatestUpdateJob(nodeId: string) {
+  return request<{ data: UpdateJob | null }>(
+    nodeScopedPath(nodeId, "/api/update/latest"),
+  );
 }
 
-export async function cancelUpdateJob(id: string) {
-  return request<{ data: UpdateJob }>(`/api/update/jobs/${id}/cancel`, {
-    method: "POST",
-  });
+export async function getNodeUpdateJob(nodeId: string, id: string) {
+  return request<{ data: UpdateJob }>(
+    nodeScopedPath(nodeId, `/api/update/jobs/${id}`),
+  );
 }
 
-export async function getUpdateJobLogs(id: string, lines = 300) {
+export async function cancelNodeUpdateJob(nodeId: string, id: string) {
+  return request<{ data: UpdateJob }>(
+    nodeScopedPath(nodeId, `/api/update/jobs/${id}/cancel`),
+    { method: "POST" },
+  );
+}
+
+export async function getNodeUpdateJobLogs(
+  nodeId: string,
+  id: string,
+  lines = 300,
+) {
   return request<{ data: UpdateLogTail }>(
-    `/api/update/jobs/${id}/logs?lines=${lines}`,
+    nodeScopedPath(nodeId, `/api/update/jobs/${id}/logs?lines=${lines}`),
   );
 }
