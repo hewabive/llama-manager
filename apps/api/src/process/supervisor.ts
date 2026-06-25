@@ -8,7 +8,7 @@ import {
   statSync,
   type WriteStream,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
 
 import { config } from "../config.js";
@@ -18,7 +18,6 @@ import {
   removeNumaCgroup,
   resolveNumaLaunch,
 } from "../numa/index.js";
-import { argsToCli } from "./args.js";
 import { filterManagedLlamaLogChunk } from "./log-filter.js";
 import {
   buildLaunchSnapshot,
@@ -98,6 +97,22 @@ class ProcessSupervisor extends EventEmitter {
     };
   }
 
+  private assertRpcWorkersRunning(instance: Instance): void {
+    for (const ref of instance.rpcWorkers) {
+      if (ref.nodeId !== null) {
+        throw new Error(
+          `Remote RPC workers are not supported yet (worker "${ref.instanceName}" on node "${ref.nodeId}")`,
+        );
+      }
+      const state = this.processes.get(ref.instanceName);
+      if (!state || state.status !== "running") {
+        throw new Error(
+          `RPC worker "${ref.instanceName}" must be running before this instance can start`,
+        );
+      }
+    }
+  }
+
   start(instance: Instance): ProcessState {
     const current = this.processes.get(instance.name);
     if (
@@ -111,10 +126,15 @@ class ProcessSupervisor extends EventEmitter {
     if (!preflight.ok) {
       throw new ProcessPreflightError(preflight);
     }
+    this.assertRpcWorkersRunning(instance);
 
-    const cliArgs = argsToCli(instance.args);
-    const cwd = instance.cwd ?? dirname(instance.binaryPath);
-    const launch = resolveNumaLaunch(instance, instance.binaryPath, cliArgs);
+    const snapshot = buildLaunchSnapshot(instance);
+    const cwd = snapshot.cwd;
+    const launch = resolveNumaLaunch(
+      instance,
+      snapshot.binaryPath,
+      snapshot.cliArgs,
+    );
 
     const startedAt = nowIso();
     const logName = `${instance.name}-${Date.now()}`;
@@ -159,7 +179,7 @@ class ProcessSupervisor extends EventEmitter {
       startedAt,
       logPath,
       rawLogPath,
-      launchSnapshot: serializeLaunchSnapshot(buildLaunchSnapshot(instance)),
+      launchSnapshot: serializeLaunchSnapshot(snapshot),
     });
 
     const runtime: RuntimeProcess = {

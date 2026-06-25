@@ -3,7 +3,9 @@ import {
   InstancePreflightPreviewSchema,
   InstanceUpdateSchema,
   type Instance,
+  type InstanceKind,
   type InstanceMemoryDraw,
+  type RpcWorkerRef,
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 
@@ -63,6 +65,20 @@ function validateInstanceMemoryRefs(input: {
   return null;
 }
 
+function validateInstanceRpcWorkers(input: {
+  kind?: InstanceKind | undefined;
+  rpcWorkers?: RpcWorkerRef[] | undefined;
+}) {
+  if (
+    input.kind === "rpc-worker" &&
+    input.rpcWorkers &&
+    input.rpcWorkers.length > 0
+  ) {
+    return "rpc-worker instances cannot reference other rpc workers";
+  }
+  return null;
+}
+
 export function registerInstanceRoutes(app: Hono) {
   app.get("/api/instances", (c) => {
     return c.json({ data: listInstances() });
@@ -86,7 +102,8 @@ export function registerInstanceRoutes(app: Hono) {
     }
     const refError =
       validateInstancePathRefs(parsed.data) ??
-      validateInstanceMemoryRefs(parsed.data);
+      validateInstanceMemoryRefs(parsed.data) ??
+      validateInstanceRpcWorkers(parsed.data);
     if (refError) {
       return c.json({ error: refError }, 400);
     }
@@ -121,6 +138,7 @@ export function registerInstanceRoutes(app: Hono) {
       args: preview.args,
       env: preview.env,
       memory: preview.memory,
+      rpcWorkers: preview.rpcWorkers,
       status: "stopped",
       pid: null,
       createdAt: timestamp,

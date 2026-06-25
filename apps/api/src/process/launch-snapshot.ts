@@ -2,6 +2,7 @@ import { InstanceNumaSchema, type Instance, type InstanceNuma } from "@llama-man
 import { dirname } from "node:path";
 
 import { argsToCli } from "./args.js";
+import { resolveLocalRpcArgs } from "./rpc-launch.js";
 
 export type LaunchSnapshot = {
   binaryPath: string;
@@ -14,7 +15,7 @@ export type LaunchSnapshot = {
 export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
   return {
     binaryPath: instance.binaryPath,
-    cliArgs: argsToCli(instance.args),
+    cliArgs: [...argsToCli(instance.args), ...resolveLocalRpcArgs(instance)],
     env: { ...instance.env },
     cwd: instance.cwd ?? dirname(instance.binaryPath),
     numa: instance.numa ?? null,

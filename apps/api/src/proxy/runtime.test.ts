@@ -29,6 +29,7 @@ function instance(name = "instance-a"): Instance {
   return {
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPath: "/tmp/llama-server",
     binaryPathRefId: "bin-a",
     args: {},

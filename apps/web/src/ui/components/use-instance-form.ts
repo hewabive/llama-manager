@@ -581,6 +581,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       const input: InstancePreflightPreview = {
         name: form.values.name,
         kind,
+        rpcWorkers: [],
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env,
@@ -1095,6 +1096,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         const workerInput: InstanceCreate = {
           name: values.name,
           kind: "rpc-worker",
+          rpcWorkers: [],
           binaryPathRefId: selectedBinaryPathRefId,
           args: workerArgs,
           env: parseEnvJson(values.envJson),
@@ -1142,6 +1144,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       const input: InstanceCreate = {
         name: values.name,
         kind: "llama-server",
+        rpcWorkers: [],
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env: parseEnvJson(values.envJson),

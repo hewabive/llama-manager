@@ -68,7 +68,7 @@ export function llamaBaseUrl(instance: Instance): string {
 const RPC_SERVER_DEFAULT_PORT = 50052;
 
 export function rpcWorkerEndpoint(
-  instance: Instance,
+  instance: Pick<Instance, "args">,
 ): { host: string; port: number } | null {
   const host = probeHost(
     asString(firstArg(instance.args, ["--host"]), DEFAULT_HOST),

@@ -16,6 +16,7 @@ function instance(input: Partial<Instance>): Instance {
   return {
     name: "test-instance",
     kind: input.kind ?? "llama-server",
+    rpcWorkers: input.rpcWorkers ?? [],
     binaryPath: input.binaryPath ?? "/bin/sh",
     binaryPathRefId: input.binaryPathRefId ?? "test-binary",
     cwd: input.cwd ?? tmpdir(),

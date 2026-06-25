@@ -14,6 +14,7 @@ function worker(args: Instance["args"]): Instance {
     args,
     env: {},
     memory: [],
+    rpcWorkers: [],
     status: "running",
     pid: 1,
     createdAt: "2026-06-25T00:00:00.000Z",

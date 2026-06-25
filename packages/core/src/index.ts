@@ -199,6 +199,11 @@ export function instanceCapabilities(kind: InstanceKind): InstanceCapabilities {
   };
 }
 
+export const RpcWorkerRefSchema = z.object({
+  nodeId: z.string().min(1).nullable().default(null),
+  instanceName: InstanceNameSchema,
+});
+
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
   kind: InstanceKindSchema.default("llama-server"),
@@ -207,6 +212,7 @@ export const InstanceCreateSchema = z.object({
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
   memory: z.array(InstanceMemoryDrawSchema).default([]),
+  rpcWorkers: z.array(RpcWorkerRefSchema).default([]),
   numa: InstanceNumaSchema.optional(),
 });
 
@@ -221,6 +227,7 @@ export const InstanceUpdateSchema = z.object({
   args: InstanceArgsSchema.optional(),
   env: InstanceEnvSchema.optional(),
   memory: z.array(InstanceMemoryDrawSchema).optional(),
+  rpcWorkers: z.array(RpcWorkerRefSchema).optional(),
   numa: InstanceNumaSchema.optional(),
 });
 
@@ -259,6 +266,7 @@ export const InstanceConfigRecordSchema = z.object({
   args: InstanceArgsSchema.default({}),
   env: InstanceEnvSchema.default({}),
   memory: z.array(InstanceMemoryDrawSchema).default([]),
+  rpcWorkers: z.array(RpcWorkerRefSchema).default([]),
   numa: InstanceNumaSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -2322,6 +2330,7 @@ export type MemoryPoolKind = z.infer<typeof MemoryPoolKindSchema>;
 export type MemoryPool = z.infer<typeof MemoryPoolSchema>;
 export type MemoryPoolUpdate = z.infer<typeof MemoryPoolUpdateSchema>;
 export type InstanceKind = z.infer<typeof InstanceKindSchema>;
+export type RpcWorkerRef = z.infer<typeof RpcWorkerRefSchema>;
 export type InstanceMemoryDraw = z.infer<typeof InstanceMemoryDrawSchema>;
 export type ResourcePoolUsage = z.infer<typeof ResourcePoolUsageSchema>;
 export type ResourceLedger = z.infer<typeof ResourceLedgerSchema>;

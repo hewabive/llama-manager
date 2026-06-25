@@ -13,6 +13,7 @@ function instance(name: string, args: Instance["args"]): Instance {
   return {
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPath: "/tmp/llama-server",
     binaryPathRefId: "bin",
     args,

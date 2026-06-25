@@ -41,6 +41,7 @@ test("createInstance writes a file and resolves the binary path", () => {
   const created = createInstance({
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: { "--ctx-size": 4096 },
     env: { CUDA_VISIBLE_DEVICES: "0" },
@@ -70,6 +71,7 @@ test("getInstance/listInstances read back from files", () => {
   const created = createInstance({
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -83,10 +85,10 @@ test("getInstance/listInstances read back from files", () => {
 
 test("createInstance rejects duplicate names", () => {
   const name = uniqueName("dup");
-  createInstance({ name, kind: "llama-server", binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] });
+  createInstance({ name, kind: "llama-server", rpcWorkers: [], binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] });
   assert.throws(
     () =>
-      createInstance({ name, kind: "llama-server", binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] }),
+      createInstance({ name, kind: "llama-server", rpcWorkers: [], binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] }),
     InstanceNameConflictError,
   );
 });
@@ -96,6 +98,7 @@ test("updateInstance renaming moves the file", () => {
   const created = createInstance({
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -116,6 +119,7 @@ test("updateInstance rejects renaming onto an existing name", () => {
   const a = createInstance({
     name: uniqueName("a"),
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -124,6 +128,7 @@ test("updateInstance rejects renaming onto an existing name", () => {
   const b = createInstance({
     name: uniqueName("b"),
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -141,6 +146,7 @@ test("deleteInstance removes the file and prunes process_runs", () => {
   const created = createInstance({
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -167,6 +173,7 @@ test("createInstance defaults kind to llama-server and persists it", () => {
   const created = createInstance({
     name,
     kind: "llama-server",
+    rpcWorkers: [],
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
