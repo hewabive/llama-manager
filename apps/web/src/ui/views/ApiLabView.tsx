@@ -4,17 +4,19 @@ import type {
   Instance,
   InstanceHealthSummary,
 } from "@llama-manager/core";
-import { Group, Select, Stack, Text } from "@mantine/core";
+import { Alert, Group, Select, Stack, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { absoluteUrl } from "../../api/base.js";
+import { SELF_NODE_ID } from "../../api/base.js";
 import {
-  getApiProxyConfig,
+  getActiveNodeApiProxyConfig,
   listApiProxySources,
+  listNodes,
   runApiLabProbe,
   streamApiLabProbe,
 } from "../../api/client";
+import { useActiveNode } from "../NodeContext.js";
 import {
   ApiProbePanel,
   modelOptionsFromProbe,
@@ -102,10 +104,6 @@ function normalizeBaseUrlForProfile(
   return apiVersionBaseUrl(value);
 }
 
-function managerProxyRootUrl() {
-  return absoluteUrl("");
-}
-
 export function ApiLabView(props: {
   instances: Instance[];
   selectedInstance: Instance | null;
@@ -113,15 +111,26 @@ export function ApiLabView(props: {
   onSelect: (instanceId: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const { activeNodeId } = useActiveNode();
   const [baseUrl, setBaseUrl] = useState("");
   const [quickTarget, setQuickTarget] = useState<string | null>(null);
   const [protocol, setProtocol] = useState<ApiLabProbeProfile>("openai");
   const [sourceId, setSourceId] = useState<string | null>(null);
   const baseUrlTouchedRef = useRef(false);
   const proxyQuery = useQuery({
-    queryKey: ["api-proxy-config"],
-    queryFn: getApiProxyConfig,
+    queryKey: ["api-lab-proxy-config", activeNodeId],
+    queryFn: getActiveNodeApiProxyConfig,
   });
+  const nodesQuery = useQuery({
+    queryKey: ["nodes"],
+    queryFn: listNodes,
+    enabled: activeNodeId !== SELF_NODE_ID,
+  });
+  const activeNodeName =
+    activeNodeId === SELF_NODE_ID
+      ? null
+      : (nodesQuery.data?.data.find((node) => node.id === activeNodeId)?.name ??
+        activeNodeId);
   const sourcesQuery = useQuery({
     queryKey: ["api-proxy-sources"],
     queryFn: listApiProxySources,
@@ -160,43 +169,11 @@ export function ApiLabView(props: {
 
   const quickTargets = useMemo<QuickTarget[]>(() => {
     const catalog = proxyQuery.data?.data.endpoints ?? [];
-    if (catalog.length === 0) {
-      const fallbackProxyBaseUrl = apiVersionBaseUrl(managerProxyRootUrl());
-      return [
-        {
-          value: "manager-proxy",
-          label: `llama-manager proxy (${fallbackProxyBaseUrl})`,
-          baseUrl: fallbackProxyBaseUrl,
-          endpointId: "manager-proxy",
-          kind: "manager-proxy",
-        },
-        ...props.instances.flatMap((instance): QuickTarget[] => {
-          const url = llamaServerApiUrl(instance);
-          if (!url) {
-            return [];
-          }
-          const targetBaseUrl = apiVersionBaseUrl(url);
-          return [
-            {
-              value: `instance:${instance.name}`,
-              label: `${instance.name} (${targetBaseUrl})`,
-              baseUrl: targetBaseUrl,
-              endpointId: `instance:${instance.name}`,
-              instanceId: instance.name,
-              kind: "managed-instance",
-            },
-          ];
-        }),
-      ];
-    }
 
     return catalog
       .filter((endpoint) => endpoint.enabled)
       .map((endpoint) => {
-        const baseUrl =
-          endpoint.kind === "manager-proxy"
-            ? apiVersionBaseUrl(managerProxyRootUrl())
-            : endpoint.baseUrl;
+        const baseUrl = endpoint.baseUrl;
         return {
           value: endpoint.id,
           label: `${endpoint.name} (${baseUrl})`,
@@ -206,7 +183,7 @@ export function ApiLabView(props: {
           kind: endpoint.kind,
         };
       });
-  }, [props.instances, proxyQuery.data?.data.endpoints]);
+  }, [proxyQuery.data?.data.endpoints]);
   const targetOptions = useMemo(() => {
     const seen = new Set<string>();
     return quickTargets.filter((target) => {
@@ -221,6 +198,12 @@ export function ApiLabView(props: {
     () => new Map(targetOptions.map((target) => [target.baseUrl, target])),
     [targetOptions],
   );
+
+  useEffect(() => {
+    baseUrlTouchedRef.current = false;
+    setBaseUrl("");
+    setQuickTarget(null);
+  }, [activeNodeId]);
 
   useEffect(() => {
     if (baseUrlTouchedRef.current || baseUrl) {
@@ -337,6 +320,13 @@ export function ApiLabView(props: {
 
   return (
     <Stack gap="md">
+      {activeNodeName ? (
+        <Alert color="blue" title={`Probing remote node: ${activeNodeName}`}>
+          Targets, models and the llama-manager proxy below are{" "}
+          {activeNodeName}&apos;s — the probe runs on that node. Switch to the
+          main node to test the fleet proxy and its published models.
+        </Alert>
+      ) : null}
       <Group align="flex-end" gap="sm" wrap="wrap">
         <Select
           label="Protocol / API"

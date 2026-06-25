@@ -32,10 +32,14 @@ import type {
   ExternalProcessKillResult,
 } from "@llama-manager/core";
 
-import { request } from "./http.js";
+import { nodeRequest, request } from "./http.js";
 
 export async function getApiProxyConfig() {
   return request<{ data: ApiProxyConfig }>("/api/proxy/config");
+}
+
+export async function getActiveNodeApiProxyConfig() {
+  return nodeRequest<{ data: ApiProxyConfig }>("/api/proxy/config");
 }
 
 export async function getApiProxyTargetModels() {
