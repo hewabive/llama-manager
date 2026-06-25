@@ -148,7 +148,17 @@ export function buildSteps(
   }
 
   if (input.installUiDeps) {
-    steps.push(step("ui-install", ["npm", "ci", "&&", "npm", "run", "build"]));
+    steps.push(
+      step("ui-install", [
+        "npm",
+        "ci",
+        "--include=dev",
+        "&&",
+        "npm",
+        "run",
+        "build",
+      ]),
+    );
   }
 
   if (input.cleanBuildDir) {

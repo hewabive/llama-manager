@@ -363,7 +363,7 @@ class LlamaBuildRunner {
 
     const uiEnv = { ...env, LLAMA_UI_OUT_DIR: distDir };
     for (const command of [
-      ["npm", "ci"],
+      ["npm", "ci", "--include=dev"],
       ["npm", "run", "build"],
     ]) {
       logStream.write(`$ ${command.join(" ")}\n`);
