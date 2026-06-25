@@ -103,7 +103,7 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
             </>
           )}
           {fm.isWorker && <InstanceFormWorkerEndpointSection fm={fm} />}
-          <InstanceFormArgumentsSection fm={fm} />
+          {!fm.isWorker && <InstanceFormArgumentsSection fm={fm} />}
           <InstanceFormPreflightSection fm={fm} />
           <InstanceFormCudaSection fm={fm} />
           <InstanceFormNumaSection fm={fm} />

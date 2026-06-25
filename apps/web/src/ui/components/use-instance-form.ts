@@ -101,7 +101,18 @@ function isRpcServerBinary(path: string) {
   return pathBaseName(path) === "rpc-server";
 }
 
-function encodeRpcWorkerRef(ref: Pick<RpcWorkerRef, "nodeId" | "instanceName">) {
+const RPC_WORKER_ARG_KEYS = new Set([
+  "--host",
+  "--port",
+  "--threads",
+  "--device",
+  "--cache",
+  "-c",
+]);
+
+function encodeRpcWorkerRef(
+  ref: Pick<RpcWorkerRef, "nodeId" | "instanceName">,
+) {
   return `${ref.nodeId ?? ""}:${ref.instanceName}`;
 }
 
@@ -217,7 +228,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   const argsCatalogQuery = useQuery({
     queryKey: ["llama-args", selectedBinaryPath],
     queryFn: () => getLlamaArguments(selectedBinaryPath),
-    enabled: props.opened && Boolean(selectedBinaryPath),
+    enabled:
+      props.opened && Boolean(selectedBinaryPath) && kind === "llama-server",
     staleTime: 60_000,
     retry: false,
   });
@@ -496,6 +508,12 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   }, [selectableModels, specDraftModelValue]);
   const portRawValue = rowValue(argRows, "--port");
   const portValue = portRawValue === "" ? "" : Number(portRawValue);
+  const threadsRawValue = rowValue(argRows, "--threads");
+  const threadsValue = threadsRawValue === "" ? "" : Number(threadsRawValue);
+  const deviceValue = rowValue(argRows, "--device");
+  const cacheEnabled = argRows.some(
+    (row) => row.key === "--cache" || row.key === "-c",
+  );
   const envDraft = useMemo(() => {
     try {
       return parseEnvJson(form.values.envJson);
@@ -802,7 +820,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         entry.kind === "binary" &&
         isRpcServerBinary(entry.path) === (next === "rpc-worker"),
     );
-    if (!matchingBinaries.some((entry) => entry.id === selectedBinaryPathRefId)) {
+    if (
+      !matchingBinaries.some((entry) => entry.id === selectedBinaryPathRefId)
+    ) {
       setSelectedBinaryPathRefId(matchingBinaries[0]?.id ?? null);
     }
     if (next === "rpc-worker") {
@@ -810,20 +830,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       setSelectedPresetName(null);
       setLaunchMode("model");
       setArgRows((rows) => {
-        const stripped = removeArgRows(rows, [
-          "--model",
-          "--mmproj",
-          "--models-preset",
-          "--models-max",
-          "--models-autoload",
-          "--no-models-autoload",
-          "--hf-repo",
-          "--hf-file",
-          "--model-url",
-          "--mmproj-url",
-          ...SPEC_KEYS,
-        ]);
-        const withHost = upsertArgRow(stripped, "--host", "0.0.0.0", "string");
+        const kept = rows.filter((row) => RPC_WORKER_ARG_KEYS.has(row.key));
+        const withHost = upsertArgRow(kept, "--host", "0.0.0.0", "string");
         return upsertArgRow(
           withHost,
           "--port",
@@ -1253,8 +1261,11 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         throw new Error("Select a binary from the catalog");
       }
       if (kind === "rpc-worker") {
+        const workerRows = argRows.filter((row) =>
+          RPC_WORKER_ARG_KEYS.has(row.key),
+        );
         const workerArgs = InstanceArgsSchema.parse(
-          rowsToArgsWithCatalog(argRows, knownArgByName),
+          rowsToArgsWithCatalog(workerRows, knownArgByName),
         );
         const workerInput: InstanceCreate = {
           name: values.name,
@@ -1393,6 +1404,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     presetOptions,
     hostValue,
     portValue,
+    threadsValue,
+    deviceValue,
+    cacheEnabled,
     specEnabled,
     applySpecEnabled,
     specTypeOptions,
