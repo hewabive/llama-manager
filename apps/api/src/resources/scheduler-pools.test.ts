@@ -61,6 +61,21 @@ test("computeSchedulerPoolInputs counts every resident when none are targets", (
   );
 });
 
+test("an rpc-worker resident is a fixed usedByOthers baseline, never an eviction target", () => {
+  const inputs = computeSchedulerPoolInputs(
+    POOLS,
+    [
+      { instanceId: "orchestrator", draws: [{ poolId: "gpu0", bytes: 8 }] },
+      { instanceId: "worker", draws: [{ poolId: "gpu0", bytes: 9 }] },
+    ],
+    new Set(["orchestrator"]),
+  );
+  assert.equal(
+    inputs.find((entry) => entry.poolId === "gpu0")?.usedByOthersBytes,
+    9,
+  );
+});
+
 test("computeSchedulerPoolInputs clamps an over-reserved pool budget to zero", () => {
   const inputs = computeSchedulerPoolInputs(
     [pool({ id: "gpu0", capacityBytes: 8, reservedBytes: 16 })],

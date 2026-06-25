@@ -57,9 +57,11 @@ export async function updateInstance(id: string, input: InstanceUpdate) {
 export async function instanceAction(
   id: string,
   action: "start" | "stop" | "restart",
+  force = false,
 ) {
   return request<{ data: unknown }>(`/api/instances/${id}/${action}`, {
     method: "POST",
+    body: JSON.stringify({ force }),
   });
 }
 

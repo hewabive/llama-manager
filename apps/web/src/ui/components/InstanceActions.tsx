@@ -94,15 +94,24 @@ export function InstanceActions(props: {
   const [startConfirm, setStartConfirm] = useState<ResourceAdmission | null>(
     null,
   );
+  const [stopConfirm, setStopConfirm] = useState<{
+    action: "stop" | "restart";
+    message: string;
+  } | null>(null);
 
   const actionMutation = useMutation({
     mutationFn: (variables: { action: InstanceActionName; force?: boolean }) =>
       variables.action === "start"
         ? startInstance(props.instance.name, variables.force ?? false)
-        : instanceAction(props.instance.name, variables.action),
+        : instanceAction(
+            props.instance.name,
+            variables.action,
+            variables.force ?? false,
+          ),
     onSuccess: async (_result, variables) => {
       const action = variables.action;
       setStartConfirm(null);
+      setStopConfirm(null);
       if (action === "start" || action === "restart") {
         props.onLaunchStarted(props.instance, action);
       } else {
@@ -140,6 +149,18 @@ export function InstanceActions(props: {
           (error.body as { admission?: ResourceAdmission } | null)?.admission ??
           null;
         setStartConfirm(admission);
+        return;
+      }
+      if (
+        (variables.action === "stop" || variables.action === "restart") &&
+        !variables.force &&
+        error instanceof ApiError &&
+        error.status === 409
+      ) {
+        setStopConfirm({
+          action: variables.action,
+          message: (error as Error).message,
+        });
         return;
       }
       notifications.show({
@@ -344,6 +365,48 @@ export function InstanceActions(props: {
               }
             >
               Start anyway
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={Boolean(stopConfirm)}
+        onClose={() => setStopConfirm(null)}
+        title={
+          stopConfirm?.action === "restart" ? "Restart anyway?" : "Stop anyway?"
+        }
+        centered
+      >
+        <Stack gap="sm">
+          <Code className="code-wrap">{props.instance.name}</Code>
+          <Text size="sm" c="orange">
+            {stopConfirm?.message}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Forcing this will break the RPC link and crash the orchestrator(s)
+            currently using this worker. Stop them first unless they are already
+            wedged.
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button variant="default" onClick={() => setStopConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              color="orange"
+              loading={actionMutation.isPending}
+              onClick={() => {
+                if (stopConfirm) {
+                  actionMutation.mutate({
+                    action: stopConfirm.action,
+                    force: true,
+                  });
+                }
+              }}
+            >
+              {stopConfirm?.action === "restart"
+                ? "Restart anyway"
+                : "Stop anyway"}
             </Button>
           </Group>
         </Stack>

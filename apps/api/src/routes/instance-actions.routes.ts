@@ -158,8 +158,11 @@ export function registerInstanceActionRoutes(app: Hono) {
 
   app.post("/api/instances/:id/stop", async (c) => {
     const instanceId = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const force =
+      InstanceStartRequestSchema.safeParse(body).data?.force ?? false;
     try {
-      return c.json({ data: await stopManagedInstance(instanceId) });
+      return c.json({ data: await stopManagedInstance(instanceId, { force }) });
     } catch (error) {
       const payload = actionErrorPayload(error);
       return c.json(
@@ -174,8 +177,13 @@ export function registerInstanceActionRoutes(app: Hono) {
     if (!instance) {
       return c.json({ error: "instance not found" }, 404);
     }
+    const body = await c.req.json().catch(() => ({}));
+    const force =
+      InstanceStartRequestSchema.safeParse(body).data?.force ?? false;
     try {
-      return c.json({ data: await restartManagedInstance(instance) });
+      return c.json({
+        data: await restartManagedInstance(instance, { force }),
+      });
     } catch (error) {
       const payload = actionErrorPayload(error);
       return c.json(

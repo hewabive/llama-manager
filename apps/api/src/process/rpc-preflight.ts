@@ -26,7 +26,9 @@ type WorkerState =
   | { ok: false; message: string };
 
 function sameRef(left: RpcWorkerRef, right: RpcWorkerRef) {
-  return left.nodeId === right.nodeId && left.instanceName === right.instanceName;
+  return (
+    left.nodeId === right.nodeId && left.instanceName === right.instanceName
+  );
 }
 
 function tcpConnectMs(host: string, port: number): Promise<number | null> {
@@ -49,7 +51,10 @@ function tcpConnectMs(host: string, port: number): Promise<number | null> {
   });
 }
 
-async function measureRttMs(host: string, port: number): Promise<number | null> {
+async function measureRttMs(
+  host: string,
+  port: number,
+): Promise<number | null> {
   let best: number | null = null;
   for (let sample = 0; sample < RPC_FABRIC_RTT_SAMPLES; sample += 1) {
     const value = await tcpConnectMs(host, port);
@@ -96,7 +101,12 @@ async function resolveWorkerState(
         message: `instance "${ref.instanceName}" is not an rpc-worker`,
       };
     }
-    return { ok: true, status: worker.status, nodeLabel: "this node", fabric: null };
+    return {
+      ok: true,
+      status: worker.status,
+      nodeLabel: "this node",
+      fabric: null,
+    };
   }
 
   const node = getNode(ref.nodeId);
@@ -125,7 +135,35 @@ async function resolveWorkerState(
   const fabric: FabricEndpoint | null = endpoint
     ? { host: new URL(node.baseUrl).hostname, port: endpoint.port }
     : null;
-  return { ok: true, status: worker.status, nodeLabel: `node "${node.name}"`, fabric };
+  return {
+    ok: true,
+    status: worker.status,
+    nodeLabel: `node "${node.name}"`,
+    fabric,
+  };
+}
+
+export function referencingOrchestrators(
+  workerName: string,
+  peers: Instance[],
+): string[] {
+  const holders: string[] = [];
+  for (const peer of peers) {
+    if (peer.kind !== "llama-server") {
+      continue;
+    }
+    if (peer.status !== "running" && peer.status !== "starting") {
+      continue;
+    }
+    if (
+      peer.rpcWorkers.some(
+        (ref) => ref.nodeId === null && ref.instanceName === workerName,
+      )
+    ) {
+      holders.push(peer.name);
+    }
+  }
+  return holders;
 }
 
 function exclusivityHolder(
@@ -181,7 +219,11 @@ export async function validateRpcWorkerReadiness(
   const issues: ProcessPreflightIssue[] = [];
   for (const { ref, state, holder, measureFabric, rttMs } of evaluated) {
     if (!state.ok) {
-      issues.push({ level: "error", field: "rpcWorkers", message: state.message });
+      issues.push({
+        level: "error",
+        field: "rpcWorkers",
+        message: state.message,
+      });
       continue;
     }
     if (state.status !== "running") {

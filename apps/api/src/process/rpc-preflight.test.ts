@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 import {
   fabricIssue,
+  referencingOrchestrators,
   RPC_SLOW_FABRIC_RTT_MS,
   validateRpcWorkerReadiness,
 } from "./rpc-preflight.js";
@@ -26,8 +27,17 @@ function instance(overrides: Partial<Instance>): Instance {
   } as Instance;
 }
 
-function orchestrator(rpcWorkers: Instance["rpcWorkers"], extra: Partial<Instance> = {}) {
-  return instance({ name: "orch", kind: "llama-server", status: "stopped", rpcWorkers, ...extra });
+function orchestrator(
+  rpcWorkers: Instance["rpcWorkers"],
+  extra: Partial<Instance> = {},
+) {
+  return instance({
+    name: "orch",
+    kind: "llama-server",
+    status: "stopped",
+    rpcWorkers,
+    ...extra,
+  });
 }
 
 test("no issues when there are no rpc workers", async () => {
@@ -44,7 +54,9 @@ test("errors when a referenced local worker is missing", async () => {
 });
 
 test("errors when the referenced instance is not an rpc-worker", async () => {
-  const peers = [instance({ name: "w1", kind: "llama-server", status: "running" })];
+  const peers = [
+    instance({ name: "w1", kind: "llama-server", status: "running" }),
+  ];
   const issues = await validateRpcWorkerReadiness(
     orchestrator([{ nodeId: null, instanceName: "w1" }]),
     peers,
@@ -53,7 +65,9 @@ test("errors when the referenced instance is not an rpc-worker", async () => {
 });
 
 test("errors when a referenced worker is not running", async () => {
-  const peers = [instance({ name: "w1", kind: "rpc-worker", status: "stopped" })];
+  const peers = [
+    instance({ name: "w1", kind: "rpc-worker", status: "stopped" }),
+  ];
   const issues = await validateRpcWorkerReadiness(
     orchestrator([{ nodeId: null, instanceName: "w1" }]),
     peers,
@@ -62,7 +76,9 @@ test("errors when a referenced worker is not running", async () => {
 });
 
 test("passes when the referenced worker is running and free", async () => {
-  const peers = [instance({ name: "w1", kind: "rpc-worker", status: "running" })];
+  const peers = [
+    instance({ name: "w1", kind: "rpc-worker", status: "running" }),
+  ];
   assert.deepEqual(
     await validateRpcWorkerReadiness(
       orchestrator([{ nodeId: null, instanceName: "w1" }]),
@@ -87,6 +103,43 @@ test("fabricIssue is silent for a fast fabric", () => {
   assert.equal(fabricIssue("w1", 1), null);
 });
 
+test("referencingOrchestrators lists running and starting local holders of a worker", () => {
+  const peers = [
+    instance({ name: "w1", kind: "rpc-worker", status: "running" }),
+    instance({
+      name: "orchA",
+      kind: "llama-server",
+      status: "running",
+      rpcWorkers: [{ nodeId: null, instanceName: "w1" }],
+    }),
+    instance({
+      name: "orchB",
+      kind: "llama-server",
+      status: "starting",
+      rpcWorkers: [{ nodeId: null, instanceName: "w1" }],
+    }),
+  ];
+  assert.deepEqual(referencingOrchestrators("w1", peers), ["orchA", "orchB"]);
+});
+
+test("referencingOrchestrators ignores stopped holders and remote-node refs", () => {
+  const peers = [
+    instance({
+      name: "stopped",
+      kind: "llama-server",
+      status: "stopped",
+      rpcWorkers: [{ nodeId: null, instanceName: "w1" }],
+    }),
+    instance({
+      name: "remote",
+      kind: "llama-server",
+      status: "running",
+      rpcWorkers: [{ nodeId: "node-2", instanceName: "w1" }],
+    }),
+  ];
+  assert.deepEqual(referencingOrchestrators("w1", peers), []);
+});
+
 test("errors when the worker is already held by another running orchestrator", async () => {
   const peers = [
     instance({ name: "w1", kind: "rpc-worker", status: "running" }),
@@ -101,5 +154,8 @@ test("errors when the worker is already held by another running orchestrator", a
     orchestrator([{ nodeId: null, instanceName: "w1" }]),
     peers,
   );
-  assert.match(issues[0]!.message, /already in use by running instance "other"/);
+  assert.match(
+    issues[0]!.message,
+    /already in use by running instance "other"/,
+  );
 });

@@ -12,9 +12,25 @@ import {
   validateInstancePreflight,
   validateInstanceStartPreflight,
 } from "./preflight.js";
+import { referencingOrchestrators } from "./rpc-preflight.js";
 import { resolveRpcArgs } from "./rpc-launch.js";
 import { liveStaleProcessRun, stopStaleProcess } from "./stale.js";
 import { supervisor } from "./supervisor.js";
+
+function assertWorkerNotReferenced(instance: Instance, force: boolean): void {
+  if (force || instance.kind !== "rpc-worker") {
+    return;
+  }
+  const holders = referencingOrchestrators(instance.name, listInstances());
+  if (holders.length === 0) {
+    return;
+  }
+  const list = holders.map((name) => `"${name}"`).join(", ");
+  throw new ProcessActionHttpError(
+    `rpc worker "${instance.name}" is in use by running orchestrator${holders.length > 1 ? "s" : ""} ${list}; stop ${holders.length > 1 ? "them" : "it"} first or force-stop to break the RPC link`,
+    409,
+  );
+}
 
 async function resolveRpcArgsOrThrow(instance: Instance): Promise<string[]> {
   try {
@@ -138,7 +154,12 @@ export async function startOrRecoverManagedInstance(
 
 export async function stopManagedInstance(
   instanceId: string,
+  options: { force?: boolean } = {},
 ): Promise<RuntimeState> {
+  const instance = listInstances().find((item) => item.name === instanceId);
+  if (instance) {
+    assertWorkerNotReferenced(instance, options.force ?? false);
+  }
   const state = supervisor.stop(instanceId);
   if (state) {
     return state;
@@ -154,7 +175,9 @@ export async function stopManagedInstance(
 
 export async function restartManagedInstance(
   instance: Instance,
+  options: { force?: boolean } = {},
 ): Promise<RuntimeState> {
+  assertWorkerNotReferenced(instance, options.force ?? false);
   const preflight = validateInstancePreflight(instance, {
     peers: listInstances(),
   });
