@@ -10,7 +10,7 @@ import { listNodes } from "./repository.js";
 
 const RemoteInstancesSchema = z.array(InstanceSchema);
 
-async function fetchNodeInstances(node: FleetNode): Promise<Instance[]> {
+export async function fetchNodeInstances(node: FleetNode): Promise<Instance[]> {
   try {
     return RemoteInstancesSchema.parse(
       await fetchNodeJson<unknown>(node, "instances"),

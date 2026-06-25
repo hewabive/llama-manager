@@ -7,7 +7,7 @@ import {
   resetInstancesCache,
   writeInstanceRecord,
 } from "../instances/config-files.js";
-import { resolveLocalRpcArgs } from "./rpc-launch.js";
+import { resolveRpcArgs } from "./rpc-launch.js";
 
 function writeWorker(name: string, args: Instance["args"]) {
   writeInstanceRecord({
@@ -27,10 +27,10 @@ beforeEach(() => {
   resetInstancesCache();
 });
 
-test("resolveLocalRpcArgs builds --rpc from a local worker endpoint", () => {
+test("resolveRpcArgs builds --rpc from a local worker endpoint", async () => {
   writeWorker("w1", { "--host": "0.0.0.0", "--port": 50100 });
   assert.deepEqual(
-    resolveLocalRpcArgs({
+    await resolveRpcArgs({
       kind: "llama-server",
       rpcWorkers: [{ nodeId: null, instanceName: "w1" }],
     }),
@@ -38,11 +38,11 @@ test("resolveLocalRpcArgs builds --rpc from a local worker endpoint", () => {
   );
 });
 
-test("resolveLocalRpcArgs joins multiple workers comma-separated", () => {
+test("resolveRpcArgs joins multiple local workers comma-separated", async () => {
   writeWorker("w1", { "--port": 50100 });
   writeWorker("w2", { "--port": 50101 });
   assert.deepEqual(
-    resolveLocalRpcArgs({
+    await resolveRpcArgs({
       kind: "llama-server",
       rpcWorkers: [
         { nodeId: null, instanceName: "w1" },
@@ -53,19 +53,19 @@ test("resolveLocalRpcArgs joins multiple workers comma-separated", () => {
   );
 });
 
-test("resolveLocalRpcArgs is empty for an rpc-worker kind", () => {
+test("resolveRpcArgs is empty for an rpc-worker kind", async () => {
   assert.deepEqual(
-    resolveLocalRpcArgs({ kind: "rpc-worker", rpcWorkers: [] }),
+    await resolveRpcArgs({ kind: "rpc-worker", rpcWorkers: [] }),
     [],
   );
 });
 
-test("resolveLocalRpcArgs skips an absent or non-worker reference", () => {
-  assert.deepEqual(
-    resolveLocalRpcArgs({
+test("resolveRpcArgs throws on an absent local worker reference", async () => {
+  await assert.rejects(
+    resolveRpcArgs({
       kind: "llama-server",
       rpcWorkers: [{ nodeId: null, instanceName: "absent" }],
     }),
-    [],
+    /not found on this node/,
   );
 });

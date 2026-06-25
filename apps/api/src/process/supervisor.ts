@@ -100,9 +100,7 @@ class ProcessSupervisor extends EventEmitter {
   private assertRpcWorkersRunning(instance: Instance): void {
     for (const ref of instance.rpcWorkers) {
       if (ref.nodeId !== null) {
-        throw new Error(
-          `Remote RPC workers are not supported yet (worker "${ref.instanceName}" on node "${ref.nodeId}")`,
-        );
+        continue;
       }
       const state = this.processes.get(ref.instanceName);
       if (!state || state.status !== "running") {
@@ -113,7 +111,7 @@ class ProcessSupervisor extends EventEmitter {
     }
   }
 
-  start(instance: Instance): ProcessState {
+  start(instance: Instance, rpcArgs: string[] = []): ProcessState {
     const current = this.processes.get(instance.name);
     if (
       current &&
@@ -130,11 +128,10 @@ class ProcessSupervisor extends EventEmitter {
 
     const snapshot = buildLaunchSnapshot(instance);
     const cwd = snapshot.cwd;
-    const launch = resolveNumaLaunch(
-      instance,
-      snapshot.binaryPath,
-      snapshot.cliArgs,
-    );
+    const launch = resolveNumaLaunch(instance, snapshot.binaryPath, [
+      ...snapshot.cliArgs,
+      ...rpcArgs,
+    ]);
 
     const startedAt = nowIso();
     const logName = `${instance.name}-${Date.now()}`;
@@ -363,13 +360,16 @@ class ProcessSupervisor extends EventEmitter {
     return result;
   }
 
-  async restart(instance: Instance): Promise<ProcessState> {
+  async restart(
+    instance: Instance,
+    rpcArgs: string[] = [],
+  ): Promise<ProcessState> {
     const runtime = this.processes.get(instance.name);
     if (runtime && !this.isTerminal(runtime)) {
       this.requestStop(runtime, 5_000);
       await this.waitForExit(runtime, 7_000);
     }
-    return this.start(instance);
+    return this.start(instance, rpcArgs);
   }
 
   private startTail(

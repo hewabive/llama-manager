@@ -12,8 +12,17 @@ import {
   validateInstancePreflight,
   validateInstanceStartPreflight,
 } from "./preflight.js";
+import { resolveRpcArgs } from "./rpc-launch.js";
 import { liveStaleProcessRun, stopStaleProcess } from "./stale.js";
 import { supervisor } from "./supervisor.js";
+
+async function resolveRpcArgsOrThrow(instance: Instance): Promise<string[]> {
+  try {
+    return await resolveRpcArgs(instance);
+  } catch (error) {
+    throw new ProcessActionHttpError((error as Error).message, 400);
+  }
+}
 
 function staleProcessConflict(instanceId: string) {
   const stale = liveStaleProcessRun(instanceId);
@@ -114,7 +123,8 @@ export async function startManagedInstance(
   if (!preflight.ok) {
     throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
   }
-  return supervisor.start(instance);
+  const rpcArgs = await resolveRpcArgsOrThrow(instance);
+  return supervisor.start(instance, rpcArgs);
 }
 
 export async function startOrRecoverManagedInstance(
@@ -151,6 +161,7 @@ export async function restartManagedInstance(
   if (!preflight.ok) {
     throw new ProcessActionHttpError("preflight failed", 400, preflight.issues);
   }
+  const rpcArgs = await resolveRpcArgsOrThrow(instance);
 
   const staleState = await stopStaleProcess(instance.name);
   if (staleState) {
@@ -164,10 +175,10 @@ export async function restartManagedInstance(
         startPreflight.issues,
       );
     }
-    return supervisor.start(instance);
+    return supervisor.start(instance, rpcArgs);
   }
 
-  return supervisor.restart(instance);
+  return supervisor.restart(instance, rpcArgs);
 }
 
 export async function runInstanceAction(

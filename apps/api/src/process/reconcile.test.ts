@@ -48,6 +48,7 @@ function seedOpenRun(input: {
           env: {},
           cwd: "/bin",
           numa: null,
+          rpcWorkers: [],
         })
       : null,
   });

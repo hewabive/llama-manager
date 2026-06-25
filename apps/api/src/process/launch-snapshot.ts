@@ -1,8 +1,12 @@
-import { InstanceNumaSchema, type Instance, type InstanceNuma } from "@llama-manager/core";
+import {
+  InstanceNumaSchema,
+  type Instance,
+  type InstanceNuma,
+  type RpcWorkerRef,
+} from "@llama-manager/core";
 import { dirname } from "node:path";
 
 import { argsToCli } from "./args.js";
-import { resolveLocalRpcArgs } from "./rpc-launch.js";
 
 export type LaunchSnapshot = {
   binaryPath: string;
@@ -10,15 +14,17 @@ export type LaunchSnapshot = {
   env: Record<string, string>;
   cwd: string;
   numa: InstanceNuma | null;
+  rpcWorkers: RpcWorkerRef[];
 };
 
 export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
   return {
     binaryPath: instance.binaryPath,
-    cliArgs: [...argsToCli(instance.args), ...resolveLocalRpcArgs(instance)],
+    cliArgs: argsToCli(instance.args),
     env: { ...instance.env },
     cwd: instance.cwd ?? dirname(instance.binaryPath),
     numa: instance.numa ?? null,
+    rpcWorkers: instance.rpcWorkers,
   };
 }
 
@@ -47,6 +53,7 @@ export function parseLaunchSnapshot(
       cwd:
         typeof value.cwd === "string" ? value.cwd : dirname(value.binaryPath),
       numa: InstanceNumaSchema.safeParse(value.numa).data ?? null,
+      rpcWorkers: Array.isArray(value.rpcWorkers) ? value.rpcWorkers : [],
     };
   } catch {
     return null;
@@ -95,6 +102,18 @@ export function hasLaunchSnapshotDrift(
     current.cwd !== snapshot.cwd ||
     !sameNuma(current.numa, snapshot.numa) ||
     !sameStringArray(current.cliArgs, snapshot.cliArgs) ||
-    !sameRecord(current.env, snapshot.env)
+    !sameRecord(current.env, snapshot.env) ||
+    !sameRpcWorkers(current.rpcWorkers, snapshot.rpcWorkers)
+  );
+}
+
+function sameRpcWorkers(left: RpcWorkerRef[], right: RpcWorkerRef[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (ref, index) =>
+        ref.nodeId === right[index]?.nodeId &&
+        ref.instanceName === right[index]?.instanceName,
+    )
   );
 }

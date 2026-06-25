@@ -17,6 +17,7 @@ function makeInstance(overrides: Partial<Instance> = {}): Instance {
     pid: null,
     args: { "--port": "8080", "--flash-attn": true },
     env: { CUDA_VISIBLE_DEVICES: "0" },
+    rpcWorkers: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -66,6 +67,13 @@ test("hasLaunchSnapshotDrift detects args, env, binary and cwd changes", () => {
   );
   assert.equal(
     hasLaunchSnapshotDrift(makeInstance({ cwd: "/tmp" }), snapshot),
+    true,
+  );
+  assert.equal(
+    hasLaunchSnapshotDrift(
+      makeInstance({ rpcWorkers: [{ nodeId: null, instanceName: "w1" }] }),
+      snapshot,
+    ),
     true,
   );
 });
