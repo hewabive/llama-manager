@@ -28,6 +28,7 @@ import {
   listRpcWorkerCandidates,
   previewInstancePreflight,
   startInstance,
+  startRpcWorker,
   updateInstance,
 } from "../../api/client";
 import { useScannedModels } from "../hooks/use-scanned-models";
@@ -265,10 +266,60 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     () => rpcWorkers.map(encodeRpcWorkerRef),
     [rpcWorkers],
   );
+  const selectedRpcWorkers = useMemo(() => {
+    const byKey = new Map(
+      rpcWorkerCandidates.map((candidate) => [
+        encodeRpcWorkerRef(candidate),
+        candidate,
+      ]),
+    );
+    return rpcWorkers.map((ref) => {
+      const candidate = byKey.get(encodeRpcWorkerRef(ref));
+      return {
+        nodeId: ref.nodeId,
+        instanceName: ref.instanceName,
+        nodeName: candidate?.nodeName ?? ref.nodeId ?? "local",
+        status: candidate?.status ?? null,
+      };
+    });
+  }, [rpcWorkers, rpcWorkerCandidates]);
+  const downRpcWorkers = selectedRpcWorkers.filter(
+    (worker) => worker.status !== null && worker.status !== "running",
+  );
 
   function applyRpcWorkers(values: string[]) {
     setRpcWorkers(values.map(decodeRpcWorkerRef));
   }
+
+  const startRpcWorkersMutation = useMutation({
+    mutationFn: () =>
+      Promise.all(
+        downRpcWorkers.map((worker) =>
+          startRpcWorker({
+            nodeId: worker.nodeId,
+            instanceName: worker.instanceName,
+          }),
+        ),
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["rpc-worker-candidates"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["instance-preflight-preview"],
+        }),
+      ]);
+      notifications.show({
+        title: "Starting rpc workers",
+        message: `Requested start for ${downRpcWorkers.length} worker${downRpcWorkers.length === 1 ? "" : "s"}`,
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Failed to start rpc workers",
+        message: (error as Error).message,
+      }),
+  });
   const instanceDefaultArgs = useMemo(
     () => argumentDefaultsQuery.data?.data.instance ?? [],
     [argumentDefaultsQuery.data?.data.instance],
@@ -637,7 +688,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       const input: InstancePreflightPreview = {
         name: form.values.name,
         kind,
-        rpcWorkers: [],
+        rpcWorkers: kind === "rpc-worker" ? [] : rpcWorkers,
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env,
@@ -655,6 +706,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     knownArgByName,
     memoryRows,
     props.instance?.name,
+    rpcWorkers,
     selectedBinaryPathRefId,
   ]);
 
@@ -1298,8 +1350,12 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     isWorker: kind === "rpc-worker",
     rpcWorkerOptions,
     selectedRpcWorkerValues,
+    selectedRpcWorkers,
     applyRpcWorkers,
     rpcWorkerCandidatesQuery,
+    downRpcWorkerCount: downRpcWorkers.length,
+    startDownRpcWorkers: () => startRpcWorkersMutation.mutate(),
+    startRpcWorkersPending: startRpcWorkersMutation.isPending,
     waitingForInitialDefaults,
     modalTitle,
     argRows,

@@ -18,6 +18,7 @@ import { dirname } from "node:path";
 
 import { getSystemResources } from "../system/resources.js";
 import { getLlamaArgumentCatalog } from "../arguments/catalog.js";
+import { validateRpcWorkerReadiness } from "./rpc-preflight.js";
 
 type PreflightOptions = {
   peers?: Instance[] | undefined;
@@ -723,6 +724,9 @@ export async function validateInstanceStartPreflight(
   }
 
   await validatePortAvailability(instance, result.issues, options);
+  result.issues.push(
+    ...(await validateRpcWorkerReadiness(instance, options.peers ?? [])),
+  );
   return {
     ...result,
     ok: !result.issues.some((issue) => issue.level === "error"),

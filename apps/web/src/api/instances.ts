@@ -17,6 +17,20 @@ export async function listRpcWorkerCandidates() {
   return request<{ data: RpcWorkerCandidate[] }>("/api/fleet/rpc-workers");
 }
 
+export async function startRpcWorker(ref: {
+  nodeId: string | null;
+  instanceName: string;
+}) {
+  const path =
+    ref.nodeId === null
+      ? `/api/instances/${ref.instanceName}/start`
+      : `/api/nodes/${ref.nodeId}/instances/${ref.instanceName}/start`;
+  return request<{ data: unknown }>(path, {
+    method: "POST",
+    body: JSON.stringify({ force: false }),
+  });
+}
+
 export async function createInstance(input: InstanceCreate) {
   return request<{ data: Instance }>("/api/instances", {
     method: "POST",
