@@ -1,5 +1,6 @@
 import {
   InstanceArgsSchema,
+  RPC_SERVER_SUPPORTED_FLAGS,
   type Instance,
   type InstanceCreate,
   type InstanceKind,
@@ -101,14 +102,9 @@ function isRpcServerBinary(path: string) {
   return pathBaseName(path) === "rpc-server";
 }
 
-const RPC_WORKER_ARG_KEYS = new Set([
-  "--host",
-  "--port",
-  "--threads",
-  "--device",
-  "--cache",
-  "-c",
-]);
+const RPC_WORKER_ARG_KEYS = new Set(
+  RPC_SERVER_SUPPORTED_FLAGS.flatMap((flag) => [flag.long, flag.short]),
+);
 
 function encodeRpcWorkerRef(
   ref: Pick<RpcWorkerRef, "nodeId" | "instanceName">,

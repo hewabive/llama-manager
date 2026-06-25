@@ -204,6 +204,16 @@ export const RpcWorkerRefSchema = z.object({
   instanceName: InstanceNameSchema,
 });
 
+export type RpcServerFlag = { short: string; long: string };
+
+export const RPC_SERVER_SUPPORTED_FLAGS: readonly RpcServerFlag[] = [
+  { short: "-H", long: "--host" },
+  { short: "-p", long: "--port" },
+  { short: "-t", long: "--threads" },
+  { short: "-d", long: "--device" },
+  { short: "-c", long: "--cache" },
+];
+
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
   kind: InstanceKindSchema.default("llama-server"),

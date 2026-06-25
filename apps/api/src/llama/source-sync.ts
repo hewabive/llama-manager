@@ -6,6 +6,7 @@ import type {
   LlamaSourceSyncReport,
   LlamaSourceSyncSection,
 } from "@llama-manager/core";
+import { RPC_SERVER_SUPPORTED_FLAGS } from "@llama-manager/core";
 
 import { capabilityDefinitions } from "./probe.js";
 import {
@@ -186,12 +187,168 @@ function reconcileCapabilityEndpoints(
   };
 }
 
+const rpcServerSourceCandidates = [
+  "tools/rpc/rpc-server.cpp",
+  "examples/rpc/rpc-server.cpp",
+];
+
+const ignoredRpcServerFlags = new Set(["--help", "-h"]);
+
+export type RpcServerUsageFlag = {
+  long: string | null;
+  short: string | null;
+  label: string;
+};
+
+function rpcServerSourcePath(repoPath: string): string | null {
+  for (const candidate of rpcServerSourceCandidates) {
+    const full = resolve(repoPath, candidate);
+    if (existsSync(full)) {
+      return full;
+    }
+  }
+  return null;
+}
+
+export function parseRpcServerUsageFlags(source: string): RpcServerUsageFlag[] {
+  const start = source.indexOf("static void print_usage");
+  if (start === -1) {
+    return [];
+  }
+  const end = source.indexOf("\n}", start);
+  const block = end === -1 ? source.slice(start) : source.slice(start, end);
+
+  const flags: RpcServerUsageFlag[] = [];
+  const stringLiteral = /"((?:\\.|[^"\\])*)"/;
+  for (const line of block.split("\n")) {
+    const match = line.match(stringLiteral);
+    if (!match) continue;
+    const content = match[1]!.replace(/^\s+/, "");
+    if (!content.startsWith("-")) continue;
+    const head = content.split(/\s{2,}/)[0] ?? "";
+    const tokens = head.match(/-{1,2}[A-Za-z][\w-]*/g) ?? [];
+    if (tokens.length === 0) continue;
+    flags.push({
+      long: tokens.find((token) => token.startsWith("--")) ?? null,
+      short: tokens.find((token) => /^-[A-Za-z]$/.test(token)) ?? null,
+      label: head.trim(),
+    });
+  }
+  return flags;
+}
+
+export function rpcServerFlagDivergences(
+  sourceFlags: RpcServerUsageFlag[],
+): LlamaSourceSyncDivergence[] {
+  const supportedByLong = new Map(
+    RPC_SERVER_SUPPORTED_FLAGS.map((flag) => [flag.long, flag]),
+  );
+  const sourceLongFlags = new Set(
+    sourceFlags
+      .map((flag) => flag.long)
+      .filter((long): long is string => long !== null),
+  );
+
+  const divergences: LlamaSourceSyncDivergence[] = [];
+
+  for (const flag of [...sourceFlags].sort((a, b) =>
+    (a.long ?? a.short ?? "").localeCompare(b.long ?? b.short ?? ""),
+  )) {
+    if (flag.long && ignoredRpcServerFlags.has(flag.long)) continue;
+    if (flag.short && ignoredRpcServerFlags.has(flag.short)) continue;
+    if (flag.long && supportedByLong.has(flag.long)) continue;
+    divergences.push({
+      kind: "unprobed",
+      severity: "warning",
+      label: flag.label,
+      detail:
+        "Exposed by rpc-server but not handled by the rpc-worker settings form.",
+    });
+  }
+
+  for (const flag of RPC_SERVER_SUPPORTED_FLAGS) {
+    if (sourceLongFlags.has(flag.long)) continue;
+    divergences.push({
+      kind: "stale",
+      severity: "warning",
+      label: `${flag.short}, ${flag.long}`,
+      detail:
+        "Sent by the rpc-worker form but no longer accepted by rpc-server.",
+    });
+  }
+
+  return divergences;
+}
+
+function reconcileRpcServerFlags(repoPath: string): LlamaSourceSyncSection {
+  const base = {
+    id: "rpc-server-flags",
+    title: "RPC server flags",
+    description:
+      "rpc-server CLI flags vs the rpc-worker settings form's known flags.",
+    sourcePath: rpcServerSourceCandidates[0]!,
+    divergences: [] as LlamaSourceSyncDivergence[],
+  };
+
+  const sourceFile = rpcServerSourcePath(repoPath);
+  if (!sourceFile) {
+    return {
+      ...base,
+      status: "error",
+      summary: "rpc-server source not found in the configured checkout.",
+      error: `rpc-server source not found (looked for ${rpcServerSourceCandidates.join(", ")} under ${repoPath}).`,
+    };
+  }
+
+  let flags: RpcServerUsageFlag[];
+  try {
+    flags = parseRpcServerUsageFlags(readFileSync(sourceFile, "utf8"));
+  } catch (error) {
+    return {
+      ...base,
+      status: "error",
+      summary: "Failed to read rpc-server source.",
+      error: (error as Error).message,
+    };
+  }
+
+  if (flags.length === 0) {
+    return {
+      ...base,
+      status: "error",
+      summary: "No flags parsed from print_usage in rpc-server.cpp.",
+      error:
+        "The print_usage parser matched nothing — it may be out of date with llama.cpp.",
+    };
+  }
+
+  const divergences = rpcServerFlagDivergences(flags);
+  const unprobed = divergences.filter(
+    (item) => item.kind === "unprobed",
+  ).length;
+  const stale = divergences.filter((item) => item.kind === "stale").length;
+
+  return {
+    ...base,
+    status: divergences.length === 0 ? "in-sync" : "drift",
+    summary:
+      divergences.length === 0
+        ? `All ${flags.length} rpc-server flag(s) are covered or intentionally ignored.`
+        : `${unprobed} unhandled flag(s), ${stale} stale flag(s) across ${flags.length} rpc-server flags.`,
+    error: null,
+    divergences,
+  };
+}
+
 export function getLlamaSourceSyncReport(): LlamaSourceSyncReport {
   const repoPath = getLlamaSourceSettings().repoPath;
   return {
     checkedAt: new Date().toISOString(),
     repoPath,
     llamaCppCommit: getLlamaSourceCurrentCommit(),
-    sections: [reconcileCapabilityEndpoints(repoPath)],
+    sections: [
+      reconcileCapabilityEndpoints(repoPath),
+      reconcileRpcServerFlags(repoPath),
+    ],
   };
 }
