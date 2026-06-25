@@ -63,6 +63,19 @@ test("router instance (preset, no --model) yields one opaque managed option", as
   assert.equal(group.options[0]?.label, "router-B");
 });
 
+test("an rpc-worker instance is not exposed as a proxy target", async () => {
+  const worker: Instance = {
+    ...instance("rpc-worker-A", { "--host": "0.0.0.0", "--port": 50052 }),
+    kind: "rpc-worker",
+  };
+
+  const catalog = await buildApiProxyTargetModelCatalog([worker]);
+  assert.equal(
+    catalog.groups.some((item) => item.endpointName === "rpc-worker-A"),
+    false,
+  );
+});
+
 test("a configured --model wins over --models-preset (single, not router)", async () => {
   const mixed = instance("mixed", {
     "--host": "127.0.0.1",

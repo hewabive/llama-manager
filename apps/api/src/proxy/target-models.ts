@@ -5,6 +5,7 @@ import {
   type ApiEndpointRecord,
   type ApiProxyTargetModelCatalog,
   type ApiProxyTargetModelGroup,
+  instanceCapabilities,
   type FleetNode,
   type Instance,
 } from "@llama-manager/core";
@@ -123,6 +124,9 @@ export async function buildApiProxyTargetModelCatalog(
 
   for (const { node, instances: nodeInstances } of await listRemoteInstancesByNode()) {
     for (const instance of nodeInstances) {
+      if (!instanceCapabilities(instance.kind).proxyEndpoint) {
+        continue;
+      }
       groups.push(remoteGroup(node, instance));
     }
   }
