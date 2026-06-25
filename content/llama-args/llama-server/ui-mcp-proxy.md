@@ -8,22 +8,24 @@ valueType: "boolean"
 valueHint: null
 aliases:
   - "--ui-mcp-proxy"
+  - "--webui-mcp-proxy"
   - "--no-ui-mcp-proxy"
+  - "--no-webui-mcp-proxy"
 allowedValues: []
 env:
   - "LLAMA_ARG_UI_MCP_PROXY"
 related:
   - "--ui"
+  - "--agent"
   - "--api-key"
   - "--host"
-  - "--webui-mcp-proxy"
 ---
 
 # --ui-mcp-proxy
 
 ## Кратко
 
-`--ui-mcp-proxy` и `--no-ui-mcp-proxy` управляют `common_params::ui_mcp_proxy`; deprecated поле `webui_mcp_proxy` синхронизируется тем же значением. При включении сервер регистрирует `GET /cors-proxy` и `POST /cors-proxy`.
+`--ui-mcp-proxy` и `--no-ui-mcp-proxy` управляют единственным полем `common_params::ui_mcp_proxy`. При включении сервер регистрирует `GET /cors-proxy` и `POST /cors-proxy`. `--webui-mcp-proxy`/`--no-webui-mcp-proxy` — равноправные алиасы (раньше были deprecated).
 
 ## Оригинальная справка llama.cpp
 
@@ -34,15 +36,16 @@ experimental: whether to enable MCP CORS proxy - do not enable in untrusted envi
 ## Паспорт аргумента
 
 - Основное имя: `--ui-mcp-proxy`
-- Отрицательная форма: `--no-ui-mcp-proxy`
+- Алиас: `--webui-mcp-proxy`
+- Отрицательная форма: `--no-ui-mcp-proxy` (алиас `--no-webui-mcp-proxy`)
 - Переменная окружения: `LLAMA_ARG_UI_MCP_PROXY`
-- Поля в `common_params`: `ui_mcp_proxy`, `webui_mcp_proxy`
+- Поле в `common_params`: `ui_mcp_proxy`
 - Значение по умолчанию: disabled
 - Endpoints: `/cors-proxy`
 
 ## Что меняет в llama-server
 
-После регистрации основных API routes `server.cpp` проверяет `params.ui_mcp_proxy || params.webui_mcp_proxy`. Если true, сервер выводит предупреждение `CORS proxy is enabled, do not expose server to untrusted environments` и регистрирует proxy handlers.
+После регистрации основных API routes `server.cpp` проверяет `params.ui_mcp_proxy`. Если true, сервер выводит предупреждение `CORS proxy is enabled, do not expose server to untrusted environments` и регистрирует proxy handlers.
 
 `GET /props` отражает состояние как `cors_proxy_enabled`.
 
@@ -61,7 +64,8 @@ experimental: whether to enable MCP CORS proxy - do not enable in untrusted envi
 ## Взаимодействие с другими аргументами
 
 - `--ui` не является строгим техническим условием регистрации `/cors-proxy`, но фича предназначена для Web UI.
-- Deprecated `--webui-mcp-proxy` управляет теми же полями.
+- `--webui-mcp-proxy` — алиас, управляет тем же полем.
+- `--agent` включает этот proxy заодно со всеми встроенными tools.
 - `--api-key` защищает endpoint, если ключи включены.
 
 ## INI-пресеты и router-режим

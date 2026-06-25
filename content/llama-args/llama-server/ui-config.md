@@ -8,20 +8,20 @@ valueType: "json"
 valueHint: "JSON"
 aliases:
   - "--ui-config"
+  - "--webui-config"
 allowedValues: []
 env:
   - "LLAMA_ARG_UI_CONFIG"
 related:
   - "--ui"
   - "--ui-config-file"
-  - "--webui-config"
 ---
 
 # --ui-config
 
 ## Кратко
 
-`--ui-config` записывает JSON-строку в `common_params::ui_config_json` и для совместимости также в `webui_config_json`. Позже `server-context.cpp` парсит строку в `json_ui_settings`.
+`--ui-config` записывает JSON-строку в единственное поле `common_params::ui_config_json`. Позже `server-context.cpp` парсит строку в `json_ui_settings`. `--webui-config` — равноправный алиас (раньше был deprecated).
 
 ## Оригинальная справка llama.cpp
 
@@ -32,14 +32,15 @@ JSON that provides default UI settings (overrides UI defaults)
 ## Паспорт аргумента
 
 - Основное имя: `--ui-config`
+- Алиас: `--webui-config`
 - Значение: JSON object string
 - Переменная окружения: `LLAMA_ARG_UI_CONFIG`
-- Поля в `common_params`: `ui_config_json`, `webui_config_json`
+- Поле в `common_params`: `ui_config_json`
 - Этап применения: после загрузки модели, при подготовке props/UI metadata
 
 ## Что меняет в llama-server
 
-Если JSON непустой, сервер вызывает `json::parse`. При ошибке логирует `failed to parse UI config: ...` и загрузка модели завершается неуспешно. Успешно распарсенный объект публикуется в `GET /props` как `ui_settings`; deprecated ключ `webui_settings` заполняется тем же значением.
+Если JSON непустой, сервер вызывает `json::parse`. При ошибке логирует `failed to parse UI config: ...` и загрузка модели завершается неуспешно. Успешно распарсенный объект публикуется в `GET /props` как `ui_settings` (legacy-ключ `webui_settings` больше не отдается).
 
 ## Значения и формат
 
@@ -55,8 +56,8 @@ JSON that provides default UI settings (overrides UI defaults)
 
 ## Взаимодействие с другими аргументами
 
-- `--ui-config-file` читает JSON из файла в те же поля.
-- Если заданы и `ui_config_json`, и deprecated `webui_config_json`, код выбирает непустой `ui_config_json`.
+- `--ui-config-file` читает JSON из файла в то же поле.
+- `--webui-config` — алиас и пишет в то же поле; при повторе побеждает последнее примененное значение.
 - `--ui` определяет, отдается ли встроенный UI, но `/props` с `ui_settings` доступен независимо от static UI.
 
 ## INI-пресеты и router-режим

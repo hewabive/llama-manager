@@ -14,7 +14,6 @@ env:
 related:
   - "--api-prefix"
   - "--ui"
-  - "--webui"
 ---
 
 # --path

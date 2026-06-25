@@ -24,12 +24,12 @@ related:
 
 ## Кратко
 
-`--api-key-file` открывает файл при парсинге аргументов и добавляет каждую непустую строку в `common_params::api_keys`. Если файл нельзя открыть, запуск прерывается ошибкой `error: failed to open file '...'`.
+`--api-key-file` открывает файл при парсинге аргументов и добавляет каждую непустую строку в `common_params::api_keys`. Строки, начинающиеся с `#`, считаются комментариями и пропускаются. Если файл нельзя открыть, запуск прерывается ошибкой `error: failed to open file '...'`.
 
 ## Оригинальная справка llama.cpp
 
 ```text
-path to file containing API keys (default: none)
+path to file containing API keys, one per line; lines starting with a hash are treated as comments (default: none)
 ```
 
 ## Паспорт аргумента
@@ -43,15 +43,16 @@ path to file containing API keys (default: none)
 
 ## Что меняет в llama-server
 
-После чтения файла поведение идентично `--api-key`: middleware требует `Authorization: Bearer <key>` или `X-Api-Key: <key>` для непубличных endpoints. Пустые строки игнорируются. Комментарии не поддержаны: строка `# key` будет считаться ключом.
+После чтения файла поведение идентично `--api-key`: middleware требует `Authorization: Bearer <key>` или `X-Api-Key: <key>` для непубличных endpoints. Пустые строки игнорируются; строки, начинающиеся с `#`, считаются комментариями (проверяется только первый символ строки, inline-комментарии после ключа не поддержаны).
 
 Файл читается один раз на старте. Изменение файла не обновляет ключи в уже работающем процессе.
 
 ## Значения и формат
 
-Формат:
+Формат — по одному ключу на строку; строки с `#` в начале это комментарии:
 
 ```text
+# prod keys
 key-one
 key-two
 ```

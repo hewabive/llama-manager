@@ -9,7 +9,9 @@ valueHint: null
 presetSupport: "router-managed"
 aliases:
   - "--ui"
+  - "--webui"
   - "--no-ui"
+  - "--no-webui"
 allowedValues: []
 env:
   - "LLAMA_ARG_UI"
@@ -19,14 +21,14 @@ related:
   - "--ui-config"
   - "--ui-config-file"
   - "--ui-mcp-proxy"
-  - "--webui"
+  - "--agent"
 ---
 
 # --ui
 
 ## Кратко
 
-`--ui` и `--no-ui` управляют `common_params::ui`; для совместимости код одновременно обновляет deprecated поле `webui`. По умолчанию UI включен.
+`--ui` и `--no-ui` управляют единственным полем `common_params::ui`. По умолчанию UI включен. `--webui`/`--no-webui` — равноправные алиасы того же флага: раньше они были помечены deprecated, теперь это просто вторые имена в одной записи `--help`.
 
 ## Оригинальная справка llama.cpp
 
@@ -37,9 +39,10 @@ whether to enable the Web UI (default: enabled)
 ## Паспорт аргумента
 
 - Основное имя: `--ui`
-- Отрицательная форма: `--no-ui`
+- Алиас: `--webui`
+- Отрицательная форма: `--no-ui` (алиас `--no-webui`)
 - Переменная окружения: `LLAMA_ARG_UI`
-- Поля в `common_params`: `ui`, `webui`
+- Поле в `common_params`: `ui`
 - Значение по умолчанию: enabled
 - Этап применения: регистрация static UI routes
 
@@ -66,7 +69,8 @@ whether to enable the Web UI (default: enabled)
 - `--path` имеет эффект только при включенном UI.
 - `--api-prefix` сдвигает UI routes под префикс.
 - `--ui-config` и `--ui-config-file` задают настройки, которые видны в `/props`, но без UI они в основном полезны только клиентам, которые читают эти props.
-- `--webui` является deprecated-синонимом.
+- `--webui`/`--no-webui` — алиасы этого же флага (не deprecated).
+- `--agent` включает встроенные tools и CORS proxy и предполагает работу из Web UI.
 
 ## INI-пресеты и router-режим
 

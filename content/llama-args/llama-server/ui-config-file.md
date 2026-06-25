@@ -8,20 +8,20 @@ valueType: "path"
 valueHint: "PATH"
 aliases:
   - "--ui-config-file"
+  - "--webui-config-file"
 allowedValues: []
 env:
   - "LLAMA_ARG_UI_CONFIG_FILE"
 related:
   - "--ui"
   - "--ui-config"
-  - "--webui-config-file"
 ---
 
 # --ui-config-file
 
 ## Кратко
 
-`--ui-config-file` вызывает `read_file(value)` в обработчике аргумента и кладет содержимое в `ui_config_json` и `webui_config_json`. JSON парсится позже, как у `--ui-config`.
+`--ui-config-file` вызывает `read_file(value)` в обработчике аргумента и кладет содержимое в единственное поле `ui_config_json`. JSON парсится позже, как у `--ui-config`. `--webui-config-file` — равноправный алиас (раньше был deprecated).
 
 ## Оригинальная справка llama.cpp
 
@@ -32,9 +32,10 @@ JSON file that provides default UI settings (overrides UI defaults)
 ## Паспорт аргумента
 
 - Основное имя: `--ui-config-file`
+- Алиас: `--webui-config-file`
 - Значение: путь к JSON-файлу
 - Переменная окружения: `LLAMA_ARG_UI_CONFIG_FILE`
-- Поля в `common_params`: `ui_config_json`, `webui_config_json`
+- Поле в `common_params`: `ui_config_json`
 - Этап применения: чтение при парсинге CLI, парсинг JSON при инициализации server context
 
 ## Что меняет в llama-server
@@ -55,7 +56,7 @@ JSON file that provides default UI settings (overrides UI defaults)
 
 ## Взаимодействие с другими аргументами
 
-- Deprecated `--webui-config-file` делает то же самое, но новый флаг предпочтительнее.
+- `--webui-config-file` — алиас и делает то же самое.
 - Если одновременно задан `--ui-config`, итог зависит от порядка обработки аргументов: оба пишут в одно поле, последнее примененное значение победит.
 - `--ui` не обязан быть включен, чтобы настройки отображались в `/props`.
 
