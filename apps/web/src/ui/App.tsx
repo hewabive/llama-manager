@@ -52,6 +52,7 @@ import { ProcessesView } from "./views/ProcessesView";
 import { ProxySection } from "./views/ProxySection";
 import { PublicStatusView } from "./views/PublicStatusView";
 import { SourceSyncView } from "./views/SourceSyncView";
+import { UpdateView } from "./views/UpdateView";
 
 export function App() {
   const [route, setRoute] = useHashRoute();
@@ -334,6 +335,8 @@ export function App() {
           )}
 
           {canUseAdmin && route === "nodes" && <NodesView />}
+
+          {canUseAdmin && route === "update" && <UpdateView />}
 
           {canUseAdmin && route === "build" && <BuildView />}
 

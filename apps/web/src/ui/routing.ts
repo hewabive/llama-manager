@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 export type AppRoute =
   | "status"
   | "nodes"
+  | "update"
   | "instances"
   | "diagnostics"
   | "processes"
@@ -44,6 +45,13 @@ export const navSections: NavSection[] = [
         label: "Nodes",
         title: "Nodes",
         description: "Register llama-manager nodes to manage from one address",
+      },
+      {
+        route: "update",
+        label: "Updates",
+        title: "Manager Updates",
+        description:
+          "Version of this node and one-click update to the latest revision",
       },
     ],
   },

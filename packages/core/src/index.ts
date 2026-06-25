@@ -1642,6 +1642,79 @@ export const BuildLogTailSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const ManagerRunModeSchema = z.enum(["serve", "dev", "unknown"]);
+
+export const ManagerVersionSchema = z.object({
+  commit: z.string().nullable(),
+  shortCommit: z.string().nullable(),
+  committedAt: z.string().nullable(),
+  branch: z.string().nullable(),
+  dirty: z.boolean(),
+  isGitRepo: z.boolean(),
+  mode: ManagerRunModeSchema,
+  supervised: z.boolean(),
+  canUpdate: z.boolean(),
+  updateBlockedReason: z.string().nullable(),
+  behindCount: z.number().int().nullable(),
+  upstreamCommit: z.string().nullable(),
+  updateAvailable: z.boolean(),
+  lastCheckedAt: z.string().nullable(),
+});
+
+export const UpdateJobStatusSchema = z.enum([
+  "running",
+  "succeeded",
+  "failed",
+  "canceled",
+]);
+export const UpdateJobStepNameSchema = z.enum([
+  "snapshot",
+  "git-pull",
+  "install",
+  "build",
+  "restart",
+]);
+export const UpdateJobStepStatusSchema = z.enum([
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+  "skipped",
+]);
+
+export const UpdateJobStepSchema = z.object({
+  name: UpdateJobStepNameSchema,
+  status: UpdateJobStepStatusSchema,
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  exitCode: z.number().int().nullable(),
+});
+
+export const UpdateJobSchema = z.object({
+  id: z.string(),
+  status: UpdateJobStatusSchema,
+  steps: z.array(UpdateJobStepSchema),
+  currentStep: UpdateJobStepNameSchema.nullable(),
+  fromCommit: z.string().nullable(),
+  toCommit: z.string().nullable(),
+  willRestart: z.boolean(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  logPath: z.string(),
+  error: z.string().nullable(),
+});
+
+export const UpdateJobStartSchema = z.object({
+  restart: z.boolean().default(true),
+});
+
+export const UpdateLogTailSchema = z.object({
+  jobId: z.string(),
+  logPath: z.string().nullable(),
+  lines: z.array(z.string()),
+  truncated: z.boolean(),
+});
+
 export const LlamaArgumentValueTypeSchema = z.enum([
   "flag",
   "boolean",
@@ -2430,6 +2503,15 @@ export type BuildJobStep = z.infer<typeof BuildJobStepSchema>;
 export type BuildJob = z.infer<typeof BuildJobSchema>;
 export type BuildJobStart = z.infer<typeof BuildJobStartSchema>;
 export type BuildLogTail = z.infer<typeof BuildLogTailSchema>;
+export type ManagerRunMode = z.infer<typeof ManagerRunModeSchema>;
+export type ManagerVersion = z.infer<typeof ManagerVersionSchema>;
+export type UpdateJobStatus = z.infer<typeof UpdateJobStatusSchema>;
+export type UpdateJobStepName = z.infer<typeof UpdateJobStepNameSchema>;
+export type UpdateJobStepStatus = z.infer<typeof UpdateJobStepStatusSchema>;
+export type UpdateJobStep = z.infer<typeof UpdateJobStepSchema>;
+export type UpdateJob = z.infer<typeof UpdateJobSchema>;
+export type UpdateJobStart = z.infer<typeof UpdateJobStartSchema>;
+export type UpdateLogTail = z.infer<typeof UpdateLogTailSchema>;
 export type LlamaArgumentValueType = z.infer<
   typeof LlamaArgumentValueTypeSchema
 >;

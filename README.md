@@ -14,6 +14,31 @@ Default services:
 - API: `http://127.0.0.1:8787`
 - Web UI: `http://127.0.0.1:5173`
 
+## Production (serve) & self-update
+
+For a real deployment, run the built app as a single process serving the UI, API
+and proxy on one port:
+
+```bash
+pnpm serve            # build, then node apps/api/dist/index.js
+```
+
+To enable the **Update** button in the UI (pull → install → build → restart
+without a shell), install the supervisor unit so the manager can self-restart:
+
+```bash
+./scripts/install-service.sh
+```
+
+This installs `deploy/llama-manager.service` as a `systemd --user` unit
+(`Restart=always`, `KillMode=process` so managed `llama-server` children survive
+the restart) and enables linger. The script needs no sudo; only enabling linger
+may need a one-time `sudo loginctl enable-linger $USER` on a headless host (it
+skips this when already on). The Updates page then shows this node's version and
+a one-click update; it is per-node, so the global node switcher can update a peer
+too. Update from the UI is refused in `pnpm dev` (tsx/vite already hot-reload —
+`git pull` by hand instead). See [docs/SELF_UPDATE.md](docs/SELF_UPDATE.md).
+
 ## Runtime logs
 
 Managed `llama-server` launches write two log files:

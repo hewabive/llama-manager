@@ -28,6 +28,7 @@ import { registerProxyRoutes } from "./routes/proxy.routes.js";
 import { registerResourceRoutes } from "./routes/resources.routes.js";
 import { registerProxyTargetRoutes } from "./routes/proxy-targets.routes.js";
 import { registerSystemRoutes } from "./routes/system.routes.js";
+import { registerUpdateRoutes } from "./routes/update.routes.js";
 
 export { startApiProxyIdleMaintenanceLoop } from "./proxy/idle-maintenance.js";
 
@@ -62,6 +63,7 @@ registerProxyTargetRoutes(app);
 registerArgumentRoutes(app);
 registerLlamaSourceRoutes(app);
 registerBuildRoutes(app);
+registerUpdateRoutes(app);
 registerModelRoutes(app);
 registerPresetRoutes(app);
 registerInstanceRoutes(app);

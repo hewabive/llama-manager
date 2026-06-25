@@ -1,0 +1,19 @@
+[Unit]
+Description=llama-manager control plane
+Documentation=https://github.com/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_DIR@
+Environment=NODE_ENV=production
+Environment=PATH=@PATH@
+ExecStart=@NODE_BIN@ apps/api/dist/index.js
+Restart=always
+RestartSec=2
+TimeoutStopSec=20
+KillMode=process
+
+[Install]
+WantedBy=default.target
