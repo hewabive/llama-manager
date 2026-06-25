@@ -96,6 +96,10 @@ export type InstanceFormModalProps = {
   initialModelPath?: string | null;
 };
 
+function isRpcServerBinary(path: string) {
+  return pathBaseName(path) === "rpc-server";
+}
+
 function encodeRpcWorkerRef(ref: Pick<RpcWorkerRef, "nodeId" | "instanceName">) {
   return `${ref.nodeId ?? ""}:${ref.instanceName}`;
 }
@@ -350,9 +354,11 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   const binaryCatalogEntries = useMemo(
     () =>
       (pathCatalogQuery.data?.data ?? []).filter(
-        (entry) => entry.kind === "binary",
+        (entry) =>
+          entry.kind === "binary" &&
+          isRpcServerBinary(entry.path) === (kind === "rpc-worker"),
       ),
-    [pathCatalogQuery.data?.data],
+    [pathCatalogQuery.data?.data, kind],
   );
   const binaryCatalogOptions = useMemo(
     () =>
@@ -739,6 +745,14 @@ export function useInstanceForm(props: InstanceFormModalProps) {
 
   function applyKind(next: InstanceKind) {
     setKind(next);
+    const matchingBinaries = (pathCatalogQuery.data?.data ?? []).filter(
+      (entry) =>
+        entry.kind === "binary" &&
+        isRpcServerBinary(entry.path) === (next === "rpc-worker"),
+    );
+    if (!matchingBinaries.some((entry) => entry.id === selectedBinaryPathRefId)) {
+      setSelectedBinaryPathRefId(matchingBinaries[0]?.id ?? null);
+    }
     if (next === "rpc-worker") {
       setSelectedModelPath(null);
       setSelectedPresetName(null);
