@@ -153,8 +153,9 @@ function offlineProbe(instance: Instance, error: string): LlamaProbe {
   };
 }
 
-function deriveStatus(input: {
+export function deriveStatus(input: {
   runtime: RuntimeState;
+  httpHealth: boolean;
   preflightOk: boolean;
   preflightErrors: number;
   preflightWarnings: number;
@@ -236,6 +237,32 @@ function deriveStatus(input: {
     return {
       status: "degraded",
       reason: `${input.preflightErrors} preflight issue${input.preflightErrors === 1 ? "" : "s"} detected while the process is running.`,
+    };
+  }
+
+  if (!input.httpHealth) {
+    const swappedOut =
+      input.swapBytes !== null &&
+      input.swapBytes >= SWAP_DEGRADED_THRESHOLD_BYTES;
+    if (input.logErrors > 0 || swappedOut) {
+      const issues = [
+        input.logErrors > 0
+          ? `${input.logErrors} log error${input.logErrors === 1 ? "" : "s"}`
+          : null,
+        swappedOut
+          ? `${Math.round((input.swapBytes ?? 0) / (1024 * 1024))} MiB of process memory in swap`
+          : null,
+      ].filter(Boolean);
+      return {
+        status: "degraded",
+        reason: `rpc-server process is running, but ${issues.join(", ")} detected.`,
+      };
+    }
+    return {
+      status: "ready",
+      reason: input.healthOk
+        ? "rpc-server is listening for the orchestrator."
+        : "rpc-server process is running; the readiness probe was not answered (it may be busy serving the orchestrator or firewalled from the manager).",
     };
   }
 
@@ -354,6 +381,7 @@ export async function getInstanceHealthSummary(
       : null;
   const derived = deriveStatus({
     runtime,
+    httpHealth: capabilities.httpHealth,
     preflightOk: preflight.ok,
     preflightErrors,
     preflightWarnings,
