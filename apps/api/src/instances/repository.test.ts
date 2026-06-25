@@ -40,6 +40,7 @@ test("createInstance writes a file and resolves the binary path", () => {
   const name = uniqueName("inst");
   const created = createInstance({
     name,
+    kind: "llama-server",
     binaryPathRefId: binaryRefId,
     args: { "--ctx-size": 4096 },
     env: { CUDA_VISIBLE_DEVICES: "0" },
@@ -68,6 +69,7 @@ test("getInstance/listInstances read back from files", () => {
   const name = uniqueName("inst");
   const created = createInstance({
     name,
+    kind: "llama-server",
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -81,10 +83,10 @@ test("getInstance/listInstances read back from files", () => {
 
 test("createInstance rejects duplicate names", () => {
   const name = uniqueName("dup");
-  createInstance({ name, binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] });
+  createInstance({ name, kind: "llama-server", binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] });
   assert.throws(
     () =>
-      createInstance({ name, binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] }),
+      createInstance({ name, kind: "llama-server", binaryPathRefId: binaryRefId, args: {}, env: {}, memory: [] }),
     InstanceNameConflictError,
   );
 });
@@ -93,6 +95,7 @@ test("updateInstance renaming moves the file", () => {
   const name = uniqueName("old");
   const created = createInstance({
     name,
+    kind: "llama-server",
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -112,6 +115,7 @@ test("updateInstance renaming moves the file", () => {
 test("updateInstance rejects renaming onto an existing name", () => {
   const a = createInstance({
     name: uniqueName("a"),
+    kind: "llama-server",
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -119,6 +123,7 @@ test("updateInstance rejects renaming onto an existing name", () => {
   });
   const b = createInstance({
     name: uniqueName("b"),
+    kind: "llama-server",
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -135,6 +140,7 @@ test("deleteInstance removes the file and prunes process_runs", () => {
   const name = uniqueName("del");
   const created = createInstance({
     name,
+    kind: "llama-server",
     binaryPathRefId: binaryRefId,
     args: {},
     env: {},
@@ -154,6 +160,43 @@ test("deleteInstance removes the file and prunes process_runs", () => {
   assert.equal(existsSync(resolve(config.instancesDir, `${name}.json`)), false);
   assert.equal(latestProcessRun(created.name), null);
   assert.equal(getInstance(created.name), null);
+});
+
+test("createInstance defaults kind to llama-server and persists it", () => {
+  const name = uniqueName("kind");
+  const created = createInstance({
+    name,
+    kind: "llama-server",
+    binaryPathRefId: binaryRefId,
+    args: {},
+    env: {},
+    memory: [],
+  });
+  assert.equal(created.kind, "llama-server");
+
+  const stored = JSON.parse(
+    readFileSync(resolve(config.instancesDir, `${name}.json`), "utf8"),
+  ) as { kind?: unknown };
+  assert.equal(stored.kind, "llama-server");
+});
+
+test("a legacy instance file without kind reads back as llama-server", () => {
+  const name = uniqueName("legacy");
+  writeFileSync(
+    resolve(config.instancesDir, `${name}.json`),
+    JSON.stringify({
+      name,
+      binaryPath: "/opt/llama/llama-server",
+      args: {},
+      env: {},
+      memory: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }),
+    "utf8",
+  );
+  resetInstancesCache();
+  assert.equal(getInstance(name)?.kind, "llama-server");
 });
 
 test("reading a malformed instance file fails loud", () => {

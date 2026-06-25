@@ -12,6 +12,7 @@ import {
 function instance(name: string, args: Instance["args"]): Instance {
   return {
     name,
+    kind: "llama-server",
     binaryPath: "/tmp/llama-server",
     binaryPathRefId: "bin",
     args,

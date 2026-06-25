@@ -576,6 +576,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       }
       const input: InstancePreflightPreview = {
         name: form.values.name,
+        kind: "llama-server",
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env,
@@ -1110,6 +1111,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       }
       const input: InstanceCreate = {
         name: values.name,
+        kind: "llama-server",
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env: parseEnvJson(values.envJson),

@@ -114,6 +114,7 @@ export function registerInstanceRoutes(app: Hono) {
     const preview = parsed.data;
     const instance = resolveInstancePathRefs({
       name: preview.name ?? "preview",
+      kind: preview.kind,
       binaryPath: "",
       binaryPathRefId: preview.binaryPathRefId,
       cwd: preview.cwd,

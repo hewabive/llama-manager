@@ -67,6 +67,7 @@ function toInstance(record: InstanceConfigRecord): Instance {
 
   return {
     name: record.name,
+    kind: record.kind,
     binaryPath: resolveBinaryPath(record),
     binaryPathRefId: record.binaryPathRefId ?? "",
     cwd: record.cwd ?? undefined,
@@ -100,6 +101,7 @@ export function createInstance(input: InstanceCreate): Instance {
 
   const record: InstanceConfigRecord = {
     name: input.name,
+    kind: input.kind,
     binaryPath: binaryRef?.path ?? "",
     binaryPathRefId: input.binaryPathRefId,
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
@@ -135,6 +137,7 @@ export function updateInstance(
 
   const record: InstanceConfigRecord = {
     name: nextName,
+    kind: current.kind,
     binaryPath: binaryRef?.path ?? "",
     ...(nextRefId !== undefined ? { binaryPathRefId: nextRefId } : {}),
     ...(nextCwd !== undefined ? { cwd: nextCwd } : {}),

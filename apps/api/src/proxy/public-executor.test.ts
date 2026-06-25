@@ -27,6 +27,7 @@ const target: ApiProxyTargetRecord = {
 
 const instance: Instance = {
   name: "Instance A",
+  kind: "llama-server",
   binaryPath: "/tmp/llama-server",
   binaryPathRefId: "bin-a",
   args: {},

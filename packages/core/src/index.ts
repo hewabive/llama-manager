@@ -180,8 +180,28 @@ export const InstanceNumaSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
+export const InstanceKindSchema = z.enum(["llama-server", "rpc-worker"]);
+
+export type InstanceCapabilities = {
+  proxyEndpoint: boolean;
+  httpHealth: boolean;
+  ggufMemoryEstimate: boolean;
+  requestLease: boolean;
+};
+
+export function instanceCapabilities(kind: InstanceKind): InstanceCapabilities {
+  const inferenceServer = kind === "llama-server";
+  return {
+    proxyEndpoint: inferenceServer,
+    httpHealth: inferenceServer,
+    ggufMemoryEstimate: inferenceServer,
+    requestLease: inferenceServer,
+  };
+}
+
 export const InstanceCreateSchema = z.object({
   name: InstanceNameSchema,
+  kind: InstanceKindSchema.default("llama-server"),
   binaryPathRefId: PathCatalogIdSchema,
   cwd: InstancePathSchema.optional(),
   args: InstanceArgsSchema.default({}),
@@ -232,6 +252,7 @@ export const InstanceStartRequestSchema = z.object({
 
 export const InstanceConfigRecordSchema = z.object({
   name: InstanceNameSchema,
+  kind: InstanceKindSchema.default("llama-server"),
   binaryPath: z.string(),
   binaryPathRefId: PathCatalogIdSchema.optional(),
   cwd: InstancePathSchema.optional(),
@@ -2300,6 +2321,7 @@ export type PathCatalogUpdate = z.infer<typeof PathCatalogUpdateSchema>;
 export type MemoryPoolKind = z.infer<typeof MemoryPoolKindSchema>;
 export type MemoryPool = z.infer<typeof MemoryPoolSchema>;
 export type MemoryPoolUpdate = z.infer<typeof MemoryPoolUpdateSchema>;
+export type InstanceKind = z.infer<typeof InstanceKindSchema>;
 export type InstanceMemoryDraw = z.infer<typeof InstanceMemoryDrawSchema>;
 export type ResourcePoolUsage = z.infer<typeof ResourcePoolUsageSchema>;
 export type ResourceLedger = z.infer<typeof ResourceLedgerSchema>;

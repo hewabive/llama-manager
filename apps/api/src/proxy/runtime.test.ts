@@ -28,6 +28,7 @@ function endpoint(body: unknown, ok = true): LlamaEndpointProbe {
 function instance(name = "instance-a"): Instance {
   return {
     name,
+    kind: "llama-server",
     binaryPath: "/tmp/llama-server",
     binaryPathRefId: "bin-a",
     args: {},
