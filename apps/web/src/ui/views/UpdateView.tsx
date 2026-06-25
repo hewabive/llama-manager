@@ -73,6 +73,8 @@ export function UpdateView() {
   const queryClient = useQueryClient();
   const [activeJobs, setActiveJobs] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkFetchError, setCheckFetchError] = useState<string | null>(null);
   const autoCheckedRef = useRef(false);
 
   const busy = Object.keys(activeJobs).length > 0;
@@ -86,19 +88,27 @@ export function UpdateView() {
   const fleet = fleetQuery.data?.data;
   const upstream = fleet?.upstream ?? null;
 
-  const checkMutation = useMutation({
-    mutationFn: () => checkForUpdate(),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["update-fleet"] }),
-  });
+  const runCheck = useCallback(async () => {
+    setChecking(true);
+    setCheckFetchError(null);
+    try {
+      const res = await checkForUpdate();
+      setCheckFetchError(res.fetchError);
+      await queryClient.invalidateQueries({ queryKey: ["update-fleet"] });
+    } catch (error) {
+      setCheckFetchError((error as Error).message);
+    } finally {
+      setChecking(false);
+    }
+  }, [queryClient]);
 
   useEffect(() => {
     if (autoCheckedRef.current) {
       return;
     }
     autoCheckedRef.current = true;
-    checkMutation.mutate();
-  }, [checkMutation]);
+    void runCheck();
+  }, [runCheck]);
 
   const startOne = useCallback(async (node: UpdateFleetNode) => {
     const result = await startNodeUpdate(
@@ -175,18 +185,18 @@ export function UpdateView() {
               )}
             </Group>
             <Text size="xs" c="dimmed">
-              {upstream?.lastCheckedAt
-                ? `checked ${formatLocalDateTime(upstream.lastCheckedAt)}`
-                : checkMutation.isPending
-                  ? "checking…"
+              {checking
+                ? "checking…"
+                : upstream?.lastCheckedAt
+                  ? `checked ${formatLocalDateTime(upstream.lastCheckedAt)}`
                   : "never checked"}
             </Text>
           </Stack>
           <Group gap="xs">
             <Button
               variant="default"
-              loading={checkMutation.isPending}
-              onClick={() => checkMutation.mutate()}
+              loading={checking}
+              onClick={() => void runCheck()}
             >
               Check for updates
             </Button>
@@ -199,9 +209,9 @@ export function UpdateView() {
             </Button>
           </Group>
         </Group>
-        {checkMutation.data?.fetchError && (
+        {checkFetchError && (
           <Alert color="yellow" mt="sm" variant="light">
-            git fetch reported: {checkMutation.data.fetchError}
+            git fetch reported: {checkFetchError}
           </Alert>
         )}
         {actionError && (

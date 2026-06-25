@@ -16,8 +16,8 @@ export function registerUpdateRoutes(app: Hono) {
     return c.json({ data: await updateFleet() });
   });
 
-  app.post("/api/update/check", (c) => {
-    const { version, fetchError } = checkForUpdate();
+  app.post("/api/update/check", async (c) => {
+    const { version, fetchError } = await checkForUpdate();
     return c.json({ data: version, fetchError });
   });
 

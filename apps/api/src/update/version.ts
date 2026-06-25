@@ -4,11 +4,13 @@ import {
   type ManagerVersion,
   type UpdateUpstream,
 } from "@llama-manager/core";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { config } from "../config.js";
+
+const FETCH_TIMEOUT_MS = 20_000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -140,14 +142,63 @@ export function commitsBehind(commit: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function checkForUpdate(): {
+function runGitFetch(): Promise<void> {
+  return new Promise((resolveDone, reject) => {
+    const child = spawn("git", ["fetch", "--quiet"], {
+      cwd: config.rootDir,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_SSH_COMMAND: "ssh -oBatchMode=yes -oConnectTimeout=10",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let settled = false;
+    let stderr = "";
+    const finish = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      if (error) {
+        reject(error);
+      } else {
+        resolveDone();
+      }
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(
+        new Error(`git fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s`),
+      );
+    }, FETCH_TIMEOUT_MS);
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => finish(error));
+    child.on("close", (code, signal) => {
+      if (signal) {
+        finish(new Error(`git fetch terminated by ${signal}`));
+      } else if (code !== 0) {
+        finish(
+          new Error(stderr.trim() || `git fetch exited with code ${code}`),
+        );
+      } else {
+        finish();
+      }
+    });
+  });
+}
+
+export async function checkForUpdate(): Promise<{
   version: ManagerVersion;
   fetchError: string | null;
-} {
+}> {
   let fetchError: string | null = null;
   if (isGitRepo()) {
     try {
-      runGit(["fetch", "--quiet"]);
+      await runGitFetch();
     } catch (error) {
       fetchError = (error as Error).message;
     }
