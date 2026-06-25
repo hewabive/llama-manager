@@ -18,6 +18,7 @@ import {
   type EndpointDraft,
   type EndpointEditor,
 } from "../endpoints/forms";
+import { RemoteInstanceEndpointModal } from "../endpoints/remote-instance-modal";
 import { ApiEndpointsSection } from "../endpoints/section";
 
 export function ApiEndpointsView() {
@@ -27,6 +28,7 @@ export function ApiEndpointsView() {
   );
   const [endpointDraftState, setEndpointDraftState] =
     useState<EndpointDraft>(emptyEndpointDraft);
+  const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
@@ -108,7 +110,7 @@ export function ApiEndpointsView() {
   }
 
   function openEditEndpoint(endpoint: ApiEndpointRecord) {
-    if (!endpoint.editable) {
+    if (!endpoint.editable || endpoint.nodeId) {
       return;
     }
     setEndpointEditor({ mode: "edit", endpoint });
@@ -142,8 +144,14 @@ export function ApiEndpointsView() {
         targetCountByEndpointId={targetCountByEndpointId}
         deletePending={deleteEndpointMutation.isPending}
         onCreate={openCreateEndpoint}
+        onCreateRemote={() => setRemoteModalOpen(true)}
         onEdit={openEditEndpoint}
         onDelete={(id) => deleteEndpointMutation.mutate(id)}
+      />
+
+      <RemoteInstanceEndpointModal
+        opened={remoteModalOpen}
+        onClose={() => setRemoteModalOpen(false)}
       />
 
       <EndpointEditorModal

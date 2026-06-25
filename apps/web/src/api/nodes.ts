@@ -4,8 +4,10 @@ import type {
   FleetNodeView,
   FleetResourcesEntry,
   FleetSystemEntry,
+  Instance,
 } from "@llama-manager/core";
 
+import { nodeScopedPath } from "./base.js";
 import { request } from "./http.js";
 
 export async function listNodes() {
@@ -38,4 +40,10 @@ export async function getFleetSystem() {
 
 export async function getFleetResources() {
   return request<{ data: FleetResourcesEntry[] }>("/api/fleet/resources");
+}
+
+export async function listNodeInstances(nodeId: string) {
+  return request<{ data: Instance[] }>(
+    nodeScopedPath(nodeId, "/api/instances"),
+  );
 }

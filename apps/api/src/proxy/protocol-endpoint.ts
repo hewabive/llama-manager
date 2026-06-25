@@ -1,7 +1,16 @@
-import { ApiProxyRequestTraceSchema } from "@llama-manager/core";
+import {
+  ApiProxyRequestTraceSchema,
+  type ApiProxyServeRequest,
+  type ApiProxyTargetRecord,
+  type FleetNode,
+} from "@llama-manager/core";
 import type { Context } from "hono";
 
+import { listInstances } from "../instances/repository.js";
+import { getNode } from "../nodes/repository.js";
 import { observeBodyCompletion } from "./body-completion.js";
+import { delegateApiProxyServe } from "./delegate.js";
+import { getApiEndpointFromCatalog } from "./endpoints.js";
 import { buildDomainAdmissionDecider } from "./domain-admission.js";
 import {
   attachLeaseRelease,
@@ -26,6 +35,7 @@ import {
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
+  type ApiProxyProtocolModelRequest,
   type ApiProxyProtocolOperation,
   type ApiProxyResumableCodec,
 } from "./protocol.js";
@@ -117,19 +127,15 @@ function resolveStreamUsageMeter(
   return null;
 }
 
-export async function proxyProtocolEndpoint(
-  c: Context,
-  adapter: ApiProxyProtocolAdapter,
+export async function runWithProxyTrace(
   operation: ApiProxyProtocolOperation,
-) {
+  run: (ctx: {
+    trace: ProxyTraceAccumulator;
+    recorder: ProxyTraceRecorder;
+    inflight: ApiProxyInflightHandle;
+  }) => Promise<Response>,
+): Promise<Response> {
   const trace = createProxyTrace(operation);
-  const source = resolveApiProxySourceByKey(
-    extractRequestApiKey(c.req.raw.headers),
-  );
-  if (source) {
-    trace.sourceId = source.id;
-    trace.sourceName = source.name;
-  }
   const started = performance.now();
   const inflight = apiProxyInflight.begin({
     modelId: "",
@@ -155,14 +161,7 @@ export async function proxyProtocolEndpoint(
   };
   let response: Response | undefined;
   try {
-    response = await proxyProtocolEndpointInner(
-      c,
-      adapter,
-      operation,
-      trace,
-      recorder,
-      inflight,
-    );
+    response = await run({ trace, recorder, inflight });
     return response;
   } catch (error) {
     if (!trace.errorMessage) {
@@ -174,6 +173,30 @@ export async function proxyProtocolEndpoint(
       recorder.record(response);
     }
   }
+}
+
+export async function proxyProtocolEndpoint(
+  c: Context,
+  adapter: ApiProxyProtocolAdapter,
+  operation: ApiProxyProtocolOperation,
+) {
+  return runWithProxyTrace(operation, ({ trace, recorder, inflight }) => {
+    const source = resolveApiProxySourceByKey(
+      extractRequestApiKey(c.req.raw.headers),
+    );
+    if (source) {
+      trace.sourceId = source.id;
+      trace.sourceName = source.name;
+    }
+    return proxyProtocolEndpointInner(
+      c,
+      adapter,
+      operation,
+      trace,
+      recorder,
+      inflight,
+    );
+  });
 }
 
 async function proxyProtocolEndpointInner(
@@ -276,15 +299,255 @@ async function proxyProtocolEndpointInner(
   inflight.setTarget(route.targetId);
   inflight.setStream(route.request.stream);
 
+  const dispatchTarget = getApiProxyTarget(route.targetId);
+  if (dispatchTarget) {
+    const endpoint = getApiEndpointFromCatalog(
+      dispatchTarget.endpointId,
+      listInstances(),
+    );
+    if (endpoint?.nodeId && endpoint.instanceId) {
+      trace.targetName = dispatchTarget.name;
+      const node = getNode(endpoint.nodeId);
+      if (!node || !node.enabled) {
+        const message = `Proxy target ${dispatchTarget.name} points at ${
+          node ? "disabled" : "unknown"
+        } node ${endpoint.nodeId}`;
+        trace.errorMessage = message;
+        const response = adapter.diagnosticError(route.request, {
+          status: 503,
+          code: "llama_manager_proxy_upstream_unavailable",
+          param: "model",
+          message,
+        });
+        return c.json(response.body, response.status);
+      }
+      return delegateRemoteTarget({
+        c,
+        adapter,
+        operation,
+        request: route.request,
+        target: dispatchTarget,
+        node,
+        instanceId: endpoint.instanceId,
+        trace,
+        recorder,
+        inflight,
+      });
+    }
+  }
+
+  return serveResolvedTarget({
+    c,
+    adapter,
+    operation,
+    targetId: route.targetId,
+    request: route.request,
+    trace,
+    recorder,
+    inflight,
+  });
+}
+
+export function delegateServeRequestBody(
+  request: ApiProxyProtocolModelRequest,
+  operation: ApiProxyProtocolOperation,
+  adapter: ApiProxyProtocolAdapter,
+): unknown {
+  if (!request.stream) {
+    return request.body;
+  }
+  const streamMeter = resolveStreamUsageMeter(operation, adapter, request.body);
+  let body = request.body;
+  if (streamMeter?.inject) {
+    body = withIncludeUsage(body);
+  }
+  const wantsPrefill =
+    operation.endpoint === "chat.completions" ||
+    operation.endpoint === "messages";
+  if (wantsPrefill && !returnProgressRequested(body)) {
+    body = withReturnProgress(body);
+  }
+  return body;
+}
+
+async function delegateRemoteTarget(input: {
+  c: Context;
+  adapter: ApiProxyProtocolAdapter;
+  operation: ApiProxyProtocolOperation;
+  request: ApiProxyProtocolModelRequest;
+  target: ApiProxyTargetRecord;
+  node: FleetNode;
+  instanceId: string;
+  trace: ProxyTraceAccumulator;
+  recorder: ProxyTraceRecorder;
+  inflight: ApiProxyInflightHandle;
+}): Promise<Response> {
+  const { c, adapter, operation, request, target, node, trace, recorder } =
+    input;
+  const inflight = input.inflight;
+
+  const wantsPrefill =
+    request.stream &&
+    (operation.endpoint === "chat.completions" ||
+      operation.endpoint === "messages");
+  const streamMeter = request.stream
+    ? resolveStreamUsageMeter(operation, adapter, request.body)
+    : null;
+  const serveBody = delegateServeRequestBody(request, operation, adapter);
+
+  const payload: ApiProxyServeRequest = {
+    instanceId: input.instanceId,
+    protocol: operation.protocol,
+    endpoint: operation.endpoint,
+    stream: request.stream,
+    model: target.model,
+    role: target.role,
+    priority: target.priority,
+    preemptible: target.preemptible,
+    saveSlotsBeforeUnload: target.saveSlotsBeforeUnload,
+    slotIds: target.slotIds,
+    body: serveBody,
+  };
+
+  let dispatchedAt: number | null = null;
+  const markFirstToken = (promptTokens: number | null) => {
+    if (trace.ttftMs === null && dispatchedAt !== null) {
+      trace.ttftMs = Math.round(performance.now() - dispatchedAt);
+    }
+    inflight.firstToken(promptTokens);
+  };
+  const stripProgressFrames = wantsPrefill && !returnProgressRequested(request.body);
+
+  try {
+    dispatchedAt = performance.now();
+    inflight.dispatched();
+    const { upstream, headers } = await delegateApiProxyServe({
+      node,
+      payload,
+      signal: c.req.raw.signal,
+    });
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => "");
+      if (text) {
+        trace.errorMessage =
+          errorBodyMessage(safeJsonParse(text)) ?? text.slice(0, 500);
+      }
+      return new Response(text, { status: upstream.status, headers });
+    }
+    if (!upstream.body) {
+      return new Response(null, { status: upstream.status, headers });
+    }
+
+    if (!request.stream) {
+      const text = await upstream.text();
+      const usage = usageFromNonStreamBody(operation.protocol, text);
+      if (usage) {
+        trace.usage = {
+          promptTokens: usage.promptTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          cacheCreationTokens: usage.cacheCreationTokens,
+          completionTokens: usage.completionTokens,
+          genMs: usage.genMs,
+          ratePerSecond: ratePerSecondFromUsage(usage),
+          prefillMs: usage.prefillMs,
+          promptPerSecond: usage.promptPerSecond,
+        };
+      }
+      return new Response(text, { status: upstream.status, headers });
+    }
+
+    if (!streamMeter) {
+      recorder.markDeferred();
+      return new Response(
+        observeBodyCompletion(upstream.body, () => recorder.record(upstream)),
+        {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers,
+        },
+      );
+    }
+
+    let metered: Response | undefined;
+    const meter = createUsageMeterStream({
+      codec: streamMeter.codec,
+      stripUsageFrames: streamMeter.strip,
+      stripProgressFrames,
+      onFirstToken: markFirstToken,
+      onReasoning: () => inflight.firstReasoning(),
+      onReasoningDelta: (text) => inflight.appendReasoning(text),
+      onAnswerDelta: (text) => inflight.appendAnswer(text),
+      onProgress: (completionTokens) =>
+        inflight.setCompletionTokens(completionTokens),
+      onPrefillProgress: (progress) => inflight.setPrefillProgress(progress),
+      onComplete: (usage) => {
+        trace.usage = {
+          promptTokens: usage.promptTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          cacheCreationTokens: usage.cacheCreationTokens,
+          completionTokens: usage.completionTokens,
+          genMs: Math.round(usage.genMs),
+          ratePerSecond: ratePerSecondFromUsage(usage),
+          prefillMs: usage.prefillMs,
+          promptPerSecond: usage.promptPerSecond,
+        };
+        recorder.record(metered);
+      },
+    });
+    recorder.markDeferred();
+    metered = new Response(
+      observeBodyCompletion(upstream.body.pipeThrough(meter.transform), () =>
+        meter.finalize(),
+      ),
+      { status: upstream.status, headers },
+    );
+    return metered;
+  } catch (error) {
+    if (c.req.raw.signal.aborted) {
+      trace.errorCode = "client-abort";
+      trace.errorMessage = `Client closed the request before node ${node.name} responded`;
+      return new Response(null, { status: CLIENT_ABORT_STATUS });
+    }
+    const message = `Proxy target ${target.name} failed to delegate to node ${node.name}: ${describeFetchError(error)}`;
+    trace.errorMessage = message;
+    const response = adapter.diagnosticError(request, {
+      status: 502,
+      code: "llama_manager_proxy_upstream_error",
+      param: "model",
+      message,
+    });
+    return c.json(response.body, response.status);
+  }
+}
+
+export async function serveResolvedTarget(input: {
+  c: Context;
+  adapter: ApiProxyProtocolAdapter;
+  operation: ApiProxyProtocolOperation;
+  targetId: string;
+  request: ApiProxyProtocolModelRequest;
+  trace: ProxyTraceAccumulator;
+  recorder: ProxyTraceRecorder;
+  inflight: ApiProxyInflightHandle;
+  extraTarget?: ApiProxyTargetRecord | undefined;
+}): Promise<Response> {
+  const { c, adapter, operation, trace, recorder, inflight } = input;
+  const extraTarget = input.extraTarget ?? null;
+  const route = { targetId: input.targetId, request: input.request };
+  const getTarget = (id: string) =>
+    extraTarget && id === extraTarget.id ? extraTarget : getApiProxyTarget(id);
+  const planPreviewFor = (targetId: string) =>
+    getApiProxyPlanPreview({
+      mode: "request",
+      requestedTargetId: targetId,
+      ...(extraTarget ? { extraTarget } : {}),
+    });
+
   const decision = await prepareApiProxyProtocolGatewayRequest({
     adapter,
     request: route.request,
-    getTarget: getApiProxyTarget,
-    getPlanPreview: (targetId) =>
-      getApiProxyPlanPreview({
-        mode: "request",
-        requestedTargetId: targetId,
-      }),
+    getTarget,
+    getPlanPreview: planPreviewFor,
     allowReadinessActions: true,
     targetIdOverride: route.targetId,
   });
@@ -308,6 +571,7 @@ async function proxyProtocolEndpointInner(
   const { request: planRequest } = await buildApiProxyPlanRequest({
     mode: "request",
     requestedTargetId: decision.target.id,
+    ...(extraTarget ? { extraTarget } : {}),
   });
   const candidatePlanTarget = planRequest.targets.find(
     (item) => item.id === decision.target.id,
@@ -380,13 +644,14 @@ async function proxyProtocolEndpointInner(
 
   const makeTargetReady = (
     initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
-  ) => executeApiProxyTargetReadiness(decision.target, initialPreview);
+  ) =>
+    executeApiProxyTargetReadiness(
+      decision.target,
+      initialPreview,
+      extraTarget ?? undefined,
+    );
 
-  const freshRequestPreview = () =>
-    getApiProxyPlanPreview({
-      mode: "request",
-      requestedTargetId: decision.target.id,
-    });
+  const freshRequestPreview = () => planPreviewFor(decision.target.id);
 
   const resolveUpstreamContext = (): UpstreamContextResolution => {
     const resolved = resolveApiProxyUpstreamContext({

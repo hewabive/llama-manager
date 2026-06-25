@@ -1,3 +1,5 @@
+import type { ApiProxyTargetRecord } from "@llama-manager/core";
+
 import { getInstanceHealthSummary } from "../process/health-summary.js";
 import { listInstances } from "../instances/repository.js";
 import { computeDomainCoordinator } from "./domain-coordinator.js";
@@ -10,8 +12,15 @@ import {
 import { buildApiProxyRuntimeSnapshot } from "./runtime.js";
 import { resolveApiProxyTarget } from "./targets.js";
 
-export async function getApiProxyRuntimeSnapshot() {
-  const targets = listApiProxyTargets();
+export async function getApiProxyRuntimeSnapshot(options?: {
+  extraTarget?: ApiProxyTargetRecord | undefined;
+}) {
+  const baseTargets = listApiProxyTargets();
+  const candidate = options?.extraTarget ?? null;
+  const targets =
+    candidate && !baseTargets.some((target) => target.id === candidate.id)
+      ? [...baseTargets, candidate]
+      : baseTargets;
   const instances = listInstances();
   const endpoints = listApiEndpointCatalog(instances);
   const peers = instances;

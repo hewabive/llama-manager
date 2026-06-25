@@ -11,7 +11,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Server, Trash2 } from "lucide-react";
 
 import { absoluteUrl } from "../../api/base.js";
 
@@ -20,12 +20,15 @@ type ApiEndpointsSectionProps = {
   targetCountByEndpointId: Map<string, number>;
   deletePending: boolean;
   onCreate: () => void;
+  onCreateRemote: () => void;
   onEdit: (endpoint: ApiEndpointRecord) => void;
   onDelete: (id: string) => void;
 };
 
 function endpointKindLabel(endpoint: ApiEndpointRecord) {
-  if (endpoint.kind === "managed-instance") return "managed instance";
+  if (endpoint.kind === "managed-instance") {
+    return endpoint.nodeId ? "remote instance" : "managed instance";
+  }
   if (endpoint.kind === "manager-proxy") return "manager proxy";
   return "external API";
 }
@@ -52,13 +55,22 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
       <Stack gap="sm">
         <Group justify="space-between" align="center" wrap="wrap">
           <Text fw={600}>API endpoints</Text>
-          <Button
-            variant="light"
-            leftSection={<Plus size={16} />}
-            onClick={props.onCreate}
-          >
-            Add endpoint
-          </Button>
+          <Group gap="xs">
+            <Button
+              variant="default"
+              leftSection={<Server size={16} />}
+              onClick={props.onCreateRemote}
+            >
+              Add remote instance
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<Plus size={16} />}
+              onClick={props.onCreate}
+            >
+              Add endpoint
+            </Button>
+          </Group>
         </Group>
         <Table.ScrollContainer minWidth={960}>
           <Table striped highlightOnHover verticalSpacing="sm">
@@ -106,15 +118,17 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
                     <Group gap={4} justify="flex-end" wrap="nowrap">
                       <Tooltip
                         label={
-                          endpoint.editable
-                            ? "Edit endpoint"
-                            : "Generated endpoint"
+                          endpoint.nodeId
+                            ? "Remote endpoints are managed via create/delete"
+                            : endpoint.editable
+                              ? "Edit endpoint"
+                              : "Generated endpoint"
                         }
                       >
                         <ActionIcon
                           aria-label="Edit API endpoint"
                           variant="subtle"
-                          disabled={!endpoint.editable}
+                          disabled={!endpoint.editable || Boolean(endpoint.nodeId)}
                           onClick={() => props.onEdit(endpoint)}
                         >
                           <Pencil size={16} />

@@ -1,6 +1,7 @@
 import {
   ApiProxyPlanPreviewSchema,
   type ApiProxySchedulerPlanRequest,
+  type ApiProxyTargetRecord,
 } from "@llama-manager/core";
 
 import { config } from "../config.js";
@@ -28,11 +29,16 @@ export async function buildApiProxyPlanRequest(input: {
   mode: "request" | "idle";
   requestedTargetId?: string | undefined;
   preferredTargetId?: string | undefined;
+  extraTarget?: ApiProxyTargetRecord | undefined;
 }): Promise<{
   request: ApiProxySchedulerPlanRequest;
   runtime: Awaited<ReturnType<typeof getApiProxyRuntimeSnapshot>>;
 }> {
-  const runtime = await getApiProxyRuntimeSnapshot();
+  const runtime = await getApiProxyRuntimeSnapshot(
+    input.extraTarget !== undefined
+      ? { extraTarget: input.extraTarget }
+      : undefined,
+  );
   const runtimeByTargetId = new Map(
     runtime.snapshot.targets.map((target) => [target.targetId, target]),
   );
@@ -73,6 +79,7 @@ export async function getApiProxyPlanPreview(input: {
   mode: "request" | "idle";
   requestedTargetId?: string | undefined;
   preferredTargetId?: string | undefined;
+  extraTarget?: ApiProxyTargetRecord | undefined;
 }) {
   const { request, runtime } = await buildApiProxyPlanRequest(input);
   const plan =

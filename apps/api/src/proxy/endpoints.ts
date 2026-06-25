@@ -26,11 +26,14 @@ export const StoredEndpointSchema = ApiEndpointRecordSchema.pick({
   id: true,
   name: true,
   enabled: true,
+  kind: true,
   baseUrl: true,
   profile: true,
   authType: true,
   authHeaderName: true,
   authEnvVar: true,
+  instanceId: true,
+  nodeId: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -39,7 +42,7 @@ type StoredEndpoint = z.infer<typeof StoredEndpointSchema>;
 
 const managerProxyEndpointId = "manager-proxy";
 
-function instanceEndpointId(instanceId: string) {
+export function instanceEndpointId(instanceId: string) {
   return `instance:${instanceId}`;
 }
 
@@ -85,6 +88,32 @@ function toExternalEndpoint(stored: StoredEndpoint): ApiEndpointRecord {
     createdAt: stored.createdAt,
     updatedAt: stored.updatedAt,
   });
+}
+
+function toRemoteInstanceEndpoint(stored: StoredEndpoint): ApiEndpointRecord {
+  return ApiEndpointRecordSchema.parse({
+    id: stored.id,
+    name: stored.name,
+    enabled: stored.enabled,
+    kind: "managed-instance",
+    baseUrl: stored.baseUrl,
+    profile: stored.profile,
+    authType: "none",
+    authHeaderName: null,
+    authEnvVar: null,
+    instanceId: stored.instanceId,
+    nodeId: stored.nodeId,
+    editable: true,
+    authConfigured: true,
+    createdAt: stored.createdAt,
+    updatedAt: stored.updatedAt,
+  });
+}
+
+function toStoredEndpointRecord(stored: StoredEndpoint): ApiEndpointRecord {
+  return stored.kind === "managed-instance" && stored.nodeId
+    ? toRemoteInstanceEndpoint(stored)
+    : toExternalEndpoint(stored);
 }
 
 function managerProxyBaseUrl() {
@@ -140,9 +169,9 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
   });
 }
 
-function listExternalApiEndpoints(): ApiEndpointRecord[] {
+function listStoredEndpointRecords(): ApiEndpointRecord[] {
   return readStoredEndpoints()
-    .map(toExternalEndpoint)
+    .map(toStoredEndpointRecord)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
@@ -152,7 +181,7 @@ function getStoredExternalApiEndpoint(id: string): StoredEndpoint | null {
 
 export function getExternalApiEndpoint(id: string): ApiEndpointRecord | null {
   const stored = getStoredExternalApiEndpoint(id);
-  return stored ? toExternalEndpoint(stored) : null;
+  return stored ? toStoredEndpointRecord(stored) : null;
 }
 
 export function listApiEndpointCatalog(
@@ -163,7 +192,7 @@ export function listApiEndpointCatalog(
     ...instances
       .map(instanceEndpoint)
       .filter((endpoint): endpoint is ApiEndpointRecord => Boolean(endpoint)),
-    ...listExternalApiEndpoints(),
+    ...listStoredEndpointRecords(),
   ];
 }
 
@@ -209,6 +238,40 @@ export function createApiEndpoint(input: ApiEndpointCreate): ApiEndpointRecord {
   return created;
 }
 
+export function createRemoteInstanceEndpoint(input: {
+  name: string;
+  nodeId: string;
+  instanceId: string;
+  baseUrl: string;
+  enabled?: boolean | undefined;
+}): ApiEndpointRecord {
+  const records = readStoredEndpoints();
+  assertUniqueName(records, input.name, null);
+  const id = newId();
+  const timestamp = nowIso();
+  const stored = StoredEndpointSchema.parse({
+    id,
+    name: input.name,
+    enabled: input.enabled ?? true,
+    kind: "managed-instance",
+    baseUrl: input.baseUrl,
+    profile: "openai",
+    authType: "none",
+    authHeaderName: null,
+    authEnvVar: null,
+    instanceId: input.instanceId,
+    nodeId: input.nodeId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  writeCollection(ENDPOINTS_FILE, [...records, stored]);
+  const created = getExternalApiEndpoint(id);
+  if (!created) {
+    throw new Error("failed to create remote instance endpoint");
+  }
+  return created;
+}
+
 export function updateApiEndpoint(
   id: string,
   input: ApiEndpointUpdate,
@@ -223,9 +286,12 @@ export function updateApiEndpoint(
     id: current.id,
     name: parsed.name ?? current.name,
     enabled: parsed.enabled ?? current.enabled,
+    kind: current.kind,
     baseUrl: parsed.baseUrl ?? current.baseUrl,
     profile: parsed.profile ?? current.profile,
     authType: parsed.authType ?? current.authType,
+    instanceId: current.instanceId,
+    nodeId: current.nodeId,
     authHeaderName:
       parsed.authHeaderName !== undefined
         ? parsed.authHeaderName

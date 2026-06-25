@@ -26,6 +26,7 @@ import {
 export function executeApiProxyTargetReadiness(
   target: ApiProxyTargetRecord,
   initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
+  extraTarget?: ApiProxyTargetRecord | undefined,
 ): Promise<ApiProxyPublicExecutorResult> {
   return executeApiProxyPublicMvpPlan({
     target,
@@ -85,6 +86,7 @@ export function executeApiProxyTargetReadiness(
       getApiProxyPlanPreview({
         mode: "request",
         requestedTargetId: targetId,
+        ...(extraTarget !== undefined ? { extraTarget } : {}),
       }),
   });
 }

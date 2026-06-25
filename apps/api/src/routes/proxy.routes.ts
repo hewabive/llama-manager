@@ -1,6 +1,7 @@
 import {
   ApiProxyPlanPreviewRequestSchema,
   ApiProxyRouteExplainRequestSchema,
+  ApiProxyServeRequestSchema,
   ApiProxySourceCreateSchema,
   ApiProxySourceUpdateSchema,
 } from "@llama-manager/core";
@@ -21,10 +22,21 @@ import {
   listApiProxySources,
   updateApiProxySource,
 } from "../proxy/sources.js";
+import { serveApiProxyPinnedInstance } from "../proxy/serve-pinned.js";
 import { apiProxyStats } from "../proxy/stats.js";
 import { buildApiProxyTargetModelCatalog } from "../proxy/target-models.js";
 
 export function registerProxyRoutes(app: Hono) {
+  app.post("/api/proxy/serve", async (c) => {
+    const parsed = ApiProxyServeRequestSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    return serveApiProxyPinnedInstance(c, parsed.data);
+  });
+
   app.get("/api/proxy/config", (c) => {
     return c.json({
       data: {

@@ -70,6 +70,21 @@ export function resolveApiProxyTarget(
     };
   }
 
+  if (endpoint.nodeId) {
+    return {
+      kind: "external-api",
+      endpointId: endpoint.id,
+      baseUrl: endpoint.baseUrl,
+      profile: endpoint.profile,
+      enabled: endpoint.enabled,
+      instance: null,
+      instanceId: null,
+      error: endpoint.enabled
+        ? null
+        : `API endpoint ${endpoint.name} is disabled`,
+    };
+  }
+
   const instance = endpoint.instanceId
     ? (instances.find((item) => item.name === endpoint.instanceId) ?? null)
     : null;

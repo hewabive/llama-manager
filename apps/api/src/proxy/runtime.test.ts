@@ -85,6 +85,7 @@ function apiEndpoint(
     authConfigured: false,
     instanceId:
       input.instanceId === undefined ? "instance-a" : input.instanceId,
+    nodeId: null,
     editable: false,
     createdAt: null,
     updatedAt: null,

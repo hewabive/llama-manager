@@ -439,6 +439,7 @@ export const ApiEndpointConfigSchema = z.object({
   authHeaderName: ApiEndpointHeaderNameSchema.default(null),
   authEnvVar: ApiEndpointEnvVarSchema.default(null),
   instanceId: z.string().min(1).nullable().default(null),
+  nodeId: z.string().min(1).nullable().default(null),
   editable: z.boolean().default(true),
 });
 
@@ -446,6 +447,7 @@ export const ApiEndpointCreateSchema = ApiEndpointConfigSchema.omit({
   id: true,
   kind: true,
   instanceId: true,
+  nodeId: true,
   editable: true,
 }).extend({
   apiKey: ApiEndpointSecretSchema,
@@ -466,6 +468,13 @@ export const ApiEndpointRecordSchema = ApiEndpointConfigSchema.extend({
   authConfigured: z.boolean().default(false),
   createdAt: z.string().nullable().default(null),
   updatedAt: z.string().nullable().default(null),
+});
+
+export const ApiEndpointRemoteInstanceCreateSchema = z.object({
+  name: ApiEndpointNameSchema,
+  nodeId: z.string().trim().min(1),
+  instanceId: z.string().trim().min(1),
+  enabled: z.boolean().default(true),
 });
 
 export const ApiLabProbeKindsByProfile = {
@@ -925,6 +934,22 @@ export const ApiProxyPipelineUpdateSchema = z.object({
 export const ApiProxyTargetRecordSchema = ApiProxyTargetConfigSchema.extend({
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+export const ApiProxyServeProtocolSchema = z.enum(["openai", "anthropic"]);
+
+export const ApiProxyServeRequestSchema = z.object({
+  instanceId: z.string().min(1),
+  protocol: ApiProxyServeProtocolSchema,
+  endpoint: z.string().min(1),
+  stream: z.boolean(),
+  model: ApiProxyTargetModelSchema.default(null),
+  role: ApiProxyTargetRoleSchema.default("interactive"),
+  priority: ApiProxyTargetPrioritySchema.default(100),
+  preemptible: z.boolean().default(true),
+  saveSlotsBeforeUnload: z.boolean().default(false),
+  slotIds: ApiProxyTargetSlotIdsSchema.default([]),
+  body: z.unknown(),
 });
 
 export const ApiProxyModelRecordSchema = ApiProxyModelConfigSchema.extend({
@@ -2386,6 +2411,10 @@ export type ApiProxyModelConfig = z.infer<typeof ApiProxyModelConfigSchema>;
 export type ApiProxyModelCreate = z.infer<typeof ApiProxyModelCreateSchema>;
 export type ApiProxyModelUpdate = z.infer<typeof ApiProxyModelUpdateSchema>;
 export type ApiProxyTargetRecord = z.infer<typeof ApiProxyTargetRecordSchema>;
+export type ApiProxyServeRequest = z.infer<typeof ApiProxyServeRequestSchema>;
+export type ApiEndpointRemoteInstanceCreate = z.infer<
+  typeof ApiEndpointRemoteInstanceCreateSchema
+>;
 export type ApiProxyPipelineRecord = z.infer<
   typeof ApiProxyPipelineRecordSchema
 >;
