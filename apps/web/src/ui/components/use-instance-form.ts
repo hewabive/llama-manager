@@ -7,6 +7,7 @@ import {
   type InstanceUpdate,
   type LlamaArgumentOption,
   type MemoryEstimate,
+  type RpcWorkerRef,
 } from "@llama-manager/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
@@ -24,6 +25,7 @@ import {
   getSystemResources,
   listPathCatalog,
   listPresets,
+  listRpcWorkerCandidates,
   previewInstancePreflight,
   startInstance,
   updateInstance,
@@ -93,6 +95,19 @@ export type InstanceFormModalProps = {
   initialModelPath?: string | null;
 };
 
+function encodeRpcWorkerRef(ref: Pick<RpcWorkerRef, "nodeId" | "instanceName">) {
+  return `${ref.nodeId ?? ""}:${ref.instanceName}`;
+}
+
+function decodeRpcWorkerRef(value: string): RpcWorkerRef {
+  const separator = value.indexOf(":");
+  const nodeRaw = value.slice(0, separator);
+  return {
+    nodeId: nodeRaw === "" ? null : nodeRaw,
+    instanceName: value.slice(separator + 1),
+  };
+}
+
 export function useInstanceForm(props: InstanceFormModalProps) {
   const queryClient = useQueryClient();
   const [argRows, setArgRows] = useState<ArgRow[]>(defaultRows());
@@ -107,6 +122,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     null,
   );
   const [kind, setKind] = useState<InstanceKind>("llama-server");
+  const [rpcWorkers, setRpcWorkers] = useState<RpcWorkerRef[]>([]);
   const [launchMode, setLaunchMode] = useState<LaunchMode>("model");
   const [remoteSource, setRemoteSource] = useState<RemoteSource>("hf");
   const [specEnabled, setSpecEnabled] = useState(false);
@@ -217,6 +233,37 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     enabled: props.opened,
     staleTime: 60_000,
   });
+  const rpcWorkerCandidatesQuery = useQuery({
+    queryKey: ["rpc-worker-candidates"],
+    queryFn: listRpcWorkerCandidates,
+    enabled: props.opened && kind === "llama-server",
+    staleTime: 15_000,
+  });
+  const rpcWorkerCandidates = rpcWorkerCandidatesQuery.data?.data ?? [];
+  const rpcWorkerOptions = useMemo(() => {
+    const options = rpcWorkerCandidates.map((candidate) => ({
+      value: encodeRpcWorkerRef(candidate),
+      label: `${candidate.nodeName} / ${candidate.instanceName}${candidate.endpoint ? ` · ${candidate.endpoint}` : ""} · ${candidate.status}`,
+    }));
+    for (const ref of rpcWorkers) {
+      const value = encodeRpcWorkerRef(ref);
+      if (!options.some((option) => option.value === value)) {
+        options.push({
+          value,
+          label: `${ref.nodeId ?? "local"} / ${ref.instanceName} · unavailable`,
+        });
+      }
+    }
+    return options;
+  }, [rpcWorkerCandidates, rpcWorkers]);
+  const selectedRpcWorkerValues = useMemo(
+    () => rpcWorkers.map(encodeRpcWorkerRef),
+    [rpcWorkers],
+  );
+
+  function applyRpcWorkers(values: string[]) {
+    setRpcWorkers(values.map(decodeRpcWorkerRef));
+  }
   const instanceDefaultArgs = useMemo(
     () => argumentDefaultsQuery.data?.data.instance ?? [],
     [argumentDefaultsQuery.data?.data.instance],
@@ -470,6 +517,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
       setKind(props.instance.kind);
+      setRpcWorkers(props.instance.rpcWorkers);
       setSelectedBinaryPathRefId(props.instance.binaryPathRefId);
       setSelectedModelPath(modelPath);
       setSelectedPresetName(presetName);
@@ -506,6 +554,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         envJson: JSON.stringify({}, null, 2),
       });
       setKind("llama-server");
+      setRpcWorkers([]);
       setSelectedBinaryPathRefId(null);
       setSelectedModelPath(modelPath);
       setSelectedPresetName(null);
@@ -1144,7 +1193,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       const input: InstanceCreate = {
         name: values.name,
         kind: "llama-server",
-        rpcWorkers: [],
+        rpcWorkers,
         binaryPathRefId: selectedBinaryPathRefId,
         args,
         env: parseEnvJson(values.envJson),
@@ -1184,6 +1233,10 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     kind,
     setKind,
     isWorker: kind === "rpc-worker",
+    rpcWorkerOptions,
+    selectedRpcWorkerValues,
+    applyRpcWorkers,
+    rpcWorkerCandidatesQuery,
     waitingForInitialDefaults,
     modalTitle,
     argRows,

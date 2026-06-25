@@ -19,6 +19,7 @@ import { InstanceFormMemorySection } from "./InstanceFormMemorySection";
 import { InstanceFormModelSection } from "./InstanceFormModelSection";
 import { InstanceFormNumaSection } from "./InstanceFormNumaSection";
 import { InstanceFormPreflightSection } from "./InstanceFormPreflightSection";
+import { InstanceFormRpcWorkersSection } from "./InstanceFormRpcWorkersSection";
 import { InstanceFormSpecSection } from "./InstanceFormSpecSection";
 import { TouchSelect } from "./TouchCombobox";
 import {
@@ -97,6 +98,7 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
             <>
               <InstanceFormModelSection fm={fm} />
               <InstanceFormSpecSection fm={fm} />
+              <InstanceFormRpcWorkersSection fm={fm} />
             </>
           )}
           <InstanceFormArgumentsSection fm={fm} />

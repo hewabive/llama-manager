@@ -7,10 +7,15 @@ import type {
   InstancePreflightPreview,
   InstanceUpdate,
   ProcessPreflightResult,
+  RpcWorkerCandidate,
   RuntimeState,
 } from "@llama-manager/core";
 
 import { nodeRequest as request } from "./http.js";
+
+export async function listRpcWorkerCandidates() {
+  return request<{ data: RpcWorkerCandidate[] }>("/api/fleet/rpc-workers");
+}
 
 export async function createInstance(input: InstanceCreate) {
   return request<{ data: Instance }>("/api/instances", {

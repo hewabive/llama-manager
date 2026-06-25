@@ -272,6 +272,14 @@ export const InstanceConfigRecordSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const RpcWorkerCandidateSchema = z.object({
+  nodeId: z.string().min(1).nullable(),
+  nodeName: z.string(),
+  instanceName: InstanceNameSchema,
+  endpoint: z.string().nullable(),
+  status: InstanceSchema.shape.status,
+});
+
 export const ProcessEventSchema = z.object({
   type: z.enum(["log", "status", "exit", "error"]),
   instanceId: z.string(),
@@ -2331,6 +2339,7 @@ export type MemoryPool = z.infer<typeof MemoryPoolSchema>;
 export type MemoryPoolUpdate = z.infer<typeof MemoryPoolUpdateSchema>;
 export type InstanceKind = z.infer<typeof InstanceKindSchema>;
 export type RpcWorkerRef = z.infer<typeof RpcWorkerRefSchema>;
+export type RpcWorkerCandidate = z.infer<typeof RpcWorkerCandidateSchema>;
 export type InstanceMemoryDraw = z.infer<typeof InstanceMemoryDrawSchema>;
 export type ResourcePoolUsage = z.infer<typeof ResourcePoolUsageSchema>;
 export type ResourceLedger = z.infer<typeof ResourceLedgerSchema>;

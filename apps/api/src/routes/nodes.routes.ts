@@ -16,6 +16,7 @@ import {
 } from "../nodes/repository.js";
 import { fleetResources, fleetSystem } from "../nodes/fleet.js";
 import { forwardToNode } from "../nodes/remote.js";
+import { listRpcWorkerCandidates } from "../nodes/rpc-worker-catalog.js";
 
 function toView(node: FleetNode): FleetNodeView {
   return { ...node, hasToken: nodeHasToken(node.id) };
@@ -28,6 +29,10 @@ export function registerNodeRoutes(app: Hono) {
 
   app.get("/api/fleet/resources", async (c) => {
     return c.json({ data: await fleetResources() });
+  });
+
+  app.get("/api/fleet/rpc-workers", async (c) => {
+    return c.json({ data: await listRpcWorkerCandidates() });
   });
 
   app.get("/api/nodes", (c) => {
