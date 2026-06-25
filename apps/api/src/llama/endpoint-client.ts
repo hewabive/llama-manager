@@ -65,6 +65,27 @@ export function llamaBaseUrl(instance: Instance): string {
   return `http://${host}:${port}${apiPrefix(instance)}`;
 }
 
+const RPC_SERVER_DEFAULT_PORT = 50052;
+
+export function rpcWorkerEndpoint(
+  instance: Instance,
+): { host: string; port: number } | null {
+  const host = probeHost(
+    asString(firstArg(instance.args, ["--host"]), DEFAULT_HOST),
+  );
+  if (host.endsWith(".sock")) {
+    return null;
+  }
+  const raw = asString(
+    firstArg(instance.args, ["--port", "-p"]),
+    String(RPC_SERVER_DEFAULT_PORT),
+  );
+  const parsed = Number(raw);
+  const port =
+    Number.isInteger(parsed) && parsed > 0 ? parsed : RPC_SERVER_DEFAULT_PORT;
+  return { host, port };
+}
+
 export async function requestLlamaJson(
   url: string,
   init: RequestInit & { timeoutMs?: number } = {},

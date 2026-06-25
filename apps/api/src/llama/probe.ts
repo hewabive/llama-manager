@@ -7,6 +7,9 @@ import type {
   LlamaProbe,
 } from "@llama-manager/core";
 
+import { connect } from "node:net";
+import { performance } from "node:perf_hooks";
+
 import { instanceApiProbeTarget } from "./api-probe-request.js";
 import {
   llamaBaseUrl,
@@ -14,6 +17,7 @@ import {
   objectBody,
   probeJson,
   requestLlamaJson,
+  rpcWorkerEndpoint,
 } from "./endpoint-client.js";
 
 export * from "./endpoint-client.js";
@@ -85,6 +89,91 @@ export async function requestInstanceApiProbe(
       headers: { "content-type": "application/json" },
       timeoutMs: API_PROBE_TIMEOUT_MS,
     }),
+  };
+}
+
+const RPC_PROBE_TIMEOUT_MS = 1_500;
+
+function probeTcpAccept(
+  host: string,
+  port: number,
+  url: string,
+): Promise<LlamaEndpointProbe> {
+  return new Promise((resolveDone) => {
+    const started = performance.now();
+    const socket = connect({ host, port });
+    let settled = false;
+    const finish = (probe: LlamaEndpointProbe) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      resolveDone(probe);
+    };
+    socket.setTimeout(RPC_PROBE_TIMEOUT_MS);
+    socket.once("connect", () =>
+      finish({
+        ok: true,
+        url,
+        status: null,
+        latencyMs: performance.now() - started,
+      }),
+    );
+    socket.once("timeout", () =>
+      finish({
+        ok: false,
+        url,
+        status: null,
+        latencyMs: performance.now() - started,
+        error: "connection timed out",
+      }),
+    );
+    socket.once("error", (error) =>
+      finish({
+        ok: false,
+        url,
+        status: null,
+        latencyMs: performance.now() - started,
+        error: (error as Error).message,
+      }),
+    );
+  });
+}
+
+export async function probeRpcWorker(instance: Instance): Promise<LlamaProbe> {
+  const notApplicable: LlamaEndpointProbe = {
+    ok: false,
+    url: "",
+    status: null,
+    latencyMs: 0,
+    error: "not applicable for rpc-server",
+  };
+  const endpoint = rpcWorkerEndpoint(instance);
+  if (!endpoint) {
+    return {
+      baseUrl: "",
+      health: {
+        ok: false,
+        url: "",
+        status: null,
+        latencyMs: 0,
+        error: "rpc-server endpoint is not configured (--host/--port)",
+      },
+      props: notApplicable,
+      slots: notApplicable,
+      models: notApplicable,
+      modelDiagnostics: {},
+    };
+  }
+  const url = `tcp://${endpoint.host}:${endpoint.port}`;
+  return {
+    baseUrl: url,
+    health: await probeTcpAccept(endpoint.host, endpoint.port, url),
+    props: notApplicable,
+    slots: notApplicable,
+    models: notApplicable,
+    modelDiagnostics: {},
   };
 }
 

@@ -1,5 +1,6 @@
 import {
   estimateInstanceMemory,
+  instanceCapabilities,
   type InstanceArgs,
   type MemoryEstimate,
   type MemoryEstimateArgs,
@@ -79,6 +80,12 @@ export function estimateMemory(
     const instance = getInstance(request.instanceId);
     if (!instance) {
       return { ok: false, reason: `instance not found: ${request.instanceId}` };
+    }
+    if (!instanceCapabilities(instance.kind).ggufMemoryEstimate) {
+      return {
+        ok: false,
+        reason: "memory estimate is not applicable to rpc-worker instances",
+      };
     }
     args = { ...(instance.args as InstanceArgs) };
   }

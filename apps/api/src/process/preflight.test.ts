@@ -47,6 +47,32 @@ function writeHelpBinary(binaryPath: string, helpOutput: string) {
   chmodSync(binaryPath, 0o755);
 }
 
+test("validateInstancePreflight does not require a model for rpc-worker", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-rpc-"));
+  const binaryPath = join(dir, "rpc-server");
+  try {
+    writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(binaryPath, 0o755);
+
+    const result = validateInstancePreflight(
+      instance({
+        kind: "rpc-worker",
+        binaryPath,
+        cwd: dir,
+        args: { "--host": "0.0.0.0", "--port": 50052 },
+      }),
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(
+      result.issues.some((issue) => issue.field === "args"),
+      false,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("validateInstancePreflight blocks configs without a model source", () => {
   const dir = mkdtempSync(join(tmpdir(), "llama-manager-preflight-"));
   const binaryPath = join(dir, "llama-server");

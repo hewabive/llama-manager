@@ -1,15 +1,20 @@
-import type {
-  Instance,
-  InstanceHealthActions,
-  InstanceHealthSummary,
-  InstanceHealthSummaryStatus,
-  LlamaEndpointProbe,
-  LlamaProbe,
-  NumaPlacement,
-  RuntimeState,
+import {
+  instanceCapabilities,
+  type Instance,
+  type InstanceHealthActions,
+  type InstanceHealthSummary,
+  type InstanceHealthSummaryStatus,
+  type LlamaEndpointProbe,
+  type LlamaProbe,
+  type NumaPlacement,
+  type RuntimeState,
 } from "@llama-manager/core";
 
-import { llamaBaseUrl, probeLlamaServer } from "../llama/probe.js";
+import {
+  llamaBaseUrl,
+  probeLlamaServer,
+  probeRpcWorker,
+} from "../llama/probe.js";
 import {
   hasLaunchSnapshotDrift,
   parseLaunchSnapshot,
@@ -317,11 +322,15 @@ export async function getInstanceHealthSummary(
     : validateInstancePreflight(instance, {
         peers: options.peers,
       });
+  const capabilities = instanceCapabilities(instance.kind);
   const shouldProbe = probeableStatuses.has(runtime.status);
-  const [llama, logSummary, swapBytes] = await Promise.all([
-    shouldProbe
+  const probe = !shouldProbe
+    ? Promise.resolve(offlineProbe(instance, "Instance is not running."))
+    : capabilities.httpHealth
       ? probeLlamaServer(instance)
-      : Promise.resolve(offlineProbe(instance, "Instance is not running.")),
+      : probeRpcWorker(instance);
+  const [llama, logSummary, swapBytes] = await Promise.all([
+    probe,
     summarizeInstanceLog({
       instanceId: instance.name,
       runtime,

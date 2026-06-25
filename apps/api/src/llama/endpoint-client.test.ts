@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import type { Instance } from "@llama-manager/core";
+
+import { rpcWorkerEndpoint } from "./endpoint-client.js";
+
+function worker(args: Instance["args"]): Instance {
+  return {
+    name: "rpc-A",
+    kind: "rpc-worker",
+    binaryPath: "/tmp/rpc-server",
+    binaryPathRefId: "bin",
+    args,
+    env: {},
+    memory: [],
+    status: "running",
+    pid: 1,
+    createdAt: "2026-06-25T00:00:00.000Z",
+    updatedAt: "2026-06-25T00:00:00.000Z",
+  };
+}
+
+test("rpcWorkerEndpoint reads --host and --port", () => {
+  assert.deepEqual(rpcWorkerEndpoint(worker({ "--host": "10.0.0.2", "--port": 50100 })), {
+    host: "10.0.0.2",
+    port: 50100,
+  });
+});
+
+test("rpcWorkerEndpoint defaults the port to 50052 and normalizes wildcard host", () => {
+  assert.deepEqual(rpcWorkerEndpoint(worker({ "--host": "0.0.0.0" })), {
+    host: "127.0.0.1",
+    port: 50052,
+  });
+});
+
+test("rpcWorkerEndpoint accepts the short -p port flag", () => {
+  assert.deepEqual(rpcWorkerEndpoint(worker({ "-p": 50200 })), {
+    host: "127.0.0.1",
+    port: 50200,
+  });
+});
+
+test("rpcWorkerEndpoint returns null for a unix-socket host", () => {
+  assert.equal(rpcWorkerEndpoint(worker({ "--host": "/tmp/x.sock" })), null);
+});

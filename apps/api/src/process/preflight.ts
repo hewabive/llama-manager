@@ -1,9 +1,10 @@
-import type {
-  Instance,
-  ProcessPreflightIssue,
-  ProcessPreflightResult,
-  ResourceAdmission,
-  SystemAccelerator,
+import {
+  instanceCapabilities,
+  type Instance,
+  type ProcessPreflightIssue,
+  type ProcessPreflightResult,
+  type ResourceAdmission,
+  type SystemAccelerator,
 } from "@llama-manager/core";
 import {
   accessSync,
@@ -697,9 +698,11 @@ export function validateInstancePreflight(
 
   validatePort(instance, issues);
   validatePortConflicts(instance, issues, options.peers ?? []);
-  validateKnownPathArgs(instance, issues);
-  validateArgumentCompatibility(instance, issues);
-  validateGpuLayerRequests(instance, issues, options);
+  if (instanceCapabilities(instance.kind).ggufMemoryEstimate) {
+    validateKnownPathArgs(instance, issues);
+    validateArgumentCompatibility(instance, issues);
+    validateGpuLayerRequests(instance, issues, options);
+  }
   validateMemoryCapacity(issues, options);
 
   return {
