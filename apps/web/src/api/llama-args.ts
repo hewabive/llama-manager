@@ -7,7 +7,7 @@ import type {
   LlamaSourceSyncReport,
 } from "@llama-manager/core";
 
-import { buildQuery, request } from "./http.js";
+import { buildQuery, nodeRequest as request } from "./http.js";
 
 export async function getLlamaArguments(binaryPath?: string, refresh = false) {
   const query = buildQuery({
