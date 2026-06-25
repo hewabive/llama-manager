@@ -470,13 +470,6 @@ export const ApiEndpointRecordSchema = ApiEndpointConfigSchema.extend({
   updatedAt: z.string().nullable().default(null),
 });
 
-export const ApiEndpointRemoteInstanceCreateSchema = z.object({
-  name: ApiEndpointNameSchema,
-  nodeId: z.string().trim().min(1),
-  instanceId: z.string().trim().min(1),
-  enabled: z.boolean().default(true),
-});
-
 export const ApiLabProbeKindsByProfile = {
   openai: OpenAiApiProbeKindSchema.options,
   "llama-native": LlamaNativeApiProbeKindSchema.options,
@@ -2412,9 +2405,6 @@ export type ApiProxyModelCreate = z.infer<typeof ApiProxyModelCreateSchema>;
 export type ApiProxyModelUpdate = z.infer<typeof ApiProxyModelUpdateSchema>;
 export type ApiProxyTargetRecord = z.infer<typeof ApiProxyTargetRecordSchema>;
 export type ApiProxyServeRequest = z.infer<typeof ApiProxyServeRequestSchema>;
-export type ApiEndpointRemoteInstanceCreate = z.infer<
-  typeof ApiEndpointRemoteInstanceCreateSchema
->;
 export type ApiProxyPipelineRecord = z.infer<
   typeof ApiProxyPipelineRecordSchema
 >;

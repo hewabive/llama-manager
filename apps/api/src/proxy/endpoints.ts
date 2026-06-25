@@ -5,6 +5,7 @@ import {
   type ApiEndpointCreate,
   type ApiEndpointRecord,
   type ApiEndpointUpdate,
+  type FleetNode,
   type Instance,
 } from "@llama-manager/core";
 import { z } from "zod";
@@ -12,6 +13,8 @@ import { newId } from "../utils/id.js";
 
 import { config } from "../config.js";
 import { llamaBaseUrl } from "../llama/probe.js";
+import { listRemoteInstancesByNode } from "../nodes/remote-instances.js";
+import { getNode } from "../nodes/repository.js";
 import {
   readCollection,
   readSecret,
@@ -26,14 +29,11 @@ export const StoredEndpointSchema = ApiEndpointRecordSchema.pick({
   id: true,
   name: true,
   enabled: true,
-  kind: true,
   baseUrl: true,
   profile: true,
   authType: true,
   authHeaderName: true,
   authEnvVar: true,
-  instanceId: true,
-  nodeId: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -41,9 +41,32 @@ export const StoredEndpointSchema = ApiEndpointRecordSchema.pick({
 type StoredEndpoint = z.infer<typeof StoredEndpointSchema>;
 
 const managerProxyEndpointId = "manager-proxy";
+const INSTANCE_ENDPOINT_PREFIX = "instance:";
+const REMOTE_ENDPOINT_PREFIX = "remote:";
 
 export function instanceEndpointId(instanceId: string) {
-  return `instance:${instanceId}`;
+  return `${INSTANCE_ENDPOINT_PREFIX}${instanceId}`;
+}
+
+export function remoteEndpointId(nodeId: string, instanceId: string) {
+  return `${REMOTE_ENDPOINT_PREFIX}${nodeId}:${instanceId}`;
+}
+
+export function parseRemoteEndpointId(
+  id: string,
+): { nodeId: string; instanceId: string } | null {
+  if (!id.startsWith(REMOTE_ENDPOINT_PREFIX)) {
+    return null;
+  }
+  const rest = id.slice(REMOTE_ENDPOINT_PREFIX.length);
+  const separator = rest.indexOf(":");
+  if (separator <= 0 || separator >= rest.length - 1) {
+    return null;
+  }
+  return {
+    nodeId: rest.slice(0, separator),
+    instanceId: rest.slice(separator + 1),
+  };
 }
 
 function nowIso() {
@@ -90,30 +113,27 @@ function toExternalEndpoint(stored: StoredEndpoint): ApiEndpointRecord {
   });
 }
 
-function toRemoteInstanceEndpoint(stored: StoredEndpoint): ApiEndpointRecord {
+function remoteInstanceEndpoint(
+  node: FleetNode,
+  instanceId: string,
+): ApiEndpointRecord {
   return ApiEndpointRecordSchema.parse({
-    id: stored.id,
-    name: stored.name,
-    enabled: stored.enabled,
+    id: remoteEndpointId(node.id, instanceId),
+    name: `${node.name} / ${instanceId}`,
+    enabled: node.enabled,
     kind: "managed-instance",
-    baseUrl: stored.baseUrl,
-    profile: stored.profile,
+    baseUrl: node.baseUrl,
+    profile: "openai",
     authType: "none",
     authHeaderName: null,
     authEnvVar: null,
-    instanceId: stored.instanceId,
-    nodeId: stored.nodeId,
-    editable: true,
+    instanceId,
+    nodeId: node.id,
+    editable: false,
     authConfigured: true,
-    createdAt: stored.createdAt,
-    updatedAt: stored.updatedAt,
+    createdAt: null,
+    updatedAt: null,
   });
-}
-
-function toStoredEndpointRecord(stored: StoredEndpoint): ApiEndpointRecord {
-  return stored.kind === "managed-instance" && stored.nodeId
-    ? toRemoteInstanceEndpoint(stored)
-    : toExternalEndpoint(stored);
 }
 
 function managerProxyBaseUrl() {
@@ -171,7 +191,7 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
 
 function listStoredEndpointRecords(): ApiEndpointRecord[] {
   return readStoredEndpoints()
-    .map(toStoredEndpointRecord)
+    .map(toExternalEndpoint)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
@@ -181,7 +201,7 @@ function getStoredExternalApiEndpoint(id: string): StoredEndpoint | null {
 
 export function getExternalApiEndpoint(id: string): ApiEndpointRecord | null {
   const stored = getStoredExternalApiEndpoint(id);
-  return stored ? toStoredEndpointRecord(stored) : null;
+  return stored ? toExternalEndpoint(stored) : null;
 }
 
 export function listApiEndpointCatalog(
@@ -194,6 +214,60 @@ export function listApiEndpointCatalog(
       .filter((endpoint): endpoint is ApiEndpointRecord => Boolean(endpoint)),
     ...listStoredEndpointRecords(),
   ];
+}
+
+export function getApiEndpointById(
+  id: string,
+  instances: Instance[],
+): ApiEndpointRecord | null {
+  if (id === managerProxyEndpointId) {
+    return managerProxyEndpoint();
+  }
+  if (id.startsWith(INSTANCE_ENDPOINT_PREFIX)) {
+    const name = id.slice(INSTANCE_ENDPOINT_PREFIX.length);
+    const instance = instances.find((item) => item.name === name);
+    return instance ? instanceEndpoint(instance) : null;
+  }
+  const remote = parseRemoteEndpointId(id);
+  if (remote) {
+    const node = getNode(remote.nodeId);
+    return node ? remoteInstanceEndpoint(node, remote.instanceId) : null;
+  }
+  return getExternalApiEndpoint(id);
+}
+
+export async function listRemoteInstanceEndpoints(): Promise<
+  ApiEndpointRecord[]
+> {
+  const byNode = await listRemoteInstancesByNode();
+  return byNode
+    .flatMap(({ node, instances }) =>
+      instances.map((instance) => remoteInstanceEndpoint(node, instance.name)),
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function referencedRemoteEndpoints(
+  endpointIds: Iterable<string>,
+): ApiEndpointRecord[] {
+  const seen = new Set<string>();
+  const records: ApiEndpointRecord[] = [];
+  for (const id of endpointIds) {
+    if (seen.has(id)) {
+      continue;
+    }
+    const remote = parseRemoteEndpointId(id);
+    if (!remote) {
+      continue;
+    }
+    const node = getNode(remote.nodeId);
+    if (!node) {
+      continue;
+    }
+    seen.add(id);
+    records.push(remoteInstanceEndpoint(node, remote.instanceId));
+  }
+  return records;
 }
 
 export function getApiEndpointFromCatalog(
@@ -238,40 +312,6 @@ export function createApiEndpoint(input: ApiEndpointCreate): ApiEndpointRecord {
   return created;
 }
 
-export function createRemoteInstanceEndpoint(input: {
-  name: string;
-  nodeId: string;
-  instanceId: string;
-  baseUrl: string;
-  enabled?: boolean | undefined;
-}): ApiEndpointRecord {
-  const records = readStoredEndpoints();
-  assertUniqueName(records, input.name, null);
-  const id = newId();
-  const timestamp = nowIso();
-  const stored = StoredEndpointSchema.parse({
-    id,
-    name: input.name,
-    enabled: input.enabled ?? true,
-    kind: "managed-instance",
-    baseUrl: input.baseUrl,
-    profile: "openai",
-    authType: "none",
-    authHeaderName: null,
-    authEnvVar: null,
-    instanceId: input.instanceId,
-    nodeId: input.nodeId,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  });
-  writeCollection(ENDPOINTS_FILE, [...records, stored]);
-  const created = getExternalApiEndpoint(id);
-  if (!created) {
-    throw new Error("failed to create remote instance endpoint");
-  }
-  return created;
-}
-
 export function updateApiEndpoint(
   id: string,
   input: ApiEndpointUpdate,
@@ -286,12 +326,9 @@ export function updateApiEndpoint(
     id: current.id,
     name: parsed.name ?? current.name,
     enabled: parsed.enabled ?? current.enabled,
-    kind: current.kind,
     baseUrl: parsed.baseUrl ?? current.baseUrl,
     profile: parsed.profile ?? current.profile,
     authType: parsed.authType ?? current.authType,
-    instanceId: current.instanceId,
-    nodeId: current.nodeId,
     authHeaderName:
       parsed.authHeaderName !== undefined
         ? parsed.authHeaderName

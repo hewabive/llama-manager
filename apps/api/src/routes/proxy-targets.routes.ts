@@ -11,7 +11,7 @@ import {
 import type { Hono } from "hono";
 
 import { listInstances } from "../instances/repository.js";
-import { getApiEndpointFromCatalog } from "../proxy/endpoints.js";
+import { getApiEndpointById } from "../proxy/endpoints.js";
 import {
   collectApiProxyPipelineRefs,
   validateApiProxyModelRouteBinding,
@@ -43,7 +43,7 @@ function validateApiProxyTargetRefs(input: {
   if (!input.endpointId) {
     return null;
   }
-  const endpoint = getApiEndpointFromCatalog(input.endpointId, listInstances());
+  const endpoint = getApiEndpointById(input.endpointId, listInstances());
   if (!endpoint) {
     return "proxy target endpoint not found";
   }
@@ -60,7 +60,7 @@ function validateApiProxyTargetModel(input: {
   if (!input.endpointId || !input.model) {
     return null;
   }
-  const endpoint = getApiEndpointFromCatalog(input.endpointId, listInstances());
+  const endpoint = getApiEndpointById(input.endpointId, listInstances());
   if (
     !endpoint ||
     endpoint.kind !== "managed-instance" ||

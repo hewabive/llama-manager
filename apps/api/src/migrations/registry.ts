@@ -17,6 +17,10 @@ import {
   hasLegacyPipelineRecords,
   migratePipelinesToGraphFormat,
 } from "../proxy/pipelines-graph-migration.js";
+import {
+  dropStoredRemoteInstanceEndpoints,
+  storedEndpointsHaveRemoteInstances,
+} from "../proxy/remote-endpoint-migration.js";
 import { migrateApiProxyRuntimeMetadataToFile } from "../proxy/runtime-metadata-migration.js";
 import {
   dropPresetsSettingsSection,
@@ -98,6 +102,15 @@ export const migrations: Migration[] = [
     isApplied: () => !instanceConfigsHaveLegacyNumaNode(),
     apply: () => {
       migrateInstanceNumaNodeToNuma();
+    },
+  },
+  {
+    id: "0009-drop-stored-remote-endpoints",
+    describe:
+      "config/proxy/endpoints.json: drop stored remote-instance endpoints (now resolved by id)",
+    isApplied: () => !storedEndpointsHaveRemoteInstances(),
+    apply: () => {
+      dropStoredRemoteInstanceEndpoints();
     },
   },
 ];

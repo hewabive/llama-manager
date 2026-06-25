@@ -11,7 +11,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Pencil, Plus, Server, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { absoluteUrl } from "../../api/base.js";
 
@@ -20,7 +20,6 @@ type ApiEndpointsSectionProps = {
   targetCountByEndpointId: Map<string, number>;
   deletePending: boolean;
   onCreate: () => void;
-  onCreateRemote: () => void;
   onEdit: (endpoint: ApiEndpointRecord) => void;
   onDelete: (id: string) => void;
 };
@@ -55,22 +54,13 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
       <Stack gap="sm">
         <Group justify="space-between" align="center" wrap="wrap">
           <Text fw={600}>API endpoints</Text>
-          <Group gap="xs">
-            <Button
-              variant="default"
-              leftSection={<Server size={16} />}
-              onClick={props.onCreateRemote}
-            >
-              Add remote instance
-            </Button>
-            <Button
-              variant="light"
-              leftSection={<Plus size={16} />}
-              onClick={props.onCreate}
-            >
-              Add endpoint
-            </Button>
-          </Group>
+          <Button
+            variant="light"
+            leftSection={<Plus size={16} />}
+            onClick={props.onCreate}
+          >
+            Add endpoint
+          </Button>
         </Group>
         <Table.ScrollContainer minWidth={960}>
           <Table striped highlightOnHover verticalSpacing="sm">

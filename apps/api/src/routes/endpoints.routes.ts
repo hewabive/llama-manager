@@ -1,15 +1,12 @@
 import {
   ApiEndpointCreateSchema,
-  ApiEndpointRemoteInstanceCreateSchema,
   ApiEndpointUpdateSchema,
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 
 import { listInstances } from "../instances/repository.js";
-import { getNode } from "../nodes/repository.js";
 import {
   createApiEndpoint,
-  createRemoteInstanceEndpoint,
   deleteApiEndpoint,
   getExternalApiEndpoint,
   listApiEndpointCatalog,
@@ -42,35 +39,6 @@ export function registerEndpointRoutes(app: Hono) {
 
     try {
       return c.json({ data: createApiEndpoint(parsed.data) }, 201);
-    } catch (error) {
-      return c.json({ error: (error as Error).message }, 400);
-    }
-  });
-
-  app.post("/api/endpoints/remote-instance", async (c) => {
-    const parsed = ApiEndpointRemoteInstanceCreateSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.flatten() }, 400);
-    }
-    const node = getNode(parsed.data.nodeId);
-    if (!node) {
-      return c.json({ error: `node ${parsed.data.nodeId} not found` }, 400);
-    }
-    try {
-      return c.json(
-        {
-          data: createRemoteInstanceEndpoint({
-            name: parsed.data.name,
-            nodeId: node.id,
-            instanceId: parsed.data.instanceId,
-            baseUrl: node.baseUrl,
-            enabled: parsed.data.enabled,
-          }),
-        },
-        201,
-      );
     } catch (error) {
       return c.json({ error: (error as Error).message }, 400);
     }

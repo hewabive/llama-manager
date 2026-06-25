@@ -10,7 +10,7 @@ import { listInstances } from "../instances/repository.js";
 import { getNode } from "../nodes/repository.js";
 import { observeBodyCompletion } from "./body-completion.js";
 import { delegateApiProxyServe } from "./delegate.js";
-import { getApiEndpointFromCatalog } from "./endpoints.js";
+import { getApiEndpointById } from "./endpoints.js";
 import { buildDomainAdmissionDecider } from "./domain-admission.js";
 import {
   attachLeaseRelease,
@@ -301,7 +301,7 @@ async function proxyProtocolEndpointInner(
 
   const dispatchTarget = getApiProxyTarget(route.targetId);
   if (dispatchTarget) {
-    const endpoint = getApiEndpointFromCatalog(
+    const endpoint = getApiEndpointById(
       dispatchTarget.endpointId,
       listInstances(),
     );

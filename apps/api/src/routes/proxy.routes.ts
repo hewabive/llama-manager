@@ -8,7 +8,11 @@ import {
 import type { Hono } from "hono";
 
 import { listInstances } from "../instances/repository.js";
-import { listApiEndpointCatalog } from "../proxy/endpoints.js";
+import {
+  listApiEndpointCatalog,
+  listRemoteInstanceEndpoints,
+  referencedRemoteEndpoints,
+} from "../proxy/endpoints.js";
 import { apiProxyInflight } from "../proxy/inflight.js";
 import { getApiProxyPlanPreview } from "../proxy/idle-maintenance.js";
 import { explainApiProxyRoute } from "../proxy/route-explain.js";
@@ -38,18 +42,28 @@ export function registerProxyRoutes(app: Hono) {
   });
 
   app.get("/api/proxy/config", (c) => {
+    const proxyConfig = getApiProxyConfig();
     return c.json({
       data: {
-        ...getApiProxyConfig(),
-        endpoints: listApiEndpointCatalog(listInstances()),
+        ...proxyConfig,
+        endpoints: [
+          ...listApiEndpointCatalog(listInstances()),
+          ...referencedRemoteEndpoints(
+            proxyConfig.targets.map((target) => target.endpointId),
+          ),
+        ],
       },
     });
   });
 
-  app.get("/api/proxy/target-models", (c) => {
+  app.get("/api/proxy/target-models", async (c) => {
     return c.json({
-      data: buildApiProxyTargetModelCatalog(listInstances()),
+      data: await buildApiProxyTargetModelCatalog(listInstances()),
     });
+  });
+
+  app.get("/api/proxy/remote-endpoints", async (c) => {
+    return c.json({ data: await listRemoteInstanceEndpoints() });
   });
 
   app.get("/api/proxy/request-file", (c) => {

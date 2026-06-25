@@ -5,61 +5,42 @@ import { beforeEach, test } from "node:test";
 import { ApiProxyTargetRecordSchema } from "@llama-manager/core";
 
 import { config } from "../config.js";
+import {
+  NODES_FILE,
+  createNode,
+  resetNodesCache,
+} from "../nodes/repository.js";
 import { resetConfigFilesCache } from "./config-files.js";
 import {
-  createRemoteInstanceEndpoint,
-  getExternalApiEndpoint,
-  listApiEndpointCatalog,
-  updateApiEndpoint,
+  getApiEndpointById,
+  parseRemoteEndpointId,
+  referencedRemoteEndpoints,
+  remoteEndpointId,
 } from "./endpoints.js";
 import { resolveApiProxyTarget } from "./targets.js";
 
 beforeEach(() => {
   rmSync(config.proxyConfigDir, { recursive: true, force: true });
   rmSync(config.secretsFile, { force: true });
+  rmSync(NODES_FILE, { force: true });
   mkdirSync(config.proxyConfigDir, { recursive: true });
   resetConfigFilesCache();
+  resetNodesCache();
 });
 
-function seedRemote() {
-  return createRemoteInstanceEndpoint({
-    name: "peer / qwen",
-    nodeId: "node-b",
-    instanceId: "qwen-big",
+function seedNode(enabled = true) {
+  return createNode({
+    name: "peer-ny",
     baseUrl: "http://peer-host:8787",
+    enabled,
   });
 }
 
-test("createRemoteInstanceEndpoint stores a managed-instance endpoint with node identity", () => {
-  const created = seedRemote();
-  assert.equal(created.kind, "managed-instance");
-  assert.equal(created.nodeId, "node-b");
-  assert.equal(created.instanceId, "qwen-big");
-
-  const fetched = getExternalApiEndpoint(created.id);
-  assert.equal(fetched?.kind, "managed-instance");
-  assert.equal(fetched?.nodeId, "node-b");
-  assert.equal(fetched?.instanceId, "qwen-big");
-
-  const catalog = listApiEndpointCatalog([]);
-  assert.ok(catalog.some((endpoint) => endpoint.id === created.id));
-});
-
-test("updateApiEndpoint preserves remote identity across an enable toggle", () => {
-  const created = seedRemote();
-  const updated = updateApiEndpoint(created.id, { enabled: false });
-  assert.equal(updated?.enabled, false);
-  assert.equal(updated?.kind, "managed-instance");
-  assert.equal(updated?.nodeId, "node-b");
-  assert.equal(updated?.instanceId, "qwen-big");
-});
-
-test("resolveApiProxyTarget treats a remote endpoint as non-local on the entry node", () => {
-  const created = seedRemote();
-  const target = ApiProxyTargetRecordSchema.parse({
+function remoteTarget(endpointId: string) {
+  return ApiProxyTargetRecordSchema.parse({
     id: "t1",
     name: "remote-target",
-    endpointId: created.id,
+    endpointId,
     model: null,
     role: "interactive",
     priority: 100,
@@ -70,32 +51,76 @@ test("resolveApiProxyTarget treats a remote endpoint as non-local on the entry n
     createdAt: "2026-06-25T00:00:00.000Z",
     updatedAt: "2026-06-25T00:00:00.000Z",
   });
+}
 
-  const resolution = resolveApiProxyTarget(target, [], listApiEndpointCatalog([]));
+test("remoteEndpointId round-trips through parseRemoteEndpointId", () => {
+  const id = remoteEndpointId("0192-node", "qwen-big");
+  assert.equal(id, "remote:0192-node:qwen-big");
+  assert.deepEqual(parseRemoteEndpointId(id), {
+    nodeId: "0192-node",
+    instanceId: "qwen-big",
+  });
+  assert.equal(parseRemoteEndpointId("instance:qwen-big"), null);
+});
+
+test("getApiEndpointById synthesizes a remote endpoint from the node registry", () => {
+  const node = seedNode();
+  const endpoint = getApiEndpointById(
+    remoteEndpointId(node.id, "qwen-big"),
+    [],
+  );
+  assert.equal(endpoint?.kind, "managed-instance");
+  assert.equal(endpoint?.nodeId, node.id);
+  assert.equal(endpoint?.instanceId, "qwen-big");
+  assert.equal(endpoint?.enabled, true);
+  assert.equal(endpoint?.editable, false);
+});
+
+test("getApiEndpointById returns null for an unknown node", () => {
+  const endpoint = getApiEndpointById(
+    remoteEndpointId("ghost-node", "qwen-big"),
+    [],
+  );
+  assert.equal(endpoint, null);
+});
+
+test("referencedRemoteEndpoints resolves only ids that map to a known node", () => {
+  const node = seedNode();
+  const records = referencedRemoteEndpoints([
+    remoteEndpointId(node.id, "qwen-big"),
+    remoteEndpointId("ghost-node", "missing"),
+    "instance:local-only",
+  ]);
+  assert.equal(records.length, 1);
+  assert.equal(records[0]?.instanceId, "qwen-big");
+  assert.equal(records[0]?.nodeId, node.id);
+});
+
+test("resolveApiProxyTarget treats a remote endpoint as non-local on the entry node", () => {
+  const node = seedNode();
+  const endpointId = remoteEndpointId(node.id, "qwen-big");
+  const endpoint = getApiEndpointById(endpointId, []);
+  assert.ok(endpoint);
+  const resolution = resolveApiProxyTarget(
+    remoteTarget(endpointId),
+    [],
+    [endpoint],
+  );
   assert.equal(resolution.enabled, true);
   assert.equal(resolution.instanceId, null);
   assert.equal(resolution.error, null);
 });
 
-test("a disabled remote endpoint resolves disabled without a missing-instance error", () => {
-  const created = seedRemote();
-  updateApiEndpoint(created.id, { enabled: false });
-  const target = ApiProxyTargetRecordSchema.parse({
-    id: "t1",
-    name: "remote-target",
-    endpointId: created.id,
-    model: null,
-    role: "interactive",
-    priority: 100,
-    preemptible: true,
-    saveSlotsBeforeUnload: false,
-    slotIds: [],
-    idleUnloadMs: null,
-    createdAt: "2026-06-25T00:00:00.000Z",
-    updatedAt: "2026-06-25T00:00:00.000Z",
-  });
-
-  const resolution = resolveApiProxyTarget(target, [], listApiEndpointCatalog([]));
+test("a remote endpoint on a disabled node resolves disabled without a missing-instance error", () => {
+  const node = seedNode(false);
+  const endpointId = remoteEndpointId(node.id, "qwen-big");
+  const endpoint = getApiEndpointById(endpointId, []);
+  assert.ok(endpoint);
+  const resolution = resolveApiProxyTarget(
+    remoteTarget(endpointId),
+    [],
+    [endpoint],
+  );
   assert.equal(resolution.enabled, false);
   assert.match(resolution.error ?? "", /disabled/);
 });

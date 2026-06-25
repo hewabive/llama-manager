@@ -5,10 +5,12 @@ import {
   type ApiEndpointRecord,
   type ApiProxyTargetModelCatalog,
   type ApiProxyTargetModelGroup,
+  type FleetNode,
   type Instance,
 } from "@llama-manager/core";
 
-import { listApiEndpointCatalog } from "./endpoints.js";
+import { listRemoteInstancesByNode } from "../nodes/remote-instances.js";
+import { listApiEndpointCatalog, remoteEndpointId } from "./endpoints.js";
 
 export const targetModelValueSeparator = "\u001f";
 
@@ -72,9 +74,32 @@ function externalGroup(endpoint: ApiEndpointRecord): ApiProxyTargetModelGroup {
   };
 }
 
-export function buildApiProxyTargetModelCatalog(
+function remoteGroup(
+  node: FleetNode,
+  instance: Instance,
+): ApiProxyTargetModelGroup {
+  const endpointId = remoteEndpointId(node.id, instance.name);
+  const model = stringArg(instance, "--model");
+  return {
+    endpointId,
+    endpointName: `${node.name} / ${instance.name}`,
+    kind: "managed-instance",
+    online: instanceOnline(instance),
+    options: [
+      {
+        value: optionValue(endpointId, null),
+        endpointId,
+        storedModel: null,
+        label: model ? basename(model) : instance.name,
+        custom: false,
+      },
+    ],
+  };
+}
+
+export async function buildApiProxyTargetModelCatalog(
   instances: Instance[],
-): ApiProxyTargetModelCatalog {
+): Promise<ApiProxyTargetModelCatalog> {
   const instanceById = new Map(
     instances.map((instance) => [instance.name, instance]),
   );
@@ -94,6 +119,12 @@ export function buildApiProxyTargetModelCatalog(
       continue;
     }
     groups.push(externalGroup(endpoint));
+  }
+
+  for (const { node, instances: nodeInstances } of await listRemoteInstancesByNode()) {
+    for (const instance of nodeInstances) {
+      groups.push(remoteGroup(node, instance));
+    }
   }
 
   return ApiProxyTargetModelCatalogSchema.parse({ groups });

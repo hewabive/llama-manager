@@ -8,6 +8,7 @@ import {
   createApiEndpoint,
   deleteApiEndpoint,
   getApiProxyConfig,
+  listRemoteEndpoints,
   updateApiEndpoint,
 } from "../../api/client";
 import { EndpointEditorModal } from "../endpoints/editor";
@@ -18,7 +19,6 @@ import {
   type EndpointDraft,
   type EndpointEditor,
 } from "../endpoints/forms";
-import { RemoteInstanceEndpointModal } from "../endpoints/remote-instance-modal";
 import { ApiEndpointsSection } from "../endpoints/section";
 
 export function ApiEndpointsView() {
@@ -28,15 +28,29 @@ export function ApiEndpointsView() {
   );
   const [endpointDraftState, setEndpointDraftState] =
     useState<EndpointDraft>(emptyEndpointDraft);
-  const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 
   const proxyQuery = useQuery({
     queryKey: ["api-proxy-config"],
     queryFn: getApiProxyConfig,
   });
+  const remoteQuery = useQuery({
+    queryKey: ["api-proxy-remote-endpoints"],
+    queryFn: listRemoteEndpoints,
+  });
 
-  const endpoints = proxyQuery.data?.data.endpoints ?? [];
   const targets = proxyQuery.data?.data.targets ?? [];
+  const endpoints = useMemo(() => {
+    const byId = new Map<string, ApiEndpointRecord>();
+    for (const endpoint of proxyQuery.data?.data.endpoints ?? []) {
+      byId.set(endpoint.id, endpoint);
+    }
+    for (const endpoint of remoteQuery.data?.data ?? []) {
+      if (!byId.has(endpoint.id)) {
+        byId.set(endpoint.id, endpoint);
+      }
+    }
+    return [...byId.values()];
+  }, [proxyQuery.data, remoteQuery.data]);
   const targetCountByEndpointId = useMemo(() => {
     const counts = new Map<string, number>();
     for (const target of targets) {
@@ -144,14 +158,8 @@ export function ApiEndpointsView() {
         targetCountByEndpointId={targetCountByEndpointId}
         deletePending={deleteEndpointMutation.isPending}
         onCreate={openCreateEndpoint}
-        onCreateRemote={() => setRemoteModalOpen(true)}
         onEdit={openEditEndpoint}
         onDelete={(id) => deleteEndpointMutation.mutate(id)}
-      />
-
-      <RemoteInstanceEndpointModal
-        opened={remoteModalOpen}
-        onClose={() => setRemoteModalOpen(false)}
       />
 
       <EndpointEditorModal

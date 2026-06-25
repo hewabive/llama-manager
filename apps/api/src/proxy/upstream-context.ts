@@ -1,7 +1,7 @@
 import type { ApiProxyTargetRecord } from "@llama-manager/core";
 
 import { listInstances } from "../instances/repository.js";
-import { apiEndpointAuthHeaders, listApiEndpointCatalog } from "./endpoints.js";
+import { apiEndpointAuthHeaders, getApiEndpointById } from "./endpoints.js";
 import type {
   ApiProxyProtocolDiagnostic,
   ApiProxyProtocolOperation,
@@ -25,10 +25,11 @@ export function resolveApiProxyUpstreamContext(input: {
   operation: ApiProxyProtocolOperation;
 }): ApiProxyUpstreamContextResolution {
   const instances = listInstances();
+  const endpoint = getApiEndpointById(input.target.endpointId, instances);
   const targetResolution = resolveApiProxyTarget(
     input.target,
     instances,
-    listApiEndpointCatalog(instances),
+    endpoint ? [endpoint] : [],
   );
   if (!targetResolution.enabled) {
     return {

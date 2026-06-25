@@ -24,8 +24,8 @@ function instance(name: string, args: Instance["args"]): Instance {
   };
 }
 
-test("single-model instance yields one option with null storedModel", () => {
-  const catalog = buildApiProxyTargetModelCatalog([
+test("single-model instance yields one option with null storedModel", async () => {
+  const catalog = await buildApiProxyTargetModelCatalog([
     instance("single-A", {
       "--host": "127.0.0.1",
       "--port": 9001,
@@ -45,7 +45,7 @@ test("single-model instance yields one option with null storedModel", () => {
   );
 });
 
-test("router instance (preset, no --model) yields one opaque managed option", () => {
+test("router instance (preset, no --model) yields one opaque managed option", async () => {
   const router = instance("router-B", {
     "--host": "127.0.0.1",
     "--port": 9002,
@@ -53,7 +53,7 @@ test("router instance (preset, no --model) yields one opaque managed option", ()
   });
   assert.equal(isRouterInstance(router), true);
 
-  const catalog = buildApiProxyTargetModelCatalog([router]);
+  const catalog = await buildApiProxyTargetModelCatalog([router]);
   const group = catalog.groups.find((item) => item.endpointName === "router-B");
   assert.ok(group);
   assert.equal(group.kind, "managed-instance");
@@ -62,7 +62,7 @@ test("router instance (preset, no --model) yields one opaque managed option", ()
   assert.equal(group.options[0]?.label, "router-B");
 });
 
-test("a configured --model wins over --models-preset (single, not router)", () => {
+test("a configured --model wins over --models-preset (single, not router)", async () => {
   const mixed = instance("mixed", {
     "--host": "127.0.0.1",
     "--port": 9003,
@@ -71,7 +71,7 @@ test("a configured --model wins over --models-preset (single, not router)", () =
   });
   assert.equal(isRouterInstance(mixed), false);
 
-  const catalog = buildApiProxyTargetModelCatalog([mixed]);
+  const catalog = await buildApiProxyTargetModelCatalog([mixed]);
   const group = catalog.groups.find((item) => item.endpointName === "mixed");
   assert.equal(group?.kind, "managed-instance");
   assert.equal(group?.options[0]?.storedModel, null);

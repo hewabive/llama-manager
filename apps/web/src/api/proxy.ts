@@ -1,7 +1,6 @@
 import type {
   ApiEndpointCreate,
   ApiEndpointRecord,
-  ApiEndpointRemoteInstanceCreate,
   ApiEndpointUpdate,
   ApiProxyConfig,
   ApiProxyModelCreate,
@@ -45,23 +44,15 @@ export async function getApiProxyTargetModels() {
   );
 }
 
+export async function listRemoteEndpoints() {
+  return request<{ data: ApiEndpointRecord[] }>("/api/proxy/remote-endpoints");
+}
+
 export async function createApiEndpoint(input: ApiEndpointCreate) {
   return request<{ data: ApiEndpointRecord }>("/api/endpoints", {
     method: "POST",
     body: JSON.stringify(input),
   });
-}
-
-export async function createRemoteInstanceEndpoint(
-  input: ApiEndpointRemoteInstanceCreate,
-) {
-  return request<{ data: ApiEndpointRecord }>(
-    "/api/endpoints/remote-instance",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
 }
 
 export async function updateApiEndpoint(id: string, input: ApiEndpointUpdate) {
