@@ -118,12 +118,18 @@ export function launchModeFromArgs(args: Instance["args"]): LaunchMode {
   return "model";
 }
 
+export const RPC_WORKER_DEFAULT_PORT = 50052;
+
 function instancePort(instance: Instance) {
   const port = Number(instance.args["--port"] ?? 8080);
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
 }
 
-export function nextAvailablePort(instances: Instance[], currentName?: string) {
+export function nextAvailablePort(
+  instances: Instance[],
+  currentName?: string,
+  startPort = 8080,
+) {
   const used = new Set(
     instances
       .filter((instance) => instance.name !== currentName)
@@ -131,12 +137,12 @@ export function nextAvailablePort(instances: Instance[], currentName?: string) {
       .filter((port): port is number => port !== null),
   );
 
-  for (let port = 8080; port <= 65535; port += 1) {
+  for (let port = startPort; port <= 65535; port += 1) {
     if (!used.has(port)) {
       return port;
     }
   }
-  return 8080;
+  return startPort;
 }
 
 const managedArgumentKeys = new Set([

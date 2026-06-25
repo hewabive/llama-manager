@@ -64,6 +64,7 @@ import {
   launchModeFromArgs,
   nextAvailablePort,
   parseEnvJson,
+  RPC_WORKER_DEFAULT_PORT,
   presetNameFromPath,
   splitCudaVisibleDevices,
   SPEC_ADVANCED_KEYS,
@@ -736,6 +737,53 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     setSelectedBinaryPathRefId(refId);
   }
 
+  function applyKind(next: InstanceKind) {
+    setKind(next);
+    if (next === "rpc-worker") {
+      setSelectedModelPath(null);
+      setSelectedPresetName(null);
+      setLaunchMode("model");
+      setArgRows((rows) => {
+        const stripped = removeArgRows(rows, [
+          "--model",
+          "--mmproj",
+          "--models-preset",
+          "--models-max",
+          "--models-autoload",
+          "--no-models-autoload",
+          "--hf-repo",
+          "--hf-file",
+          "--model-url",
+          "--mmproj-url",
+          ...SPEC_KEYS,
+        ]);
+        const withHost = upsertArgRow(stripped, "--host", "0.0.0.0", "string");
+        return upsertArgRow(
+          withHost,
+          "--port",
+          String(
+            nextAvailablePort(
+              props.instances,
+              props.instance?.name,
+              RPC_WORKER_DEFAULT_PORT,
+            ),
+          ),
+          "number",
+        );
+      });
+      return;
+    }
+    setArgRows((rows) => {
+      const withHost = upsertArgRow(rows, "--host", "127.0.0.1", "string");
+      return upsertArgRow(
+        withHost,
+        "--port",
+        String(nextAvailablePort(props.instances, props.instance?.name)),
+        "number",
+      );
+    });
+  }
+
   function defaultRowActive(option: LlamaArgumentOption) {
     const row = argRows.find(
       (item) =>
@@ -1232,6 +1280,7 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     isEdit,
     kind,
     setKind,
+    applyKind,
     isWorker: kind === "rpc-worker",
     rpcWorkerOptions,
     selectedRpcWorkerValues,

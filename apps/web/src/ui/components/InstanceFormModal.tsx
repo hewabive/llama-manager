@@ -21,6 +21,7 @@ import { InstanceFormNumaSection } from "./InstanceFormNumaSection";
 import { InstanceFormPreflightSection } from "./InstanceFormPreflightSection";
 import { InstanceFormRpcWorkersSection } from "./InstanceFormRpcWorkersSection";
 import { InstanceFormSpecSection } from "./InstanceFormSpecSection";
+import { InstanceFormWorkerEndpointSection } from "./InstanceFormWorkerEndpointSection";
 import { TouchSelect } from "./TouchCombobox";
 import {
   useInstanceForm,
@@ -59,7 +60,7 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
           <SegmentedControl
             fullWidth
             value={fm.kind}
-            onChange={(value) => fm.setKind(value as typeof fm.kind)}
+            onChange={(value) => fm.applyKind(value as typeof fm.kind)}
             disabled={fm.isEdit}
             data={[
               { label: "llama-server", value: "llama-server" },
@@ -101,6 +102,7 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
               <InstanceFormRpcWorkersSection fm={fm} />
             </>
           )}
+          {fm.isWorker && <InstanceFormWorkerEndpointSection fm={fm} />}
           <InstanceFormArgumentsSection fm={fm} />
           <InstanceFormPreflightSection fm={fm} />
           <InstanceFormCudaSection fm={fm} />
