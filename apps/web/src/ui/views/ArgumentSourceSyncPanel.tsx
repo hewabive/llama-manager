@@ -1,9 +1,6 @@
 import type { LlamaArgumentDocsSyncReport } from "@llama-manager/core";
-import { Alert, Code, ScrollArea, Stack, Text } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { Alert, Anchor, Code, Stack, Text } from "@mantine/core";
 import { AlertTriangle } from "lucide-react";
-
-import { getLlamaArgumentHelpDiff } from "../../api/client";
 
 export function SourceSyncPanel(props: {
   report: LlamaArgumentDocsSyncReport | undefined;
@@ -11,15 +8,6 @@ export function SourceSyncPanel(props: {
 }) {
   const report = props.report;
   const helpChanged = report?.helpSource.inSync === false;
-  const diffQuery = useQuery({
-    queryKey: ["llama-arg-help-diff"],
-    queryFn: getLlamaArgumentHelpDiff,
-    enabled: helpChanged,
-    retry: false,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
 
   if (props.error) {
     return (
@@ -87,17 +75,9 @@ export function SourceSyncPanel(props: {
         >
           <Text size="sm">
             Справка по аргументам не соответствует текущей версии llama.cpp.
+            Подробный diff — на странице{" "}
+            <Anchor href="#/source-sync">Source Sync</Anchor>.
           </Text>
-          {diffQuery.data?.data.diff && (
-            <ScrollArea.Autosize mah={360} mt="xs">
-              <Code block>{diffQuery.data.data.diff}</Code>
-            </ScrollArea.Autosize>
-          )}
-          {diffQuery.isError && (
-            <Text mt={4} size="sm">
-              Не удалось получить diff: {(diffQuery.error as Error).message}
-            </Text>
-          )}
         </Alert>
       )}
 

@@ -8,16 +8,23 @@ import {
   Box,
   Button,
   Code,
+  Collapse,
   Group,
   Loader,
   Paper,
+  ScrollArea,
   Stack,
   Text,
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import type { ReactNode } from "react";
+import { useState } from "react";
 
-import { getLlamaSourceSyncReport } from "../../api/client";
+import {
+  getLlamaArgumentHelpDiff,
+  getLlamaSourceSyncReport,
+} from "../../api/client";
 import { formatLocalDateTime } from "../utils/time";
 
 function statusColor(status: LlamaSourceSyncSection["status"]) {
@@ -32,7 +39,53 @@ function statusLabel(status: LlamaSourceSyncSection["status"]) {
   return "error";
 }
 
-function SectionCard(props: { section: LlamaSourceSyncSection }) {
+function ArgumentHelpDiff(props: { drift: boolean }) {
+  const [open, setOpen] = useState(false);
+  const diffQuery = useQuery({
+    queryKey: ["llama-arg-help-diff"],
+    queryFn: getLlamaArgumentHelpDiff,
+    enabled: props.drift && open,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  if (!props.drift) {
+    return null;
+  }
+
+  return (
+    <Stack gap="xs" mt="sm">
+      <Button
+        size="xs"
+        variant="subtle"
+        w="fit-content"
+        loading={diffQuery.isFetching}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? "Скрыть diff" : "Показать diff"}
+      </Button>
+      <Collapse in={open}>
+        {diffQuery.data?.data.diff && (
+          <ScrollArea.Autosize mah={420}>
+            <Code block>{diffQuery.data.data.diff}</Code>
+          </ScrollArea.Autosize>
+        )}
+        {diffQuery.isError && (
+          <Text c="red" size="sm">
+            Не удалось получить diff: {(diffQuery.error as Error).message}
+          </Text>
+        )}
+      </Collapse>
+    </Stack>
+  );
+}
+
+function SectionCard(props: {
+  section: LlamaSourceSyncSection;
+  extra?: ReactNode;
+}) {
   const { section } = props;
   const color = statusColor(section.status);
   return (
@@ -62,8 +115,16 @@ function SectionCard(props: { section: LlamaSourceSyncSection }) {
         >
           {section.error}
         </Alert>
-      ) : section.divergences.length === 0 ? (
+      ) : section.status === "in-sync" ? (
         <Alert color="green" variant="light" icon={<CheckCircle2 size={16} />}>
+          {section.summary}
+        </Alert>
+      ) : section.divergences.length === 0 ? (
+        <Alert
+          color="yellow"
+          variant="light"
+          icon={<AlertTriangle size={16} />}
+        >
           {section.summary}
         </Alert>
       ) : (
@@ -95,6 +156,8 @@ function SectionCard(props: { section: LlamaSourceSyncSection }) {
           ))}
         </Stack>
       )}
+
+      {props.extra}
     </Paper>
   );
 }
@@ -183,7 +246,15 @@ export function SourceSyncView() {
           <Box>
             <Stack gap="md">
               {report.sections.map((section) => (
-                <SectionCard key={section.id} section={section} />
+                <SectionCard
+                  key={section.id}
+                  section={section}
+                  extra={
+                    section.id === "argument-help" ? (
+                      <ArgumentHelpDiff drift={section.status === "drift"} />
+                    ) : null
+                  }
+                />
               ))}
             </Stack>
           </Box>

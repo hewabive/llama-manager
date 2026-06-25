@@ -8,6 +8,10 @@ import type {
 } from "@llama-manager/core";
 import { RPC_SERVER_SUPPORTED_FLAGS } from "@llama-manager/core";
 
+import {
+  generatedHelpChangedLines,
+  getLlamaArgumentHelpSourceSync,
+} from "../arguments/docs-source.js";
 import { capabilityDefinitions } from "./probe.js";
 import {
   getLlamaSourceCurrentCommit,
@@ -340,6 +344,58 @@ function reconcileRpcServerFlags(repoPath: string): LlamaSourceSyncSection {
   };
 }
 
+function reconcileArgumentHelp(): LlamaSourceSyncSection {
+  const base = {
+    id: "argument-help",
+    title: "llama-server argument help",
+    description:
+      "Stored argument help snapshot vs the llama.cpp tools/server/README.md HELP block.",
+    sourcePath: "tools/server/README.md",
+    divergences: [] as LlamaSourceSyncDivergence[],
+  };
+
+  const help = getLlamaArgumentHelpSourceSync();
+  const sourceError = help.current.error ?? help.stored.error;
+
+  if (sourceError || help.inSync === null) {
+    return {
+      ...base,
+      status: "error",
+      summary:
+        "Could not compare the stored argument help snapshot with llama.cpp.",
+      error: sourceError ?? "Argument help snapshot or source is unavailable.",
+    };
+  }
+
+  if (help.inSync) {
+    return {
+      ...base,
+      status: "in-sync",
+      summary: "Argument help matches the llama.cpp source.",
+      error: null,
+    };
+  }
+
+  let added = 0;
+  let removed = 0;
+  try {
+    for (const line of generatedHelpChangedLines().split("\n")) {
+      if (line.startsWith("+")) added += 1;
+      else if (line.startsWith("-")) removed += 1;
+    }
+  } catch {
+    added = 0;
+    removed = 0;
+  }
+
+  return {
+    ...base,
+    status: "drift",
+    summary: `Argument help differs from llama.cpp (${added} added, ${removed} removed line(s)).`,
+    error: null,
+  };
+}
+
 export function getLlamaSourceSyncReport(): LlamaSourceSyncReport {
   const repoPath = getLlamaSourceSettings().repoPath;
   return {
@@ -349,6 +405,7 @@ export function getLlamaSourceSyncReport(): LlamaSourceSyncReport {
     sections: [
       reconcileCapabilityEndpoints(repoPath),
       reconcileRpcServerFlags(repoPath),
+      reconcileArgumentHelp(),
     ],
   };
 }
