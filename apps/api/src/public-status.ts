@@ -1,6 +1,7 @@
 import type {
   InstanceHealthSummary,
   PublicInstanceStatus,
+  PublicProxyModel,
   PublicProxyTarget,
   PublicStatus,
 } from "@llama-manager/core";
@@ -8,6 +9,12 @@ import type {
 import { config } from "./config.js";
 import { listInstances } from "./instances/repository.js";
 import { getInstanceHealthSummary } from "./process/health-summary.js";
+import { apiProxyInflight } from "./proxy/inflight.js";
+import { deriveApiProxyModelStatus } from "./proxy/model-status.js";
+import {
+  listApiProxyModels,
+  listApiProxyPipelines,
+} from "./proxy/repository.js";
 import { getApiProxyRuntimeSnapshot } from "./proxy/runtime-snapshot.js";
 import { getSystemResources } from "./system/resources.js";
 
@@ -54,9 +61,12 @@ function isBusyState(state: PublicProxyTarget["state"]) {
   return state === "busy" || state === "loading" || state === "starting";
 }
 
-async function getPublicProxy(): Promise<PublicStatus["proxy"]> {
+async function getPublicProxyAndModels(): Promise<{
+  proxy: PublicStatus["proxy"];
+  models: PublicStatus["models"];
+}> {
   const { targets, snapshot } = await getApiProxyRuntimeSnapshot();
-  const items: PublicProxyTarget[] = snapshot.targets.map((runtime) => {
+  const targetItems: PublicProxyTarget[] = snapshot.targets.map((runtime) => {
     const record = targets.find((target) => target.id === runtime.targetId);
     return {
       name: record?.name ?? runtime.targetId,
@@ -68,11 +78,47 @@ async function getPublicProxy(): Promise<PublicStatus["proxy"]> {
       savedSlots: runtime.savedSlotIds.length,
     };
   });
+
+  const pipelinesById = new Map(
+    listApiProxyPipelines().map((pipeline) => [pipeline.id, pipeline]),
+  );
+  const inflightByModel = apiProxyInflight.snapshotByModel();
+  const modelItems: PublicProxyModel[] = listApiProxyModels()
+    .filter((model) => model.visible)
+    .map((model) => ({
+      modelId: model.modelId,
+      status: deriveApiProxyModelStatus({
+        model,
+        snapshot,
+        pipelinesById,
+        inflight: inflightByModel.get(model.modelId) ?? [],
+      }),
+    }));
+
   return {
-    total: items.length,
-    busy: items.filter((item) => isBusyState(item.state)).length,
-    activeRequests: items.reduce((sum, item) => sum + item.activeRequests, 0),
-    targets: items,
+    proxy: {
+      total: targetItems.length,
+      busy: targetItems.filter((item) => isBusyState(item.state)).length,
+      activeRequests: targetItems.reduce(
+        (sum, item) => sum + item.activeRequests,
+        0,
+      ),
+      targets: targetItems,
+    },
+    models: {
+      total: modelItems.length,
+      loaded: modelItems.filter((item) => item.status.value === "loaded")
+        .length,
+      activeRequests: modelItems.reduce(
+        (sum, item) => sum + item.status.activeRequests,
+        0,
+      ),
+      queuedRequests: modelItems.reduce(
+        (sum, item) => sum + item.status.queuedRequests,
+        0,
+      ),
+      items: modelItems,
+    },
   };
 }
 
@@ -93,6 +139,8 @@ export async function getPublicStatus(): Promise<PublicStatus> {
     };
   });
 
+  const { proxy, models } = await getPublicProxyAndModels();
+
   return {
     service: {
       ok: true,
@@ -108,6 +156,7 @@ export async function getPublicStatus(): Promise<PublicStatus> {
       stopped: items.filter((item) => item.status === "stopped").length,
       items,
     },
-    proxy: await getPublicProxy(),
+    proxy,
+    models,
   };
 }

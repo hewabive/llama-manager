@@ -2163,6 +2163,11 @@ export const PublicProxyTargetSchema = z.object({
   savedSlots: z.number().int().nonnegative(),
 });
 
+export const PublicProxyModelSchema = z.object({
+  modelId: z.string(),
+  status: ApiProxyPublicModelStatusSchema,
+});
+
 export const PublicStatusSchema = z.object({
   service: z.object({
     ok: z.boolean(),
@@ -2183,6 +2188,13 @@ export const PublicStatusSchema = z.object({
     busy: z.number().int().nonnegative(),
     activeRequests: z.number().int().nonnegative(),
     targets: z.array(PublicProxyTargetSchema),
+  }),
+  models: z.object({
+    total: z.number().int().nonnegative(),
+    loaded: z.number().int().nonnegative(),
+    activeRequests: z.number().int().nonnegative(),
+    queuedRequests: z.number().int().nonnegative(),
+    items: z.array(PublicProxyModelSchema),
   }),
 });
 
@@ -2679,6 +2691,7 @@ export type AuthState = z.infer<typeof AuthStateSchema>;
 export type AdminLogin = z.infer<typeof AdminLoginSchema>;
 export type PublicInstanceStatus = z.infer<typeof PublicInstanceStatusSchema>;
 export type PublicProxyTarget = z.infer<typeof PublicProxyTargetSchema>;
+export type PublicProxyModel = z.infer<typeof PublicProxyModelSchema>;
 export type PublicStatus = z.infer<typeof PublicStatusSchema>;
 export type ExternalLlamaProcess = z.infer<typeof ExternalLlamaProcessSchema>;
 export type ExternalLlamaProcessesResult = z.infer<

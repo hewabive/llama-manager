@@ -1,5 +1,6 @@
 import type {
   PublicInstanceStatus,
+  PublicProxyModel,
   PublicProxyTarget,
 } from "@llama-manager/core";
 import {
@@ -42,6 +43,54 @@ function proxyTargetDetails(target: PublicProxyTarget) {
     details.push(`saved slots ${target.savedSlots}`);
   }
   return details;
+}
+
+function modelLoadStateColor(value: PublicProxyModel["status"]["value"]) {
+  switch (value) {
+    case "loaded":
+      return "green";
+    case "partial":
+      return "teal";
+    case "loading":
+      return "blue";
+    case "failed":
+      return "red";
+    default:
+      return "gray";
+  }
+}
+
+function ProxyModelCard(props: { model: PublicProxyModel }) {
+  const { status, modelId } = props.model;
+  const details = [`${status.activeRequests} active request(s)`];
+  if (status.queuedRequests > 0) {
+    details.push(`${status.queuedRequests} queued`);
+  }
+  return (
+    <Paper withBorder p="sm" radius="sm" w={260}>
+      <Stack gap={6}>
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Text fw={700} style={{ wordBreak: "break-word" }}>
+            {modelId}
+          </Text>
+          <Badge
+            color={modelLoadStateColor(status.value)}
+            variant={status.activeRequests > 0 ? "filled" : "light"}
+            style={{ flexShrink: 0 }}
+          >
+            {status.value}
+          </Badge>
+        </Group>
+        <Stack gap={2}>
+          {details.map((detail) => (
+            <Text key={detail} c="dimmed" size="xs">
+              {detail}
+            </Text>
+          ))}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
 }
 
 function ProxyTargetCard(props: { target: PublicProxyTarget }) {
@@ -172,6 +221,41 @@ export function PublicStatusView() {
             <Group gap="xs" align="stretch">
               {(status?.proxy.targets ?? []).map((target) => (
                 <ProxyTargetCard key={target.name} target={target} />
+              ))}
+            </Group>
+          </Stack>
+        </Paper>
+      )}
+
+      {(status?.models.total ?? 0) > 0 && (
+        <Paper withBorder p="md" radius="sm">
+          <Stack gap="sm">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div className="section-heading">
+                <Text fw={700} size="lg">
+                  Proxy models
+                </Text>
+                <Text c="dimmed" size="sm">
+                  Published models — load state aggregated over route targets
+                </Text>
+              </div>
+              <Group gap="xs">
+                <Badge color="green" variant="light">
+                  {status?.models.loaded ?? 0}/{status?.models.total ?? 0} loaded
+                </Badge>
+                <Badge color="blue" variant="light">
+                  {status?.models.activeRequests ?? 0} active req
+                </Badge>
+                {(status?.models.queuedRequests ?? 0) > 0 && (
+                  <Badge color="grape" variant="light">
+                    {status?.models.queuedRequests ?? 0} queued
+                  </Badge>
+                )}
+              </Group>
+            </Group>
+            <Group gap="xs" align="stretch">
+              {(status?.models.items ?? []).map((model) => (
+                <ProxyModelCard key={model.modelId} model={model} />
               ))}
             </Group>
           </Stack>
