@@ -59,3 +59,23 @@ test("running llama-server with a failing health endpoint still loads", () => {
   const derived = deriveStatus({ ...baseInput(), httpHealth: true });
   assert.equal(derived.status, "loading");
 });
+
+test("error-state runtime surfaces the recent log error tail in the reason", () => {
+  const derived = deriveStatus({
+    ...baseInput(),
+    runtime: { ...runningRuntime(), status: "error", exitCode: 0 },
+    logErrors: 1,
+    logErrorTail: ["error: unknown argument: --model"],
+  });
+  assert.equal(derived.status, "error");
+  assert.match(derived.reason, /error: unknown argument: --model/);
+});
+
+test("error-state runtime with no log errors falls back to a generic reason", () => {
+  const derived = deriveStatus({
+    ...baseInput(),
+    runtime: { ...runningRuntime(), status: "error", exitCode: 0 },
+  });
+  assert.equal(derived.status, "error");
+  assert.match(derived.reason, /error state/);
+});

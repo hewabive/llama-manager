@@ -228,11 +228,19 @@ class ProcessSupervisor extends EventEmitter {
     });
 
     child.on("exit", (code) => {
+      const requested = runtime.status === "stopping";
       this.finalizeExit(runtime, {
-        status: "exited",
+        status: requested ? "exited" : "error",
         exitCode: code,
-        marker: `EXIT code=${code ?? "signal"}`,
-        event: { type: "exit", message: `exit code=${code ?? "signal"}` },
+        marker: requested
+          ? `EXIT code=${code ?? "signal"}`
+          : `ERROR process exited unexpectedly code=${code ?? "signal"}`,
+        event: requested
+          ? { type: "exit", message: `exit code=${code ?? "signal"}` }
+          : {
+              type: "error",
+              message: `process exited unexpectedly code=${code ?? "signal"}`,
+            },
       });
     });
 

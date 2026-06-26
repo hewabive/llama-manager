@@ -163,6 +163,7 @@ export function deriveStatus(input: {
   healthStatus: number | null;
   logReady: boolean;
   logErrors: number;
+  logErrorTail?: string[];
   logWarnings: number;
   swapBytes: number | null;
   numaPlacement: NumaPlacement | null;
@@ -192,12 +193,18 @@ export function deriveStatus(input: {
   }
 
   if (input.runtime.status === "error") {
+    const tail = (input.logErrorTail ?? []).slice(-3);
+    if (tail.length > 0) {
+      return {
+        status: "error",
+        reason: ["Process is in error state. Recent log errors:", ...tail].join(
+          "\n",
+        ),
+      };
+    }
     return {
       status: "error",
-      reason:
-        input.logErrors > 0
-          ? "Runtime is in error state and recent logs contain errors."
-          : "Runtime is in error state.",
+      reason: "Runtime is in error state.",
     };
   }
 
@@ -389,6 +396,7 @@ export async function getInstanceHealthSummary(
     healthStatus: llama.health.status,
     logReady: logSummary.ready,
     logErrors: logSummary.errors.length,
+    logErrorTail: logSummary.errors,
     logWarnings: logSummary.warnings.length,
     swapBytes,
     numaPlacement,
