@@ -81,7 +81,7 @@ Russian "Engineering help" for each `llama-server` argument lives in `content/ll
 
 ## Runtime layout & key env vars
 
-- `data/llama-manager.db` (WAL): binary `path_catalog`, process-run metadata, and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs`). Portable config is file-backed — see **File-backed config**.
+- `data/llama-manager.db` (WAL): binary `path_catalog`, process-run metadata, and rebuildable caches (`model_cache`, parsed-`--help` `llama_argument_catalogs` — keyed by binary path, invalidated by size/mtime; mirrored to a per-binary sidecar `<bin-dir>/.<binary>.llama-args.json` (`arguments/sidecar.ts`) read on DB miss to skip re-running `--help`, written best-effort, so the cache survives DB recreation and travels with the binary). Portable config is file-backed — see **File-backed config**.
 - `data/proxy-runtime-metadata.json`: API-proxy **runtime metadata** (per-target saved-slot ids for preemption restore). In-memory map + atomic write-through (`proxy/runtime-metadata-store.ts`); rebuildable/ephemeral, not git-tracked. `lastRequestAt` is memory-only (live-derived from activity, not persisted).
 - `data/config/` (= `LLAMA_MANAGER_CONFIG_DIR`): file-backed portable config — `presets/`, `instances/`, `settings.json`, `argument-defaults.json`, `proxy/*.json`, `.secrets.json` (seeded from repo-root `config/*.json`).
 - `data/proxy-requests/`: per-request artifact files (opt-in via pipeline nodes like `capture-request`), one dir per request `<day>/<timestamp>-<traceId>/<NN>-<kind>.json`; metadata lands in `trace.files`, content served by `GET /api/proxy/request-file?path=` (`proxy/request-files.ts`).

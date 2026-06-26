@@ -1,4 +1,7 @@
-import type { LlamaArgumentCatalog, LlamaArgumentOption } from "@llama-manager/core";
+import type {
+  LlamaArgumentCatalog,
+  LlamaArgumentOption,
+} from "@llama-manager/core";
 import { LlamaArgumentCatalogSchema } from "@llama-manager/core";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -15,11 +18,11 @@ import {
   loadArgumentRegistry,
   registryNameMap,
 } from "./registry.js";
+import { binaryStat, defaultBinaryPath, runHelp } from "./binary-discovery.js";
 import {
-  binaryStat,
-  defaultBinaryPath,
-  runHelp,
-} from "./binary-discovery.js";
+  readArgumentCatalogSidecar,
+  writeArgumentCatalogSidecar,
+} from "./sidecar.js";
 import { parseLlamaArgumentOptions } from "./help-parser.js";
 import {
   categoryNameRu,
@@ -229,7 +232,7 @@ function generateCatalog(
   const helpHash = createHash("sha256").update(helpOutput).digest("hex");
   const options = parseLlamaArgumentOptions(helpOutput);
 
-  return saveArgumentCatalog({
+  const saved = saveArgumentCatalog({
     binaryPath,
     binarySize: stat.binarySize,
     binaryMtimeMs: stat.binaryMtimeMs,
@@ -238,6 +241,8 @@ function generateCatalog(
     options,
     generatedAt: nowIso(),
   });
+  writeArgumentCatalogSidecar(saved);
+  return saved;
 }
 
 export function getLlamaArgumentCatalog(
@@ -259,6 +264,17 @@ export function getLlamaArgumentCatalog(
       cached,
       cache: { hit: true, refreshed: false, stale: false },
     });
+  }
+
+  if (!input?.refresh) {
+    const fromSidecar = readArgumentCatalogSidecar(binaryPath, stat);
+    if (fromSidecar) {
+      return toCatalog({
+        binaryPath,
+        cached: saveArgumentCatalog(fromSidecar),
+        cache: { hit: true, refreshed: false, stale: false },
+      });
+    }
   }
 
   return toCatalog({
