@@ -38,6 +38,7 @@ test("anthropicProtocolAdapter returns not implemented response", () => {
     model: {
       id: "model-a",
       modelId: "claude-local",
+      visible: true,
       enabled: true,
       ownedBy: "llama-manager",
       targetId: null,

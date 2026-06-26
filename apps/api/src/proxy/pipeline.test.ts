@@ -60,6 +60,7 @@ function request(
     model: {
       id: "model-a",
       modelId: "public-model",
+      visible: true,
       enabled: true,
       ownedBy: "llama-manager",
       targetId: null,

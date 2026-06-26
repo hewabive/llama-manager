@@ -123,6 +123,24 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
             props.onDraftChange({ ...props.draft, description });
           }}
         />
+        <Switch
+          label="Visible"
+          description="Listed in GET /v1/models"
+          checked={props.draft.visible}
+          onChange={(event) => {
+            const visible = event.currentTarget.checked;
+            props.onDraftChange({ ...props.draft, visible });
+          }}
+        />
+        <Switch
+          label="Enabled"
+          description="Serves requests; off responds model_disabled but stays callable for tests when hidden"
+          checked={props.draft.enabled}
+          onChange={(event) => {
+            const enabled = event.currentTarget.checked;
+            props.onDraftChange({ ...props.draft, enabled });
+          }}
+        />
         <Group justify="flex-end">
           <Button variant="subtle" onClick={props.onClose}>
             Cancel

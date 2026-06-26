@@ -50,6 +50,7 @@ export type TargetDraft = {
 
 export type ModelDraft = {
   modelId: string;
+  visible: boolean;
   enabled: boolean;
   ownedBy: string;
   routeToValue: string | null;
@@ -154,6 +155,7 @@ export const emptyTargetDraft: TargetDraft = {
 
 export const emptyModelDraft: ModelDraft = {
   modelId: "",
+  visible: false,
   enabled: true,
   ownedBy: "llama-manager",
   routeToValue: null,
@@ -364,6 +366,7 @@ export function modelDirectTargetId(model: ApiProxyModelRecord): string | null {
 export function modelDraftFromRecord(model: ApiProxyModelRecord): ModelDraft {
   return {
     modelId: model.modelId,
+    visible: model.visible,
     enabled: model.enabled,
     ownedBy: model.ownedBy,
     routeToValue: routeToValue(
@@ -761,7 +764,8 @@ export function modelPayload(draft: ModelDraft): ApiProxyModelCreate {
   const routeTo = routeToFromValue(draft.routeToValue);
   return {
     modelId: draft.modelId.trim(),
-    enabled: true,
+    visible: draft.visible,
+    enabled: draft.enabled,
     ownedBy: draft.ownedBy.trim() || "llama-manager",
     targetId: routeTo?.type === "target" ? routeTo.id : null,
     routeTo,

@@ -27,6 +27,7 @@ beforeEach(() => {
 function seedModel(modelId: string, targetId: string | null) {
   return createApiProxyModel({
     modelId,
+    visible: true,
     enabled: true,
     ownedBy: "llama-manager",
     targetId,

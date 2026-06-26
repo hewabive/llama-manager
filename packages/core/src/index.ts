@@ -908,11 +908,27 @@ export const ApiProxyTargetConfigSchema = z.object({
 export const ApiProxyModelConfigSchema = z.object({
   id: ApiProxyIdSchema,
   modelId: ApiProxyModelIdSchema,
-  enabled: z.boolean().default(false),
+  visible: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   ownedBy: ApiProxyModelOwnerSchema.default("llama-manager"),
   targetId: ApiProxyIdSchema.nullable().default(null),
   routeTo: ApiProxyRouteToSchema.nullable().default(null),
   description: ApiProxyModelDescriptionSchema.default(null),
+});
+
+export const ApiProxyPublicModelLoadStateSchema = z.enum([
+  "unloaded",
+  "loading",
+  "partial",
+  "loaded",
+  "failed",
+  "disabled",
+]);
+
+export const ApiProxyPublicModelStatusSchema = z.object({
+  value: ApiProxyPublicModelLoadStateSchema,
+  activeRequests: z.number().int().nonnegative(),
+  queuedRequests: z.number().int().nonnegative(),
 });
 
 const ApiProxyPipelineConfigBaseSchema = z.object({
@@ -958,6 +974,7 @@ export const ApiProxyPipelineCreateSchema =
 
 export const ApiProxyModelUpdateSchema = z.object({
   modelId: ApiProxyModelIdSchema.optional(),
+  visible: z.boolean().optional(),
   enabled: z.boolean().optional(),
   ownedBy: ApiProxyModelOwnerSchema.optional(),
   targetId: ApiProxyIdSchema.nullable().optional(),
@@ -2460,6 +2477,12 @@ export type ApiProxyPipelineRecord = z.infer<
   typeof ApiProxyPipelineRecordSchema
 >;
 export type ApiProxyModelRecord = z.infer<typeof ApiProxyModelRecordSchema>;
+export type ApiProxyPublicModelLoadState = z.infer<
+  typeof ApiProxyPublicModelLoadStateSchema
+>;
+export type ApiProxyPublicModelStatus = z.infer<
+  typeof ApiProxyPublicModelStatusSchema
+>;
 export type ApiProxyConfig = z.infer<typeof ApiProxyConfigSchema>;
 export type ApiProxyQuickRouteCreate = z.infer<
   typeof ApiProxyQuickRouteCreateSchema

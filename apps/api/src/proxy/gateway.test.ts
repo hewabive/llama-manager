@@ -30,6 +30,7 @@ function model(update: Partial<ApiProxyModelRecord> = {}): ApiProxyModelRecord {
   return {
     id: "model-a",
     modelId: "qwen-public",
+    visible: true,
     enabled: true,
     ownedBy: "llama-manager",
     targetId: target.id,

@@ -85,7 +85,7 @@ The second expected case is API adaptation: accepting one API shape and forwardi
 
 The external protocol surfaces are public and intentionally separate from admin `/api/*` routes:
 
-- `GET /proxy/v1/models` and `GET /v1/models` list enabled external proxy models from `api_proxy_models`.
+- `GET /proxy/v1/models` and `GET /v1/models` list **visible** proxy models from `models.json`, each with a llama.cpp-router-style `status` object (see _Model visibility, serving, and `/v1/models` status_ below).
 - `POST /proxy/v1/chat/completions`, `/proxy/v1/completions`, `/proxy/v1/embeddings` and `/proxy/v1/responses` validate the `model` field and return OpenAI-shaped errors.
 - The same POST endpoints are also available under `/v1/*`.
 - `POST /proxy/anthropic/v1/messages` and `POST /v1/messages` validate the `model` field and return Anthropic-shaped errors.
@@ -97,9 +97,30 @@ At this stage, OpenAI-compatible generation endpoints can start/load/wait for ma
 - `/v1/embeddings`
 - the same endpoints under `/proxy/v1/*`
 
-Unknown or disabled models return the protocol-specific `not_found` error. OpenAI Responses (`/v1/responses`) forwards natively (llama-server implements it). Anthropic Messages (`/v1/messages`) is translated to OpenAI Chat Completions for non-anthropic upstreams via `packages/anthropic-openai-bridge` — see `docs/ANTHROPIC_OPENAI_BRIDGE.md`.
+Unknown models return the protocol-specific `not_found` error; a model whose serving is **disabled** (`enabled:false`) returns a `503` `model_disabled` before any routing or autostart (it stays callable by name even when hidden, so it can be tested before exposure). OpenAI Responses (`/v1/responses`) forwards natively (llama-server implements it). Anthropic Messages (`/v1/messages`) is translated to OpenAI Chat Completions for non-anthropic upstreams via `packages/anthropic-openai-bridge` — see `docs/ANTHROPIC_OPENAI_BRIDGE.md`.
 
 If a known enabled model is not bound to a proxy target, or if the scheduler would need to unload a competing target, save a slot, restore a slot or stop an instance, the public endpoint returns a protocol-specific `503` diagnostic. This means public requests are now connected to the same scheduling model as the admin preview, but the MVP intentionally supports only simple autostart, autoload and forward.
+
+## Model visibility, serving, and `/v1/models` status
+
+A proxy model carries two independent control flags in `config/proxy/models.json`:
+
+- `visible` — listed in `GET /v1/models`. Hidden models (`visible:false`) are absent from the catalog but **remain callable by name**, so a freshly-created model can be tested before it is exposed to consumers.
+- `enabled` — serves requests. With `enabled:false` the model is **disabled**: every request short-circuits with a `503` `model_disabled` before routing/autostart, regardless of visibility.
+
+`GET /v1/models` mirrors llama.cpp router mode by attaching a per-model `status` to each listed entry:
+
+```json
+{ "id": "my-model", "object": "model", "owned_by": "llama-manager",
+  "status": { "value": "partial", "active_requests": 2, "queued_requests": 5 } }
+```
+
+Two orthogonal axes:
+
+- **Load** (`status.value`) is aggregated over the model's route leaves (the target(s) a direct route or pipeline resolves to): `unloaded` / `loading` / `partial` / `loaded` / `failed`, plus `disabled` which overrides when `enabled:false`. A direct-target model only ever reports the llama.cpp set — `partial` needs ≥2 leaves. Internal pipeline structure is never exposed, only the aggregate.
+- **Work** is `active_requests` (dispatched to a target) and `queued_requests` (accepted by the proxy, waiting on a domain lease / autostart). Independent of the load axis — a model can be busy while only partially loaded.
+
+The status is derived from a short-TTL (2s) cache of the proxy runtime snapshot (`getCachedApiProxyRuntimeSnapshot`), so `/v1/models` stays read-only and cheap and never triggers autoload. Derivation lives in `proxy/model-status.ts`.
 
 ## Admin Diagnostics
 

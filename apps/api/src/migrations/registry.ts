@@ -18,6 +18,10 @@ import {
   migratePipelinesToGraphFormat,
 } from "../proxy/pipelines-graph-migration.js";
 import {
+  hasLegacyModelVisibility,
+  migrateModelVisibility,
+} from "../proxy/models-visibility-migration.js";
+import {
   dropStoredRemoteInstanceEndpoints,
   storedEndpointsHaveRemoteInstances,
 } from "../proxy/remote-endpoint-migration.js";
@@ -111,6 +115,15 @@ export const migrations: Migration[] = [
     isApplied: () => !storedEndpointsHaveRemoteInstances(),
     apply: () => {
       dropStoredRemoteInstanceEndpoints();
+    },
+  },
+  {
+    id: "0010-proxy-model-visible-enabled",
+    describe:
+      "config/proxy/models.json: enabled (visibility) → visible; new enabled = serving",
+    isApplied: () => !hasLegacyModelVisibility(),
+    apply: () => {
+      migrateModelVisibility();
     },
   },
 ];

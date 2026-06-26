@@ -23,6 +23,7 @@ export type ApiProxyProtocolResponse = {
 
 type ApiProxyProtocolDiagnosticCode =
   | "llama_manager_proxy_model_unbound"
+  | "llama_manager_proxy_model_disabled"
   | "llama_manager_proxy_target_not_found"
   | "llama_manager_proxy_plan_blocked"
   | "llama_manager_proxy_target_not_ready"
@@ -171,7 +172,7 @@ export function resolveApiProxyProtocolModelRequest(input: {
   }
 
   const model = input.getModelByModelId(modelId);
-  if (!model || !model.enabled) {
+  if (!model) {
     return {
       ok: false,
       response: input.adapter.modelNotFound(modelId, input.operation),

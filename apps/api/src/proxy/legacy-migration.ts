@@ -97,7 +97,8 @@ function exportModels() {
         ApiProxyModelRecordSchema.parse({
           id: row.id,
           modelId: row.model_id,
-          enabled: parseBool(row.enabled),
+          visible: parseBool(row.enabled),
+          enabled: true,
           ownedBy: row.owned_by,
           targetId: row.target_id,
           routeTo: parseRouteTo(row.route_to_json),

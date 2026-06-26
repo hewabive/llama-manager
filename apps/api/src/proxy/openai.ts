@@ -1,4 +1,7 @@
-import type { ApiProxyModelRecord } from "@llama-manager/core";
+import type {
+  ApiProxyModelRecord,
+  ApiProxyPublicModelStatus,
+} from "@llama-manager/core";
 import { asObject } from "./json.js";
 import {
   modelIdFromBody,
@@ -31,17 +34,32 @@ function openAiError(input: {
   };
 }
 
-export function openAiModelsList(models: ApiProxyModelRecord[]) {
+export function openAiModelsList(
+  models: ApiProxyModelRecord[],
+  statusByModelId?: Map<string, ApiProxyPublicModelStatus>,
+) {
   return {
     object: "list",
     data: models
-      .filter((model) => model.enabled)
-      .map((model) => ({
-        id: model.modelId,
-        object: "model",
-        created: Math.floor(Date.parse(model.createdAt) / 1000),
-        owned_by: model.ownedBy,
-      })),
+      .filter((model) => model.visible)
+      .map((model) => {
+        const status = statusByModelId?.get(model.modelId);
+        return {
+          id: model.modelId,
+          object: "model",
+          created: Math.floor(Date.parse(model.createdAt) / 1000),
+          owned_by: model.ownedBy,
+          ...(status
+            ? {
+                status: {
+                  value: status.value,
+                  active_requests: status.activeRequests,
+                  queued_requests: status.queuedRequests,
+                },
+              }
+            : {}),
+        };
+      }),
   };
 }
 

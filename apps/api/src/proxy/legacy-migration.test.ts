@@ -111,9 +111,16 @@ test("exports legacy proxy tables to files and rebuilds schema", () => {
 
   const models = JSON.parse(
     readFileSync(`${config.proxyConfigDir}/models.json`, "utf8"),
-  ) as Array<{ modelId: string; targetId: string | null }>;
+  ) as Array<{
+    modelId: string;
+    targetId: string | null;
+    visible: boolean;
+    enabled: boolean;
+  }>;
   assert.equal(models[0]?.modelId, "big-slow");
   assert.equal(models[0]?.targetId, "t1");
+  assert.equal(models[0]?.visible, true);
+  assert.equal(models[0]?.enabled, true);
 
   const rawEndpoints = readFileSync(
     `${config.proxyConfigDir}/endpoints.json`,

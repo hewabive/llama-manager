@@ -63,3 +63,33 @@ export async function getApiProxyRuntimeSnapshot(options?: {
     }),
   };
 }
+
+const SNAPSHOT_CACHE_TTL_MS = 2000;
+
+type ApiProxyRuntimeSnapshotResult = Awaited<
+  ReturnType<typeof getApiProxyRuntimeSnapshot>
+>;
+
+let cachedSnapshot: { at: number; value: ApiProxyRuntimeSnapshotResult } | null =
+  null;
+let pendingSnapshot: Promise<ApiProxyRuntimeSnapshotResult> | null = null;
+
+export async function getCachedApiProxyRuntimeSnapshot(): Promise<ApiProxyRuntimeSnapshotResult> {
+  const now = performance.now();
+  if (cachedSnapshot && now - cachedSnapshot.at < SNAPSHOT_CACHE_TTL_MS) {
+    return cachedSnapshot.value;
+  }
+  if (pendingSnapshot) {
+    return pendingSnapshot;
+  }
+  pendingSnapshot = (async () => {
+    try {
+      const value = await getApiProxyRuntimeSnapshot();
+      cachedSnapshot = { at: performance.now(), value };
+      return value;
+    } finally {
+      pendingSnapshot = null;
+    }
+  })();
+  return pendingSnapshot;
+}

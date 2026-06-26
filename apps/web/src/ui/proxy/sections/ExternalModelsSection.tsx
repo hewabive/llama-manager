@@ -72,12 +72,19 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
                       <Code>{model.modelId}</Code>
                     </Table.Td>
                     <Table.Td>
-                      <Badge
-                        color={targetStatusColor(model.enabled)}
-                        variant="light"
-                      >
-                        {model.enabled ? "enabled" : "disabled"}
-                      </Badge>
+                      <Group gap={4}>
+                        <Badge
+                          color={targetStatusColor(model.enabled)}
+                          variant="light"
+                        >
+                          {model.enabled ? "enabled" : "disabled"}
+                        </Badge>
+                        {!model.visible ? (
+                          <Badge color="gray" variant="light">
+                            hidden
+                          </Badge>
+                        ) : null}
+                      </Group>
                     </Table.Td>
                     <Table.Td>
                       {routeToLabel(

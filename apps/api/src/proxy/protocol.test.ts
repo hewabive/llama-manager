@@ -26,6 +26,7 @@ test("modelIdFromBody reads the model field", () => {
 const model: ApiProxyModelRecord = {
   id: "model-a",
   modelId: "qwen",
+  visible: true,
   enabled: true,
   ownedBy: "llama-manager",
   targetId: "target-a",
@@ -80,12 +81,23 @@ test("resolveApiProxyProtocolModelRequest returns adapter error for missing mode
   }
 });
 
-test("resolveApiProxyProtocolModelRequest rejects disabled published model", () => {
+test("resolveApiProxyProtocolModelRequest resolves a hidden or disabled model (gating happens downstream)", () => {
   const result = resolveApiProxyProtocolModelRequest({
     adapter: openAiProtocolAdapter,
     operation,
     body: { model: "qwen" },
-    getModelByModelId: () => ({ ...model, enabled: false }),
+    getModelByModelId: () => ({ ...model, visible: false, enabled: false }),
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("resolveApiProxyProtocolModelRequest returns not-found for unknown model", () => {
+  const result = resolveApiProxyProtocolModelRequest({
+    adapter: openAiProtocolAdapter,
+    operation,
+    body: { model: "qwen" },
+    getModelByModelId: () => null,
   });
 
   assert.equal(result.ok, false);

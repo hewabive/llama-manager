@@ -56,15 +56,13 @@ export async function explainApiProxyRoute(
   }
 
   const model = getApiProxyModelByModelId(modelId);
-  if (!model || !model.enabled) {
+  if (!model) {
     return {
       ...base,
       diagnostic: {
         status: 404,
         code: "llama_manager_proxy_model_unbound",
-        message: model
-          ? `Model ${modelId} is disabled.`
-          : `Model ${modelId} is not configured.`,
+        message: `Model ${modelId} is not configured.`,
       },
     };
   }

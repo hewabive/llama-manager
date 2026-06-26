@@ -228,6 +228,18 @@ async function proxyProtocolEndpointInner(
   trace.modelId = resolution.request.modelId;
   inflight.setModel(resolution.request.modelId);
 
+  if (!resolution.request.model.enabled) {
+    const message = `Model ${resolution.request.modelId} is disabled`;
+    trace.errorMessage = message;
+    const response = adapter.diagnosticError(resolution.request, {
+      status: 503,
+      code: "llama_manager_proxy_model_disabled",
+      param: "model",
+      message,
+    });
+    return c.json(response.body, response.status);
+  }
+
   const routeResult = await resolveApiProxyRouteChain({
     request: resolution.request,
     getPipeline: getApiProxyPipeline,

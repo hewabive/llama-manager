@@ -241,6 +241,7 @@ export function createApiProxyQuickRoute(
     const model = createApiProxyModel(
       ApiProxyModelCreateSchema.parse({
         modelId: parsed.modelId,
+        visible: true,
         enabled: true,
         targetId: target.id,
         routeTo: { type: "target", id: target.id },

@@ -137,6 +137,7 @@ function fusionRequest(body: unknown): ApiProxyProtocolModelRequest {
   seededModelCounter += 1;
   const model: ApiProxyModelRecord = createApiProxyModel({
     modelId: `fusion-model-${seededModelCounter}`,
+    visible: true,
     enabled: true,
     ownedBy: "llama-manager",
     targetId: null,

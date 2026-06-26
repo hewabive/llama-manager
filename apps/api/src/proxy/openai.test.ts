@@ -8,11 +8,12 @@ import {
   openAiResumableCodec,
 } from "./openai.js";
 
-test("openAiModelsList exposes only enabled proxy models", () => {
+test("openAiModelsList exposes only visible proxy models", () => {
   const response = openAiModelsList([
     {
       id: "a",
       modelId: "alpha",
+      visible: true,
       enabled: true,
       ownedBy: "llama-manager",
       targetId: null,
@@ -24,7 +25,8 @@ test("openAiModelsList exposes only enabled proxy models", () => {
     {
       id: "b",
       modelId: "beta",
-      enabled: false,
+      visible: false,
+      enabled: true,
       ownedBy: "llama-manager",
       targetId: null,
       routeTo: null,
@@ -44,6 +46,40 @@ test("openAiModelsList exposes only enabled proxy models", () => {
         owned_by: "llama-manager",
       },
     ],
+  });
+});
+
+test("openAiModelsList attaches per-model status in llama.cpp router style", () => {
+  const response = openAiModelsList(
+    [
+      {
+        id: "a",
+        modelId: "alpha",
+        visible: true,
+        enabled: true,
+        ownedBy: "llama-manager",
+        targetId: null,
+        routeTo: null,
+        description: null,
+        createdAt: "2026-05-30T10:00:00.000Z",
+        updatedAt: "2026-05-30T10:00:00.000Z",
+      },
+    ],
+    new Map([
+      ["alpha", { value: "partial", activeRequests: 2, queuedRequests: 5 }],
+    ]),
+  );
+
+  assert.deepEqual(response.data[0], {
+    id: "alpha",
+    object: "model",
+    created: 1780135200,
+    owned_by: "llama-manager",
+    status: {
+      value: "partial",
+      active_requests: 2,
+      queued_requests: 5,
+    },
   });
 });
 

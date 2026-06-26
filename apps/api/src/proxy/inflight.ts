@@ -294,6 +294,25 @@ export class ApiProxyInflightRegistry {
     return byTarget;
   }
 
+  snapshotByModel(): Map<string, ApiProxyInflightRequest[]> {
+    const at = this.clock();
+    this.sweepStale(at);
+    const byModel = new Map<string, ApiProxyInflightRequest[]>();
+    for (const entry of this.entries.values()) {
+      if (entry.modelId === "") {
+        continue;
+      }
+      const view = toView(entry, at);
+      const list = byModel.get(entry.modelId);
+      if (list) {
+        list.push(view);
+      } else {
+        byModel.set(entry.modelId, [view]);
+      }
+    }
+    return byModel;
+  }
+
   getDetail(id: string): ApiProxyInflightDetail | null {
     const entry = this.entries.get(id);
     if (!entry) {
