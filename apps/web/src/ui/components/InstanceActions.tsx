@@ -204,10 +204,8 @@ export function InstanceActions(props: {
 
   return (
     <>
-      <Group
-        gap={4}
-        justify="flex-end"
-        wrap="nowrap"
+      <div
+        className="instance-actions"
         onClick={(event) => event.stopPropagation()}
       >
         <Tooltip label={llamaWebUiTooltip(health, webUiUrl)}>
@@ -298,7 +296,7 @@ export function InstanceActions(props: {
             <Trash2 size={16} />
           </ActionIcon>
         </Tooltip>
-      </Group>
+      </div>
 
       <Modal
         opened={deleteConfirmOpened}

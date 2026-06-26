@@ -16,16 +16,68 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
+import type { MemoryPool } from "@llama-manager/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCcw, Square, Triangle } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-import { bulkInstanceAction } from "../../api/client";
+import {
+  bulkInstanceAction,
+  getResources,
+  listPathCatalog,
+} from "../../api/client";
 import { InstanceActions } from "../components/InstanceActions";
 import { InstanceHealthBadge } from "../components/InstanceHealthBadge";
+import { argString } from "../components/instance-form-helpers";
+import { InstanceTypeCell } from "../components/InstanceTypeCell";
 import type { LaunchMonitor } from "../utils/launch";
 import { pathBaseName } from "../utils/models";
+
+const HIDDEN_ARG_KEYS = new Set(["--host", "--port"]);
+
+function visibleArgEntries(args: Instance["args"]) {
+  return Object.entries(args)
+    .filter(([key]) => !HIDDEN_ARG_KEYS.has(key))
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function binaryLabel(instance: Instance, nameByRefId: Map<string, string>) {
+  const refId = instance.binaryPathRefId;
+  const named = refId ? nameByRefId.get(refId) : undefined;
+  return named ?? pathBaseName(instance.binaryPath);
+}
+
+function endpointText(instance: Instance) {
+  const rawHost = argString(instance.args, "--host");
+  const rawPort = argString(instance.args, "--port");
+  if (!rawHost && !rawPort) {
+    return null;
+  }
+  const host = rawHost || "127.0.0.1";
+  return rawPort ? `${host}:${rawPort}` : host;
+}
+
+function InstanceBinaryCell(props: {
+  instance: Instance;
+  nameByRefId: Map<string, string>;
+}) {
+  const endpoint = endpointText(props.instance);
+  return (
+    <Stack gap={2}>
+      <Tooltip label={props.instance.binaryPath} withArrow>
+        <Code className="instance-binary-name">
+          {binaryLabel(props.instance, props.nameByRefId)}
+        </Code>
+      </Tooltip>
+      {endpoint && (
+        <Text c="dimmed" size="xs" ff="monospace">
+          {endpoint}
+        </Text>
+      )}
+    </Stack>
+  );
+}
 
 function argValueText(value: Instance["args"][string]) {
   if (value === true) return "enabled";
@@ -45,7 +97,7 @@ function fullArgValueText(value: Instance["args"][string]) {
 }
 
 function InstanceArgsList(props: { args: Instance["args"] }) {
-  const entries = Object.entries(props.args);
+  const entries = visibleArgEntries(props.args);
   if (entries.length === 0) {
     return (
       <Text c="dimmed" size="sm">
@@ -311,6 +363,33 @@ export function InstancesView(props: {
   ) => void;
   onLaunchStopped: (instance: Instance) => void;
 }) {
+  const catalogQuery = useQuery({
+    queryKey: ["path-catalog"],
+    queryFn: () => listPathCatalog(),
+    staleTime: 30_000,
+  });
+  const resourcesQuery = useQuery({
+    queryKey: ["resources"],
+    queryFn: getResources,
+    staleTime: 30_000,
+  });
+  const binaryNameByRefId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of catalogQuery.data?.data ?? []) {
+      if (entry.kind === "binary") {
+        map.set(entry.id, entry.name);
+      }
+    }
+    return map;
+  }, [catalogQuery.data]);
+  const poolsById = useMemo(() => {
+    const map = new Map<string, MemoryPool>();
+    for (const pool of resourcesQuery.data?.data.pools ?? []) {
+      map.set(pool.id, pool);
+    }
+    return map;
+  }, [resourcesQuery.data]);
+
   return (
     <>
       <InstancesHeader
@@ -341,9 +420,6 @@ export function InstancesView(props: {
               <Group justify="space-between" align="flex-start" wrap="nowrap">
                 <div className="instance-card__title">
                   <Text fw={600}>{instance.name}</Text>
-                  <Text c="dimmed" size="xs" className="text-wrap">
-                    {instance.name}
-                  </Text>
                 </div>
                 <InstanceActions
                   instance={instance}
@@ -354,20 +430,26 @@ export function InstancesView(props: {
                   onLaunchStopped={props.onLaunchStopped}
                 />
               </Group>
-              <Group justify="space-between" gap="xs">
-                <InstanceHealthBadge
-                  instance={instance}
-                  health={props.healthByInstanceId.get(instance.name)}
-                />
+              <Group justify="space-between" gap="xs" align="flex-start">
+                <Group gap={4}>
+                  <InstanceHealthBadge
+                    instance={instance}
+                    health={props.healthByInstanceId.get(instance.name)}
+                  />
+                </Group>
                 <Text c="dimmed" size="sm">
                   PID {instance.pid ?? "-"}
                 </Text>
               </Group>
+              <InstanceTypeCell instance={instance} poolsById={poolsById} />
               <div>
                 <Text c="dimmed" size="xs">
                   Binary
                 </Text>
-                <Code className="code-wrap">{instance.binaryPath}</Code>
+                <InstanceBinaryCell
+                  instance={instance}
+                  nameByRefId={binaryNameByRefId}
+                />
               </div>
               <div>
                 <Text c="dimmed" size="xs">
@@ -387,11 +469,12 @@ export function InstancesView(props: {
         )}
       </Stack>
 
-      <Table.ScrollContainer className="instances-table" minWidth={900}>
+      <Table.ScrollContainer className="instances-table" minWidth={1040}>
         <Table striped highlightOnHover verticalSpacing="sm">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Name</Table.Th>
+              <Table.Th>Type</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>PID</Table.Th>
               <Table.Th>Binary</Table.Th>
@@ -411,19 +494,24 @@ export function InstancesView(props: {
               >
                 <Table.Td>
                   <Text fw={600}>{instance.name}</Text>
-                  <Text c="dimmed" size="xs">
-                    {instance.name}
-                  </Text>
                 </Table.Td>
                 <Table.Td>
-                  <InstanceHealthBadge
-                    instance={instance}
-                    health={props.healthByInstanceId.get(instance.name)}
-                  />
+                  <InstanceTypeCell instance={instance} poolsById={poolsById} />
+                </Table.Td>
+                <Table.Td className="instances-status-cell">
+                  <Group gap={4}>
+                    <InstanceHealthBadge
+                      instance={instance}
+                      health={props.healthByInstanceId.get(instance.name)}
+                    />
+                  </Group>
                 </Table.Td>
                 <Table.Td>{instance.pid ?? "-"}</Table.Td>
                 <Table.Td>
-                  <Code>{instance.binaryPath}</Code>
+                  <InstanceBinaryCell
+                    instance={instance}
+                    nameByRefId={binaryNameByRefId}
+                  />
                 </Table.Td>
                 <Table.Td>
                   <InstanceArgsList args={instance.args} />
@@ -442,7 +530,7 @@ export function InstancesView(props: {
             ))}
             {props.instances.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Text c="dimmed" ta="center" py="lg">
                     No instances yet
                   </Text>

@@ -129,6 +129,41 @@ code {
   overflow-wrap: anywhere;
 }
 
+.instance-type-cell {
+  min-width: 110px;
+}
+
+.instance-type-chips {
+  max-width: 200px;
+}
+
+.instances-status-cell {
+  min-width: 96px;
+}
+
+.instances-status-cell .mantine-Badge-root {
+  max-width: none;
+}
+
+.instances-status-cell .mantine-Badge-label {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.instance-binary-name {
+  display: inline-block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.instance-actions {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 4px;
+  justify-content: flex-end;
+  justify-items: center;
+}
+
 .mobile-card__title {
   flex: 1 1 auto;
   min-width: 0;
