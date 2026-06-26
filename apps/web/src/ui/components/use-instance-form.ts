@@ -11,6 +11,7 @@ import {
   type RpcWorkerRef,
 } from "@llama-manager/core";
 import { useForm } from "@mantine/form";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -734,10 +735,12 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     selectedBinaryPathRefId,
   ]);
 
+  const [debouncedPreflightInput] = useDebouncedValue(draftPreview.input, 350);
   const preflightPreviewQuery = useQuery({
-    queryKey: ["instance-preflight-preview", draftPreview.input],
-    queryFn: () => previewInstancePreflight(draftPreview.input!),
-    enabled: props.opened && Boolean(draftPreview.input),
+    queryKey: ["instance-preflight-preview", debouncedPreflightInput],
+    queryFn: ({ signal }) =>
+      previewInstancePreflight(debouncedPreflightInput!, signal),
+    enabled: props.opened && Boolean(debouncedPreflightInput),
     staleTime: 1_000,
     retry: false,
   });

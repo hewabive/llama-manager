@@ -40,10 +40,12 @@ export async function createInstance(input: InstanceCreate) {
 
 export async function previewInstancePreflight(
   input: InstancePreflightPreview,
+  signal?: AbortSignal,
 ) {
   return request<{ data: ProcessPreflightResult }>("/api/instances/preflight", {
     method: "POST",
     body: JSON.stringify(input),
+    ...(signal ? { signal } : {}),
   });
 }
 
