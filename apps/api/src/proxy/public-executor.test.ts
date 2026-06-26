@@ -156,6 +156,41 @@ test("executeApiProxyPublicMvpPlan starts stopped instance and reaches ready pla
   assert.equal(starts, 1);
 });
 
+test("executeApiProxyPublicMvpPlan fails fast when a started instance crashes instead of becoming ready", async () => {
+  let starts = 0;
+  const result = await executeApiProxyPublicMvpPlan({
+    ...executorDefaults({
+      initialPreview: preview([
+        action("start-instance"),
+        action("wait-instance-ready"),
+        action("route-request"),
+      ]),
+      previews: [
+        preview([action("wait-instance-ready"), action("route-request")]),
+        preview([
+          action("start-instance"),
+          action("wait-instance-ready"),
+          action("route-request"),
+        ]),
+      ],
+      startInstance: () => {
+        starts += 1;
+      },
+    }),
+    describeStartFailure: async () => "error: unknown argument: --model",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(starts, 1);
+  if (!result.ok) {
+    assert.equal(
+      result.diagnostic.code,
+      "llama_manager_proxy_instance_start_failed",
+    );
+    assert.match(result.diagnostic.message, /unknown argument: --model/);
+  }
+});
+
 test("executeApiProxyPublicMvpPlan loads model and waits until ready", async () => {
   const loaded: string[] = [];
   const result = await executeApiProxyPublicMvpPlan(

@@ -1,6 +1,7 @@
 import type { ApiProxyTargetRecord } from "@llama-manager/core";
 
 import { getInstance } from "../instances/repository.js";
+import { getInstanceHealthSummary } from "../process/health-summary.js";
 import {
   llamaEndpointErrorMessage,
   requestLlamaModelAction,
@@ -39,6 +40,8 @@ export function executeApiProxyTargetReadiness(
         throw new Error(actionErrorProxyMessage(error));
       }
     },
+    describeStartFailure: async (instance) =>
+      (await getInstanceHealthSummary(instance)).reason,
     loadModel: async (instance, model) => {
       const result = await requestLlamaModelAction(instance, "load", model);
       if (!result.response.ok) {

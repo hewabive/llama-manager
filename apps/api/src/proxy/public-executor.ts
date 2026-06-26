@@ -20,12 +20,10 @@ const supportedActionTypes = new Set<ApiProxySchedulerAction["type"]>([
 ]);
 
 const instanceWaitActionTypes = new Set<ApiProxySchedulerAction["type"]>([
-  "start-instance",
   "wait-instance-ready",
 ]);
 
 const modelWaitActionTypes = new Set<ApiProxySchedulerAction["type"]>([
-  "start-instance",
   "wait-instance-ready",
   "wait-model-ready",
 ]);
@@ -52,6 +50,9 @@ export type ApiProxyPublicExecutorInput = {
   initialPreview: ApiProxyPlanPreview;
   getInstance: (instanceId: string) => Instance | null;
   startInstance: (instance: Instance) => unknown | Promise<unknown>;
+  describeStartFailure?:
+    | ((instance: Instance) => Promise<string | null> | string | null)
+    | undefined;
   loadModel: (instance: Instance, model: string) => Promise<void>;
   unloadModel?:
     | ((instance: Instance, model: string) => Promise<void>)
@@ -147,6 +148,19 @@ function upstreamDiagnostic(target: ApiProxyTargetRecord, message: string) {
   } satisfies ApiProxyProtocolDiagnostic;
 }
 
+function startFailedDiagnostic(
+  target: ApiProxyTargetRecord,
+  instanceId: string,
+  reason: string,
+) {
+  return {
+    status: 502,
+    code: "llama_manager_proxy_instance_start_failed",
+    param: "model",
+    message: `Proxy target ${target.name} could not start instance ${instanceId}: ${reason}`,
+  } satisfies ApiProxyProtocolDiagnostic;
+}
+
 async function waitForPlanChange(input: {
   target: ApiProxyTargetRecord;
   action: ApiProxySchedulerAction;
@@ -191,6 +205,7 @@ export async function executeApiProxyPublicMvpPlan(
     ((ms: number) =>
       new Promise<void>((resolveDone) => setTimeout(resolveDone, ms)));
   let preview = input.initialPreview;
+  const startedInstanceIds = new Set<string>();
 
   for (let pass = 0; pass < options.maxPasses; pass += 1) {
     if (!preview.plan.ok) {
@@ -221,10 +236,25 @@ export async function executeApiProxyPublicMvpPlan(
 
     try {
       switch (action.type) {
-        case "start-instance":
+        case "start-instance": {
+          if (startedInstanceIds.has(action.instanceId)) {
+            const reason =
+              (await input.describeStartFailure?.(instance)) ??
+              "it exited immediately after starting";
+            return {
+              ok: false,
+              diagnostic: startFailedDiagnostic(
+                input.target,
+                action.instanceId,
+                reason,
+              ),
+            };
+          }
+          startedInstanceIds.add(action.instanceId);
           await input.startInstance(instance);
           preview = await input.getPlanPreview(input.target.id);
           break;
+        }
         case "wait-instance-ready": {
           const waited = await waitForPlanChange({
             target: input.target,
