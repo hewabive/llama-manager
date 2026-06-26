@@ -5,11 +5,11 @@ import type {
 } from "@llama-manager/core";
 import {
   ActionIcon,
-  Badge,
   Code,
   Group,
   Paper,
   Stack,
+  Switch,
   Table,
   Text,
   Tooltip,
@@ -18,7 +18,6 @@ import { GitBranchPlus, Pencil, Trash2, Workflow } from "lucide-react";
 
 import { modelDirectTargetId } from "../forms";
 import { formatLocalDateTime } from "../../utils/time";
-import { targetStatusColor } from "../display";
 
 type ExternalModelsSectionProps = {
   models: ApiProxyModelRecord[];
@@ -26,10 +25,13 @@ type ExternalModelsSectionProps = {
   targetById: Map<string, ApiProxyTargetRecord>;
   deletePending: boolean;
   createPipelinePending: boolean;
+  togglePendingId: string | null;
   onEdit: (model: ApiProxyModelRecord) => void;
   onDelete: (id: string) => void;
   onOpenPipeline: (pipelineId: string) => void;
   onCreatePipeline: (model: ApiProxyModelRecord) => void;
+  onSetVisible: (model: ApiProxyModelRecord, visible: boolean) => void;
+  onSetEnabled: (model: ApiProxyModelRecord, enabled: boolean) => void;
 };
 
 export function ExternalModelsSection(props: ExternalModelsSectionProps) {
@@ -55,7 +57,8 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Model ID</Table.Th>
-                <Table.Th>Status</Table.Th>
+                <Table.Th>Visible</Table.Th>
+                <Table.Th>Enabled</Table.Th>
                 <Table.Th>Route to</Table.Th>
                 <Table.Th>Owned by</Table.Th>
                 <Table.Th>Description</Table.Th>
@@ -72,19 +75,32 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
                       <Code>{model.modelId}</Code>
                     </Table.Td>
                     <Table.Td>
-                      <Group gap={4}>
-                        <Badge
-                          color={targetStatusColor(model.enabled)}
-                          variant="light"
-                        >
-                          {model.enabled ? "enabled" : "disabled"}
-                        </Badge>
-                        {!model.visible ? (
-                          <Badge color="gray" variant="light">
-                            hidden
-                          </Badge>
-                        ) : null}
-                      </Group>
+                      <Tooltip label="Listed in GET /v1/models">
+                        <Switch
+                          size="sm"
+                          checked={model.visible}
+                          disabled={props.togglePendingId === model.id}
+                          aria-label={`Toggle visibility for ${model.modelId}`}
+                          onChange={(event) => {
+                            const visible = event.currentTarget.checked;
+                            props.onSetVisible(model, visible);
+                          }}
+                        />
+                      </Tooltip>
+                    </Table.Td>
+                    <Table.Td>
+                      <Tooltip label="Serves requests; off responds model_disabled but stays callable for tests when hidden">
+                        <Switch
+                          size="sm"
+                          checked={model.enabled}
+                          disabled={props.togglePendingId === model.id}
+                          aria-label={`Toggle serving for ${model.modelId}`}
+                          onChange={(event) => {
+                            const enabled = event.currentTarget.checked;
+                            props.onSetEnabled(model, enabled);
+                          }}
+                        />
+                      </Tooltip>
                     </Table.Td>
                     <Table.Td>
                       {routeToLabel(
@@ -168,7 +184,7 @@ export function ExternalModelsSection(props: ExternalModelsSectionProps) {
               })}
               {props.models.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
+                  <Table.Td colSpan={8}>
                     <Text c="dimmed" ta="center" py="lg">
                       No external models configured
                     </Text>

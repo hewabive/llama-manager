@@ -1,11 +1,12 @@
 import type {
   ApiProxyModelCreate,
   ApiProxyModelRecord,
+  ApiProxyModelUpdate,
 } from "@llama-manager/core";
 import { Badge, Button, Group, Paper, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, Zap } from "lucide-react";
+import { Plus, PowerOff, Zap } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -137,6 +138,43 @@ export function ProxyModelsView() {
         message: (error as Error).message,
       }),
   });
+  const toggleModelMutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: ApiProxyModelUpdate }) =>
+      updateApiProxyModel(id, patch),
+    onSuccess: async () => {
+      await invalidate();
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Proxy model update failed",
+        message: (error as Error).message,
+      }),
+  });
+  const disableAllMutation = useMutation({
+    mutationFn: async () => {
+      const enabledModels = models.filter((model) => model.enabled);
+      await Promise.all(
+        enabledModels.map((model) =>
+          updateApiProxyModel(model.id, { enabled: false }),
+        ),
+      );
+      return enabledModels.length;
+    },
+    onSuccess: async (count) => {
+      await invalidate();
+      notifications.show({
+        title: "Models disabled",
+        message: `${count} model(s) stopped serving.`,
+      });
+    },
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Disable all failed",
+        message: (error as Error).message,
+      }),
+  });
   const quickRouteMutation = useMutation({
     mutationFn: createApiProxyQuickRoute,
     onSuccess: async (result) => {
@@ -200,13 +238,40 @@ export function ProxyModelsView() {
 
   const modelBusy =
     createModelMutation.isPending || updateModelMutation.isPending;
+  const togglePendingId = toggleModelMutation.isPending
+    ? (toggleModelMutation.variables?.id ?? null)
+    : null;
+  const enabledCount = models.filter((model) => model.enabled).length;
 
   return (
     <Stack gap="md">
       <Paper withBorder p="md" radius="sm">
         <Group justify="space-between" align="center" wrap="wrap">
-          <Badge variant="light">{models.length} models</Badge>
+          <Group gap="xs">
+            <Badge variant="light">{models.length} models</Badge>
+            <Badge variant="light" color="green">
+              {enabledCount} enabled
+            </Badge>
+          </Group>
           <Group gap="xs" wrap="wrap">
+            <Button
+              variant="default"
+              leftSection={<PowerOff size={16} />}
+              disabled={enabledCount === 0}
+              loading={disableAllMutation.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Disable all ${enabledCount} serving model(s)? They will respond model_disabled until re-enabled.`,
+                  )
+                ) {
+                  return;
+                }
+                disableAllMutation.mutate();
+              }}
+            >
+              Disable all
+            </Button>
             <Button
               leftSection={<Zap size={16} />}
               onClick={() => {
@@ -236,6 +301,7 @@ export function ProxyModelsView() {
         targetById={targetById}
         deletePending={deleteModelMutation.isPending}
         createPipelinePending={createPipelineForModelMutation.isPending}
+        togglePendingId={togglePendingId}
         onEdit={(model) => {
           setModelEditor({ mode: "edit", model });
           setModelDraft(modelDraftFromRecord(model));
@@ -244,6 +310,12 @@ export function ProxyModelsView() {
         onOpenPipeline={(id) => navigateProxy(`pipelines/${id}`)}
         onCreatePipeline={(model) =>
           createPipelineForModelMutation.mutate(model)
+        }
+        onSetVisible={(model, visible) =>
+          toggleModelMutation.mutate({ id: model.id, patch: { visible } })
+        }
+        onSetEnabled={(model, enabled) =>
+          toggleModelMutation.mutate({ id: model.id, patch: { enabled } })
         }
       />
 
