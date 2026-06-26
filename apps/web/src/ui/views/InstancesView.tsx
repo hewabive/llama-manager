@@ -16,7 +16,6 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import type { MemoryPool } from "@llama-manager/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCcw, Square, Triangle } from "lucide-react";
@@ -24,7 +23,7 @@ import { useMemo, useState } from "react";
 
 import {
   bulkInstanceAction,
-  getResources,
+  getInstanceResourceProfiles,
   listPathCatalog,
 } from "../../api/client";
 import { InstanceActions } from "../components/InstanceActions";
@@ -368,9 +367,9 @@ export function InstancesView(props: {
     queryFn: () => listPathCatalog(),
     staleTime: 30_000,
   });
-  const resourcesQuery = useQuery({
-    queryKey: ["resources"],
-    queryFn: getResources,
+  const profilesQuery = useQuery({
+    queryKey: ["instance-resource-profiles"],
+    queryFn: getInstanceResourceProfiles,
     staleTime: 30_000,
   });
   const binaryNameByRefId = useMemo(() => {
@@ -382,13 +381,7 @@ export function InstancesView(props: {
     }
     return map;
   }, [catalogQuery.data]);
-  const poolsById = useMemo(() => {
-    const map = new Map<string, MemoryPool>();
-    for (const pool of resourcesQuery.data?.data.pools ?? []) {
-      map.set(pool.id, pool);
-    }
-    return map;
-  }, [resourcesQuery.data]);
+  const profilesById = profilesQuery.data?.data ?? {};
 
   return (
     <>
@@ -441,7 +434,10 @@ export function InstancesView(props: {
                   PID {instance.pid ?? "-"}
                 </Text>
               </Group>
-              <InstanceTypeCell instance={instance} poolsById={poolsById} />
+              <InstanceTypeCell
+                instance={instance}
+                profile={profilesById[instance.name]}
+              />
               <div>
                 <Text c="dimmed" size="xs">
                   Binary
@@ -496,7 +492,10 @@ export function InstancesView(props: {
                   <Text fw={600}>{instance.name}</Text>
                 </Table.Td>
                 <Table.Td>
-                  <InstanceTypeCell instance={instance} poolsById={poolsById} />
+                  <InstanceTypeCell
+                    instance={instance}
+                    profile={profilesById[instance.name]}
+                  />
                 </Table.Td>
                 <Table.Td className="instances-status-cell">
                   <Group gap={4}>

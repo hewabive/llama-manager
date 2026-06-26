@@ -1116,6 +1116,9 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       queryClient.invalidateQueries({ queryKey: ["instances"] }),
       queryClient.invalidateQueries({ queryKey: ["instances-health-summary"] }),
       queryClient.invalidateQueries({
+        queryKey: ["instance-resource-profiles"],
+      }),
+      queryClient.invalidateQueries({
         queryKey: ["instance-health-summary", id],
       }),
       queryClient.invalidateQueries({ queryKey: ["instance-runtime", id] }),

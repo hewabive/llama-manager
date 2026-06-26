@@ -6,6 +6,15 @@ import {
   type GgufTensorInfo,
   type GgufTensorTable,
 } from "./ggml.js";
+import {
+  argFlag,
+  argNumber,
+  argRaw,
+  argString,
+  expertOffloadLayerCount,
+  parseTensorSplit,
+  resolveGpuLayers,
+} from "./instance-resources.js";
 
 const F32_BYTES = 4;
 const KV_PAD = 256;
@@ -114,61 +123,6 @@ function pad(value: number, multiple: number): number {
   return Math.ceil(value / multiple) * multiple;
 }
 
-function argRaw(
-  args: MemoryEstimateArgs,
-  keys: string[],
-): MemoryEstimateArgValue | undefined {
-  for (const key of keys) {
-    if (key in args) {
-      const value = args[key];
-      if (value !== null && value !== "") {
-        return value;
-      }
-    }
-  }
-  return undefined;
-}
-
-function argNumber(args: MemoryEstimateArgs, keys: string[]): number | null {
-  const value = argRaw(args, keys);
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Number(value.trim());
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function argString(args: MemoryEstimateArgs, keys: string[]): string | null {
-  const value = argRaw(args, keys);
-  if (typeof value === "string") {
-    return value.trim();
-  }
-  return null;
-}
-
-function argFlag(args: MemoryEstimateArgs, keys: string[]): boolean | null {
-  const value = argRaw(args, keys);
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["on", "true", "1", "yes", "enabled"].includes(normalized)) {
-      return true;
-    }
-    if (["off", "false", "0", "no", "disabled"].includes(normalized)) {
-      return false;
-    }
-  }
-  return null;
-}
-
 function cacheTypeId(value: string): number | null {
   return ggmlTypeTraitByName(value)?.id ?? null;
 }
@@ -224,36 +178,8 @@ export function resolveContextParams(
     typeK,
     typeV,
     offloadKqv,
-    nGpuLayers: resolveGpuLayers(args, hparams),
+    nGpuLayers: resolveGpuLayers(args, hparams.blockCount),
   };
-}
-
-function resolveGpuLayers(
-  args: MemoryEstimateArgs,
-  hparams: MemoryEstimateHparams,
-): number {
-  const raw = argRaw(args, ["--n-gpu-layers", "-ngl", "--gpu-layers"]);
-  const layerAll = (hparams.blockCount ?? 0) + 1;
-  if (raw === undefined) {
-    return 0;
-  }
-  if (typeof raw === "string") {
-    const normalized = raw.trim().toLowerCase();
-    if (normalized === "all" || normalized === "max") {
-      return layerAll;
-    }
-    if (normalized === "auto") {
-      return layerAll;
-    }
-  }
-  const value = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  if (value < 0) {
-    return layerAll;
-  }
-  return Math.min(value, layerAll);
 }
 
 const LAYER_PATTERN = /^blk\.(\d+)\./;
@@ -289,30 +215,6 @@ function gpuPoolsSorted(pools: MemoryEstimatePoolInput[]): GpuPool[] {
     .sort((left, right) => left.index - right.index);
 }
 
-function parseTensorSplit(
-  args: MemoryEstimateArgs,
-  gpuCount: number,
-): number[] {
-  const raw = argString(args, ["--tensor-split", "-ts"]);
-  if (!raw) {
-    return Array.from({ length: gpuCount }, () => 1);
-  }
-  const parts = raw
-    .split(/[,;/]/)
-    .map((part) => Number(part.trim()))
-    .filter((value) => Number.isFinite(value) && value >= 0);
-  if (parts.length === 0) {
-    return Array.from({ length: gpuCount }, () => 1);
-  }
-  const padded = Array.from(
-    { length: gpuCount },
-    (_unused, index) => parts[index] ?? 0,
-  );
-  return padded.some((value) => value > 0)
-    ? padded
-    : Array.from({ length: gpuCount }, () => 1);
-}
-
 function gpuPoolForLayer(
   positionRatio: number,
   gpuPools: GpuPool[],
@@ -327,17 +229,6 @@ function gpuPoolForLayer(
     }
   }
   return gpuPools[gpuPools.length - 1]!.id;
-}
-
-function expertOffloadLayerCount(
-  args: MemoryEstimateArgs,
-  layerAll: number,
-): number {
-  if (argFlag(args, ["--cpu-moe", "-cmoe"])) {
-    return layerAll;
-  }
-  const ncmoe = argNumber(args, ["--n-cpu-moe", "-ncmoe"]);
-  return ncmoe && ncmoe > 0 ? Math.min(ncmoe, layerAll) : 0;
 }
 
 type Placement = {

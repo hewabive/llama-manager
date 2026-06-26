@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseApiProxyBodyFieldPath } from "./proxy/request-edits.js";
 
 export * from "./ggml.js";
+export * from "./instance-resources.js";
 export * from "./memory-estimate.js";
 export * from "./proxy/request-edits.js";
 export * from "./proxy/pipeline-graph.js";

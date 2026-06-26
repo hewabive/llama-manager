@@ -1,0 +1,55 @@
+import {
+  deriveInstanceResourceProfile,
+  type Instance,
+  type InstanceResourceProfile,
+} from "@llama-manager/core";
+
+import { getCachedModel } from "../models/cache-repository.js";
+import { listMemoryPools } from "../resources/repository.js";
+
+function modelMetadata(
+  instance: Instance,
+): { blockCount: number | null; expertCount: number | null } | null {
+  const raw = instance.args["--model"] ?? instance.args["-m"];
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return null;
+  }
+  const cached = getCachedModel(raw.trim());
+  if (!cached) {
+    return null;
+  }
+  return {
+    blockCount: cached.metadata.blockCount,
+    expertCount: cached.metadata.expertCount,
+  };
+}
+
+export function instanceResourceProfile(
+  instance: Instance,
+  pools = listMemoryPools(),
+): InstanceResourceProfile {
+  return deriveInstanceResourceProfile({
+    kind: instance.kind,
+    args: instance.args,
+    env: instance.env,
+    memory: instance.memory,
+    pools: pools.map((pool) => ({
+      id: pool.id,
+      kind: pool.kind,
+      deviceRef: pool.deviceRef,
+      name: pool.name,
+    })),
+    model: modelMetadata(instance),
+  });
+}
+
+export function instanceResourceProfiles(
+  instances: Instance[],
+): Record<string, InstanceResourceProfile> {
+  const pools = listMemoryPools();
+  const result: Record<string, InstanceResourceProfile> = {};
+  for (const instance of instances) {
+    result[instance.name] = instanceResourceProfile(instance, pools);
+  }
+  return result;
+}

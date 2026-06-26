@@ -181,6 +181,9 @@ export function InstanceActions(props: {
           queryKey: ["instances-health-summary"],
         }),
         queryClient.invalidateQueries({
+          queryKey: ["instance-resource-profiles"],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["instance-health-summary", props.instance.name],
         }),
       ]);

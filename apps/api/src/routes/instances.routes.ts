@@ -20,6 +20,7 @@ import {
   listInstances,
   updateInstance,
 } from "../instances/repository.js";
+import { instanceResourceProfiles } from "../instances/resource-profile.js";
 import { getPathCatalogEntry } from "../path-catalog/repository.js";
 import { getInstanceHealthSummary } from "../process/health-summary.js";
 import {
@@ -82,6 +83,10 @@ function validateInstanceRpcWorkers(input: {
 export function registerInstanceRoutes(app: Hono) {
   app.get("/api/instances", (c) => {
     return c.json({ data: listInstances() });
+  });
+
+  app.get("/api/instances/resource-profiles", (c) => {
+    return c.json({ data: instanceResourceProfiles(listInstances()) });
   });
 
   app.get("/api/instances/health-summary", async (c) => {

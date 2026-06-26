@@ -5,6 +5,7 @@ import type {
   InstanceCreate,
   InstanceHealthSummary,
   InstancePreflightPreview,
+  InstanceResourceProfile,
   InstanceUpdate,
   ProcessPreflightResult,
   RpcWorkerCandidate,
@@ -100,5 +101,11 @@ export async function getInstancePreflight(id: string) {
 export async function getInstanceHealthSummary(id: string) {
   return request<{ data: InstanceHealthSummary }>(
     `/api/instances/${id}/health-summary`,
+  );
+}
+
+export async function getInstanceResourceProfiles() {
+  return request<{ data: Record<string, InstanceResourceProfile> }>(
+    "/api/instances/resource-profiles",
   );
 }
