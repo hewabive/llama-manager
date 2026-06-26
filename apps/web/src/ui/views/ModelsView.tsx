@@ -343,7 +343,7 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
       <Stack gap="sm">
         <Group justify="space-between" align="flex-end" wrap="wrap">
           <div className="section-heading">
-            <Title order={3}>Models</Title>
+            <Title order={3}>GGUF files</Title>
             <Text c="dimmed" size="sm">
               GGUF discovery, architecture and quantization metadata
             </Text>

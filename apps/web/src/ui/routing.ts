@@ -92,8 +92,8 @@ export const navSections: NavSection[] = [
       {
         route: "proxy",
         subpath: "models",
-        label: "Models",
-        title: "Proxy Models",
+        label: "API models",
+        title: "API models",
         description:
           "Published model IDs exposed on /v1/models and where they route",
       },
@@ -144,8 +144,8 @@ export const navSections: NavSection[] = [
     items: [
       {
         route: "models",
-        label: "Model files",
-        title: "Models",
+        label: "GGUF files",
+        title: "GGUF files",
         description: "Scan GGUF files and reuse them in instances or presets",
       },
       {
