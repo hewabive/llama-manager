@@ -49,6 +49,30 @@ export function hasOwnKey(record: Record<string, string>, key: string) {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
+export type EnvRow = { id: string; key: string; value: string };
+
+export const MANAGED_ENV_KEYS = new Set(["CUDA_VISIBLE_DEVICES", "HF_TOKEN"]);
+
+export function envRowsToRecord(rows: EnvRow[]): Record<string, string> {
+  const record: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (!key || MANAGED_ENV_KEYS.has(key)) {
+      continue;
+    }
+    record[key] = row.value;
+  }
+  return record;
+}
+
+export function isSecretEnvKey(key: string): boolean {
+  return (
+    /(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API[_-]?KEY|ACCESS[_-]?KEY)/i.test(
+      key,
+    ) || /(?:^|_)KEY$/i.test(key)
+  );
+}
+
 export function splitCudaVisibleDevices(value: string | undefined) {
   if (!value) {
     return [];

@@ -2,7 +2,6 @@ import {
   Box,
   Button,
   Group,
-  JsonInput,
   Modal,
   ScrollArea,
   SegmentedControl,
@@ -15,6 +14,7 @@ import { Triangle } from "lucide-react";
 
 import { InstanceFormArgumentsSection } from "./InstanceFormArgumentsSection";
 import { InstanceFormCudaSection } from "./InstanceFormCudaSection";
+import { InstanceFormEnvSection } from "./InstanceFormEnvSection";
 import { InstanceFormMemorySection } from "./InstanceFormMemorySection";
 import { InstanceFormModelSection } from "./InstanceFormModelSection";
 import { InstanceFormNumaSection } from "./InstanceFormNumaSection";
@@ -108,12 +108,7 @@ export function InstanceFormModal(props: InstanceFormModalProps) {
           <InstanceFormCudaSection fm={fm} />
           <InstanceFormNumaSection fm={fm} />
           <InstanceFormMemorySection fm={fm} />
-          <JsonInput
-            label="Environment"
-            minRows={4}
-            formatOnBlur
-            {...fm.form.getInputProps("envJson")}
-          />
+          <InstanceFormEnvSection fm={fm} />
           <Group justify="space-between" mt="sm">
             <Box>
               {!fm.isEdit && (

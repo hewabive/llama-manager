@@ -57,13 +57,16 @@ import {
 } from "./InstanceArgumentRows";
 import {
   argString,
+  envRowsToRecord,
   hasConfiguredArg,
   hasModelSource,
   hasOwnKey,
   hasSpecConfig,
   isManagedArgRow,
+  isSecretEnvKey,
   isSelectableInstanceArgument,
   launchModeFromArgs,
+  MANAGED_ENV_KEYS,
   nextAvailablePort,
   parseEnvJson,
   RPC_WORKER_DEFAULT_PORT,
@@ -75,6 +78,7 @@ import {
   SPEC_KEYS,
   SPEC_TYPE_KEY,
   type DraftSource,
+  type EnvRow,
   type LaunchMode,
   type RemoteSource,
 } from "./instance-form-helpers";
@@ -131,6 +135,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   );
   const [showDeprecatedArgs, setShowDeprecatedArgs] = useState(false);
   const [showRawArgs, setShowRawArgs] = useState(false);
+  const [customEnvRows, setCustomEnvRows] = useState<EnvRow[]>([]);
+  const [showEnvRawJson, setShowEnvRawJson] = useState(false);
   const [selectedModelPath, setSelectedModelPath] = useState<string | null>(
     null,
   );
@@ -588,6 +594,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         name: props.instance.name,
         envJson: JSON.stringify(props.instance.env, null, 2),
       });
+      setCustomEnvRows(buildEnvRows(props.instance.env));
+      setShowEnvRawJson(false);
       setKind(props.instance.kind);
       setRpcWorkers(props.instance.rpcWorkers);
       setSelectedBinaryPathRefId(props.instance.binaryPathRefId);
@@ -625,6 +633,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         name: modelPath ? instanceNameFromModelPath(modelPath) : "local-server",
         envJson: JSON.stringify({}, null, 2),
       });
+      setCustomEnvRows([]);
+      setShowEnvRawJson(false);
       setKind("llama-server");
       setRpcWorkers([]);
       setSelectedBinaryPathRefId(null);
@@ -1172,6 +1182,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
       props.onClose();
       form.reset();
       setArgRows(defaultRows());
+      setCustomEnvRows([]);
+      setShowEnvRawJson(false);
       setStartAfterCreate(false);
       notifications.show(notification);
     },
@@ -1211,6 +1223,66 @@ export function useInstanceForm(props: InstanceFormModalProps) {
         "envJson",
         JSON.stringify(mutator({ ...current }), null, 2),
       );
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Environment JSON is invalid",
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  function buildEnvRows(env: Record<string, string>): EnvRow[] {
+    return Object.entries(env)
+      .filter(([key]) => !MANAGED_ENV_KEYS.has(key))
+      .map(([key, value]) => ({ id: createUiId(), key, value }));
+  }
+
+  function commitEnvRows(rows: EnvRow[]) {
+    updateEnvironment((env) => {
+      const next: Record<string, string> = {};
+      for (const key of MANAGED_ENV_KEYS) {
+        const value = env[key];
+        if (value !== undefined) {
+          next[key] = value;
+        }
+      }
+      return Object.assign(next, envRowsToRecord(rows));
+    });
+  }
+
+  function addEnvRow() {
+    setCustomEnvRows((rows) => [
+      ...rows,
+      { id: createUiId(), key: "", value: "" },
+    ]);
+  }
+
+  function updateEnvRow(
+    id: string,
+    patch: Partial<Pick<EnvRow, "key" | "value">>,
+  ) {
+    const next = customEnvRows.map((row) =>
+      row.id === id ? { ...row, ...patch } : row,
+    );
+    setCustomEnvRows(next);
+    commitEnvRows(next);
+  }
+
+  function removeEnvRow(id: string) {
+    const next = customEnvRows.filter((row) => row.id !== id);
+    setCustomEnvRows(next);
+    commitEnvRows(next);
+  }
+
+  function setEnvRawJson(enabled: boolean) {
+    if (enabled) {
+      setShowEnvRawJson(true);
+      return;
+    }
+    try {
+      setCustomEnvRows(buildEnvRows(parseEnvJson(form.values.envJson)));
+      setShowEnvRawJson(false);
     } catch (error) {
       notifications.show({
         color: "red",
@@ -1394,6 +1466,13 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     applyMmprojUrl,
     envDraft,
     applyHfToken,
+    customEnvRows,
+    addEnvRow,
+    updateEnvRow,
+    removeEnvRow,
+    showEnvRawJson,
+    setEnvRawJson,
+    isSecretEnvKey,
     presetsQuery,
     selectedPresetName,
     applyPresetSelection,
