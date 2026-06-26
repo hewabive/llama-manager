@@ -233,7 +233,7 @@ export function PublicStatusView() {
             <Group justify="space-between" align="center" wrap="wrap">
               <div className="section-heading">
                 <Text fw={700} size="lg">
-                  Proxy models
+                  API models
                 </Text>
                 <Text c="dimmed" size="sm">
                   Published models — load state aggregated over route targets
