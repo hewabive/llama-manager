@@ -48,6 +48,7 @@ import {
   applyServerGenerationTiming,
   createProxyTrace,
   errorBodyMessage,
+  recordTraceWithDeferredTiming,
   resumableTraceUsage,
   safeJsonParse,
   type ProxyTraceAccumulator,
@@ -148,6 +149,7 @@ export async function runWithProxyTrace(
   });
   let recorded = false;
   let deferred = false;
+  let frozenDurationMs: number | null = null;
   const recorder: ProxyTraceRecorder = {
     record(response) {
       if (recorded) {
@@ -155,13 +157,17 @@ export async function runWithProxyTrace(
       }
       recorded = true;
       inflight.end();
-      trace.durationMs = Math.round(performance.now() - started);
+      trace.durationMs =
+        frozenDurationMs ?? Math.round(performance.now() - started);
       trace.status = response?.status ?? 0;
       trace.ok = response ? response.status < 400 : false;
       apiProxyStats.record(ApiProxyRequestTraceSchema.parse(trace));
     },
     markDeferred() {
       deferred = true;
+    },
+    freezeDuration() {
+      frozenDurationMs ??= Math.round(performance.now() - started);
     },
   };
   let response: Response | undefined;
@@ -878,11 +884,16 @@ export async function serveResolvedTarget(input: {
           }
           trace.usage = resumableTraceUsage(state);
           const task = resolveSlot();
-          await applyServerGenerationTiming(trace, instanceId, task);
           const final = finalFromState(bufferCodec, state, false);
-          return new Response(final.body, {
-            status: final.status,
-            headers: final.headers,
+          return recordTraceWithDeferredTiming({
+            recorder,
+            trace,
+            instanceId,
+            task,
+            response: new Response(final.body, {
+              status: final.status,
+              headers: final.headers,
+            }),
           });
         }
         const text = await upstream.text();
@@ -900,24 +911,31 @@ export async function serveResolvedTarget(input: {
           };
         }
         const task = resolveSlot();
-        await applyServerGenerationTiming(trace, instanceId, task);
-        if (translateAnthropic) {
-          const translated = translateOpenAiResponseText(text);
-          if (translated !== null) {
-            return new Response(translated, {
-              status: upstream.status,
-              headers: { "content-type": "application/json" },
-            });
-          }
-        }
-        return new Response(text, {
-          status: upstream.status,
-          headers: upstream.headers,
+        const translatedText = translateAnthropic
+          ? translateOpenAiResponseText(text)
+          : null;
+        const nonStreamResponse =
+          translatedText !== null
+            ? new Response(translatedText, {
+                status: upstream.status,
+                headers: { "content-type": "application/json" },
+              })
+            : new Response(text, {
+                status: upstream.status,
+                headers: upstream.headers,
+              });
+        return recordTraceWithDeferredTiming({
+          recorder,
+          trace,
+          instanceId,
+          task,
+          response: nonStreamResponse,
         });
       }
 
       let metered: Response | undefined;
       const onStreamComplete = (usage: ProxyUsageCounts) => {
+        recorder.freezeDuration();
         trace.usage = {
           promptTokens: usage.promptTokens,
           cacheReadTokens: usage.cacheReadTokens,
@@ -1135,14 +1153,19 @@ export async function serveResolvedTarget(input: {
       trace.cacheOrigin = resolved.origin;
       task = resolved.task;
     }
-    await applyServerGenerationTiming(trace, instanceId, task);
 
     if (final.status === CLIENT_ABORT_STATUS) {
       markClientAbort();
     }
-    return new Response(final.body, {
-      status: final.status,
-      headers: final.headers,
+    return recordTraceWithDeferredTiming({
+      recorder,
+      trace,
+      instanceId,
+      task,
+      response: new Response(final.body, {
+        status: final.status,
+        headers: final.headers,
+      }),
     });
   };
 

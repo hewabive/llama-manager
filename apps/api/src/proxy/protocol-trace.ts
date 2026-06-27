@@ -49,6 +49,7 @@ export type ProxyTraceAccumulator = {
 export type ProxyTraceRecorder = {
   record: (response: Response | undefined) => void;
   markDeferred: () => void;
+  freezeDuration: () => void;
 };
 
 export function createProxyTrace(
@@ -148,6 +149,23 @@ export async function applyServerGenerationTiming(
       promptPerSecond: timing.promptPerSecond,
     };
   }
+}
+
+export function recordTraceWithDeferredTiming(input: {
+  recorder: ProxyTraceRecorder;
+  trace: ProxyTraceAccumulator;
+  instanceId: string | null;
+  task: number | null;
+  response: Response;
+}): Response {
+  input.recorder.markDeferred();
+  input.recorder.freezeDuration();
+  void applyServerGenerationTiming(
+    input.trace,
+    input.instanceId,
+    input.task,
+  ).finally(() => input.recorder.record(input.response));
+  return input.response;
 }
 
 export function resumableTraceUsage(
