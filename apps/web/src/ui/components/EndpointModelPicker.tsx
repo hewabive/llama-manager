@@ -78,7 +78,6 @@ export function EndpointModelPicker(props: EndpointModelPickerProps) {
           value={props.value.model}
           filter={substringOptionsFilter}
           openOnFocus
-          limit={50}
           disabled={(props.disabled ?? false) || !selectedGroup}
           placeholder={
             selectedGroup

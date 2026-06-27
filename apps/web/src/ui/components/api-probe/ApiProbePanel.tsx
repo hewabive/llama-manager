@@ -360,7 +360,6 @@ export function ApiProbePanel(props: {
             label="Model"
             value={model ?? ""}
             filter={substringOptionsFilter}
-            limit={50}
             maxDropdownHeight={360}
             openOnFocus
             withAsterisk={modelRequired}
