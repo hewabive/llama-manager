@@ -142,6 +142,12 @@ function isRequestExceedsContextSizeError(line: string) {
   );
 }
 
+function isContextLacksLogitsRejection(line: string) {
+  return /^E\s+srv\s+send_error:.*\bcontext does not\b.*\blogits\b/i.test(
+    withoutLlamaTimestamp(line),
+  );
+}
+
 function isCapabilityProbeRejection(line: string) {
   const normalized = withoutLlamaTimestamp(line);
   if (!/\bsrv\s+operator\(\):\s+got exception:\s/i.test(normalized)) {
@@ -186,6 +192,9 @@ function errorLines(
         return false;
       }
       if (isRequestExceedsContextSizeError(line)) {
+        return false;
+      }
+      if (isContextLacksLogitsRejection(line)) {
         return false;
       }
       if (isCapabilityProbeRejection(line)) {
