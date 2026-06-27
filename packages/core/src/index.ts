@@ -2191,6 +2191,9 @@ export const ExternalProcessKillResultSchema = z.object({
 export const GgufMetadataSchema = z.object({
   name: z.string().nullable(),
   architecture: z.string().nullable(),
+  modelType: z.string().nullable(),
+  poolingType: z.number().nullable(),
+  causalAttention: z.boolean().nullable(),
   quantization: z.string().nullable(),
   quantizationVersion: z.number().nullable(),
   sizeLabel: z.string().nullable(),
@@ -2665,6 +2668,41 @@ export type ExternalProcessKillResult = z.infer<
 >;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
+
+export type GgufModelRole = "generative" | "embedding" | "reranker";
+
+export const GGUF_POOLING_TYPE_LABELS: Record<number, string> = {
+  [-1]: "unspecified",
+  0: "none",
+  1: "mean",
+  2: "cls",
+  3: "last",
+  4: "rank",
+};
+
+export function ggufPoolingTypeLabel(
+  value: number | null | undefined,
+): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return GGUF_POOLING_TYPE_LABELS[value] ?? `type ${value}`;
+}
+
+export function ggufModelRole(
+  metadata: Pick<GgufMetadata, "poolingType" | "causalAttention">,
+): GgufModelRole {
+  if (metadata.poolingType === 4) {
+    return "reranker";
+  }
+  if (metadata.causalAttention === false) {
+    return "embedding";
+  }
+  if (metadata.poolingType !== null && metadata.poolingType >= 1) {
+    return "embedding";
+  }
+  return "generative";
+}
 export type ModelScanRootSource = z.infer<typeof ModelScanRootSourceSchema>;
 export type ModelScanRoot = z.infer<typeof ModelScanRootSchema>;
 export type ModelScanResult = z.infer<typeof ModelScanResultSchema>;

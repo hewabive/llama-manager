@@ -95,6 +95,9 @@ function emptyMetadata(): GgufMetadata {
   return {
     name: null,
     architecture: null,
+    modelType: null,
+    poolingType: null,
+    causalAttention: null,
     quantization: null,
     quantizationVersion: null,
     sizeLabel: null,

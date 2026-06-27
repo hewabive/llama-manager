@@ -202,6 +202,15 @@ function findStringBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
   return null;
 }
 
+function findBooleanBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
+  for (const [key, value] of metadata.entries()) {
+    if (key.endsWith(suffix) && typeof value === "boolean") {
+      return value;
+    }
+  }
+  return null;
+}
+
 export function ggufFileTypeLabel(fileType: number) {
   const guessed = (fileType & LLAMA_FTYPE_GUESSED) === LLAMA_FTYPE_GUESSED;
   const normalized = guessed ? fileType & ~LLAMA_FTYPE_GUESSED : fileType;
@@ -220,7 +229,7 @@ function readQuantization(metadata: Map<string, GgufScalar>) {
   return null;
 }
 
-export const GGUF_PARSER_VERSION = 4;
+export const GGUF_PARSER_VERSION = 5;
 
 function readHeader(reader: FileReader) {
   if (reader.read(4).toString("utf8") !== "GGUF") {
@@ -272,6 +281,9 @@ function extractMetadata(
   return {
     name: stringMetadata(metadata, ["general.name"]),
     architecture: stringMetadata(metadata, ["general.architecture"]),
+    modelType: stringMetadata(metadata, ["general.type"]),
+    poolingType: findNumberBySuffix(metadata, ".pooling_type"),
+    causalAttention: findBooleanBySuffix(metadata, ".attention.causal"),
     quantization: readQuantization(metadata),
     quantizationVersion: numberMetadata(metadata, [
       "general.quantization_version",

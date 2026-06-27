@@ -1,4 +1,5 @@
 import type { GgufModel, ModelScanRoot } from "@llama-manager/core";
+import { ggufModelRole, ggufPoolingTypeLabel } from "@llama-manager/core";
 import {
   ActionIcon,
   Badge,
@@ -70,6 +71,9 @@ function metaRows(model: GgufModel): Array<[string, string]> {
   };
 
   push("Architecture", m.architecture);
+  const role = ggufModelRole(m);
+  push("Role", role !== "generative" ? role : null);
+  push("Model type", m.modelType && m.modelType !== "model" ? m.modelType : null);
   push("Parameters", formatParameterCount(m.parameterCount));
   push("Size label", m.sizeLabel);
   const bpw = bitsPerWeight(model);
@@ -97,6 +101,15 @@ function metaRows(model: GgufModel): Array<[string, string]> {
   }
   push("FFN length", m.feedForwardLength);
   push("Embedding length", m.embeddingLength);
+  push("Pooling", ggufPoolingTypeLabel(m.poolingType));
+  push(
+    "Attention",
+    m.causalAttention === null
+      ? null
+      : m.causalAttention
+        ? "causal"
+        : "bidirectional",
+  );
   push("Attention heads", m.headCount);
   if (m.headCountKv !== null && m.headCount) {
     push(
@@ -123,6 +136,25 @@ function metaRows(model: GgufModel): Array<[string, string]> {
   push("Finetune", m.finetune);
   push("File size", formatBytes(model.sizeBytes));
   return rows;
+}
+
+function RoleBadge(props: { model: GgufModel }) {
+  const role = ggufModelRole(props.model.metadata);
+  if (role === "generative") {
+    return null;
+  }
+  return (
+    <Tooltip label={role}>
+      <Badge
+        color={role === "reranker" ? "indigo" : "teal"}
+        variant="light"
+        size="sm"
+        style={{ flexShrink: 0 }}
+      >
+        {role === "reranker" ? "rerank" : "embed"}
+      </Badge>
+    </Tooltip>
+  );
 }
 
 function TypeBadge(props: { model: GgufModel }) {
@@ -519,6 +551,7 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
                       {model.metadata.architecture ?? "unknown arch"}
                     </Badge>
                     <TypeBadge model={model} />
+                    <RoleBadge model={model} />
                     <Badge variant="outline">{paramsLabel(model)}</Badge>
                     <Badge variant="outline">
                       {model.metadata.quantization ?? "unknown quant"}
@@ -613,7 +646,14 @@ export function ModelsView(props: { onUseModel: (model: GgufModel) => void }) {
                           </Text>
                         )}
                       </Table.Td>
-                      <Table.Td>{model.metadata.architecture ?? "-"}</Table.Td>
+                      <Table.Td>
+                        <Group gap={6} wrap="nowrap">
+                          <Text size="sm">
+                            {model.metadata.architecture ?? "-"}
+                          </Text>
+                          <RoleBadge model={model} />
+                        </Group>
+                      </Table.Td>
                       <Table.Td>
                         <TypeBadge model={model} />
                       </Table.Td>

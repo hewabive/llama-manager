@@ -28,6 +28,9 @@ function model(path: string): GgufModel {
     metadata: {
       name: null,
       architecture: null,
+      modelType: null,
+      poolingType: null,
+      causalAttention: null,
       quantization: null,
       quantizationVersion: null,
       sizeLabel: null,

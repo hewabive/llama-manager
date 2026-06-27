@@ -8,10 +8,13 @@ import {
   ggmlRowSizeBytes,
   ggmlTensorBytes,
   ggmlTypeName,
+  ggufModelRole,
+  ggufPoolingTypeLabel,
 } from "@llama-manager/core";
 
 import {
   ggufFileTypeLabel,
+  readGgufMetadata,
   readGgufModelTensorTable,
   readGgufTensorTable,
   resolveGgufShardPaths,
@@ -162,4 +165,112 @@ test("resolveGgufShardPaths returns the lone path for non-split models", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+function kvString(key: string, value: string) {
+  return Buffer.concat([ggufString(key), u32(8), ggufString(value)]);
+}
+
+function kvU32(key: string, value: number) {
+  return Buffer.concat([ggufString(key), u32(4), u32(value)]);
+}
+
+function kvBool(key: string, value: boolean) {
+  return Buffer.concat([ggufString(key), u32(7), Buffer.from([value ? 1 : 0])]);
+}
+
+function metadataFile(kvs: Buffer[]) {
+  return Buffer.concat([
+    Buffer.from("GGUF", "utf8"),
+    u32(3),
+    u64(0),
+    u64(kvs.length),
+    ...kvs,
+  ]);
+}
+
+test("readGgufMetadata captures embedding role signals", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-gguf-meta-"));
+  const path = join(dir, "embedding.gguf");
+  try {
+    writeFileSync(
+      path,
+      metadataFile([
+        kvString("general.architecture", "bert"),
+        kvString("general.type", "model"),
+        kvU32("bert.block_count", 24),
+        kvU32("bert.embedding_length", 1024),
+        kvBool("bert.attention.causal", false),
+        kvU32("bert.pooling_type", 2),
+      ]),
+    );
+
+    const metadata = readGgufMetadata(path);
+    assert.equal(metadata.architecture, "bert");
+    assert.equal(metadata.modelType, "model");
+    assert.equal(metadata.poolingType, 2);
+    assert.equal(metadata.causalAttention, false);
+    assert.equal(metadata.embeddingLength, 1024);
+    assert.equal(ggufModelRole(metadata), "embedding");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readGgufMetadata leaves generative models without pooling signals", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-gguf-gen-"));
+  const path = join(dir, "generative.gguf");
+  try {
+    writeFileSync(
+      path,
+      metadataFile([
+        kvString("general.architecture", "qwen2"),
+        kvString("general.type", "model"),
+        kvU32("qwen2.block_count", 24),
+      ]),
+    );
+
+    const metadata = readGgufMetadata(path);
+    assert.equal(metadata.poolingType, null);
+    assert.equal(metadata.causalAttention, null);
+    assert.equal(ggufModelRole(metadata), "generative");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ggufModelRole classifies pooling and attention combinations", () => {
+  assert.equal(
+    ggufModelRole({ poolingType: 4, causalAttention: false }),
+    "reranker",
+  );
+  assert.equal(
+    ggufModelRole({ poolingType: 2, causalAttention: false }),
+    "embedding",
+  );
+  assert.equal(
+    ggufModelRole({ poolingType: 3, causalAttention: true }),
+    "embedding",
+  );
+  assert.equal(
+    ggufModelRole({ poolingType: null, causalAttention: false }),
+    "embedding",
+  );
+  assert.equal(
+    ggufModelRole({ poolingType: 0, causalAttention: null }),
+    "generative",
+  );
+  assert.equal(
+    ggufModelRole({ poolingType: null, causalAttention: null }),
+    "generative",
+  );
+});
+
+test("ggufPoolingTypeLabel maps llama.cpp pooling enum values", () => {
+  assert.equal(ggufPoolingTypeLabel(2), "cls");
+  assert.equal(ggufPoolingTypeLabel(1), "mean");
+  assert.equal(ggufPoolingTypeLabel(4), "rank");
+  assert.equal(ggufPoolingTypeLabel(-1), "unspecified");
+  assert.equal(ggufPoolingTypeLabel(9), "type 9");
+  assert.equal(ggufPoolingTypeLabel(null), null);
 });
