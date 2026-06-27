@@ -1,16 +1,14 @@
 import type {
-  ApiEndpointRecord,
   ApiLabProbeProfile,
   Instance,
   InstanceHealthSummary,
 } from "@llama-manager/core";
-import { Alert, Group, Select, Stack, Text } from "@mantine/core";
+import { Alert, Group, Select, Stack } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SELF_NODE_ID } from "../../api/base.js";
 import {
-  getActiveNodeApiProxyConfig,
   listApiProxySources,
   listNodes,
   runApiLabProbe,
@@ -19,23 +17,14 @@ import {
 import { useActiveNode } from "../NodeContext.js";
 import {
   ApiProbePanel,
-  modelOptionsFromProbe,
-  type ModelOption,
   type ProbeRequestOption,
 } from "../components/api-probe/ApiProbePanel";
+import {
+  useEndpointModelCatalog,
+  useEndpointModelOptions,
+} from "../components/endpoint-model-catalog";
 import { StatusTooltipIcon } from "../components/StatusTooltipIcon";
-import { TouchAutocomplete } from "../components/TouchCombobox";
-import { useApiModelOptions } from "../hooks/use-api-model-options";
-import { llamaServerApiUrl } from "../utils/instance-url";
-
-type QuickTarget = {
-  value: string;
-  label: string;
-  baseUrl: string;
-  endpointId?: string;
-  instanceId?: string;
-  kind?: ApiEndpointRecord["kind"];
-};
+import { TouchSelect } from "../components/TouchCombobox";
 
 const profileRequestOptions: Record<ApiLabProbeProfile, ProbeRequestOption[]> =
   {
@@ -64,45 +53,7 @@ const protocolLabels: Record<ApiLabProbeProfile, string> = {
   "llama-native": "llama.cpp native",
 };
 
-function normalizeHttpUrlLabel(value: string) {
-  try {
-    const parsed = new URL(value.trim());
-    parsed.hash = "";
-    parsed.search = "";
-    const path = parsed.pathname.replace(/\/+$/, "");
-    return `${parsed.origin}${path === "/" ? "" : path}`;
-  } catch {
-    return value.trim();
-  }
-}
-
-function isHttpBaseUrl(value: string) {
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function stripV1BaseUrl(value: string) {
-  return normalizeHttpUrlLabel(value).replace(/\/v1$/i, "");
-}
-
-function apiVersionBaseUrl(value: string) {
-  const normalized = normalizeHttpUrlLabel(value);
-  return /\/v1$/i.test(normalized) ? normalized : `${normalized}/v1`;
-}
-
-function normalizeBaseUrlForProfile(
-  profile: ApiLabProbeProfile,
-  value: string,
-) {
-  if (profile === "llama-native") {
-    return stripV1BaseUrl(value);
-  }
-  return apiVersionBaseUrl(value);
-}
+const INSTANCE_ENDPOINT_PREFIX = "instance:";
 
 export function ApiLabView(props: {
   instances: Instance[];
@@ -112,15 +63,21 @@ export function ApiLabView(props: {
 }) {
   const queryClient = useQueryClient();
   const { activeNodeId } = useActiveNode();
-  const [baseUrl, setBaseUrl] = useState("");
-  const [quickTarget, setQuickTarget] = useState<string | null>(null);
+  const [endpointId, setEndpointId] = useState<string | null>(null);
   const [protocol, setProtocol] = useState<ApiLabProbeProfile>("openai");
   const [sourceId, setSourceId] = useState<string | null>(null);
-  const baseUrlTouchedRef = useRef(false);
-  const proxyQuery = useQuery({
-    queryKey: ["api-lab-proxy-config", activeNodeId],
-    queryFn: getActiveNodeApiProxyConfig,
+
+  const { groups, endpointSelectData } = useEndpointModelCatalog(true);
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.endpointId === endpointId),
+    [groups, endpointId],
+  );
+  const { modelOptions, status } = useEndpointModelOptions({
+    endpointId,
+    group: selectedGroup,
   });
+  const nativeTargetSelected = selectedGroup?.kind === "managed-instance";
+
   const nodesQuery = useQuery({
     queryKey: ["nodes"],
     queryFn: listNodes,
@@ -131,6 +88,7 @@ export function ApiLabView(props: {
       ? null
       : (nodesQuery.data?.data.find((node) => node.id === activeNodeId)?.name ??
         activeNodeId);
+
   const sourcesQuery = useQuery({
     queryKey: ["api-proxy-sources"],
     queryFn: listApiProxySources,
@@ -143,162 +101,26 @@ export function ApiLabView(props: {
     [sourcesQuery.data?.data],
   );
 
-  const proxyModelOptions = useMemo<ModelOption[]>(
-    () =>
-      (proxyQuery.data?.data.models ?? [])
-        .filter((model) => model.enabled)
-        .map((model) => ({
-          value: model.modelId,
-          label: model.targetId
-            ? `${model.modelId} -> ${
-                proxyQuery.data?.data.targets.find(
-                  (target) => target.id === model.targetId,
-                )?.name ?? model.targetId
-              }`
-            : `${model.modelId} (unbound)`,
-          status: model.targetId ? "proxy" : "unbound",
-        }))
-        .sort((left, right) =>
-          left.value.localeCompare(right.value, undefined, {
-            numeric: true,
-            sensitivity: "base",
-          }),
-        ),
-    [proxyQuery.data?.data.models, proxyQuery.data?.data.targets],
-  );
-
-  const quickTargets = useMemo<QuickTarget[]>(() => {
-    const catalog = proxyQuery.data?.data.endpoints ?? [];
-
-    return catalog
-      .filter((endpoint) => endpoint.enabled)
-      .map((endpoint) => {
-        const baseUrl = endpoint.baseUrl;
-        return {
-          value: endpoint.id,
-          label: `${endpoint.name} (${baseUrl})`,
-          baseUrl,
-          endpointId: endpoint.id,
-          ...(endpoint.instanceId ? { instanceId: endpoint.instanceId } : {}),
-          kind: endpoint.kind,
-        };
-      });
-  }, [proxyQuery.data?.data.endpoints]);
-  const targetOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return quickTargets.filter((target) => {
-      if (seen.has(target.baseUrl)) {
-        return false;
-      }
-      seen.add(target.baseUrl);
-      return true;
-    });
-  }, [quickTargets]);
-  const targetByBaseUrl = useMemo(
-    () => new Map(targetOptions.map((target) => [target.baseUrl, target])),
-    [targetOptions],
-  );
-
   useEffect(() => {
-    baseUrlTouchedRef.current = false;
-    setBaseUrl("");
-    setQuickTarget(null);
+    setEndpointId(null);
   }, [activeNodeId]);
 
   useEffect(() => {
-    if (baseUrlTouchedRef.current || baseUrl) {
+    if (endpointId || groups.length === 0) {
       return;
     }
-    const managerProxyTarget = targetOptions.find(
-      (target) => target.kind === "manager-proxy",
-    );
-    if (managerProxyTarget) {
-      setBaseUrl(managerProxyTarget.baseUrl);
-      setQuickTarget(managerProxyTarget.value);
+    const managerProxy = groups.find((group) => group.kind === "manager-proxy");
+    if (managerProxy) {
+      setEndpointId(managerProxy.endpointId);
       return;
     }
-    if (!props.selectedInstance) {
-      return;
+    if (props.selectedInstance) {
+      const candidate = `${INSTANCE_ENDPOINT_PREFIX}${props.selectedInstance.name}`;
+      if (groups.some((group) => group.endpointId === candidate)) {
+        setEndpointId(candidate);
+      }
     }
-    const selectedEndpoint = targetOptions.find(
-      (target) => target.instanceId === props.selectedInstance?.name,
-    );
-    const url =
-      selectedEndpoint?.baseUrl ??
-      props.selectedHealth?.llama.baseUrl ??
-      llamaServerApiUrl(props.selectedInstance) ??
-      "";
-    if (url) {
-      setBaseUrl(apiVersionBaseUrl(url));
-      setQuickTarget(
-        selectedEndpoint?.value ?? `instance:${props.selectedInstance.name}`,
-      );
-    }
-  }, [
-    baseUrl,
-    props.selectedHealth?.llama.baseUrl,
-    props.selectedInstance,
-    targetOptions,
-  ]);
-
-  const hasBaseUrl = Boolean(baseUrl.trim());
-  const baseUrlValid = hasBaseUrl && isHttpBaseUrl(baseUrl);
-  const modelDiscoveryBaseUrl = baseUrlValid
-    ? apiVersionBaseUrl(baseUrl)
-    : baseUrl.trim();
-  const matchedQuickTarget = baseUrlValid
-    ? targetOptions.find(
-        (target) => stripV1BaseUrl(target.baseUrl) === stripV1BaseUrl(baseUrl),
-      )
-    : null;
-  const modelDiscoveryEndpointId = matchedQuickTarget?.endpointId ?? null;
-  const modelDiscovery = useApiModelOptions({
-    profile: "openai",
-    baseUrl: modelDiscoveryBaseUrl,
-    endpointId: modelDiscoveryEndpointId,
-    enabled: baseUrlValid,
-  });
-  const apiModelOptions = modelDiscovery.modelOptions;
-  const managerProxySelected =
-    quickTarget === "manager-proxy" ||
-    matchedQuickTarget?.value === "manager-proxy";
-  const nativeTargetSelected = matchedQuickTarget?.kind === "managed-instance";
-  const activeModelOptions =
-    apiModelOptions.length > 0
-      ? apiModelOptions
-      : managerProxySelected
-        ? proxyModelOptions
-        : matchedQuickTarget?.instanceId
-          ? modelOptionsFromProbe(
-              matchedQuickTarget.instanceId === props.selectedInstance?.name
-                ? props.selectedHealth?.llama.models
-                : undefined,
-            )
-          : [];
-  const targetStatus = (() => {
-    if (!hasBaseUrl) {
-      return { state: "error" as const, label: "Base URL is required." };
-    }
-    if (!baseUrlValid) {
-      return {
-        state: "error" as const,
-        label: "Base URL must be an http or https URL.",
-      };
-    }
-    if (modelDiscovery.status.state === "idle") {
-      return { state: "error" as const, label: modelDiscovery.status.label };
-    }
-    return modelDiscovery.status;
-  })();
-  const protocolOptions = useMemo(() => {
-    const profiles: ApiLabProbeProfile[] = nativeTargetSelected
-      ? ["openai", "anthropic", "llama-native"]
-      : ["openai", "anthropic"];
-    return profiles.map((profile) => ({
-      value: profile,
-      label: protocolLabels[profile],
-    }));
-  }, [nativeTargetSelected]);
+  }, [endpointId, groups, props.selectedInstance]);
 
   useEffect(() => {
     if (protocol === "llama-native" && !nativeTargetSelected) {
@@ -315,16 +137,32 @@ export function ApiLabView(props: {
     }
   }, [sourceId, sourceOptions]);
 
+  const protocolOptions = useMemo(() => {
+    const profiles: ApiLabProbeProfile[] = nativeTargetSelected
+      ? ["openai", "anthropic", "llama-native"]
+      : ["openai", "anthropic"];
+    return profiles.map((profile) => ({
+      value: profile,
+      label: protocolLabels[profile],
+    }));
+  }, [nativeTargetSelected]);
+
+  const selectEndpoint = (value: string | null) => {
+    setEndpointId(value);
+    if (value?.startsWith(INSTANCE_ENDPOINT_PREFIX)) {
+      props.onSelect(value.slice(INSTANCE_ENDPOINT_PREFIX.length));
+    }
+  };
+
   const requestOptions = profileRequestOptions[protocol];
-  const baseUrlPlaceholder = "http://127.0.0.1:8080/v1";
 
   return (
     <Stack gap="md">
       {activeNodeName ? (
         <Alert color="blue" title={`Probing remote node: ${activeNodeName}`}>
-          Targets, models and the llama-manager proxy below are{" "}
-          {activeNodeName}&apos;s — the probe runs on that node. Switch to the
-          main node to test the fleet proxy and its published models.
+          Targets, models and the llama-manager proxy below are {activeNodeName}
+          &apos;s — the probe runs on that node. Switch to the main node to test
+          the fleet proxy and its published models.
         </Alert>
       ) : null}
       <Group align="flex-end" gap="sm" wrap="wrap">
@@ -340,47 +178,19 @@ export function ApiLabView(props: {
           }}
           style={{ width: 200 }}
         />
-        <TouchAutocomplete
+        <TouchSelect
+          label="Endpoint / provider"
+          data={endpointSelectData}
+          value={endpointId}
+          searchable
           clearable
-          data={targetOptions.map((target) => target.baseUrl)}
-          label="Target / Base URL"
-          limit={20}
+          placeholder="Select an endpoint"
+          nothingFoundMessage="No endpoints — add an instance or external API first"
           maxDropdownHeight={360}
-          openOnFocus
-          placeholder={baseUrlPlaceholder}
-          renderOption={({ option }) => {
-            const target = targetByBaseUrl.get(option.value);
-            return (
-              <Stack gap={2}>
-                <Text size="sm">{target?.label ?? option.value}</Text>
-                {target && (
-                  <Text c="dimmed" size="xs">
-                    {target.baseUrl}
-                  </Text>
-                )}
-              </Stack>
-            );
-          }}
-          rightSection={<StatusTooltipIcon status={targetStatus} />}
+          rightSection={<StatusTooltipIcon status={status} />}
           rightSectionPointerEvents="all"
-          style={{ width: "min(100%, 560px)" }}
-          value={baseUrl}
-          filter={({ options, limit }) => options.slice(0, limit)}
-          onChange={(value) => {
-            baseUrlTouchedRef.current = true;
-            setBaseUrl(value);
-            const target = targetByBaseUrl.get(value.trim());
-            setQuickTarget(target?.value ?? null);
-          }}
-          onOptionSubmit={(value) => {
-            baseUrlTouchedRef.current = true;
-            const target = targetByBaseUrl.get(value);
-            setBaseUrl(value);
-            setQuickTarget(target?.value ?? null);
-            if (target?.instanceId) {
-              props.onSelect(target.instanceId);
-            }
-          }}
+          style={{ width: "min(100%, 480px)" }}
+          onChange={selectEndpoint}
         />
         {sourceOptions.length > 0 && (
           <Select
@@ -399,21 +209,14 @@ export function ApiLabView(props: {
       <ApiProbePanel
         instanceId="api-lab"
         title="API probe"
-        disabledReason={
-          baseUrlValid
-            ? null
-            : hasBaseUrl
-              ? targetStatus.label
-              : "Base URL is required."
-        }
-        modelOptions={activeModelOptions}
+        disabledReason={endpointId ? null : "Select an endpoint."}
+        modelOptions={modelOptions}
         requestOptions={requestOptions}
         autoloadVisible={protocol === "llama-native"}
         runProbe={(probe) =>
           runApiLabProbe({
             profile: protocol,
-            baseUrl: normalizeBaseUrlForProfile(protocol, baseUrl),
-            endpointId: matchedQuickTarget?.endpointId,
+            ...(endpointId ? { endpointId } : {}),
             ...(sourceId ? { sourceId } : {}),
             probe,
           })
@@ -422,8 +225,7 @@ export function ApiLabView(props: {
           streamApiLabProbe(
             {
               profile: protocol,
-              baseUrl: normalizeBaseUrlForProfile(protocol, baseUrl),
-              endpointId: matchedQuickTarget?.endpointId,
+              ...(endpointId ? { endpointId } : {}),
               ...(sourceId ? { sourceId } : {}),
               probe,
             },

@@ -57,8 +57,11 @@ export function registerProxyRoutes(app: Hono) {
   });
 
   app.get("/api/proxy/target-models", async (c) => {
+    const includeManagerProxy = c.req.query("includeManagerProxy") === "1";
     return c.json({
-      data: await buildApiProxyTargetModelCatalog(listInstances()),
+      data: await buildApiProxyTargetModelCatalog(listInstances(), {
+        includeManagerProxy,
+      }),
     });
   });
 

@@ -10,7 +10,6 @@ import {
   TextInput,
 } from "@mantine/core";
 import { Save } from "lucide-react";
-import { useMemo } from "react";
 
 import type {
   ModelDraft,
@@ -19,47 +18,26 @@ import type {
   TargetDraft,
   TargetEditor,
 } from "./forms";
-import {
-  parseTargetModelValue,
-  targetModelSeparator,
-  unboundTargetValue,
-} from "./forms";
+import { unboundTargetValue } from "./forms";
 import type { SelectOption } from "./sections/index";
+import {
+  EndpointModelPicker,
+  type EndpointModelSelection,
+} from "../components/EndpointModelPicker";
 import { TouchSelect } from "../components/TouchCombobox";
 
-function suggestedTargetName(
-  group: ApiProxyTargetModelGroup | undefined,
+function suggestName(
   model: string,
-) {
-  if (!group) {
-    return "";
-  }
+  group: ApiProxyTargetModelGroup | undefined,
+): string {
   const trimmed = model.trim();
-  if (group.kind === "external-api") {
-    return trimmed;
-  }
   if (trimmed) {
-    return trimmed;
+    return trimmed.replace(/\.gguf$/i, "");
   }
-  const label = group.options[0]?.label ?? group.endpointName;
-  return label.replace(/\.gguf$/i, "");
-}
-
-function targetModelKindLabel(kind: ApiProxyTargetModelGroup["kind"]) {
-  if (kind === "managed-instance") return "managed";
-  return "external";
-}
-
-function targetModelSelectData(groups: ApiProxyTargetModelGroup[]) {
-  return groups.map((group) => ({
-    group: `${group.endpointName} · ${targetModelKindLabel(group.kind)}${
-      group.online ? "" : " · offline"
-    }`,
-    items: group.options.map((option) => ({
-      value: option.value,
-      label: option.label,
-    })),
-  }));
+  if (group?.impliedModel) {
+    return group.impliedModel.replace(/\.gguf$/i, "");
+  }
+  return group?.endpointName ?? "";
 }
 
 type ModelEditorModalProps = {
@@ -162,7 +140,6 @@ export function ModelEditorModal(props: ModelEditorModalProps) {
 type TargetEditorModalProps = {
   editor: TargetEditor | null;
   draft: TargetDraft;
-  targetModelGroups: ApiProxyTargetModelGroup[];
   busy: boolean;
   onClose: () => void;
   onSave: () => void;
@@ -170,43 +147,23 @@ type TargetEditorModalProps = {
 };
 
 export function TargetEditorModal(props: TargetEditorModalProps) {
-  const groups = props.targetModelGroups;
-  const selectedGroup = useMemo(
-    () => groups.find((group) => group.endpointId === props.draft.endpointId),
-    [groups, props.draft.endpointId],
-  );
-  const isExternal = selectedGroup?.kind === "external-api";
-  const modelSelectData = useMemo(
-    () => targetModelSelectData(groups),
-    [groups],
-  );
-  const modelSelectValue = useMemo(() => {
-    if (!props.draft.endpointId || !selectedGroup) {
-      return null;
-    }
-    if (selectedGroup.kind === "external-api") {
-      return selectedGroup.options[0]?.value ?? null;
-    }
-    return `${props.draft.endpointId}${targetModelSeparator}${props.draft.model.trim()}`;
-  }, [props.draft.endpointId, props.draft.model, selectedGroup]);
   const isCreate = props.editor?.mode === "create";
 
-  const withSuggestedName = (
-    draft: TargetDraft,
-    nextGroup: ApiProxyTargetModelGroup | undefined,
-  ): TargetDraft => {
-    if (!isCreate) {
-      return draft;
-    }
-    const currentName = props.draft.name.trim();
-    const previousSuggestion = suggestedTargetName(
-      selectedGroup,
-      props.draft.model,
-    );
-    if (currentName && currentName !== previousSuggestion) {
-      return draft;
-    }
-    return { ...draft, name: suggestedTargetName(nextGroup, draft.model) };
+  const handlePick = (
+    selection: EndpointModelSelection,
+    group: ApiProxyTargetModelGroup | undefined,
+  ) => {
+    const model = group?.kind === "external-api" ? selection.model : "";
+    const name =
+      isCreate && !props.draft.name.trim()
+        ? suggestName(model, group)
+        : props.draft.name;
+    props.onDraftChange({
+      ...props.draft,
+      endpointId: selection.endpointId,
+      model,
+      name,
+    });
   };
 
   return (
@@ -229,52 +186,14 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
             props.onDraftChange({ ...props.draft, name });
           }}
         />
-        <TouchSelect
-          data={modelSelectData}
-          label="Target model"
-          description="The servable model this target represents. Single-model instances need no model (it is implied); pick a named model only for router instances or external APIs."
-          searchable
-          nothingFoundMessage="No models — create an instance or external endpoint first"
-          placeholder="Select a model"
-          maxDropdownHeight={360}
-          value={modelSelectValue}
-          onChange={(value) => {
-            if (!value) {
-              props.onDraftChange(
-                withSuggestedName(
-                  { ...props.draft, endpointId: null, model: "" },
-                  undefined,
-                ),
-              );
-              return;
-            }
-            const parsed = parseTargetModelValue(value);
-            const group = groups.find(
-              (item) => item.endpointId === parsed.endpointId,
-            );
-            const model =
-              group?.kind === "external-api" ? "" : (parsed.storedModel ?? "");
-            props.onDraftChange(
-              withSuggestedName(
-                { ...props.draft, endpointId: parsed.endpointId, model },
-                group,
-              ),
-            );
+        <EndpointModelPicker
+          value={{
+            endpointId: props.draft.endpointId,
+            model: props.draft.model,
           }}
+          modelDescription="Single-model instances imply their model; pick a named model only for router instances or external APIs."
+          onChange={handlePick}
         />
-        {isExternal && (
-          <TextInput
-            label="Upstream model"
-            placeholder="model id sent to the external API"
-            value={props.draft.model}
-            onChange={(event) => {
-              const model = event.currentTarget.value;
-              props.onDraftChange(
-                withSuggestedName({ ...props.draft, model }, selectedGroup),
-              );
-            }}
-          />
-        )}
         <Group grow align="flex-end">
           <SegmentedControl
             value={props.draft.role}
@@ -361,7 +280,6 @@ export function TargetEditorModal(props: TargetEditorModalProps) {
 type QuickRouteModalProps = {
   opened: boolean;
   draft: QuickRouteDraft;
-  targetModelGroups: ApiProxyTargetModelGroup[];
   busy: boolean;
   onClose: () => void;
   onCreate: () => void;
@@ -369,45 +287,25 @@ type QuickRouteModalProps = {
 };
 
 export function QuickRouteModal(props: QuickRouteModalProps) {
-  const groups = props.targetModelGroups;
-  const selectedGroup = useMemo(
-    () => groups.find((group) => group.endpointId === props.draft.endpointId),
-    [groups, props.draft.endpointId],
-  );
-  const isExternal = selectedGroup?.kind === "external-api";
-  const modelSelectData = useMemo(
-    () => targetModelSelectData(groups),
-    [groups],
-  );
-  const modelSelectValue = useMemo(() => {
-    if (!props.draft.endpointId || !selectedGroup) {
-      return null;
-    }
-    if (selectedGroup.kind === "external-api") {
-      return selectedGroup.options[0]?.value ?? null;
-    }
-    return `${props.draft.endpointId}${targetModelSeparator}${props.draft.model.trim()}`;
-  }, [props.draft.endpointId, props.draft.model, selectedGroup]);
-
-  const withSuggestions = (
-    draft: QuickRouteDraft,
-    nextGroup: ApiProxyTargetModelGroup | undefined,
-  ): QuickRouteDraft => {
-    const previousSuggestion = suggestedTargetName(
-      selectedGroup,
-      props.draft.model,
-    );
-    const suggestion = suggestedTargetName(nextGroup, draft.model);
-    const next = { ...draft };
-    const currentTargetName = props.draft.targetName.trim();
-    if (!currentTargetName || currentTargetName === previousSuggestion) {
-      next.targetName = suggestion;
-    }
-    const currentModelId = props.draft.modelId.trim();
-    if (!currentModelId || currentModelId === previousSuggestion) {
-      next.modelId = suggestion;
-    }
-    return next;
+  const handlePick = (
+    selection: EndpointModelSelection,
+    group: ApiProxyTargetModelGroup | undefined,
+  ) => {
+    const model = group?.kind === "external-api" ? selection.model : "";
+    const suggestion = suggestName(model, group);
+    const targetName = props.draft.targetName.trim()
+      ? props.draft.targetName
+      : suggestion;
+    const modelId = props.draft.modelId.trim()
+      ? props.draft.modelId
+      : suggestion;
+    props.onDraftChange({
+      ...props.draft,
+      endpointId: selection.endpointId,
+      model,
+      targetName,
+      modelId,
+    });
   };
 
   return (
@@ -418,52 +316,14 @@ export function QuickRouteModal(props: QuickRouteModalProps) {
       size="lg"
     >
       <Stack gap="sm">
-        <TouchSelect
-          data={modelSelectData}
-          label="Target model"
-          description="Creates a proxy target for this model and a published model routed to it, all with default settings."
-          searchable
-          nothingFoundMessage="No models — create an instance or external endpoint first"
-          placeholder="Select a model"
-          maxDropdownHeight={360}
-          value={modelSelectValue}
-          onChange={(value) => {
-            if (!value) {
-              props.onDraftChange(
-                withSuggestions(
-                  { ...props.draft, endpointId: null, model: "" },
-                  undefined,
-                ),
-              );
-              return;
-            }
-            const parsed = parseTargetModelValue(value);
-            const group = groups.find(
-              (item) => item.endpointId === parsed.endpointId,
-            );
-            const model =
-              group?.kind === "external-api" ? "" : (parsed.storedModel ?? "");
-            props.onDraftChange(
-              withSuggestions(
-                { ...props.draft, endpointId: parsed.endpointId, model },
-                group,
-              ),
-            );
+        <EndpointModelPicker
+          value={{
+            endpointId: props.draft.endpointId,
+            model: props.draft.model,
           }}
+          modelDescription="Creates a proxy target for this model and a published model routed to it, all with default settings."
+          onChange={handlePick}
         />
-        {isExternal && (
-          <TextInput
-            label="Upstream model"
-            placeholder="model id sent to the external API"
-            value={props.draft.model}
-            onChange={(event) => {
-              const model = event.currentTarget.value;
-              props.onDraftChange(
-                withSuggestions({ ...props.draft, model }, selectedGroup),
-              );
-            }}
-          />
-        )}
         <TextInput
           label="Target name"
           value={props.draft.targetName}

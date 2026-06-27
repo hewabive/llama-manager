@@ -12,7 +12,6 @@ import {
   createApiProxyTarget,
   deleteApiProxyTarget,
   getApiProxyRuntime,
-  getApiProxyTargetModels,
   listInstances,
   updateApiProxyTarget,
 } from "../../api/client";
@@ -39,12 +38,6 @@ export function ProxyTargetsView() {
     queryFn: getApiProxyRuntime,
     refetchInterval: 5_000,
   });
-  const targetModelsQuery = useQuery({
-    queryKey: ["api-proxy-target-models"],
-    queryFn: getApiProxyTargetModels,
-    staleTime: 10_000,
-  });
-  const targetModelGroups = targetModelsQuery.data?.data.groups ?? [];
 
   const [targetEditor, setTargetEditor] = useState<TargetEditor | null>(null);
   const [targetDraft, setTargetDraft] = useState<TargetDraft>(emptyTargetDraft);
@@ -173,7 +166,6 @@ export function ProxyTargetsView() {
       <TargetEditorModal
         editor={targetEditor}
         draft={targetDraft}
-        targetModelGroups={targetModelGroups}
         busy={targetBusy}
         onClose={closeTargetEditor}
         onSave={saveTarget}

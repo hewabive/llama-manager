@@ -6,7 +6,6 @@ import type { Instance } from "@llama-manager/core";
 import {
   buildApiProxyTargetModelCatalog,
   isRouterInstance,
-  targetModelValueSeparator,
 } from "./target-models.js";
 
 function instance(name: string, args: Instance["args"]): Instance {
@@ -26,7 +25,7 @@ function instance(name: string, args: Instance["args"]): Instance {
   };
 }
 
-test("single-model instance yields one option with null storedModel", async () => {
+test("single-model instance implies its model without a probe", async () => {
   const catalog = await buildApiProxyTargetModelCatalog([
     instance("single-A", {
       "--host": "127.0.0.1",
@@ -38,16 +37,25 @@ test("single-model instance yields one option with null storedModel", async () =
   const group = catalog.groups.find((item) => item.endpointName === "single-A");
   assert.ok(group);
   assert.equal(group.kind, "managed-instance");
-  assert.equal(group.options.length, 1);
-  assert.equal(group.options[0]?.storedModel, null);
-  assert.equal(group.options[0]?.label, "qwen.gguf");
-  assert.equal(
-    group.options[0]?.value,
-    `${group.endpointId}${targetModelValueSeparator}`,
-  );
+  assert.equal(group.modelSource, "implied");
+  assert.equal(group.impliedModel, "qwen.gguf");
 });
 
-test("router instance (preset, no --model) yields one opaque managed option", async () => {
+test("an --alias wins over the model path for the implied model", async () => {
+  const catalog = await buildApiProxyTargetModelCatalog([
+    instance("aliased", {
+      "--host": "127.0.0.1",
+      "--port": 9004,
+      "--model": "/models/qwen.gguf",
+      "--alias": "my-qwen",
+    }),
+  ]);
+
+  const group = catalog.groups.find((item) => item.endpointName === "aliased");
+  assert.equal(group?.impliedModel, "my-qwen");
+});
+
+test("router instance (preset, no --model) needs a probe, no implied model", async () => {
   const router = instance("router-B", {
     "--host": "127.0.0.1",
     "--port": 9002,
@@ -59,9 +67,8 @@ test("router instance (preset, no --model) yields one opaque managed option", as
   const group = catalog.groups.find((item) => item.endpointName === "router-B");
   assert.ok(group);
   assert.equal(group.kind, "managed-instance");
-  assert.equal(group.options.length, 1);
-  assert.equal(group.options[0]?.storedModel, null);
-  assert.equal(group.options[0]?.label, "router-B");
+  assert.equal(group.modelSource, "probe");
+  assert.equal(group.impliedModel, null);
 });
 
 test("an rpc-worker instance is not exposed as a proxy target", async () => {
@@ -89,5 +96,6 @@ test("a configured --model wins over --models-preset (single, not router)", asyn
   const catalog = await buildApiProxyTargetModelCatalog([mixed]);
   const group = catalog.groups.find((item) => item.endpointName === "mixed");
   assert.equal(group?.kind, "managed-instance");
-  assert.equal(group?.options[0]?.storedModel, null);
+  assert.equal(group?.modelSource, "implied");
+  assert.equal(group?.impliedModel, "a.gguf");
 });

@@ -120,23 +120,6 @@ export type PipelineDraft = {
   unbindModelIds: string[];
 };
 
-export const targetModelSeparator = "\u001f";
-
-export function parseTargetModelValue(value: string): {
-  endpointId: string;
-  storedModel: string | null;
-} {
-  const index = value.indexOf(targetModelSeparator);
-  if (index < 0) {
-    return { endpointId: value, storedModel: null };
-  }
-  const rest = value.slice(index + 1);
-  return {
-    endpointId: value.slice(0, index),
-    storedModel: rest ? rest : null,
-  };
-}
-
 export const unboundTargetValue = "__unbound__";
 const routeToTargetPrefix = "target:";
 const routeToPipelinePrefix = "pipeline:";

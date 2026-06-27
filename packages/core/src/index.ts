@@ -1080,22 +1080,19 @@ export const ApiProxyQuickRouteResultSchema = z.object({
 export const ApiProxyTargetModelKindSchema = z.enum([
   "managed-instance",
   "external-api",
+  "manager-proxy",
 ]);
 
-export const ApiProxyTargetModelOptionSchema = z.object({
-  value: z.string().min(1),
-  endpointId: ApiEndpointIdSchema,
-  storedModel: z.string().min(1).nullable().default(null),
-  label: z.string().min(1),
-  custom: z.boolean().default(false),
-});
+export const ApiProxyTargetModelSourceSchema = z.enum(["implied", "probe"]);
 
 export const ApiProxyTargetModelGroupSchema = z.object({
   endpointId: ApiEndpointIdSchema,
   endpointName: z.string().min(1),
   kind: ApiProxyTargetModelKindSchema,
+  remote: z.boolean().default(false),
   online: z.boolean().default(false),
-  options: z.array(ApiProxyTargetModelOptionSchema).default([]),
+  modelSource: ApiProxyTargetModelSourceSchema.default("probe"),
+  impliedModel: z.string().min(1).nullable().default(null),
 });
 
 export const ApiProxyTargetModelCatalogSchema = z.object({
@@ -2556,8 +2553,8 @@ export type ApiProxyQuickRouteCreate = z.infer<
 export type ApiProxyQuickRouteResult = z.infer<
   typeof ApiProxyQuickRouteResultSchema
 >;
-export type ApiProxyTargetModelOption = z.infer<
-  typeof ApiProxyTargetModelOptionSchema
+export type ApiProxyTargetModelSource = z.infer<
+  typeof ApiProxyTargetModelSourceSchema
 >;
 export type ApiProxyTargetModelGroup = z.infer<
   typeof ApiProxyTargetModelGroupSchema

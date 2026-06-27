@@ -42,9 +42,10 @@ export async function getActiveNodeApiProxyConfig() {
   return nodeRequest<{ data: ApiProxyConfig }>("/api/proxy/config");
 }
 
-export async function getApiProxyTargetModels() {
+export async function getApiProxyTargetModels(includeManagerProxy = false) {
+  const query = includeManagerProxy ? "?includeManagerProxy=1" : "";
   return request<{ data: ApiProxyTargetModelCatalog }>(
-    "/api/proxy/target-models",
+    `/api/proxy/target-models${query}`,
   );
 }
 

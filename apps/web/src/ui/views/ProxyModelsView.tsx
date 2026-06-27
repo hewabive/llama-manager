@@ -5,7 +5,7 @@ import type {
 } from "@llama-manager/core";
 import { Badge, Button, Group, Paper, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Plus, PowerOff, Zap } from "lucide-react";
 import { useState } from "react";
 
@@ -14,7 +14,6 @@ import {
   createApiProxyPipeline,
   createApiProxyQuickRoute,
   deleteApiProxyModel,
-  getApiProxyTargetModels,
   updateApiProxyModel,
 } from "../../api/client";
 import { useProxyConfig } from "../proxy/data";
@@ -34,10 +33,7 @@ import { ModelEditorModal, QuickRouteModal } from "../proxy/editors";
 import { ExternalModelsSection } from "../proxy/sections/index";
 import { navigateProxy } from "../routing";
 
-function suggestPipelineName(
-  modelId: string,
-  taken: Set<string>,
-): string {
+function suggestPipelineName(modelId: string, taken: Set<string>): string {
   const base = modelId.slice(0, 72) || "route";
   if (!taken.has(base)) {
     return base;
@@ -52,12 +48,6 @@ function suggestPipelineName(
 export function ProxyModelsView() {
   const { models, pipelines, targets, pipelineById, targetById, invalidate } =
     useProxyConfig();
-  const targetModelsQuery = useQuery({
-    queryKey: ["api-proxy-target-models"],
-    queryFn: getApiProxyTargetModels,
-    staleTime: 10_000,
-  });
-  const targetModelGroups = targetModelsQuery.data?.data.groups ?? [];
 
   const [modelEditor, setModelEditor] = useState<ModelEditor | null>(null);
   const [modelDraft, setModelDraft] = useState<ModelDraft>(emptyModelDraft);
@@ -332,10 +322,11 @@ export function ProxyModelsView() {
       <QuickRouteModal
         opened={quickRouteOpen}
         draft={quickRouteDraft}
-        targetModelGroups={targetModelGroups}
         busy={quickRouteMutation.isPending}
         onClose={closeQuickRoute}
-        onCreate={() => quickRouteMutation.mutate(quickRoutePayload(quickRouteDraft))}
+        onCreate={() =>
+          quickRouteMutation.mutate(quickRoutePayload(quickRouteDraft))
+        }
         onDraftChange={setQuickRouteDraft}
       />
     </Stack>

@@ -6,14 +6,11 @@ import {
   type ApiProxyTargetModelCatalog,
   type ApiProxyTargetModelGroup,
   instanceCapabilities,
-  type FleetNode,
   type Instance,
 } from "@llama-manager/core";
 
 import { listRemoteInstancesByNode } from "../nodes/remote-instances.js";
 import { listApiEndpointCatalog, remoteEndpointId } from "./endpoints.js";
-
-export const targetModelValueSeparator = "\u001f";
 
 function stringArg(instance: Instance, key: string): string | null {
   const value = instance.args[key];
@@ -27,33 +24,37 @@ export function isRouterInstance(instance: Instance): boolean {
   );
 }
 
-function optionValue(endpointId: string, storedModel: string | null): string {
-  return `${endpointId}${targetModelValueSeparator}${storedModel ?? ""}`;
-}
-
 function instanceOnline(instance: Instance): boolean {
   return instance.status === "running" || instance.status === "stale";
 }
 
+function singleModelId(instance: Instance): string | null {
+  if (isRouterInstance(instance)) {
+    return null;
+  }
+  const alias = stringArg(instance, "--alias");
+  if (alias) {
+    return alias;
+  }
+  const model = stringArg(instance, "--model");
+  return model ? basename(model) : null;
+}
+
 function managedGroup(
   instance: Instance,
-  endpoint: ApiEndpointRecord,
+  remote: boolean,
+  endpointId: string,
+  endpointName: string,
 ): ApiProxyTargetModelGroup {
-  const model = stringArg(instance, "--model");
+  const implied = singleModelId(instance);
   return {
-    endpointId: endpoint.id,
-    endpointName: endpoint.name,
+    endpointId,
+    endpointName,
     kind: "managed-instance",
+    remote,
     online: instanceOnline(instance),
-    options: [
-      {
-        value: optionValue(endpoint.id, null),
-        endpointId: endpoint.id,
-        storedModel: null,
-        label: model ? basename(model) : endpoint.name,
-        custom: false,
-      },
-    ],
+    modelSource: implied ? "implied" : "probe",
+    impliedModel: implied,
   };
 }
 
@@ -62,44 +63,30 @@ function externalGroup(endpoint: ApiEndpointRecord): ApiProxyTargetModelGroup {
     endpointId: endpoint.id,
     endpointName: endpoint.name,
     kind: "external-api",
+    remote: false,
     online: endpoint.enabled,
-    options: [
-      {
-        value: optionValue(endpoint.id, null),
-        endpointId: endpoint.id,
-        storedModel: null,
-        label: "Custom model…",
-        custom: true,
-      },
-    ],
+    modelSource: "probe",
+    impliedModel: null,
   };
 }
 
-function remoteGroup(
-  node: FleetNode,
-  instance: Instance,
+function managerProxyGroup(
+  endpoint: ApiEndpointRecord,
 ): ApiProxyTargetModelGroup {
-  const endpointId = remoteEndpointId(node.id, instance.name);
-  const model = stringArg(instance, "--model");
   return {
-    endpointId,
-    endpointName: `${node.name} / ${instance.name}`,
-    kind: "managed-instance",
-    online: instanceOnline(instance),
-    options: [
-      {
-        value: optionValue(endpointId, null),
-        endpointId,
-        storedModel: null,
-        label: model ? basename(model) : instance.name,
-        custom: false,
-      },
-    ],
+    endpointId: endpoint.id,
+    endpointName: endpoint.name,
+    kind: "manager-proxy",
+    remote: false,
+    online: true,
+    modelSource: "probe",
+    impliedModel: null,
   };
 }
 
 export async function buildApiProxyTargetModelCatalog(
   instances: Instance[],
+  options: { includeManagerProxy?: boolean } = {},
 ): Promise<ApiProxyTargetModelCatalog> {
   const instanceById = new Map(
     instances.map((instance) => [instance.name, instance]),
@@ -108,6 +95,9 @@ export async function buildApiProxyTargetModelCatalog(
 
   for (const endpoint of listApiEndpointCatalog(instances)) {
     if (endpoint.kind === "manager-proxy") {
+      if (options.includeManagerProxy) {
+        groups.push(managerProxyGroup(endpoint));
+      }
       continue;
     }
     if (endpoint.kind === "managed-instance") {
@@ -115,19 +105,29 @@ export async function buildApiProxyTargetModelCatalog(
         ? instanceById.get(endpoint.instanceId)
         : null;
       if (instance) {
-        groups.push(managedGroup(instance, endpoint));
+        groups.push(managedGroup(instance, false, endpoint.id, endpoint.name));
       }
       continue;
     }
     groups.push(externalGroup(endpoint));
   }
 
-  for (const { node, instances: nodeInstances } of await listRemoteInstancesByNode()) {
+  for (const {
+    node,
+    instances: nodeInstances,
+  } of await listRemoteInstancesByNode()) {
     for (const instance of nodeInstances) {
       if (!instanceCapabilities(instance.kind).proxyEndpoint) {
         continue;
       }
-      groups.push(remoteGroup(node, instance));
+      groups.push(
+        managedGroup(
+          instance,
+          true,
+          remoteEndpointId(node.id, instance.name),
+          `${node.name} / ${instance.name}`,
+        ),
+      );
     }
   }
 
