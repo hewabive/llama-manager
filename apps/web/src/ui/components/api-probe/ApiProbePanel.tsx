@@ -24,7 +24,7 @@ import {
   runInstanceApiProbe,
   streamInstanceApiProbe,
 } from "../../../api/client";
-import { TouchAutocomplete } from "../TouchCombobox";
+import { substringOptionsFilter, TouchAutocomplete } from "../TouchCombobox";
 import { ApiProbeResultView, StreamProbeResult } from "./Results";
 import {
   emptyStreamProbeState,
@@ -359,7 +359,7 @@ export function ApiProbePanel(props: {
             data={modelOptions.map((option) => option.value)}
             label="Model"
             value={model ?? ""}
-            filter={({ options, limit }) => options.slice(0, limit)}
+            filter={substringOptionsFilter}
             limit={50}
             maxDropdownHeight={360}
             openOnFocus

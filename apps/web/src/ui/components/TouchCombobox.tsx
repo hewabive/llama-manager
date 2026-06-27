@@ -2,12 +2,31 @@ import {
   ActionIcon,
   Autocomplete,
   type AutocompleteProps,
+  type ComboboxItem,
+  type OptionsFilter,
   Select,
   type SelectProps,
 } from "@mantine/core";
 import { useMediaQuery, useMergedRef } from "@mantine/hooks";
 import { Keyboard } from "lucide-react";
 import { type ForwardedRef, forwardRef, useRef, useState } from "react";
+
+export const substringOptionsFilter: OptionsFilter = ({
+  options,
+  search,
+  limit,
+}) => {
+  const flat = options.filter(
+    (item): item is ComboboxItem => "value" in item,
+  );
+  const query = search.trim().toLowerCase();
+  const showAll =
+    !query || flat.some((item) => item.value.toLowerCase() === query);
+  const matched = showAll
+    ? flat
+    : flat.filter((item) => item.value.toLowerCase().includes(query));
+  return matched.slice(0, limit);
+};
 
 function useTouchListFirst(
   ref: ForwardedRef<HTMLInputElement>,

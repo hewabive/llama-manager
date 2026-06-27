@@ -6,7 +6,11 @@ import {
   useEndpointModelOptions,
 } from "./endpoint-model-catalog";
 import { StatusTooltipIcon } from "./StatusTooltipIcon";
-import { TouchAutocomplete, TouchSelect } from "./TouchCombobox";
+import {
+  substringOptionsFilter,
+  TouchAutocomplete,
+  TouchSelect,
+} from "./TouchCombobox";
 
 export type EndpointModelSelection = {
   endpointId: string | null;
@@ -72,6 +76,7 @@ export function EndpointModelPicker(props: EndpointModelPickerProps) {
           label={props.modelLabel ?? "Model"}
           data={modelOptions.map((option) => option.value)}
           value={props.value.model}
+          filter={substringOptionsFilter}
           openOnFocus
           limit={50}
           disabled={(props.disabled ?? false) || !selectedGroup}
