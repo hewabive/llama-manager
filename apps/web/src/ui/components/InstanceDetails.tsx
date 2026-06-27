@@ -178,6 +178,19 @@ export function InstanceDetails(props: {
   const llama = health?.llama ?? llamaQuery.data?.data;
   const logTail = logsQuery.data?.data;
   const statusSummary = health?.logSummary ?? statusSummaryQuery.data?.data;
+  const errorLineSet = new Set(statusSummary?.errors ?? []);
+  const warningLineSet = new Set(statusSummary?.warnings ?? []);
+  const issueCount =
+    (statusSummary?.errors.length ?? 0) +
+    (statusSummary?.warnings.length ?? 0);
+  const errorLineStyle = {
+    borderLeft: "3px solid var(--mantine-color-red-6)",
+    background: "var(--mantine-color-red-light)",
+  };
+  const warningLineStyle = {
+    borderLeft: "3px solid var(--mantine-color-yellow-6)",
+    background: "var(--mantine-color-yellow-light)",
+  };
   const summary = useMemo(() => propsSummary(llama), [llama]);
   const showLaunchMonitor = Boolean(
     props.launchMonitor || isStartupStatus(health?.status),
@@ -677,6 +690,20 @@ export function InstanceDetails(props: {
               Log
             </Tabs.Tab>
             <Tabs.Tab
+              value="issues"
+              rightSection={
+                <Badge
+                  variant="light"
+                  size="sm"
+                  color={issueCount > 0 ? "red" : "gray"}
+                >
+                  {issueCount}
+                </Badge>
+              }
+            >
+              Issues
+            </Tabs.Tab>
+            <Tabs.Tab
               value="events"
               rightSection={
                 <Badge variant="light" size="sm">
@@ -707,18 +734,59 @@ export function InstanceDetails(props: {
             </Group>
             <ScrollArea h={260} type="auto" offsetScrollbars>
               <Stack gap={4}>
-                {logTail?.lines.map((line, index) => (
+                {logTail?.lines.map((line, index) => {
+                  const trimmed = line.trim();
+                  const lineStyle = errorLineSet.has(trimmed)
+                    ? errorLineStyle
+                    : warningLineSet.has(trimmed)
+                      ? warningLineStyle
+                      : undefined;
+                  return (
+                    <Code
+                      key={`${logTail.logPath}-${index}`}
+                      block
+                      className="code-wrap"
+                      style={lineStyle}
+                    >
+                      {line}
+                    </Code>
+                  );
+                })}
+                {(!logTail || logTail.lines.length === 0) && (
+                  <Text c="dimmed" size="sm" ta="center" py="lg">
+                    No log history yet
+                  </Text>
+                )}
+              </Stack>
+            </ScrollArea>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="issues" pt="xs">
+            <ScrollArea h={260} type="auto" offsetScrollbars>
+              <Stack gap={4}>
+                {(statusSummary?.errors ?? []).map((line, index) => (
                   <Code
-                    key={`${logTail.logPath}-${index}`}
+                    key={`issue-error-${index}`}
                     block
                     className="code-wrap"
+                    style={errorLineStyle}
                   >
                     {line}
                   </Code>
                 ))}
-                {(!logTail || logTail.lines.length === 0) && (
+                {(statusSummary?.warnings ?? []).map((line, index) => (
+                  <Code
+                    key={`issue-warning-${index}`}
+                    block
+                    className="code-wrap"
+                    style={warningLineStyle}
+                  >
+                    {line}
+                  </Code>
+                ))}
+                {issueCount === 0 && (
                   <Text c="dimmed" size="sm" ta="center" py="lg">
-                    No log history yet
+                    No errors or warnings in the log
                   </Text>
                 )}
               </Stack>
