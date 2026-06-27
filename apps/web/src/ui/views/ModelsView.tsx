@@ -83,6 +83,7 @@ function metaSections(model: GgufModel): DetailSection[] {
   };
 
   const overview = section("Overview");
+  overview.push("Name", m.name);
   overview.push("Architecture", m.architecture);
   const role = ggufModelRole(m);
   overview.push("Role", role !== "generative" ? role : null);

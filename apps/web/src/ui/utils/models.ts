@@ -17,8 +17,12 @@ export function formatBytes(bytes: number) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+export function displayNameFromFileName(name: string) {
+  return name.replace(/-\d+-of-\d+\.gguf$/i, "").replace(/\.gguf$/i, "");
+}
+
 export function modelTitle(model: GgufModel) {
-  return model.metadata.name || model.name;
+  return displayNameFromFileName(model.name);
 }
 
 export function formatParameterCount(count: number | null) {
