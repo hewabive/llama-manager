@@ -31,7 +31,7 @@ import { registerSystemRoutes } from "./routes/system.routes.js";
 import { registerUpdateRoutes } from "./routes/update.routes.js";
 
 export { startApiProxyIdleMaintenanceLoop } from "./proxy/idle-maintenance.js";
-export { startApiProxyRemoteHealthLoop } from "./proxy/runtime-snapshot.js";
+export { startApiProxyRuntimeReconcileLoop } from "./proxy/runtime-snapshot.js";
 
 export const app = new Hono();
 

@@ -31,15 +31,18 @@ export async function buildApiProxyPlanRequest(input: {
   requestedTargetId?: string | undefined;
   preferredTargetId?: string | undefined;
   extraTarget?: ApiProxyTargetRecord | undefined;
+  residency?: "cached" | "live" | undefined;
 }): Promise<{
   request: ApiProxySchedulerPlanRequest;
   runtime: Awaited<ReturnType<typeof getApiProxyRuntimeSnapshot>>;
 }> {
-  const runtime = await getApiProxyRuntimeSnapshot(
-    input.extraTarget !== undefined
-      ? { extraTarget: input.extraTarget, purpose: "scheduling" }
-      : { purpose: "scheduling" },
-  );
+  const runtime = await getApiProxyRuntimeSnapshot({
+    purpose: "scheduling",
+    ...(input.extraTarget !== undefined
+      ? { extraTarget: input.extraTarget }
+      : {}),
+    ...(input.residency !== undefined ? { residency: input.residency } : {}),
+  });
   const runtimeByTargetId = new Map(
     runtime.snapshot.targets.map((target) => [target.targetId, target]),
   );
@@ -81,6 +84,7 @@ export async function buildApiProxyPlanContext(input: {
   requestedTargetId?: string | undefined;
   preferredTargetId?: string | undefined;
   extraTarget?: ApiProxyTargetRecord | undefined;
+  residency?: "cached" | "live" | undefined;
 }): Promise<{
   request: ApiProxySchedulerPlanRequest;
   runtime: Awaited<ReturnType<typeof getApiProxyRuntimeSnapshot>>;
@@ -105,6 +109,7 @@ export async function getApiProxyPlanPreview(input: {
   requestedTargetId?: string | undefined;
   preferredTargetId?: string | undefined;
   extraTarget?: ApiProxyTargetRecord | undefined;
+  residency?: "cached" | "live" | undefined;
 }) {
   return (await buildApiProxyPlanContext(input)).preview;
 }

@@ -610,6 +610,7 @@ export async function serveResolvedTarget(input: {
   const planContext = await buildApiProxyPlanContext({
     mode: "request",
     requestedTargetId: route.targetId,
+    residency: "cached",
     ...(extraTarget ? { extraTarget } : {}),
   });
 

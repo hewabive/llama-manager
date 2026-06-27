@@ -9,6 +9,10 @@ import { computeDomainCoordinator } from "./domain-coordinator.js";
 import { apiProxyInflight } from "./inflight.js";
 import { getApiEndpointById } from "./endpoints.js";
 import {
+  getResidencyHealth,
+  refreshResidencyHealth,
+} from "./instance-health-cache.js";
+import {
   listApiProxyRuntimeMetadata,
   listApiProxyTargets,
 } from "./repository.js";
@@ -19,9 +23,10 @@ import { resolveApiProxyTarget } from "./targets.js";
 export async function getApiProxyRuntimeSnapshot(options?: {
   extraTarget?: ApiProxyTargetRecord | undefined;
   purpose?: "diagnostics" | "scheduling" | undefined;
+  residency?: "cached" | "live" | undefined;
 }) {
   const diagnostics = (options?.purpose ?? "diagnostics") === "diagnostics";
-  const checkStartAvailability = diagnostics;
+  const fresh = options?.residency !== "cached";
   const baseTargets = listApiProxyTargets();
   const candidate = options?.extraTarget ?? null;
   const targets =
@@ -41,20 +46,20 @@ export async function getApiProxyRuntimeSnapshot(options?: {
       )
       .filter((instanceId): instanceId is string => Boolean(instanceId)),
   );
+  const targetInstances = instances.filter((instance) =>
+    targetInstanceIds.has(instance.name),
+  );
   const [healthEntries, remote] = await Promise.all([
     Promise.all(
-      instances
-        .filter((instance) => targetInstanceIds.has(instance.name))
-        .map(
-          async (instance) =>
-            [
-              instance.name,
-              await getInstanceHealthSummary(instance, {
-                peers,
-                checkStartAvailability,
-              }),
-            ] as const,
-        ),
+      targetInstances.map(
+        async (instance) =>
+          [
+            instance.name,
+            diagnostics
+              ? await getInstanceHealthSummary(instance, { peers })
+              : await getResidencyHealth(instance, peers, { fresh }),
+          ] as const,
+      ),
     ),
     collectRemoteTargetHealth({ targets, endpoints, cacheOnly: !diagnostics }),
   ]);
@@ -108,22 +113,36 @@ export async function getCachedApiProxyRuntimeSnapshot(): Promise<ApiProxyRuntim
   return pendingSnapshot;
 }
 
-const REMOTE_HEALTH_REFRESH_INTERVAL_MS = 2000;
+const RUNTIME_RECONCILE_INTERVAL_MS = 1000;
 
-async function refreshRemoteTargetHealth(): Promise<void> {
+async function reconcileRuntimeState(): Promise<void> {
   const targets = listApiProxyTargets();
   const instances = listInstances();
   const endpoints = targets
     .map((target) => getApiEndpointById(target.endpointId, instances))
     .filter((endpoint): endpoint is ApiEndpointRecord => Boolean(endpoint));
-  await collectRemoteTargetHealth({ targets, endpoints });
+  const targetInstanceIds = new Set(
+    targets
+      .map(
+        (target) =>
+          resolveApiProxyTarget(target, instances, endpoints).instanceId,
+      )
+      .filter((instanceId): instanceId is string => Boolean(instanceId)),
+  );
+  const targetInstances = instances.filter((instance) =>
+    targetInstanceIds.has(instance.name),
+  );
+  await Promise.all([
+    refreshResidencyHealth(targetInstances, instances),
+    collectRemoteTargetHealth({ targets, endpoints }),
+  ]);
 }
 
-export function startApiProxyRemoteHealthLoop(options?: {
+export function startApiProxyRuntimeReconcileLoop(options?: {
   intervalMs?: number | undefined;
   onError?: ((error: unknown) => void) | undefined;
 }): () => void {
-  const intervalMs = options?.intervalMs ?? REMOTE_HEALTH_REFRESH_INTERVAL_MS;
+  const intervalMs = options?.intervalMs ?? RUNTIME_RECONCILE_INTERVAL_MS;
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
     return () => undefined;
   }
@@ -134,7 +153,7 @@ export function startApiProxyRemoteHealthLoop(options?: {
       return;
     }
     running = true;
-    void refreshRemoteTargetHealth()
+    void reconcileRuntimeState()
       .catch((error) => options?.onError?.(error))
       .finally(() => {
         running = false;

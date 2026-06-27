@@ -8,7 +8,7 @@ import { migrate } from "./db/index.js";
 import {
   app,
   startApiProxyIdleMaintenanceLoop,
-  startApiProxyRemoteHealthLoop,
+  startApiProxyRuntimeReconcileLoop,
 } from "./http.js";
 import { runMigrations } from "./migrations/index.js";
 import { ensureConfigScaffold } from "./proxy/config-files.js";
@@ -80,9 +80,9 @@ const stopApiProxyIdleMaintenance = startApiProxyIdleMaintenanceLoop({
     logger.error({ error }, "api proxy idle maintenance pass failed"),
 });
 
-const stopApiProxyRemoteHealth = startApiProxyRemoteHealthLoop({
+const stopApiProxyRuntimeReconcile = startApiProxyRuntimeReconcileLoop({
   onError: (error) =>
-    logger.error({ error }, "api proxy remote health refresh failed"),
+    logger.error({ error }, "api proxy runtime reconcile pass failed"),
 });
 
 type ForceClosableServer = typeof server & {
@@ -137,7 +137,7 @@ async function shutdown(signal: NodeJS.Signals) {
 
   try {
     stopApiProxyIdleMaintenance();
-    stopApiProxyRemoteHealth();
+    stopApiProxyRuntimeReconcile();
     await closeServer();
     logger.info("http server closed");
 
