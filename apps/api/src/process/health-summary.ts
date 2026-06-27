@@ -39,6 +39,7 @@ const SWAP_DEGRADED_THRESHOLD_BYTES = 64 * 1024 * 1024;
 
 type HealthSummaryOptions = {
   peers?: Instance[] | undefined;
+  checkStartAvailability?: boolean | undefined;
 };
 
 const runtimeStatuses = new Set<Instance["status"]>([
@@ -346,9 +347,9 @@ export async function getInstanceHealthSummary(
   const latestRun = latestProcessRun(instance.name);
   const runtime =
     supervisor.getState(instance.name) ?? durableRuntime(instance, latestRun);
-  const shouldCheckStartAvailability = ["stopped", "exited", "error"].includes(
-    runtime.status,
-  );
+  const shouldCheckStartAvailability =
+    (options.checkStartAvailability ?? true) &&
+    ["stopped", "exited", "error"].includes(runtime.status);
   const preflight = shouldCheckStartAvailability
     ? await validateInstanceStartPreflight(instance, {
         peers: options.peers,

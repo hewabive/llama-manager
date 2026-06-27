@@ -1,8 +1,27 @@
-import type { RuntimeState } from "@llama-manager/core";
+import type { Instance, RuntimeState } from "@llama-manager/core";
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
 
-import { deriveStatus } from "./health-summary.js";
+import { deriveStatus, getInstanceHealthSummary } from "./health-summary.js";
+
+function instance(input: Partial<Instance>): Instance {
+  return {
+    name: input.name ?? "test-instance",
+    kind: input.kind ?? "llama-server",
+    rpcWorkers: input.rpcWorkers ?? [],
+    binaryPath: input.binaryPath ?? "/bin/sh",
+    binaryPathRefId: input.binaryPathRefId ?? "test-binary",
+    cwd: input.cwd ?? tmpdir(),
+    args: input.args ?? {},
+    env: {},
+    memory: input.memory ?? [],
+    status: input.status ?? "stopped",
+    pid: input.pid ?? null,
+    createdAt: "2026-05-26T00:00:00.000Z",
+    updatedAt: "2026-05-26T00:00:00.000Z",
+  };
+}
 
 function runningRuntime(): RuntimeState {
   return {
@@ -78,4 +97,25 @@ test("error-state runtime with no log errors falls back to a generic reason", ()
   });
   assert.equal(derived.status, "error");
   assert.match(derived.reason, /error state/);
+});
+
+test("scheduling-mode health summary skips the start-time rpc-worker readiness probe", async () => {
+  const stopped = instance({
+    name: "orchestrator-under-test",
+    status: "stopped",
+    args: { "--host": "127.0.0.1", "--port": 47591 },
+    rpcWorkers: [{ nodeId: null, instanceName: "missing-worker" }],
+  });
+
+  const hasRpcIssue = (
+    health: Awaited<ReturnType<typeof getInstanceHealthSummary>>,
+  ) => health.preflight.issues.some((issue) => issue.field === "rpcWorkers");
+
+  const diagnostics = await getInstanceHealthSummary(stopped, {});
+  const scheduling = await getInstanceHealthSummary(stopped, {
+    checkStartAvailability: false,
+  });
+
+  assert.equal(hasRpcIssue(diagnostics), true);
+  assert.equal(hasRpcIssue(scheduling), false);
 });

@@ -18,7 +18,9 @@ import { resolveApiProxyTarget } from "./targets.js";
 
 export async function getApiProxyRuntimeSnapshot(options?: {
   extraTarget?: ApiProxyTargetRecord | undefined;
+  purpose?: "diagnostics" | "scheduling" | undefined;
 }) {
+  const checkStartAvailability = (options?.purpose ?? "diagnostics") === "diagnostics";
   const baseTargets = listApiProxyTargets();
   const candidate = options?.extraTarget ?? null;
   const targets =
@@ -46,7 +48,10 @@ export async function getApiProxyRuntimeSnapshot(options?: {
           async (instance) =>
             [
               instance.name,
-              await getInstanceHealthSummary(instance, { peers }),
+              await getInstanceHealthSummary(instance, {
+                peers,
+                checkStartAvailability,
+              }),
             ] as const,
         ),
     ),

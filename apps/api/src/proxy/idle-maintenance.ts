@@ -36,8 +36,8 @@ export async function buildApiProxyPlanRequest(input: {
 }> {
   const runtime = await getApiProxyRuntimeSnapshot(
     input.extraTarget !== undefined
-      ? { extraTarget: input.extraTarget }
-      : undefined,
+      ? { extraTarget: input.extraTarget, purpose: "scheduling" }
+      : { purpose: "scheduling" },
   );
   const runtimeByTargetId = new Map(
     runtime.snapshot.targets.map((target) => [target.targetId, target]),
