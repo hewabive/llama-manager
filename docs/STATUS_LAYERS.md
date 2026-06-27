@@ -58,6 +58,11 @@ sub-second blink as L1 (it requires `runtime.status === "starting"`); the real
 isn't listening yet or is answering `503` while loading weights — is reported
 as `loading`. So in practice startup reads as `loading` throughout.
 
+L2 has two cost modes for the same derivation: the dashboard computes it live
+and full; the proxy request hot path reads a cheaper scheduling-mode variant
+(no network start-preflight) from a background-reconciled cache. See
+`docs/API_PROXY_FOUNDATION.md` → "Request hot path: scheduling vs diagnostics".
+
 ### L3 — proxy target state
 
 `unknown · stopped · unloaded · loading · ready · error`

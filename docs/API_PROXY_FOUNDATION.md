@@ -151,6 +151,17 @@ The scheduler is deliberately side-effect free. It receives a snapshot of target
 
 The planner intentionally does not decide how long to poll, how to name slot save files or when saved-slot metadata should be updated. Those belong to the executor and persistent proxy state.
 
+## Request hot path: scheduling vs diagnostics snapshots
+
+`getApiProxyRuntimeSnapshot` feeds both the planner and the UI, but those need different things, so it takes two orthogonal flags and the request path must stay read-only over background-reconciled state (a slow/unreachable target — remote rpc fabric, hung instance — must never sit on a request's critical path).
+
+- `purpose` — `"scheduling"` skips the network start-preflight (`getInstanceHealthSummary({checkStartAvailability:false})`: no port-availability bind, no rpc-worker RTT) and reads remote-target health cache-only; `"diagnostics"` (default) computes full live health (preflight, logs, swap, numa, live remote) for the dashboard / public status / `/v1/models`. Both feed the same `buildApiProxyRuntimeSnapshot`, so there is one `state` derivation, not two.
+- `residency` — `"cached"` reads per-instance scheduling health from `proxy/instance-health-cache.ts`; `"live"` (default) recomputes and writes the cache. Only the per-request initial plan context (`serveResolvedTarget` → `buildApiProxyPlanContext`) uses `"cached"`; the executor's re-fetch after a start/load, fusion, idle and route-explain stay `"live"` so the executor observes its own actions.
+
+`startApiProxyRuntimeReconcileLoop` (~1s) keeps the residency cache and the remote-health cache warm; `buildApiProxyPlanContext` builds the snapshot once per request and threads it through gateway → lease → readiness (the resumable path rebuilds a fresh preview only on preemption retries). Server-generation timing enrichment (`applyServerGenerationTiming`, sourced from llama-server log lines) is deferred off the response via `recordTraceWithDeferredTiming` and never blocks the client. Net effect: a ready local target proxies within ~15 ms of hitting the instance directly, flat in the number of targets / remote nodes / rpc workers.
+
+See `proxy-latency` commit series and `docs/STATUS_LAYERS.md` (L2/L3) for the state derivation reused here.
+
 ## Next Implementation Step
 
 The next safe step is to expand execution and add targeted file-based diagnostics when real failures require them:
