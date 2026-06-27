@@ -20,7 +20,8 @@ export async function getApiProxyRuntimeSnapshot(options?: {
   extraTarget?: ApiProxyTargetRecord | undefined;
   purpose?: "diagnostics" | "scheduling" | undefined;
 }) {
-  const checkStartAvailability = (options?.purpose ?? "diagnostics") === "diagnostics";
+  const diagnostics = (options?.purpose ?? "diagnostics") === "diagnostics";
+  const checkStartAvailability = diagnostics;
   const baseTargets = listApiProxyTargets();
   const candidate = options?.extraTarget ?? null;
   const targets =
@@ -55,7 +56,7 @@ export async function getApiProxyRuntimeSnapshot(options?: {
             ] as const,
         ),
     ),
-    collectRemoteTargetHealth({ targets, endpoints }),
+    collectRemoteTargetHealth({ targets, endpoints, cacheOnly: !diagnostics }),
   ]);
 
   return {
@@ -105,4 +106,43 @@ export async function getCachedApiProxyRuntimeSnapshot(): Promise<ApiProxyRuntim
     }
   })();
   return pendingSnapshot;
+}
+
+const REMOTE_HEALTH_REFRESH_INTERVAL_MS = 2000;
+
+async function refreshRemoteTargetHealth(): Promise<void> {
+  const targets = listApiProxyTargets();
+  const instances = listInstances();
+  const endpoints = targets
+    .map((target) => getApiEndpointById(target.endpointId, instances))
+    .filter((endpoint): endpoint is ApiEndpointRecord => Boolean(endpoint));
+  await collectRemoteTargetHealth({ targets, endpoints });
+}
+
+export function startApiProxyRemoteHealthLoop(options?: {
+  intervalMs?: number | undefined;
+  onError?: ((error: unknown) => void) | undefined;
+}): () => void {
+  const intervalMs = options?.intervalMs ?? REMOTE_HEALTH_REFRESH_INTERVAL_MS;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    return () => undefined;
+  }
+
+  let running = false;
+  const tick = () => {
+    if (running) {
+      return;
+    }
+    running = true;
+    void refreshRemoteTargetHealth()
+      .catch((error) => options?.onError?.(error))
+      .finally(() => {
+        running = false;
+      });
+  };
+
+  tick();
+  const timer = setInterval(tick, intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }

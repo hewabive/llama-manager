@@ -5,7 +5,11 @@ import { initArgumentDefaults } from "./arguments/defaults-repository.js";
 import { pruneMissingArgumentCatalogs } from "./arguments/repository.js";
 import { config } from "./config.js";
 import { migrate } from "./db/index.js";
-import { app, startApiProxyIdleMaintenanceLoop } from "./http.js";
+import {
+  app,
+  startApiProxyIdleMaintenanceLoop,
+  startApiProxyRemoteHealthLoop,
+} from "./http.js";
 import { runMigrations } from "./migrations/index.js";
 import { ensureConfigScaffold } from "./proxy/config-files.js";
 import { collectApiProxyPipelineGraphWarnings } from "./proxy/pipeline-validation.js";
@@ -76,6 +80,11 @@ const stopApiProxyIdleMaintenance = startApiProxyIdleMaintenanceLoop({
     logger.error({ error }, "api proxy idle maintenance pass failed"),
 });
 
+const stopApiProxyRemoteHealth = startApiProxyRemoteHealthLoop({
+  onError: (error) =>
+    logger.error({ error }, "api proxy remote health refresh failed"),
+});
+
 type ForceClosableServer = typeof server & {
   closeAllConnections?: () => void;
   closeIdleConnections?: () => void;
@@ -128,6 +137,7 @@ async function shutdown(signal: NodeJS.Signals) {
 
   try {
     stopApiProxyIdleMaintenance();
+    stopApiProxyRemoteHealth();
     await closeServer();
     logger.info("http server closed");
 
