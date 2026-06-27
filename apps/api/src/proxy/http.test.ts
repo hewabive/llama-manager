@@ -2,11 +2,30 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  fetchErrorCode,
   isEventStream,
   proxyRequestHeaders,
   proxyResponseHeaders,
   proxyTargetUrl,
 } from "./http.js";
+
+test("fetchErrorCode reads a direct error code", () => {
+  const error = Object.assign(new Error("boom"), { code: "ECONNREFUSED" });
+  assert.equal(fetchErrorCode(error), "ECONNREFUSED");
+});
+
+test("fetchErrorCode unwraps the cause chain", () => {
+  const cause = Object.assign(new Error("timed out"), {
+    code: "UND_ERR_HEADERS_TIMEOUT",
+  });
+  const error = new TypeError("fetch failed", { cause });
+  assert.equal(fetchErrorCode(error), "UND_ERR_HEADERS_TIMEOUT");
+});
+
+test("fetchErrorCode returns null when no code is present", () => {
+  assert.equal(fetchErrorCode(new Error("plain")), null);
+  assert.equal(fetchErrorCode("not an error"), null);
+});
 
 test("proxyTargetUrl joins base path, request path and query", () => {
   assert.equal(

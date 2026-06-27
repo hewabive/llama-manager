@@ -23,6 +23,18 @@ export function describeFetchError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export function fetchErrorCode(error: unknown): string | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return code;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
 const hopByHopHeaders = new Set([
   "connection",
   "keep-alive",

@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ApiProxyModelRecordSchema } from "@llama-manager/core";
+import {
+  ApiProxyModelRecordSchema,
+  ApiProxyTargetRecordSchema,
+  type FleetNode,
+} from "@llama-manager/core";
 
 import { anthropicProtocolAdapter } from "./anthropic.js";
 import { openAiProtocolAdapter } from "./openai.js";
-import { delegateServeRequestBody } from "./protocol-endpoint.js";
+import {
+  delegateServeRequestBody,
+  delegationErrorDiagnostic,
+} from "./protocol-endpoint.js";
 import type {
   ApiProxyProtocolAdapter,
   ApiProxyProtocolModelRequest,
@@ -16,7 +23,12 @@ function operation(
   protocol: "openai" | "anthropic",
   endpoint: string,
 ): ApiProxyProtocolOperation {
-  return { protocol, endpoint, routePath: `/${protocol}/${endpoint}`, transport: "http-json" };
+  return {
+    protocol,
+    endpoint,
+    routePath: `/${protocol}/${endpoint}`,
+    transport: "http-json",
+  };
 }
 
 function modelRequest(input: {
@@ -50,12 +62,22 @@ function adapterFor(protocol: "openai" | "anthropic"): ApiProxyProtocolAdapter {
     : openAiProtocolAdapter;
 }
 
-function shape(protocol: "openai" | "anthropic", endpoint: string, stream: boolean) {
-  const request = modelRequest({ protocol, endpoint, stream, body: { model: "qwen" } });
-  return delegateServeRequestBody(request, request.operation, adapterFor(protocol)) as Record<
-    string,
-    unknown
-  >;
+function shape(
+  protocol: "openai" | "anthropic",
+  endpoint: string,
+  stream: boolean,
+) {
+  const request = modelRequest({
+    protocol,
+    endpoint,
+    stream,
+    body: { model: "qwen" },
+  });
+  return delegateServeRequestBody(
+    request,
+    request.operation,
+    adapterFor(protocol),
+  ) as Record<string, unknown>;
 }
 
 test("delegated openai chat stream requests usage and prefill from the peer", () => {
@@ -88,4 +110,59 @@ test("delegated non-stream request is forwarded verbatim", () => {
 test("delegated non-resumable stream is not augmented with prefill", () => {
   const body = shape("openai", "completions", true);
   assert.equal("return_progress" in body, false);
+});
+
+const diagTarget = ApiProxyTargetRecordSchema.parse({
+  id: "target-a",
+  name: "Target A",
+  endpointId: "remote:ny:remote-a",
+  model: "qwen",
+  role: "interactive",
+  priority: 100,
+  preemptible: true,
+  saveSlotsBeforeUnload: false,
+  slotIds: [],
+  idleUnloadMs: null,
+  createdAt: "2026-06-25T00:00:00.000Z",
+  updatedAt: "2026-06-25T00:00:00.000Z",
+});
+
+const diagNode: FleetNode = {
+  id: "ny",
+  name: "NY",
+  baseUrl: "http://ny.local:8787",
+  enabled: true,
+  createdAt: "2026-06-25T00:00:00.000Z",
+  updatedAt: "2026-06-25T00:00:00.000Z",
+};
+
+test("delegationErrorDiagnostic maps a headers timeout to a 504", () => {
+  const error = new TypeError("fetch failed", {
+    cause: Object.assign(new Error("Headers Timeout Error"), {
+      code: "UND_ERR_HEADERS_TIMEOUT",
+    }),
+  });
+  const diagnostic = delegationErrorDiagnostic(diagTarget, diagNode, error);
+  assert.equal(diagnostic.status, 504);
+  assert.equal(diagnostic.code, "llama_manager_proxy_upstream_timeout");
+  assert.match(diagnostic.message, /NY/);
+});
+
+test("delegationErrorDiagnostic maps a refused connection to a 503", () => {
+  const error = Object.assign(new Error("connect ECONNREFUSED"), {
+    code: "ECONNREFUSED",
+  });
+  const diagnostic = delegationErrorDiagnostic(diagTarget, diagNode, error);
+  assert.equal(diagnostic.status, 503);
+  assert.equal(diagnostic.code, "llama_manager_proxy_upstream_unavailable");
+});
+
+test("delegationErrorDiagnostic falls back to a 502 for unknown errors", () => {
+  const diagnostic = delegationErrorDiagnostic(
+    diagTarget,
+    diagNode,
+    new Error("weird"),
+  );
+  assert.equal(diagnostic.status, 502);
+  assert.equal(diagnostic.code, "llama_manager_proxy_upstream_error");
 });

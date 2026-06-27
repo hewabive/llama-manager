@@ -36,6 +36,7 @@ type ApiProxyProtocolDiagnosticCode =
   | "llama_manager_proxy_instance_not_found"
   | "llama_manager_proxy_instance_start_failed"
   | "llama_manager_proxy_upstream_unavailable"
+  | "llama_manager_proxy_upstream_timeout"
   | "llama_manager_proxy_upstream_error";
 
 export type ApiProxyProtocolDiagnostic = {

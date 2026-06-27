@@ -117,6 +117,18 @@ the HTTP. This keeps each node authoritative over its own compute lease and
 sidesteps distributed-lease atomicity entirely — which is exactly why it is safe
 to do before RPC exists.
 
+The delegating fetch (`proxy/delegate.ts`) uses the same long-timeout undici agent
+as the local forwarder (`proxyUpstreamFetch`, 1h headers+body) rather than Node's
+silent 300s default. This is required, not just generous: the owning node runs
+readiness **and** generation behind a single response, and for a **non-stream**
+request it rebuilds the buffered reply, so the entry's time-to-headers is
+`readiness + full generation` — a short headers timeout would clip a legitimate
+slow completion. A genuinely unreachable node still fails fast at connect
+(`ECONNREFUSED` / ~10s connect timeout). `delegationErrorDiagnostic`
+(`proxy/protocol-endpoint.ts`) classifies the fetch failure: timeout → `504
+upstream_timeout`, connect/DNS/reset → `503 upstream_unavailable`, else `502
+upstream_error` — instead of an opaque "fetch failed".
+
 ### Remote-target load status
 
 The proxy runtime snapshot derives an honest load state for remote targets:

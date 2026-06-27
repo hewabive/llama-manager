@@ -2,6 +2,7 @@ import type { ApiProxyServeRequest, FleetNode } from "@llama-manager/core";
 
 import { nodeApiUrl } from "../nodes/remote.js";
 import { nodeToken } from "../nodes/repository.js";
+import { proxyUpstreamFetch } from "./http.js";
 
 const STRIPPED_RESPONSE_HEADERS = [
   "content-encoding",
@@ -21,12 +22,15 @@ export async function delegateApiProxyServe(input: {
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
-  const upstream = await fetch(nodeApiUrl(input.node, "proxy/serve"), {
-    method: "POST",
-    headers,
-    body: JSON.stringify(input.payload),
-    signal: input.signal,
-  });
+  const upstream = await proxyUpstreamFetch(
+    nodeApiUrl(input.node, "proxy/serve"),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(input.payload),
+      signal: input.signal,
+    },
+  );
   const responseHeaders = new Headers(upstream.headers);
   for (const header of STRIPPED_RESPONSE_HEADERS) {
     responseHeaders.delete(header);

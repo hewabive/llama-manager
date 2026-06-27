@@ -19,7 +19,11 @@ import {
 } from "./domain-coordinator.js";
 import { requestComputeDomains } from "./resource-domains.js";
 import { apiProxyForwardUrl, forwardApiProxyRequest } from "./forwarder.js";
-import { CLIENT_ABORT_STATUS, describeFetchError } from "./http.js";
+import {
+  CLIENT_ABORT_STATUS,
+  describeFetchError,
+  fetchErrorCode,
+} from "./http.js";
 import { apiProxyInflight, type ApiProxyInflightHandle } from "./inflight.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./gateway.js";
 import {
@@ -35,6 +39,7 @@ import {
 import {
   resolveApiProxyProtocolModelRequest,
   type ApiProxyProtocolAdapter,
+  type ApiProxyProtocolDiagnostic,
   type ApiProxyProtocolModelRequest,
   type ApiProxyProtocolOperation,
   type ApiProxyResumableCodec,
@@ -428,7 +433,8 @@ async function delegateRemoteTarget(input: {
     }
     inflight.firstToken(promptTokens);
   };
-  const stripProgressFrames = wantsPrefill && !returnProgressRequested(request.body);
+  const stripProgressFrames =
+    wantsPrefill && !returnProgressRequested(request.body);
 
   try {
     dispatchedAt = performance.now();
@@ -520,16 +526,56 @@ async function delegateRemoteTarget(input: {
       trace.errorMessage = `Client closed the request before node ${node.name} responded`;
       return new Response(null, { status: CLIENT_ABORT_STATUS });
     }
-    const message = `Proxy target ${target.name} failed to delegate to node ${node.name}: ${describeFetchError(error)}`;
-    trace.errorMessage = message;
-    const response = adapter.diagnosticError(request, {
-      status: 502,
-      code: "llama_manager_proxy_upstream_error",
-      param: "model",
-      message,
-    });
+    const diagnostic = delegationErrorDiagnostic(target, node, error);
+    trace.errorMessage = diagnostic.message;
+    const response = adapter.diagnosticError(request, diagnostic);
     return c.json(response.body, response.status);
   }
+}
+
+const DELEGATION_TIMEOUT_CODES = new Set([
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
+const DELEGATION_UNREACHABLE_CODES = new Set([
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+]);
+
+export function delegationErrorDiagnostic(
+  target: ApiProxyTargetRecord,
+  node: FleetNode,
+  error: unknown,
+): ApiProxyProtocolDiagnostic {
+  const code = fetchErrorCode(error);
+  if (code && DELEGATION_TIMEOUT_CODES.has(code)) {
+    return {
+      status: 504,
+      code: "llama_manager_proxy_upstream_timeout",
+      param: "model",
+      message: `Proxy target ${target.name}: node ${node.name} did not respond in time (still preparing the model or stalled).`,
+    };
+  }
+  if (code && DELEGATION_UNREACHABLE_CODES.has(code)) {
+    return {
+      status: 503,
+      code: "llama_manager_proxy_upstream_unavailable",
+      param: "model",
+      message: `Proxy target ${target.name}: node ${node.name} is unreachable (${describeFetchError(error)}).`,
+    };
+  }
+  return {
+    status: 502,
+    code: "llama_manager_proxy_upstream_error",
+    param: "model",
+    message: `Proxy target ${target.name} failed to delegate to node ${node.name}: ${describeFetchError(error)}`,
+  };
 }
 
 export async function serveResolvedTarget(input: {
