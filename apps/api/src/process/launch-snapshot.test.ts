@@ -1,13 +1,21 @@
 import type { Instance } from "@llama-manager/core";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import { test } from "node:test";
 
+import { config } from "../config.js";
 import {
   buildLaunchSnapshot,
   hasLaunchSnapshotDrift,
+  managedSlotSavePath,
   parseLaunchSnapshot,
   serializeLaunchSnapshot,
 } from "./launch-snapshot.js";
+
+function slotSavePathArg(cliArgs: string[]): string | null {
+  const index = cliArgs.indexOf("--slot-save-path");
+  return index >= 0 ? (cliArgs[index + 1] ?? null) : null;
+}
 
 function makeInstance(overrides: Partial<Instance> = {}): Instance {
   return {
@@ -76,4 +84,45 @@ test("hasLaunchSnapshotDrift detects args, env, binary and cwd changes", () => {
     ),
     true,
   );
+});
+
+test("buildLaunchSnapshot injects --slot-save-path for a single llama-server instance", () => {
+  const instance = makeInstance({ kind: "llama-server" });
+  const snapshot = buildLaunchSnapshot(instance);
+  assert.equal(
+    slotSavePathArg(snapshot.cliArgs),
+    resolve(config.slotsDir, "test-instance"),
+  );
+});
+
+test("managedSlotSavePath skips router instances", () => {
+  const instance = makeInstance({
+    kind: "llama-server",
+    args: { "--models-preset": "default.ini" },
+  });
+  assert.equal(managedSlotSavePath(instance), null);
+  assert.equal(slotSavePathArg(buildLaunchSnapshot(instance).cliArgs), null);
+});
+
+test("managedSlotSavePath skips rpc-worker instances", () => {
+  const instance = makeInstance({ kind: "rpc-worker" });
+  assert.equal(managedSlotSavePath(instance), null);
+});
+
+test("an explicit --slot-save-path is preserved, not overridden", () => {
+  const instance = makeInstance({
+    kind: "llama-server",
+    args: { "--slot-save-path": "/custom/slots" },
+  });
+  assert.equal(managedSlotSavePath(instance), null);
+  assert.equal(
+    slotSavePathArg(buildLaunchSnapshot(instance).cliArgs),
+    "/custom/slots",
+  );
+});
+
+test("an injected --slot-save-path does not cause config drift", () => {
+  const instance = makeInstance({ kind: "llama-server" });
+  const snapshot = buildLaunchSnapshot(instance);
+  assert.equal(hasLaunchSnapshotDrift(instance, snapshot), false);
 });

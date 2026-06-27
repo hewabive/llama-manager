@@ -4,6 +4,7 @@ import {
   appendFileSync,
   closeSync,
   createWriteStream,
+  mkdirSync,
   openSync,
   statSync,
   type WriteStream,
@@ -21,6 +22,7 @@ import {
 import { filterManagedLlamaLogChunk } from "./log-filter.js";
 import {
   buildLaunchSnapshot,
+  managedSlotSavePath,
   serializeLaunchSnapshot,
 } from "./launch-snapshot.js";
 import { isPidAlive } from "./pid.js";
@@ -127,6 +129,10 @@ class ProcessSupervisor extends EventEmitter {
     this.assertRpcWorkersRunning(instance);
 
     const snapshot = buildLaunchSnapshot(instance);
+    const slotSavePath = managedSlotSavePath(instance);
+    if (slotSavePath) {
+      mkdirSync(slotSavePath, { recursive: true });
+    }
     const cwd = snapshot.cwd;
     const launch = resolveNumaLaunch(instance, snapshot.binaryPath, [
       ...snapshot.cliArgs,

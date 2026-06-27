@@ -49,6 +49,9 @@ export const config = {
   modelsDir: process.env.LLAMA_MANAGER_MODELS_DIR
     ? resolve(process.env.LLAMA_MANAGER_MODELS_DIR)
     : resolve(runtimeDir, "models"),
+  slotsDir: process.env.LLAMA_MANAGER_SLOTS_DIR
+    ? resolve(process.env.LLAMA_MANAGER_SLOTS_DIR)
+    : resolve(runtimeDir, "slots"),
   logs: {
     filterRoutineProbeRequests:
       process.env.LLAMA_MANAGER_FILTER_PROBE_LOGS !== "false",

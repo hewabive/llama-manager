@@ -1,12 +1,49 @@
 import {
   InstanceNumaSchema,
   type Instance,
+  type InstanceArgs,
   type InstanceNuma,
   type RpcWorkerRef,
 } from "@llama-manager/core";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
+import { config } from "../config.js";
 import { argsToCli } from "./args.js";
+
+function argIsSet(args: InstanceArgs, key: string): boolean {
+  const value = args[key];
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return true;
+}
+
+export function managedSlotSavePath(instance: Instance): string | null {
+  if (instance.kind !== "llama-server") {
+    return null;
+  }
+  if (argIsSet(instance.args, "--models-preset")) {
+    return null;
+  }
+  if (argIsSet(instance.args, "--slot-save-path")) {
+    return null;
+  }
+  return resolve(config.slotsDir, instance.name);
+}
+
+function effectiveLaunchArgs(instance: Instance): InstanceArgs {
+  const slotSavePath = managedSlotSavePath(instance);
+  if (!slotSavePath) {
+    return instance.args;
+  }
+  return { ...instance.args, "--slot-save-path": slotSavePath };
+}
 
 export type LaunchSnapshot = {
   binaryPath: string;
@@ -20,7 +57,7 @@ export type LaunchSnapshot = {
 export function buildLaunchSnapshot(instance: Instance): LaunchSnapshot {
   return {
     binaryPath: instance.binaryPath,
-    cliArgs: argsToCli(instance.args),
+    cliArgs: argsToCli(effectiveLaunchArgs(instance)),
     env: { ...instance.env },
     cwd: instance.cwd ?? dirname(instance.binaryPath),
     numa: instance.numa ?? null,
