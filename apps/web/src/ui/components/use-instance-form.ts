@@ -1,6 +1,8 @@
 import {
   InstanceArgsSchema,
   RPC_SERVER_SUPPORTED_FLAGS,
+  ggufModelRole,
+  ggufPoolingTypeLabel,
   type Instance,
   type InstanceCreate,
   type InstanceKind,
@@ -401,6 +403,32 @@ export function useInstanceForm(props: InstanceFormModalProps) {
   );
   const selectedModel =
     selectableModels.find((model) => model.path === selectedModelPath) ?? null;
+  const embeddingHint = useMemo(() => {
+    if (!selectedModel) {
+      return null;
+    }
+    const role = ggufModelRole(selectedModel.metadata);
+    if (role === "generative") {
+      return null;
+    }
+    const hasArg = (primaryName: string) =>
+      argRows.some(
+        (row) =>
+          canonicalOptionForRow(row, knownArgByName)?.primaryName ===
+          primaryName,
+      );
+    const flag = role === "reranker" ? "--rerank" : "--embedding";
+    const satisfied =
+      role === "reranker"
+        ? hasArg("--rerank")
+        : hasArg("--embedding") || hasArg("--rerank");
+    return {
+      role,
+      flag,
+      satisfied,
+      pooling: ggufPoolingTypeLabel(selectedModel.metadata.poolingType),
+    };
+  }, [selectedModel, argRows, knownArgByName]);
   const modelOptions = useMemo(() => {
     const options = selectableModels.map((model) => ({
       value: model.path,
@@ -976,6 +1004,14 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     }
   }
 
+  function applyEmbeddingFlag() {
+    if (!embeddingHint) {
+      return;
+    }
+    const flag = embeddingHint.flag;
+    setArgRows((rows) => upsertArgRow(rows, flag, "", "flag"));
+  }
+
   function applyRemoteRepo(value: string) {
     const trimmed = value.trim();
     setArgRows((rows) =>
@@ -1455,6 +1491,8 @@ export function useInstanceForm(props: InstanceFormModalProps) {
     selectedModel,
     selectedModelPath,
     applyModelSelection,
+    embeddingHint,
+    applyEmbeddingFlag,
     modelOptions,
     mmprojValue,
     applyMmprojSelection,

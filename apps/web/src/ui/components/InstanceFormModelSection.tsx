@@ -1,5 +1,7 @@
 import {
+  Alert,
   Badge,
+  Button,
   Group,
   Paper,
   PasswordInput,
@@ -64,6 +66,42 @@ export function InstanceFormModelSection({
                 </Text>
               )}
             </Stack>
+            {fm.embeddingHint && !fm.embeddingHint.satisfied && (
+              <Alert
+                variant="light"
+                py="xs"
+                color={
+                  fm.embeddingHint.role === "reranker" ? "indigo" : "teal"
+                }
+                title={
+                  fm.embeddingHint.role === "reranker"
+                    ? "Reranker model detected"
+                    : "Embedding model detected"
+                }
+              >
+                <Stack gap={6} align="flex-start">
+                  <Text size="xs">
+                    {fm.embeddingHint.role === "reranker"
+                      ? "Add --rerank to expose /reranking (sets --embedding + --pooling rank)."
+                      : `Add --embedding so the server exposes /v1/embeddings${
+                          fm.embeddingHint.pooling
+                            ? ` (pooling: ${fm.embeddingHint.pooling})`
+                            : ""
+                        }.`}
+                  </Text>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color={
+                      fm.embeddingHint.role === "reranker" ? "indigo" : "teal"
+                    }
+                    onClick={fm.applyEmbeddingFlag}
+                  >
+                    Add {fm.embeddingHint.flag}
+                  </Button>
+                </Stack>
+              </Alert>
+            )}
             <MmprojSelect
               mmprojPaths={fm.selectedModel?.mmprojPaths ?? []}
               value={fm.mmprojValue || null}
