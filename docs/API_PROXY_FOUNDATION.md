@@ -162,6 +162,10 @@ The planner intentionally does not decide how long to poll, how to name slot sav
 
 See `proxy-latency` commit series and `docs/STATUS_LAYERS.md` (L2/L3) for the state derivation reused here.
 
+## External providers
+
+Connecting an external provider does not use the `target` layer. An endpoint is the upstream connection (base URL + profile + one optional key); a model routes straight to it via `routeTo: {type: "endpoint", endpointId, upstreamModel}`, and a `passthrough: true` endpoint exposes its whole catalog by name with no per-model record. Both resolve to a synthetic, non-persisted target (`proxy/external-target.ts`) so the gateway/lease/forwarder path is unchanged. Endpoint auth is a single key (stored `apiKey` XOR `apiKeyEnvVar`) with profile-derived placement and an `extraHeaders` record — no auth-type enum. Full details, including the `modelFilter` glob semantics and the `/models` catalog merge into `GET /v1/models`, are in `docs/EXTERNAL_PROVIDERS.md`.
+
 ## Next Implementation Step
 
 The next safe step is to expand execution and add targeted file-based diagnostics when real failures require them:

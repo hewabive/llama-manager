@@ -301,7 +301,7 @@ function slotIdsText(value: number[]) {
 }
 
 function routeToValue(routeTo: ApiProxyRouteTo | null | undefined) {
-  if (!routeTo) {
+  if (!routeTo || routeTo.type === "endpoint") {
     return null;
   }
   return `${routeTo.type}:${routeTo.id}`;

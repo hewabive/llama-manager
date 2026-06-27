@@ -320,6 +320,12 @@ export async function executeApiProxyFusion(input: {
         error: "panel branch resolves to a nested fusion node (unsupported)",
       };
     }
+    if (resolved.kind === "endpoint") {
+      return {
+        ok: false,
+        error: "panel branch resolves to an external endpoint (unsupported)",
+      };
+    }
     const sub = await executeApiProxyModelSubRequest({
       targetId: resolved.targetId,
       operation,
@@ -395,6 +401,14 @@ export async function executeApiProxyFusion(input: {
   const synthRoute = await resolveBranch(synthPort, synthRequest);
   if (!synthRoute.ok) {
     return { kind: "error", diagnostic: synthRoute.diagnostic };
+  }
+  if (synthRoute.kind === "endpoint") {
+    return {
+      kind: "error",
+      diagnostic: fusionDiagnostic(
+        "fusion synthesizer resolves to an external endpoint (unsupported)",
+      ),
+    };
   }
   if (synthRoute.kind === "fusion") {
     if (depth >= maxFusionDepth) {

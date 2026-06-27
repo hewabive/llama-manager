@@ -54,6 +54,15 @@ export type ApiProxyRouteChainResult =
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
+      ok: true;
+      kind: "endpoint";
+      request: ApiProxyProtocolModelRequest;
+      endpointId: string;
+      upstreamModel: string | null;
+      textReplacementCount: number;
+      routeTrace: ApiProxyRouteTraceStep[];
+    }
+  | {
       ok: false;
       diagnostic: ApiProxyProtocolDiagnostic;
       routeTrace: ApiProxyRouteTraceStep[];
@@ -263,6 +272,18 @@ export async function resolveApiProxyRouteChain(input: {
         kind: "target",
         request: state.request,
         targetId: ref.id,
+        textReplacementCount: state.textReplacementCount,
+        routeTrace: state.routeTrace,
+      };
+    }
+
+    if (ref.type === "endpoint") {
+      return {
+        ok: true,
+        kind: "endpoint",
+        request: state.request,
+        endpointId: ref.endpointId,
+        upstreamModel: ref.upstreamModel,
         textReplacementCount: state.textReplacementCount,
         routeTrace: state.routeTrace,
       };

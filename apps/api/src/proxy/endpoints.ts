@@ -32,9 +32,11 @@ export const StoredEndpointSchema = ApiEndpointRecordSchema.pick({
   enabled: true,
   baseUrl: true,
   profile: true,
-  authType: true,
+  apiKeyEnvVar: true,
   authHeaderName: true,
-  authEnvVar: true,
+  extraHeaders: true,
+  passthrough: true,
+  modelFilter: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -74,10 +76,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function authTypeUsesStoredKey(authType: ApiEndpointRecord["authType"]) {
-  return authType === "bearer" || authType === "api-key-header";
-}
-
 function readStoredEndpoints(): StoredEndpoint[] {
   return readCollection(ENDPOINTS_FILE, StoredEndpointSchema);
 }
@@ -100,15 +98,15 @@ function toExternalEndpoint(stored: StoredEndpoint): ApiEndpointRecord {
     kind: "external-api",
     baseUrl: stored.baseUrl,
     profile: stored.profile,
-    authType: stored.authType,
+    apiKeyEnvVar: stored.apiKeyEnvVar,
     authHeaderName: stored.authHeaderName,
-    authEnvVar: stored.authEnvVar,
+    extraHeaders: stored.extraHeaders,
+    passthrough: stored.passthrough,
+    modelFilter: stored.modelFilter,
     instanceId: null,
     editable: true,
     authConfigured:
-      stored.authType === "none" ||
-      Boolean(readSecret(stored.id)) ||
-      Boolean(stored.authEnvVar),
+      Boolean(readSecret(stored.id)) || Boolean(stored.apiKeyEnvVar),
     createdAt: stored.createdAt,
     updatedAt: stored.updatedAt,
   });
@@ -125,9 +123,11 @@ function remoteInstanceEndpoint(
     kind: "managed-instance",
     baseUrl: node.baseUrl,
     profile: "openai",
-    authType: "none",
+    apiKeyEnvVar: null,
     authHeaderName: null,
-    authEnvVar: null,
+    extraHeaders: {},
+    passthrough: false,
+    modelFilter: null,
     instanceId,
     nodeId: node.id,
     editable: false,
@@ -155,9 +155,11 @@ function managerProxyEndpoint(): ApiEndpointRecord {
     kind: "manager-proxy",
     baseUrl: managerProxyBaseUrl(),
     profile: "openai",
-    authType: "none",
+    apiKeyEnvVar: null,
     authHeaderName: null,
-    authEnvVar: null,
+    extraHeaders: {},
+    passthrough: false,
+    modelFilter: null,
     instanceId: null,
     editable: false,
     authConfigured: true,
@@ -182,9 +184,11 @@ function instanceEndpoint(instance: Instance): ApiEndpointRecord | null {
     kind: "managed-instance",
     baseUrl: apiVersionBaseUrl(baseUrl),
     profile: "openai",
-    authType: "none",
+    apiKeyEnvVar: null,
     authHeaderName: null,
-    authEnvVar: null,
+    extraHeaders: {},
+    passthrough: false,
+    modelFilter: null,
     instanceId: instance.name,
     editable: false,
     authConfigured: true,
@@ -201,6 +205,16 @@ function listStoredEndpointRecords(): ApiEndpointRecord[] {
 
 function getStoredExternalApiEndpoint(id: string): StoredEndpoint | null {
   return readStoredEndpoints().find((item) => item.id === id) ?? null;
+}
+
+export function listExternalApiEndpoints(): ApiEndpointRecord[] {
+  return listStoredEndpointRecords();
+}
+
+export function listPassthroughEndpoints(): ApiEndpointRecord[] {
+  return listStoredEndpointRecords().filter(
+    (endpoint) => endpoint.enabled && endpoint.passthrough,
+  );
 }
 
 export function getExternalApiEndpoint(id: string): ApiEndpointRecord | null {
@@ -299,16 +313,18 @@ export function createApiEndpoint(input: ApiEndpointCreate): ApiEndpointRecord {
     enabled: parsed.enabled,
     baseUrl: parsed.baseUrl,
     profile: parsed.profile,
-    authType: parsed.authType,
+    apiKeyEnvVar: parsed.apiKeyEnvVar,
     authHeaderName: parsed.authHeaderName,
-    authEnvVar: parsed.authEnvVar,
+    extraHeaders: parsed.extraHeaders,
+    passthrough: parsed.passthrough,
+    modelFilter: parsed.modelFilter,
     createdAt: timestamp,
     updatedAt: timestamp,
   });
   writeCollection(ENDPOINTS_FILE, [...records, stored]);
 
-  if (authTypeUsesStoredKey(parsed.authType)) {
-    setSecret(id, parsed.apiKey ?? null);
+  if (parsed.apiKey && !parsed.apiKeyEnvVar) {
+    setSecret(id, parsed.apiKey);
   }
 
   const created = getExternalApiEndpoint(id);
@@ -334,13 +350,20 @@ export function updateApiEndpoint(
     enabled: parsed.enabled ?? current.enabled,
     baseUrl: parsed.baseUrl ?? current.baseUrl,
     profile: parsed.profile ?? current.profile,
-    authType: parsed.authType ?? current.authType,
+    apiKeyEnvVar:
+      parsed.apiKeyEnvVar !== undefined
+        ? parsed.apiKeyEnvVar
+        : current.apiKeyEnvVar,
     authHeaderName:
       parsed.authHeaderName !== undefined
         ? parsed.authHeaderName
         : current.authHeaderName,
-    authEnvVar:
-      parsed.authEnvVar !== undefined ? parsed.authEnvVar : current.authEnvVar,
+    extraHeaders: parsed.extraHeaders ?? current.extraHeaders,
+    passthrough: parsed.passthrough ?? current.passthrough,
+    modelFilter:
+      parsed.modelFilter !== undefined
+        ? parsed.modelFilter
+        : current.modelFilter,
     createdAt: current.createdAt,
     updatedAt: nowIso(),
   });
@@ -350,12 +373,10 @@ export function updateApiEndpoint(
     records.map((item) => (item.id === id ? next : item)),
   );
 
-  if (authTypeUsesStoredKey(next.authType)) {
-    if (parsed.apiKey !== undefined) {
-      setSecret(id, parsed.apiKey || null);
-    }
-  } else {
+  if (next.apiKeyEnvVar) {
     setSecret(id, null);
+  } else if (parsed.apiKey !== undefined) {
+    setSecret(id, parsed.apiKey || null);
   }
 
   return getExternalApiEndpoint(id);
@@ -380,35 +401,37 @@ export function apiEndpointAuthHeaders(
   | { ok: true; headers: Record<string, string> }
   | { ok: false; error: string } {
   const stored = getStoredExternalApiEndpoint(endpointId);
-  if (!stored || stored.authType === "none") {
+  if (!stored) {
     return { ok: true, headers: {} };
   }
 
-  const key =
-    stored.authType === "env-bearer" || stored.authType === "env-api-key-header"
-      ? stored.authEnvVar
-        ? process.env[stored.authEnvVar]
-        : null
-      : readSecret(stored.id);
-  if (!key) {
+  const headers: Record<string, string> = {};
+
+  const key = stored.apiKeyEnvVar
+    ? (process.env[stored.apiKeyEnvVar] ?? null)
+    : readSecret(stored.id);
+  if (stored.apiKeyEnvVar && !key) {
     return {
       ok: false,
-      error:
-        stored.authType === "env-bearer" ||
-        stored.authType === "env-api-key-header"
-          ? `API endpoint ${stored.name} has no value in env var ${stored.authEnvVar ?? "(unset)"}`
-          : `API endpoint ${stored.name} has no stored API key`,
+      error: `API endpoint ${stored.name} has no value in env var ${stored.apiKeyEnvVar}`,
     };
   }
 
-  if (stored.authType === "bearer" || stored.authType === "env-bearer") {
-    return { ok: true, headers: { authorization: `Bearer ${key}` } };
+  if (key) {
+    const override = stored.authHeaderName?.trim();
+    if (override) {
+      headers[override] = key;
+    } else if (stored.profile === "anthropic") {
+      headers["x-api-key"] = key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else {
+      headers["authorization"] = `Bearer ${key}`;
+    }
   }
 
-  return {
-    ok: true,
-    headers: {
-      [stored.authHeaderName || "x-api-key"]: key,
-    },
-  };
+  for (const [name, value] of Object.entries(stored.extraHeaders)) {
+    headers[name] = value;
+  }
+
+  return { ok: true, headers };
 }

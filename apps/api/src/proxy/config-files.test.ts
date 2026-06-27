@@ -137,9 +137,11 @@ test("endpoint api key is stored in secrets, never in endpoints.json", () => {
     enabled: true,
     baseUrl: "https://api.example.com/v1",
     profile: "openai",
-    authType: "bearer",
+    apiKeyEnvVar: null,
     authHeaderName: null,
-    authEnvVar: null,
+    extraHeaders: {},
+    passthrough: false,
+    modelFilter: null,
     apiKey: "sk-secret-value",
   });
 
@@ -148,7 +150,7 @@ test("endpoint api key is stored in secrets, never in endpoints.json", () => {
     "utf8",
   );
   assert.ok(!rawEndpoints.includes("sk-secret-value"));
-  assert.ok(!rawEndpoints.includes("apiKey"));
+  assert.ok(!rawEndpoints.includes('"apiKey"'));
   assert.equal(readSecret(endpoint.id), "sk-secret-value");
   assert.equal(getExternalApiEndpoint(endpoint.id)?.authConfigured, true);
 });

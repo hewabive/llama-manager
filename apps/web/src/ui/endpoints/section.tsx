@@ -33,9 +33,10 @@ function endpointKindLabel(endpoint: ApiEndpointRecord) {
 }
 
 function endpointAuthLabel(endpoint: ApiEndpointRecord) {
-  if (endpoint.authType === "none") return "none";
-  if (!endpoint.authConfigured) return `${endpoint.authType} missing`;
-  return endpoint.authType;
+  if (endpoint.kind !== "external-api") return "—";
+  if (endpoint.apiKeyEnvVar) return `env: ${endpoint.apiKeyEnvVar}`;
+  if (endpoint.authConfigured) return "key";
+  return "none";
 }
 
 function endpointBaseUrl(endpoint: ApiEndpointRecord) {
@@ -86,6 +87,11 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
                       >
                         {endpoint.enabled ? "enabled" : "disabled"}
                       </Badge>
+                      {endpoint.passthrough && (
+                        <Badge color="violet" variant="light">
+                          passthrough
+                        </Badge>
+                      )}
                     </Group>
                   </Table.Td>
                   <Table.Td>{endpointKindLabel(endpoint)}</Table.Td>
@@ -93,10 +99,7 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
                     <Code>{endpointBaseUrl(endpoint)}</Code>
                   </Table.Td>
                   <Table.Td>
-                    <Badge
-                      color={endpoint.authConfigured ? "gray" : "red"}
-                      variant="light"
-                    >
+                    <Badge color="gray" variant="light">
                       {endpointAuthLabel(endpoint)}
                     </Badge>
                   </Table.Td>
@@ -118,7 +121,9 @@ export function ApiEndpointsSection(props: ApiEndpointsSectionProps) {
                         <ActionIcon
                           aria-label="Edit API endpoint"
                           variant="subtle"
-                          disabled={!endpoint.editable || Boolean(endpoint.nodeId)}
+                          disabled={
+                            !endpoint.editable || Boolean(endpoint.nodeId)
+                          }
                           onClick={() => props.onEdit(endpoint)}
                         >
                           <Pencil size={16} />

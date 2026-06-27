@@ -3,12 +3,12 @@ import type { Hono } from "hono";
 import { anthropicProtocolAdapter } from "./anthropic.js";
 import { getApiProxyPublicModelStatuses } from "./model-status.js";
 import { openAiModelsList, openAiProtocolAdapter } from "./openai.js";
+import { listPublicProxyModels } from "./passthrough.js";
 import { proxyProtocolEndpoint } from "./protocol-endpoint.js";
 import type {
   ApiProxyProtocolOperation,
   ApiProxyProtocolTransport,
 } from "./protocol.js";
-import { listApiProxyModels } from "./repository.js";
 
 function protocolOperation(input: {
   protocol: ApiProxyProtocolOperation["protocol"];
@@ -26,8 +26,9 @@ function protocolOperation(input: {
 
 export function registerOpenAiProxyRoutes(app: Hono, prefix: string) {
   app.get(`${prefix}/models`, async (c) => {
-    const statuses = await getApiProxyPublicModelStatuses();
-    return c.json(openAiModelsList(listApiProxyModels(), statuses));
+    const models = await listPublicProxyModels();
+    const statuses = await getApiProxyPublicModelStatuses(models);
+    return c.json(openAiModelsList(models, statuses));
   });
 
   app.post(`${prefix}/chat/completions`, (c) =>

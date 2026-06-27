@@ -25,6 +25,10 @@ import {
   dropStoredRemoteInstanceEndpoints,
   storedEndpointsHaveRemoteInstances,
 } from "../proxy/remote-endpoint-migration.js";
+import {
+  migrateStoredEndpointsAuth,
+  storedEndpointsHaveLegacyAuth,
+} from "../proxy/endpoints-auth-migration.js";
 import { migrateApiProxyRuntimeMetadataToFile } from "../proxy/runtime-metadata-migration.js";
 import {
   dropPresetsSettingsSection,
@@ -85,7 +89,8 @@ export const migrations: Migration[] = [
   },
   {
     id: "0006-drop-presets-settings",
-    describe: "settings.json: remove obsolete presets section (validation binary)",
+    describe:
+      "settings.json: remove obsolete presets section (validation binary)",
     isApplied: () => !settingsFileHasPresetsSection(),
     apply: () => {
       dropPresetsSettingsSection();
@@ -124,6 +129,15 @@ export const migrations: Migration[] = [
     isApplied: () => !hasLegacyModelVisibility(),
     apply: () => {
       migrateModelVisibility();
+    },
+  },
+  {
+    id: "0011-endpoint-auth-simplify",
+    describe:
+      "config/proxy/endpoints.json: authType enum → apiKeyEnvVar + authHeaderName + extraHeaders",
+    isApplied: () => !storedEndpointsHaveLegacyAuth(),
+    apply: () => {
+      migrateStoredEndpointsAuth();
     },
   },
 ];

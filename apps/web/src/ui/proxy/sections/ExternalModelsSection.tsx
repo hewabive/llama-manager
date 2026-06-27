@@ -214,5 +214,8 @@ function routeToLabel(
   if (routeTo.type === "target") {
     return targetById.get(routeTo.id)?.name ?? routeTo.id;
   }
+  if (routeTo.type === "endpoint") {
+    return `endpoint · ${routeTo.upstreamModel ?? routeTo.endpointId}`;
+  }
   return pipelineById.get(routeTo.id)?.name ?? routeTo.id;
 }

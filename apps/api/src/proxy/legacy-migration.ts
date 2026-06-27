@@ -130,6 +130,21 @@ function exportPipelines() {
   );
 }
 
+function migrateLegacyAuth(row: any): {
+  apiKeyEnvVar: string | null;
+  authHeaderName: string | null;
+} {
+  const authType = String(row.auth_type ?? "none");
+  const usesEnv =
+    authType === "env-bearer" || authType === "env-api-key-header";
+  const usesHeader =
+    authType === "api-key-header" || authType === "env-api-key-header";
+  return {
+    apiKeyEnvVar: usesEnv ? (row.auth_env_var ?? null) : null,
+    authHeaderName: usesHeader ? (row.auth_header_name ?? "x-api-key") : null,
+  };
+}
+
 function exportEndpoints() {
   const rows = sqlite.prepare("SELECT * FROM api_endpoints").all() as any[];
   exportIfAbsent(ENDPOINTS_FILE, () =>
@@ -140,9 +155,10 @@ function exportEndpoints() {
         enabled: parseBool(row.enabled),
         baseUrl: row.base_url,
         profile: row.profile,
-        authType: row.auth_type,
-        authHeaderName: row.auth_header_name,
-        authEnvVar: row.auth_env_var,
+        ...migrateLegacyAuth(row),
+        extraHeaders: {},
+        passthrough: false,
+        modelFilter: null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }),

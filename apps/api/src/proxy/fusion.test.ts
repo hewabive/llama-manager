@@ -87,9 +87,11 @@ function seedExternalTarget(name: string, baseUrl = "http://fake.local") {
     name: `${name}-endpoint`,
     baseUrl,
     profile: "openai",
-    authType: "none",
+    apiKeyEnvVar: null,
     authHeaderName: null,
-    authEnvVar: null,
+    extraHeaders: {},
+    passthrough: false,
+    modelFilter: null,
     enabled: true,
     apiKey: "",
   });

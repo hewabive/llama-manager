@@ -7,6 +7,7 @@ import {
   ApiProxyTargetCreateSchema,
   ApiProxyTargetUpdateSchema,
   type ApiProxyPipelineRecord,
+  type ApiProxyRouteTo,
 } from "@llama-manager/core";
 import type { Hono } from "hono";
 
@@ -72,7 +73,7 @@ function validateApiProxyTargetModel(input: {
 }
 
 function validateApiProxyRouteToRef(input: {
-  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+  routeTo?: ApiProxyRouteTo | null | undefined;
 }) {
   if (!input.routeTo) {
     return null;
@@ -86,12 +87,18 @@ function validateApiProxyRouteToRef(input: {
   ) {
     return "route pipeline not found";
   }
+  if (
+    input.routeTo.type === "endpoint" &&
+    !getApiEndpointById(input.routeTo.endpointId, listInstances())
+  ) {
+    return "route endpoint not found";
+  }
   return null;
 }
 
 function validateApiProxyModelRefs(input: {
   targetId?: string | null | undefined;
-  routeTo?: { type: "target" | "pipeline"; id: string } | null | undefined;
+  routeTo?: ApiProxyRouteTo | null | undefined;
 }) {
   if (input.targetId && !getApiProxyTarget(input.targetId)) {
     return "proxy model target not found";

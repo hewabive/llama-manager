@@ -17,7 +17,10 @@ type TopologyProps = {
 
 type ModelChain = {
   model: ApiProxyModelRecord;
-  firstHop: { kind: "target" | "pipeline" | "unbound"; id: string | null };
+  firstHop: {
+    kind: "target" | "pipeline" | "endpoint" | "unbound";
+    id: string | null;
+  };
   pipelineIds: string[];
   targetIds: string[];
   danglingRefs: string[];
@@ -76,14 +79,16 @@ function buildModelChain(
     }
   };
 
-  if (routeTo) {
+  if (routeTo && routeTo.type !== "endpoint") {
     visitRef(routeTo);
   }
 
   return {
     model,
     firstHop: routeTo
-      ? { kind: routeTo.type, id: routeTo.id }
+      ? routeTo.type === "endpoint"
+        ? { kind: "endpoint", id: routeTo.endpointId }
+        : { kind: routeTo.type, id: routeTo.id }
       : { kind: "unbound", id: null },
     pipelineIds,
     targetIds: [...targetIds],
@@ -133,6 +138,11 @@ export function Topology(props: TopologyProps) {
               {chain.firstHop.kind === "unbound" && (
                 <Badge color="red" variant="light">
                   unbound
+                </Badge>
+              )}
+              {chain.firstHop.kind === "endpoint" && (
+                <Badge color="violet" variant="light">
+                  external endpoint
                 </Badge>
               )}
               {chain.pipelineIds.map((pipelineId) => (

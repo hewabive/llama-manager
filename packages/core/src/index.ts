@@ -459,21 +459,32 @@ const ApiEndpointBaseUrlSchema = z
     { message: "Base URL must be an http or https URL" },
   );
 const ApiEndpointHeaderNameSchema = z.string().trim().min(1).max(80).nullable();
-const ApiEndpointEnvVarSchema = z.string().trim().min(1).max(120).nullable();
+const ApiEndpointEnvVarSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .refine((value) => !value.startsWith("LLAMA_MANAGER_"), {
+    message: "Env var must not start with LLAMA_MANAGER_",
+  })
+  .nullable();
 const ApiEndpointSecretSchema = z.string().max(4_000).optional();
+const ApiEndpointExtraHeadersSchema = z.record(
+  z.string().trim().min(1).max(80),
+  z.string().max(2_000),
+);
+const ApiEndpointModelPatternSchema = z.string().trim().min(1).max(200);
+export const ApiEndpointModelFilterSchema = z
+  .object({
+    allow: z.array(ApiEndpointModelPatternSchema).max(500).optional(),
+    deny: z.array(ApiEndpointModelPatternSchema).max(500).optional(),
+  })
+  .nullable();
 
 export const ApiEndpointKindSchema = z.enum([
   "manager-proxy",
   "managed-instance",
   "external-api",
-]);
-
-export const ApiEndpointAuthTypeSchema = z.enum([
-  "none",
-  "bearer",
-  "api-key-header",
-  "env-bearer",
-  "env-api-key-header",
 ]);
 
 export const ApiEndpointConfigSchema = z.object({
@@ -483,9 +494,11 @@ export const ApiEndpointConfigSchema = z.object({
   kind: ApiEndpointKindSchema.default("external-api"),
   baseUrl: ApiEndpointBaseUrlSchema,
   profile: ApiLabProbeProfileSchema.default("openai"),
-  authType: ApiEndpointAuthTypeSchema.default("none"),
+  apiKeyEnvVar: ApiEndpointEnvVarSchema.default(null),
   authHeaderName: ApiEndpointHeaderNameSchema.default(null),
-  authEnvVar: ApiEndpointEnvVarSchema.default(null),
+  extraHeaders: ApiEndpointExtraHeadersSchema.default({}),
+  passthrough: z.boolean().default(false),
+  modelFilter: ApiEndpointModelFilterSchema.default(null),
   instanceId: z.string().min(1).nullable().default(null),
   nodeId: z.string().min(1).nullable().default(null),
   editable: z.boolean().default(true),
@@ -497,18 +510,30 @@ export const ApiEndpointCreateSchema = ApiEndpointConfigSchema.omit({
   instanceId: true,
   nodeId: true,
   editable: true,
-}).extend({
-  apiKey: ApiEndpointSecretSchema,
-});
+})
+  .extend({
+    apiKey: ApiEndpointSecretSchema,
+  })
+  .superRefine((input, ctx) => {
+    if (input.apiKeyEnvVar && input.apiKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["apiKey"],
+        message: "Set either an API key or an env var name, not both",
+      });
+    }
+  });
 
 export const ApiEndpointUpdateSchema = z.object({
   name: ApiEndpointNameSchema.optional(),
   enabled: z.boolean().optional(),
   baseUrl: ApiEndpointBaseUrlSchema.optional(),
   profile: ApiLabProbeProfileSchema.optional(),
-  authType: ApiEndpointAuthTypeSchema.optional(),
+  apiKeyEnvVar: ApiEndpointEnvVarSchema.optional(),
   authHeaderName: ApiEndpointHeaderNameSchema.optional(),
-  authEnvVar: ApiEndpointEnvVarSchema.optional(),
+  extraHeaders: ApiEndpointExtraHeadersSchema.optional(),
+  passthrough: z.boolean().optional(),
+  modelFilter: ApiEndpointModelFilterSchema.optional(),
   apiKey: ApiEndpointSecretSchema,
 });
 
@@ -622,7 +647,17 @@ export const ApiProxyTargetKindSchema = z.enum([
 ]);
 
 export const ApiProxyTargetRoleSchema = z.enum(["interactive", "background"]);
-export const ApiProxyRouteToKindSchema = z.enum(["target", "pipeline"]);
+export const ApiProxyRouteToKindSchema = z.enum([
+  "target",
+  "pipeline",
+  "endpoint",
+]);
+const ApiProxyUpstreamModelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .nullable();
 
 export const ApiProxyModelStateSchema = z.enum([
   "unknown",
@@ -643,10 +678,15 @@ const ApiProxyModelOwnerSchema = z.string().trim().min(1).max(80);
 const ApiProxyModelDescriptionSchema = z.string().trim().max(500).nullable();
 const ApiProxyReplacementTextSchema = z.string();
 
-export const ApiProxyRouteToSchema = z.object({
-  type: ApiProxyRouteToKindSchema,
-  id: ApiProxyIdSchema,
-});
+export const ApiProxyRouteToSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("target"), id: ApiProxyIdSchema }),
+  z.object({ type: z.literal("pipeline"), id: ApiProxyIdSchema }),
+  z.object({
+    type: z.literal("endpoint"),
+    endpointId: ApiEndpointIdSchema,
+    upstreamModel: ApiProxyUpstreamModelSchema.default(null),
+  }),
+]);
 
 export const ApiProxyTextReplacementRuleSchema = z.object({
   enabled: z.boolean().default(true),
@@ -2415,7 +2455,32 @@ export type LlamaSlotActionRequest = z.infer<
 export type LlamaSlotActionResult = z.infer<typeof LlamaSlotActionResultSchema>;
 export type ApiLabProbeProfile = z.infer<typeof ApiLabProbeProfileSchema>;
 export type ApiEndpointKind = z.infer<typeof ApiEndpointKindSchema>;
-export type ApiEndpointAuthType = z.infer<typeof ApiEndpointAuthTypeSchema>;
+export type ApiEndpointModelFilter = z.infer<
+  typeof ApiEndpointModelFilterSchema
+>;
+
+function apiEndpointModelPatternToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*")}$`, "i");
+}
+
+export function apiEndpointModelFilterAdmits(
+  filter: ApiEndpointModelFilter,
+  modelId: string,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+  const matches = (pattern: string) =>
+    apiEndpointModelPatternToRegExp(pattern).test(modelId);
+  if (filter.allow && filter.allow.length > 0 && !filter.allow.some(matches)) {
+    return false;
+  }
+  if (filter.deny && filter.deny.some(matches)) {
+    return false;
+  }
+  return true;
+}
 export type ApiEndpointConfig = z.infer<typeof ApiEndpointConfigSchema>;
 export type ApiEndpointCreate = z.infer<typeof ApiEndpointCreateSchema>;
 export type ApiEndpointUpdate = z.infer<typeof ApiEndpointUpdateSchema>;

@@ -3,6 +3,8 @@ import type {
   ApiProxyRouteExplainResult,
 } from "@llama-manager/core";
 
+import { listInstances } from "../instances/repository.js";
+import { getApiEndpointById } from "./endpoints.js";
 import { resolveApiProxyRouteChain } from "./pipeline.js";
 import { bodyRequestsStreaming } from "./protocol.js";
 import {
@@ -103,6 +105,20 @@ export async function explainApiProxyRoute(
       ok: true,
       targetId: null,
       targetName: `fusion (${route.node.ports.panel.length} panel)`,
+      routeTrace: route.routeTrace,
+      textReplacementCount: route.textReplacementCount,
+      transformedBody: route.request.body,
+    };
+  }
+
+  if (route.kind === "endpoint") {
+    const endpoint = getApiEndpointById(route.endpointId, listInstances());
+    const upstream = route.upstreamModel ?? modelId;
+    return {
+      ...base,
+      ok: true,
+      targetId: null,
+      targetName: `${endpoint?.name ?? route.endpointId} · ${upstream}`,
       routeTrace: route.routeTrace,
       textReplacementCount: route.textReplacementCount,
       transformedBody: route.request.body,

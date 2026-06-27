@@ -11,6 +11,8 @@ import { getNode } from "../nodes/repository.js";
 import { observeBodyCompletion } from "./body-completion.js";
 import { delegateApiProxyServe } from "./delegate.js";
 import { getApiEndpointById } from "./endpoints.js";
+import { externalEndpointTarget } from "./external-target.js";
+import { resolvePassthroughModel } from "./passthrough.js";
 import { buildDomainAdmissionDecider } from "./domain-admission.js";
 import {
   attachLeaseRelease,
@@ -229,7 +231,8 @@ async function proxyProtocolEndpointInner(
     adapter,
     operation,
     body,
-    getModelByModelId: getApiProxyModelByModelId,
+    getModelByModelId: (modelId) =>
+      getApiProxyModelByModelId(modelId) ?? resolvePassthroughModel(modelId),
   });
 
   if (!resolution.ok) {
@@ -279,6 +282,34 @@ async function proxyProtocolEndpointInner(
       routeResult.diagnostic,
     );
     return c.json(response.body, response.status);
+  }
+
+  if (routeResult.kind === "endpoint") {
+    const upstreamModel =
+      routeResult.upstreamModel ?? routeResult.request.modelId;
+    const target = externalEndpointTarget({
+      endpointId: routeResult.endpointId,
+      upstreamModel,
+      name: routeResult.request.modelId,
+      now: new Date().toISOString(),
+    });
+    trace.targetId = target.id;
+    trace.targetName = target.name;
+    trace.stream = routeResult.request.stream;
+    trace.textReplacementCount = routeResult.textReplacementCount;
+    inflight.setTarget(target.id);
+    inflight.setStream(routeResult.request.stream);
+    return serveResolvedTarget({
+      c,
+      adapter,
+      operation,
+      targetId: target.id,
+      request: routeResult.request,
+      trace,
+      recorder,
+      inflight,
+      extraTarget: target,
+    });
   }
 
   let route: Extract<ApiProxyRouteChainResult, { ok: true; kind: "target" }>;

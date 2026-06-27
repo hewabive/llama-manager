@@ -114,6 +114,10 @@ export function deriveApiProxyModelStatus(input: {
     return { value: "disabled", activeRequests, queuedRequests };
   }
 
+  if (input.model.routeTo?.type === "endpoint") {
+    return { value: "loaded", activeRequests, queuedRequests };
+  }
+
   const stateByTargetId = new Map(
     input.snapshot.targets.map((target) => [target.targetId, target.state]),
   );
@@ -131,10 +135,9 @@ export function deriveApiProxyModelStatus(input: {
   };
 }
 
-export async function getApiProxyPublicModelStatuses(): Promise<
-  Map<string, ApiProxyPublicModelStatus>
-> {
-  const models = listApiProxyModels();
+export async function getApiProxyPublicModelStatuses(
+  models: ApiProxyModelRecord[] = listApiProxyModels(),
+): Promise<Map<string, ApiProxyPublicModelStatus>> {
   const pipelinesById = new Map(
     listApiProxyPipelines().map((pipeline) => [pipeline.id, pipeline]),
   );
