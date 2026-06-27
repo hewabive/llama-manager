@@ -1,4 +1,5 @@
 import type {
+  GgufBaseModel,
   GgufMetadata,
   GgufTensorInfo,
   GgufTensorTable,
@@ -10,6 +11,9 @@ import { basename, dirname, join } from "node:path";
 import { parseSplitInfo, splitShardName } from "./split.js";
 
 type GgufScalar = string | number | boolean | null;
+type GgufValue = GgufScalar | string[];
+
+const STRING_ARRAY_CAPTURE_LIMIT = 64;
 
 const GGUF_VALUE_SIZE: Record<number, number> = {
   0: 1,
@@ -138,7 +142,7 @@ function readScalar(reader: FileReader, type: number): GgufScalar {
   throw new Error(`unsupported GGUF metadata type: ${type}`);
 }
 
-function readValue(reader: FileReader, type: number): GgufScalar {
+function readValue(reader: FileReader, type: number): GgufValue {
   if (type !== 9) {
     return readScalar(reader, type);
   }
@@ -146,6 +150,13 @@ function readValue(reader: FileReader, type: number): GgufScalar {
   const elementType = reader.u32();
   const count = reader.u64Number();
   if (elementType === 8) {
+    if (count <= STRING_ARRAY_CAPTURE_LIMIT) {
+      const values: string[] = [];
+      for (let index = 0; index < count; index += 1) {
+        values.push(reader.string());
+      }
+      return values;
+    }
     for (let index = 0; index < count; index += 1) {
       reader.skip(reader.u64Number());
     }
@@ -164,7 +175,7 @@ function readValue(reader: FileReader, type: number): GgufScalar {
   return first;
 }
 
-function numberMetadata(metadata: Map<string, GgufScalar>, keys: string[]) {
+function numberMetadata(metadata: Map<string, GgufValue>, keys: string[]) {
   for (const key of keys) {
     const value = metadata.get(key);
     if (typeof value === "number") {
@@ -174,7 +185,7 @@ function numberMetadata(metadata: Map<string, GgufScalar>, keys: string[]) {
   return null;
 }
 
-function stringMetadata(metadata: Map<string, GgufScalar>, keys: string[]) {
+function stringMetadata(metadata: Map<string, GgufValue>, keys: string[]) {
   for (const key of keys) {
     const value = metadata.get(key);
     if (typeof value === "string") {
@@ -184,7 +195,7 @@ function stringMetadata(metadata: Map<string, GgufScalar>, keys: string[]) {
   return null;
 }
 
-function findNumberBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
+function findNumberBySuffix(metadata: Map<string, GgufValue>, suffix: string) {
   for (const [key, value] of metadata.entries()) {
     if (key.endsWith(suffix) && typeof value === "number") {
       return value;
@@ -193,7 +204,7 @@ function findNumberBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
   return null;
 }
 
-function findStringBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
+function findStringBySuffix(metadata: Map<string, GgufValue>, suffix: string) {
   for (const [key, value] of metadata.entries()) {
     if (key.endsWith(suffix) && typeof value === "string") {
       return value;
@@ -202,13 +213,45 @@ function findStringBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
   return null;
 }
 
-function findBooleanBySuffix(metadata: Map<string, GgufScalar>, suffix: string) {
+function findBooleanBySuffix(metadata: Map<string, GgufValue>, suffix: string) {
   for (const [key, value] of metadata.entries()) {
     if (key.endsWith(suffix) && typeof value === "boolean") {
       return value;
     }
   }
   return null;
+}
+
+function stringArrayMetadata(metadata: Map<string, GgufValue>, keys: string[]) {
+  for (const key of keys) {
+    const value = metadata.get(key);
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+  return [];
+}
+
+function readBaseModels(metadata: Map<string, GgufValue>): GgufBaseModel[] {
+  const count = numberMetadata(metadata, ["general.base_model.count"]);
+  if (count === null || count <= 0) {
+    return [];
+  }
+  const models: GgufBaseModel[] = [];
+  for (let index = 0; index < Math.min(count, 16); index += 1) {
+    const name = stringMetadata(metadata, [`general.base_model.${index}.name`]);
+    const organization = stringMetadata(metadata, [
+      `general.base_model.${index}.organization`,
+    ]);
+    const repoUrl = stringMetadata(metadata, [
+      `general.base_model.${index}.repo_url`,
+    ]);
+    if (name === null && organization === null && repoUrl === null) {
+      continue;
+    }
+    models.push({ name, organization, repoUrl });
+  }
+  return models;
 }
 
 export function ggufFileTypeLabel(fileType: number) {
@@ -221,7 +264,7 @@ export function ggufFileTypeLabel(fileType: number) {
   return guessed ? `${label} (guessed)` : label;
 }
 
-function readQuantization(metadata: Map<string, GgufScalar>) {
+function readQuantization(metadata: Map<string, GgufValue>) {
   const fileType = numberMetadata(metadata, ["general.file_type"]);
   if (fileType !== null) {
     return ggufFileTypeLabel(fileType) ?? `FileType(${fileType})`;
@@ -229,7 +272,7 @@ function readQuantization(metadata: Map<string, GgufScalar>) {
   return null;
 }
 
-export const GGUF_PARSER_VERSION = 5;
+export const GGUF_PARSER_VERSION = 7;
 
 function readHeader(reader: FileReader) {
   if (reader.read(4).toString("utf8") !== "GGUF") {
@@ -242,7 +285,7 @@ function readHeader(reader: FileReader) {
 }
 
 function readKv(reader: FileReader, kvCount: number) {
-  const metadata = new Map<string, GgufScalar>();
+  const metadata = new Map<string, GgufValue>();
   for (let index = 0; index < kvCount; index += 1) {
     const key = reader.string();
     const type = reader.u32();
@@ -268,7 +311,7 @@ function readTensorParameterCount(reader: FileReader, tensorCount: number) {
 }
 
 function extractMetadata(
-  metadata: Map<string, GgufScalar>,
+  metadata: Map<string, GgufValue>,
   parameterCount: number | null,
 ): GgufMetadata {
   const contextLength =
@@ -277,6 +320,14 @@ function extractMetadata(
       "general.context_length",
       "context_length",
     ]) ?? findNumberBySuffix(metadata, ".context_length");
+
+  const tokens = metadata.get("tokenizer.ggml.tokens");
+  const vocabularySize =
+    typeof tokens === "number"
+      ? tokens
+      : Array.isArray(tokens)
+        ? tokens.length
+        : null;
 
   return {
     name: stringMetadata(metadata, ["general.name"]),
@@ -291,6 +342,13 @@ function extractMetadata(
     sizeLabel: stringMetadata(metadata, ["general.size_label"]),
     basename: stringMetadata(metadata, ["general.basename"]),
     finetune: stringMetadata(metadata, ["general.finetune"]),
+    license: stringMetadata(metadata, ["general.license"]),
+    licenseLink: stringMetadata(metadata, ["general.license.link"]),
+    repoUrl: stringMetadata(metadata, ["general.repo_url"]),
+    version: stringMetadata(metadata, ["general.version"]),
+    quantizedBy: stringMetadata(metadata, ["general.quantized_by"]),
+    tags: [...new Set(stringArrayMetadata(metadata, ["general.tags"]))],
+    baseModels: readBaseModels(metadata),
     parameterCount,
     contextLength,
     embeddingLength: findNumberBySuffix(metadata, ".embedding_length"),
@@ -323,8 +381,17 @@ function extractMetadata(
       ".rope.scaling.original_context_length",
     ),
     tokenizerModel: stringMetadata(metadata, ["tokenizer.ggml.model"]),
+    tokenizerPre: stringMetadata(metadata, ["tokenizer.ggml.pre"]),
+    addBosToken: findBooleanBySuffix(metadata, "tokenizer.ggml.add_bos_token"),
+    addEosToken: findBooleanBySuffix(metadata, "tokenizer.ggml.add_eos_token"),
     hasChatTemplate: metadata.has("tokenizer.chat_template"),
-    vocabularySize: numberMetadata(metadata, ["tokenizer.ggml.tokens"]),
+    vocabularySize,
+    samplingTemp: numberMetadata(metadata, ["general.sampling.temp"]),
+    samplingTopK: numberMetadata(metadata, ["general.sampling.top_k"]),
+    samplingTopP: numberMetadata(metadata, ["general.sampling.top_p"]),
+    imatrixDataset: stringMetadata(metadata, ["quantize.imatrix.dataset"]),
+    imatrixEntries: numberMetadata(metadata, ["quantize.imatrix.entries_count"]),
+    imatrixChunks: numberMetadata(metadata, ["quantize.imatrix.chunks_count"]),
   };
 }
 

@@ -2,6 +2,7 @@ import type { GgufModel, ModelScanRoot } from "@llama-manager/core";
 import { ggufModelRole, ggufPoolingTypeLabel } from "@llama-manager/core";
 import {
   ActionIcon,
+  Anchor,
   Badge,
   Button,
   Collapse,
@@ -59,6 +60,10 @@ function paramsLabel(model: GgufModel) {
     model.metadata.sizeLabel ??
     "-"
   );
+}
+
+function formatSampler(value: number) {
+  return String(Math.round(value * 1000) / 1000);
 }
 
 function metaRows(model: GgufModel): Array<[string, string]> {
@@ -134,6 +139,40 @@ function metaRows(model: GgufModel): Array<[string, string]> {
   push("Chat template", m.hasChatTemplate ? "yes" : null);
   push("Basename", m.basename);
   push("Finetune", m.finetune);
+  push("License", m.license);
+  push("Version", m.version);
+  push("Quantized by", m.quantizedBy);
+  push("Repo", m.repoUrl);
+  const sampling = [
+    m.samplingTemp !== null ? `temp ${formatSampler(m.samplingTemp)}` : null,
+    m.samplingTopK !== null ? `top_k ${m.samplingTopK}` : null,
+    m.samplingTopP !== null ? `top_p ${formatSampler(m.samplingTopP)}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  push("Rec. sampling", sampling || null);
+  if (m.imatrixDataset || m.imatrixEntries !== null) {
+    const counts = [
+      m.imatrixEntries !== null ? `${m.imatrixEntries} entries` : null,
+      m.imatrixChunks !== null ? `${m.imatrixChunks} chunks` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    push(
+      "imatrix",
+      [m.imatrixDataset, counts ? `(${counts})` : null]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+  push("Pretokenizer", m.tokenizerPre);
+  const addTokens = [
+    m.addBosToken === null ? null : `bos ${m.addBosToken ? "yes" : "no"}`,
+    m.addEosToken === null ? null : `eos ${m.addEosToken ? "yes" : "no"}`,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  push("Add tokens", addTokens || null);
   push("File size", formatBytes(model.sizeBytes));
   return rows;
 }
@@ -197,6 +236,8 @@ function LayersCell(props: { model: GgufModel }) {
 
 function ModelDetailPanel(props: { model: GgufModel }) {
   const rows = metaRows(props.model);
+  const m = props.model.metadata;
+  const tags = [...new Set(m.tags)];
   return (
     <Stack gap="xs">
       <SimpleGrid
@@ -219,6 +260,42 @@ function ModelDetailPanel(props: { model: GgufModel }) {
           </Group>
         ))}
       </SimpleGrid>
+      {tags.length > 0 && (
+        <Group gap={4}>
+          {tags.map((tag) => (
+            <Badge key={tag} size="xs" variant="outline" color="gray">
+              {tag}
+            </Badge>
+          ))}
+        </Group>
+      )}
+      {m.baseModels.length > 0 && (
+        <Stack gap={2}>
+          <Text c="dimmed" size="xs">
+            Base {m.baseModels.length > 1 ? "models" : "model"}
+          </Text>
+          {m.baseModels.map((base, index) => {
+            const label = [base.name, base.organization]
+              .filter(Boolean)
+              .join(" · ");
+            return base.repoUrl ? (
+              <Anchor
+                key={base.repoUrl}
+                href={base.repoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="xs"
+              >
+                {label || base.repoUrl}
+              </Anchor>
+            ) : (
+              <Text key={base.name ?? String(index)} size="xs">
+                {label}
+              </Text>
+            );
+          })}
+        </Stack>
+      )}
       <Text c="dimmed" size="xs" className="text-wrap">
         {props.model.path}
       </Text>

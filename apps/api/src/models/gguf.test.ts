@@ -179,6 +179,26 @@ function kvBool(key: string, value: boolean) {
   return Buffer.concat([ggufString(key), u32(7), Buffer.from([value ? 1 : 0])]);
 }
 
+function f32(value: number) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeFloatLE(value, 0);
+  return buffer;
+}
+
+function kvFloat(key: string, value: number) {
+  return Buffer.concat([ggufString(key), u32(6), f32(value)]);
+}
+
+function kvStringArray(key: string, values: string[]) {
+  return Buffer.concat([
+    ggufString(key),
+    u32(9),
+    u32(8),
+    u64(values.length),
+    ...values.map(ggufString),
+  ]);
+}
+
 function metadataFile(kvs: Buffer[]) {
   return Buffer.concat([
     Buffer.from("GGUF", "utf8"),
@@ -264,6 +284,53 @@ test("ggufModelRole classifies pooling and attention combinations", () => {
     ggufModelRole({ poolingType: null, causalAttention: null }),
     "generative",
   );
+});
+
+test("readGgufMetadata captures provenance, sampling and imatrix", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-gguf-prov-"));
+  const path = join(dir, "provenance.gguf");
+  try {
+    writeFileSync(
+      path,
+      metadataFile([
+        kvString("general.architecture", "gemma4"),
+        kvString("general.license", "apache-2.0"),
+        kvString("general.quantized_by", "Unsloth"),
+        kvStringArray("general.tags", ["unsloth", "gemma"]),
+        kvU32("general.base_model.count", 1),
+        kvString("general.base_model.0.name", "Gemma 4 E2B It"),
+        kvString("general.base_model.0.organization", "Google"),
+        kvString(
+          "general.base_model.0.repo_url",
+          "https://huggingface.co/google/gemma-4-E2B-it",
+        ),
+        kvFloat("general.sampling.temp", 1),
+        kvU32("general.sampling.top_k", 64),
+        kvString("quantize.imatrix.dataset", "calib.txt"),
+        kvU32("quantize.imatrix.entries_count", 275),
+        kvU32("quantize.imatrix.chunks_count", 141),
+      ]),
+    );
+
+    const metadata = readGgufMetadata(path);
+    assert.equal(metadata.license, "apache-2.0");
+    assert.equal(metadata.quantizedBy, "Unsloth");
+    assert.deepEqual(metadata.tags, ["unsloth", "gemma"]);
+    assert.equal(metadata.baseModels.length, 1);
+    assert.equal(metadata.baseModels[0]?.name, "Gemma 4 E2B It");
+    assert.equal(metadata.baseModels[0]?.organization, "Google");
+    assert.equal(
+      metadata.baseModels[0]?.repoUrl,
+      "https://huggingface.co/google/gemma-4-E2B-it",
+    );
+    assert.equal(metadata.samplingTemp, 1);
+    assert.equal(metadata.samplingTopK, 64);
+    assert.equal(metadata.imatrixDataset, "calib.txt");
+    assert.equal(metadata.imatrixEntries, 275);
+    assert.equal(metadata.imatrixChunks, 141);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("ggufPoolingTypeLabel maps llama.cpp pooling enum values", () => {

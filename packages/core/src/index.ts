@@ -2188,6 +2188,12 @@ export const ExternalProcessKillResultSchema = z.object({
   killed: z.boolean(),
 });
 
+export const GgufBaseModelSchema = z.object({
+  name: z.string().nullable(),
+  organization: z.string().nullable(),
+  repoUrl: z.string().nullable(),
+});
+
 export const GgufMetadataSchema = z.object({
   name: z.string().nullable(),
   architecture: z.string().nullable(),
@@ -2199,6 +2205,13 @@ export const GgufMetadataSchema = z.object({
   sizeLabel: z.string().nullable(),
   basename: z.string().nullable(),
   finetune: z.string().nullable(),
+  license: z.string().nullable(),
+  licenseLink: z.string().nullable(),
+  repoUrl: z.string().nullable(),
+  version: z.string().nullable(),
+  quantizedBy: z.string().nullable(),
+  tags: z.array(z.string()),
+  baseModels: z.array(GgufBaseModelSchema),
   parameterCount: z.number().nullable(),
   contextLength: z.number().nullable(),
   embeddingLength: z.number().nullable(),
@@ -2222,8 +2235,17 @@ export const GgufMetadataSchema = z.object({
   ropeScalingFactor: z.number().nullable(),
   ropeScalingOrigCtxLen: z.number().nullable(),
   tokenizerModel: z.string().nullable(),
+  tokenizerPre: z.string().nullable(),
+  addBosToken: z.boolean().nullable(),
+  addEosToken: z.boolean().nullable(),
   hasChatTemplate: z.boolean(),
   vocabularySize: z.number().nullable(),
+  samplingTemp: z.number().nullable(),
+  samplingTopK: z.number().nullable(),
+  samplingTopP: z.number().nullable(),
+  imatrixDataset: z.string().nullable(),
+  imatrixEntries: z.number().nullable(),
+  imatrixChunks: z.number().nullable(),
 });
 
 export const GgufModelSchema = z.object({
@@ -2666,6 +2688,7 @@ export type ExternalProcessKill = z.infer<typeof ExternalProcessKillSchema>;
 export type ExternalProcessKillResult = z.infer<
   typeof ExternalProcessKillResultSchema
 >;
+export type GgufBaseModel = z.infer<typeof GgufBaseModelSchema>;
 export type GgufMetadata = z.infer<typeof GgufMetadataSchema>;
 export type GgufModel = z.infer<typeof GgufModelSchema>;
 
