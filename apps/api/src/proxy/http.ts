@@ -48,6 +48,8 @@ const hopByHopHeaders = new Set([
 
 const requestOnlyHeaders = new Set(["host", "content-length"]);
 
+const decodedBodyHeaders = new Set(["content-encoding", "content-length"]);
+
 function normalizedHeaderEntries(input: Headers | Record<string, string>) {
   if (typeof (input as Headers).forEach !== "function") {
     return Object.entries(input as Record<string, string>);
@@ -86,7 +88,8 @@ export function proxyRequestHeaders(input: Headers | Record<string, string>) {
 export function proxyResponseHeaders(input: Headers | Record<string, string>) {
   const output = new Headers();
   for (const [name, value] of normalizedHeaderEntries(input)) {
-    if (hopByHopHeaders.has(name.toLowerCase())) {
+    const normalized = name.toLowerCase();
+    if (hopByHopHeaders.has(normalized) || decodedBodyHeaders.has(normalized)) {
       continue;
     }
     output.append(name, value);

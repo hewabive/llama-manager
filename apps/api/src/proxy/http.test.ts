@@ -54,14 +54,18 @@ test("proxyRequestHeaders drops hop-by-hop and request-owned headers", () => {
   assert.equal(headers.has("host"), false);
 });
 
-test("proxyResponseHeaders drops hop-by-hop headers", () => {
+test("proxyResponseHeaders drops hop-by-hop and decoded-body headers", () => {
   const headers = proxyResponseHeaders({
     "content-type": "application/json",
     "transfer-encoding": "chunked",
+    "content-encoding": "gzip",
+    "content-length": "42",
   });
 
   assert.equal(headers.get("content-type"), "application/json");
   assert.equal(headers.has("transfer-encoding"), false);
+  assert.equal(headers.has("content-encoding"), false);
+  assert.equal(headers.has("content-length"), false);
 });
 
 test("isEventStream detects server-sent events", () => {
