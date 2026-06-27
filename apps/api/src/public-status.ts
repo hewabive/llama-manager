@@ -7,10 +7,10 @@ import {
   listApiProxyModels,
   listApiProxyPipelines,
 } from "./proxy/repository.js";
-import { getApiProxyRuntimeSnapshot } from "./proxy/runtime-snapshot.js";
+import { getCachedApiProxyRuntimeSnapshot } from "./proxy/runtime-snapshot.js";
 
 async function getPublicModels(): Promise<PublicStatus["models"]> {
-  const { snapshot } = await getApiProxyRuntimeSnapshot();
+  const { snapshot } = await getCachedApiProxyRuntimeSnapshot();
   const pipelinesById = new Map(
     listApiProxyPipelines().map((pipeline) => [pipeline.id, pipeline]),
   );

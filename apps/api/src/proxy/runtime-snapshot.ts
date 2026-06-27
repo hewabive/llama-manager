@@ -103,7 +103,10 @@ export async function getCachedApiProxyRuntimeSnapshot(): Promise<ApiProxyRuntim
   }
   pendingSnapshot = (async () => {
     try {
-      const value = await getApiProxyRuntimeSnapshot();
+      const value = await getApiProxyRuntimeSnapshot({
+        purpose: "scheduling",
+        residency: "cached",
+      });
       cachedSnapshot = { at: performance.now(), value };
       return value;
     } finally {
