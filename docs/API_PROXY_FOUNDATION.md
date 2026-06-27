@@ -122,6 +122,8 @@ Two orthogonal axes:
 
 The status is derived from a short-TTL (2s) cache of the proxy runtime snapshot (`getCachedApiProxyRuntimeSnapshot`), so `/v1/models` stays read-only and cheap and never triggers autoload. Derivation lives in `proxy/model-status.ts`.
 
+This `value` is the public **L4** layer — a frozen, llama.cpp-router-derived external contract. The internal target/instance/process status layers it is computed from, and the boundary adapter (`leafLoadFromTargetState`) that translates internal `ready`/`error` into the public `loaded`/`failed`, are documented in `docs/STATUS_LAYERS.md`.
+
 ## Admin Diagnostics
 
 The admin API exposes diagnostics for the next implementation step:
