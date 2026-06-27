@@ -12,6 +12,7 @@ import {
   listApiProxyRuntimeMetadata,
   listApiProxyTargets,
 } from "./repository.js";
+import { collectRemoteTargetHealth } from "./remote-health.js";
 import { buildApiProxyRuntimeSnapshot } from "./runtime.js";
 import { resolveApiProxyTarget } from "./targets.js";
 
@@ -37,17 +38,20 @@ export async function getApiProxyRuntimeSnapshot(options?: {
       )
       .filter((instanceId): instanceId is string => Boolean(instanceId)),
   );
-  const healthEntries = await Promise.all(
-    instances
-      .filter((instance) => targetInstanceIds.has(instance.name))
-      .map(
-        async (instance) =>
-          [
-            instance.name,
-            await getInstanceHealthSummary(instance, { peers }),
-          ] as const,
-      ),
-  );
+  const [healthEntries, remote] = await Promise.all([
+    Promise.all(
+      instances
+        .filter((instance) => targetInstanceIds.has(instance.name))
+        .map(
+          async (instance) =>
+            [
+              instance.name,
+              await getInstanceHealthSummary(instance, { peers }),
+            ] as const,
+        ),
+    ),
+    collectRemoteTargetHealth({ targets, endpoints }),
+  ]);
 
   return {
     targets,
@@ -57,6 +61,8 @@ export async function getApiProxyRuntimeSnapshot(options?: {
       endpoints,
       instances,
       healthByInstanceId: new Map(healthEntries),
+      remoteManagedTargetIds: remote.remoteManagedTargetIds,
+      remoteHealthByTargetId: remote.healthByTargetId,
       metadataByTargetId: listApiProxyRuntimeMetadata(),
       busyTargetIds: computeDomainCoordinator.busyTargetIds(),
       inflightByTargetId: apiProxyInflight.snapshotByTarget(),
@@ -70,8 +76,10 @@ type ApiProxyRuntimeSnapshotResult = Awaited<
   ReturnType<typeof getApiProxyRuntimeSnapshot>
 >;
 
-let cachedSnapshot: { at: number; value: ApiProxyRuntimeSnapshotResult } | null =
-  null;
+let cachedSnapshot: {
+  at: number;
+  value: ApiProxyRuntimeSnapshotResult;
+} | null = null;
 let pendingSnapshot: Promise<ApiProxyRuntimeSnapshotResult> | null = null;
 
 export async function getCachedApiProxyRuntimeSnapshot(): Promise<ApiProxyRuntimeSnapshotResult> {

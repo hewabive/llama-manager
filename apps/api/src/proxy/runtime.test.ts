@@ -71,6 +71,7 @@ function apiEndpoint(
     baseUrl?: string;
     kind?: ApiEndpointRecord["kind"];
     instanceId?: string | null;
+    nodeId?: string | null;
     enabled?: boolean;
   } = {},
 ): ApiEndpointRecord {
@@ -87,11 +88,20 @@ function apiEndpoint(
     authConfigured: false,
     instanceId:
       input.instanceId === undefined ? "instance-a" : input.instanceId,
-    nodeId: null,
+    nodeId: input.nodeId ?? null,
     editable: false,
     createdAt: null,
     updatedAt: null,
   };
+}
+
+function remoteEndpoint(): ApiEndpointRecord {
+  return apiEndpoint({
+    id: "remote:ny:remote-a",
+    kind: "managed-instance",
+    instanceId: "remote-a",
+    nodeId: "ny",
+  });
 }
 
 function health(
@@ -349,6 +359,92 @@ test("buildApiProxyRuntimeSnapshot uses persisted saved slot ids", () => {
   });
 
   assert.deepEqual(snapshot.targets[0]?.savedSlotIds, [3]);
+});
+
+test("buildApiProxyRuntimeSnapshot derives a remote target from its node health", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ endpointId: "remote:ny:remote-a", model: null })],
+    endpoints: [remoteEndpoint()],
+    instances: [],
+    healthByInstanceId: new Map(),
+    remoteManagedTargetIds: new Set(["target-a"]),
+    remoteHealthByTargetId: new Map([
+      [
+        "target-a",
+        health({
+          status: "error",
+          canStart: true,
+          logErrors: ["error: unknown argument: --model"],
+        }),
+      ],
+    ]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "error");
+  assert.equal(snapshot.targets[0]?.instanceId, null);
+  assert.equal(
+    snapshot.targets[0]?.stateDetail,
+    "test\nerror: unknown argument: --model",
+  );
+});
+
+test("buildApiProxyRuntimeSnapshot reports a ready remote target as idle", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ endpointId: "remote:ny:remote-a", model: null })],
+    endpoints: [remoteEndpoint()],
+    instances: [],
+    healthByInstanceId: new Map(),
+    remoteManagedTargetIds: new Set(["target-a"]),
+    remoteHealthByTargetId: new Map([["target-a", health()]]),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "idle");
+});
+
+test("buildApiProxyRuntimeSnapshot reports an unreachable remote target as unknown", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ endpointId: "remote:ny:remote-a", model: null })],
+    endpoints: [remoteEndpoint()],
+    instances: [],
+    healthByInstanceId: new Map(),
+    remoteManagedTargetIds: new Set(["target-a"]),
+    remoteHealthByTargetId: new Map(),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "unknown");
+});
+
+test("buildApiProxyRuntimeSnapshot reports a disabled remote node as error", () => {
+  resetApiProxyRuntimeTrackers();
+
+  const snapshot = buildApiProxyRuntimeSnapshot({
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    targets: [target({ endpointId: "remote:ny:remote-a", model: null })],
+    endpoints: [
+      apiEndpoint({
+        id: "remote:ny:remote-a",
+        kind: "managed-instance",
+        instanceId: "remote-a",
+        nodeId: "ny",
+        enabled: false,
+      }),
+    ],
+    instances: [],
+    healthByInstanceId: new Map(),
+    remoteManagedTargetIds: new Set(["target-a"]),
+    remoteHealthByTargetId: new Map(),
+  });
+
+  assert.equal(snapshot.targets[0]?.state, "error");
 });
 
 test("buildApiProxyRuntimeSnapshot treats external endpoint as external API", () => {

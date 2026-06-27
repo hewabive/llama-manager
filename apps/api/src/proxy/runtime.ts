@@ -169,6 +169,33 @@ type DerivedState = {
   detail: string | null;
 };
 
+function stateFromHealth(
+  target: ApiProxyTargetRecord,
+  health: InstanceHealthSummary,
+): DerivedState {
+  if (target.model) {
+    const slots = modelScopedSlots(health, target.model);
+    const activeRequests = activeRequestsFromSlots(slots);
+    const state = modelRuntimeState(
+      modelStatusFromProbe(health.llama.models, target.model),
+      activeRequests,
+    );
+    return {
+      state,
+      activeRequests,
+      detail: state === "error" ? modelErrorDetail(health, target.model) : null,
+    };
+  }
+
+  const activeRequests = activeRequestsFromSlots(health.llama.slots);
+  const state = processRuntimeState(health, activeRequests);
+  return {
+    state,
+    activeRequests,
+    detail: state === "error" ? processErrorDetail(health) : null,
+  };
+}
+
 function baseState(input: {
   target: ApiProxyTargetRecord;
   instanceId: string | null;
@@ -188,31 +215,33 @@ function baseState(input: {
   if (!input.health) {
     return { state: "unknown", activeRequests: 0, detail: null };
   }
+  return stateFromHealth(input.target, input.health);
+}
 
-  if (input.target.model) {
-    const slots = modelScopedSlots(input.health, input.target.model);
-    const activeRequests = activeRequestsFromSlots(slots);
-    const state = modelRuntimeState(
-      modelStatusFromProbe(input.health.llama.models, input.target.model),
-      activeRequests,
-    );
+function remoteDerivedState(
+  target: ApiProxyTargetRecord,
+  health: InstanceHealthSummary | undefined,
+  inFlight: boolean,
+): DerivedState {
+  if (!health) {
+    return { state: "unknown", activeRequests: 0, detail: null };
+  }
+  if (health.status === "error" || health.status === "invalid") {
     return {
-      state,
-      activeRequests,
-      detail:
-        state === "error"
-          ? modelErrorDetail(input.health, input.target.model)
-          : null,
+      state: "error",
+      activeRequests: 0,
+      detail: processErrorDetail(health),
     };
   }
-
-  const activeRequests = activeRequestsFromSlots(input.health.llama.slots);
-  const state = processRuntimeState(input.health, activeRequests);
-  return {
-    state,
-    activeRequests,
-    detail: state === "error" ? processErrorDetail(input.health) : null,
-  };
+  const base = stateFromHealth(target, health);
+  if (inFlight && stateIsIdle(base.state)) {
+    return {
+      state: "busy",
+      activeRequests: Math.max(base.activeRequests, 1),
+      detail: null,
+    };
+  }
+  return base;
 }
 
 function deriveState(input: {
@@ -291,25 +320,30 @@ function deriveApiProxyTargetRuntime(input: {
   instanceId: string | null;
   instance?: Instance | undefined;
   health?: InstanceHealthSummary | undefined;
+  remoteManaged?: boolean | undefined;
+  remoteHealth?: InstanceHealthSummary | undefined;
   metadata?: ApiProxyRuntimeMetadataRecord | undefined;
   inFlight?: boolean | undefined;
   inflight?: ApiProxyInflightRequest[] | undefined;
   checkedAt: string;
 }): ApiProxyTargetRuntime {
   const inflight = input.endpointEnabled ? (input.inflight ?? []) : [];
-  const derived = input.endpointEnabled
-    ? deriveState({
-        target: input.target,
-        instanceId: input.instanceId,
-        instance: input.instance,
-        health: input.health,
-        inFlight: (input.inFlight ?? false) || inflight.length > 0,
-      })
-    : {
-        state: "error" as const,
+  const inFlight = (input.inFlight ?? false) || inflight.length > 0;
+  const derived: DerivedState = !input.endpointEnabled
+    ? {
+        state: "error",
         activeRequests: 0,
         detail: input.resolutionError ?? "endpoint disabled",
-      };
+      }
+    : input.remoteManaged
+      ? remoteDerivedState(input.target, input.remoteHealth, inFlight)
+      : deriveState({
+          target: input.target,
+          instanceId: input.instanceId,
+          instance: input.instance,
+          health: input.health,
+          inFlight,
+        });
   const activeRequests = Math.max(derived.activeRequests, inflight.length);
   const tracker = updateTracker({
     targetId: input.target.id,
@@ -342,6 +376,8 @@ export function buildApiProxyRuntimeSnapshot(input: {
   endpoints: ApiEndpointRecord[];
   instances: Instance[];
   healthByInstanceId: Map<string, InstanceHealthSummary>;
+  remoteManagedTargetIds?: Set<string> | undefined;
+  remoteHealthByTargetId?: Map<string, InstanceHealthSummary> | undefined;
   metadataByTargetId?: Map<string, ApiProxyRuntimeMetadataRecord> | undefined;
   busyTargetIds?: Set<string> | undefined;
   inflightByTargetId?: Map<string, ApiProxyInflightRequest[]> | undefined;
@@ -380,6 +416,8 @@ export function buildApiProxyRuntimeSnapshot(input: {
         health: resolution?.instanceId
           ? input.healthByInstanceId.get(resolution.instanceId)
           : undefined,
+        remoteManaged: input.remoteManagedTargetIds?.has(target.id) ?? false,
+        remoteHealth: input.remoteHealthByTargetId?.get(target.id),
         metadata: input.metadataByTargetId?.get(target.id),
         inFlight: input.busyTargetIds?.has(target.id) ?? false,
         inflight: input.inflightByTargetId?.get(target.id),

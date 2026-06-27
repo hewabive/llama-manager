@@ -117,6 +117,22 @@ the HTTP. This keeps each node authoritative over its own compute lease and
 sidesteps distributed-lease atomicity entirely — which is exactly why it is safe
 to do before RPC exists.
 
+### Remote-target load status
+
+The proxy runtime snapshot derives an honest load state for remote targets:
+`proxy/remote-health.ts` fetches each owning node's `instances/:id/health-summary`
+(deduped by `(nodeId, instanceId)`, ~3s TTL cache + negative cache, parallel, 5s
+timeout, graceful) and feeds it through the same `deriveApiProxyTargetRuntime` path
+as local targets (`proxy/runtime.ts:remoteDerivedState`). A remote node that is
+unreachable reports `unknown` (not `loaded`); a disabled node reports the resolution
+error. One deliberate divergence from the local path: the `error → canStart?stopped`
+downgrade in `processRuntimeState` is a **local autostart affordance** (the entry
+never starts a remote instance — it delegates), so for remote a health `error`/
+`invalid` surfaces as `error` with the node's reason (incl. log tail), instead of
+being masked as `stopped`. The output `instanceId` stays `null` for remote targets
+to avoid colliding with a same-named local instance in downstream local lookups
+(e.g. idle-maintenance draws).
+
 ### Deferred: remote-instance telemetry depth parity
 
 Today the proxy extracts **rich live telemetry from native managed instances** —
@@ -124,7 +140,8 @@ prefill %, TTFT, thinking, the in-flight registry — by injecting llama.cpp's
 `return_progress` and metering the stream (`proxy/usage-meter.ts`,
 `resumable-forward.ts`; see `docs/API_PROXY_FOUNDATION.md`). For remote targets the
 fleet proxy must eventually pull the **same depth** of telemetry across the node
-boundary.
+boundary (the load-state above is the coarse layer; deep per-request telemetry is
+not yet pulled across the boundary).
 
 This is **explicitly deferred** — not first-priority. Base federation (route +
 forward to remote targets) works without it; remote requests just report shallower
