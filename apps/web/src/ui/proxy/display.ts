@@ -84,15 +84,15 @@ export function targetStatusColor(enabled: boolean) {
 
 export function runtimeStateColor(
   state: ApiProxyTargetRuntime["state"] | undefined,
+  activeRequests = 0,
 ) {
+  if (activeRequests > 0) {
+    return "orange";
+  }
   switch (state) {
-    case "busy":
-      return "orange";
-    case "idle":
-    case "loaded":
+    case "ready":
       return "green";
     case "loading":
-    case "starting":
       return "blue";
     case "unloaded":
     case "stopped":
@@ -102,6 +102,13 @@ export function runtimeStateColor(
     default:
       return "gray";
   }
+}
+
+export function runtimeStateLabel(
+  state: ApiProxyTargetRuntime["state"] | undefined,
+  activeRequests = 0,
+) {
+  return activeRequests > 0 ? "busy" : (state ?? "unknown");
 }
 
 export function runtimeDetails(runtime: ApiProxyTargetRuntime | undefined) {

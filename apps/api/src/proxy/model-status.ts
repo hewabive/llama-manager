@@ -17,12 +17,9 @@ type LeafLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
 function leafLoadFromTargetState(state: ApiProxyModelState): LeafLoadState {
   switch (state) {
-    case "loaded":
-    case "idle":
-    case "busy":
+    case "ready":
       return "loaded";
     case "loading":
-    case "starting":
       return "loading";
     case "error":
       return "failed";

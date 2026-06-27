@@ -145,7 +145,7 @@ test("resolveApiProxyModelLeafTargetIds resolves targets, legacy targetId, and n
 test("deriveApiProxyModelStatus splits active vs queued and maps the target load state", () => {
   const status = deriveApiProxyModelStatus({
     model: model({ routeTo: { type: "target", id: "t1" } }),
-    snapshot: snapshot([targetRuntime("t1", "loaded")]),
+    snapshot: snapshot([targetRuntime("t1", "ready")]),
     pipelinesById: new Map(),
     inflight: [inflight("queued"), inflight("prefilling"), inflight("generating")],
   });
@@ -158,7 +158,7 @@ test("deriveApiProxyModelStatus splits active vs queued and maps the target load
 test("deriveApiProxyModelStatus reports disabled while still counting requests", () => {
   const status = deriveApiProxyModelStatus({
     model: model({ enabled: false, routeTo: { type: "target", id: "t1" } }),
-    snapshot: snapshot([targetRuntime("t1", "loaded")]),
+    snapshot: snapshot([targetRuntime("t1", "ready")]),
     pipelinesById: new Map(),
     inflight: [inflight("queued")],
   });

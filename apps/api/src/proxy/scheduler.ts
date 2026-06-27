@@ -7,8 +7,8 @@ import type {
   InstanceMemoryDraw,
 } from "@llama-manager/core";
 
-const activeStates = new Set(["loaded", "idle", "busy"]);
-const pendingStates = new Set(["starting", "loading"]);
+const activeStates = new Set(["ready"]);
+const pendingStates = new Set(["loading"]);
 
 function runtimeState(target: ApiProxyTargetPlanInput) {
   return target.runtime?.state ?? "unknown";
@@ -19,9 +19,7 @@ function isActive(target: ApiProxyTargetPlanInput) {
 }
 
 function isBusy(target: ApiProxyTargetPlanInput) {
-  return (
-    runtimeState(target) === "busy" || (target.runtime?.activeRequests ?? 0) > 0
-  );
+  return (target.runtime?.activeRequests ?? 0) > 0;
 }
 
 function isManaged(target: ApiProxyTargetPlanInput) {

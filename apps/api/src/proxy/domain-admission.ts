@@ -22,7 +22,7 @@ function overlayHolderState(
       ...target,
       runtime: {
         ...target.runtime,
-        state: "busy",
+        state: "ready",
         activeRequests: Math.max(1, target.runtime.activeRequests),
       },
     };

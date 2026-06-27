@@ -17,7 +17,7 @@ function target(input: {
   instanceId: string;
   model: string;
   priority: number;
-  state: "unloaded" | "loaded" | "idle" | "busy" | "error";
+  state: "unknown" | "stopped" | "unloaded" | "loading" | "ready" | "error";
   role?: "interactive" | "background";
   preemptible?: boolean;
   activeRequests?: number;
@@ -74,7 +74,7 @@ test("planApiProxyRequest preempts lower-priority target and saves slots", () =>
           model: "slow",
           priority: 10,
           role: "background",
-          state: "busy",
+          state: "ready",
           activeRequests: 1,
           saveSlotsBeforeUnload: true,
           slotIds: [0],
@@ -127,7 +127,7 @@ test("planApiProxyRequest does not re-emit save-slot for already-saved slots", (
           model: "slow",
           priority: 10,
           role: "background",
-          state: "busy",
+          state: "ready",
           activeRequests: 1,
           saveSlotsBeforeUnload: true,
           slotIds: [0],
@@ -162,7 +162,7 @@ test("planApiProxyRequest routes external API targets without instance actions",
     instanceId: "ignored",
     model: "upstream-model",
     priority: 100,
-    state: "idle",
+    state: "ready",
   });
   const plan = planApiProxyRequest(
     planRequest({
@@ -207,7 +207,7 @@ test("planApiProxyRequest blocks on non-preemptible busy peer", () => {
           instanceId: "inst-bg",
           model: "slow",
           priority: 10,
-          state: "busy",
+          state: "ready",
           activeRequests: 1,
           preemptible: false,
           draws: [{ poolId: "gpu0", bytes: 70 }],
@@ -268,7 +268,7 @@ test("planApiProxyIdleMaintenance unloads idle urgent target and resumes backgro
           instanceId: "inst-urgent",
           model: "chat",
           priority: 100,
-          state: "idle",
+          state: "ready",
           idleSince: "2026-05-30T10:00:00.000Z",
           idleUnloadMs: 10_000,
         }),
@@ -310,7 +310,7 @@ test("planApiProxyRequest leaves a fitting resident peer alone (memory)", () => 
           instanceId: "inst-resident",
           model: "a",
           priority: 50,
-          state: "idle",
+          state: "ready",
           draws: [{ poolId: "gpu0", bytes: 40 }],
         }),
         target({
@@ -349,7 +349,7 @@ test("planApiProxyRequest evicts an idle lower-priority peer to fit (memory)", (
           instanceId: "inst-batch",
           model: "slow",
           priority: 10,
-          state: "idle",
+          state: "ready",
           draws: [{ poolId: "gpu0", bytes: 70 }],
         }),
         target({
@@ -389,7 +389,7 @@ test("planApiProxyRequest queues when only a busy peer blocks the fit (memory)",
           instanceId: "inst-batch",
           model: "slow",
           priority: 10,
-          state: "busy",
+          state: "ready",
           activeRequests: 1,
           draws: [{ poolId: "gpu0", bytes: 70 }],
         }),
@@ -427,7 +427,7 @@ test("planApiProxyRequest never evicts a higher-priority idle peer (memory)", ()
           instanceId: "inst-chat",
           model: "chat",
           priority: 200,
-          state: "idle",
+          state: "ready",
           draws: [{ poolId: "gpu0", bytes: 70 }],
         }),
         target({
@@ -465,7 +465,7 @@ test("planApiProxyRequest evicts across split pools (memory)", () => {
           instanceId: "inst-batch",
           model: "slow",
           priority: 10,
-          state: "idle",
+          state: "ready",
           draws: [
             { poolId: "gpu0", bytes: 60 },
             { poolId: "gpu1", bytes: 60 },
@@ -543,7 +543,7 @@ test("planApiProxyRequest preempts a busy lower-priority peer when allowed (memo
         instanceId: "inst-batch",
         model: "slow",
         priority: 10,
-        state: "busy",
+        state: "ready",
         activeRequests: 1,
         draws: [{ poolId: "gpu0", bytes: 70 }],
       }),
@@ -589,7 +589,7 @@ test("planApiProxyRequest prefers an idle victim over a busy one (memory)", () =
           instanceId: "inst-idle",
           model: "slow",
           priority: 10,
-          state: "idle",
+          state: "ready",
           draws: [{ poolId: "gpu0", bytes: 40 }],
         }),
         target({
@@ -598,7 +598,7 @@ test("planApiProxyRequest prefers an idle victim over a busy one (memory)", () =
           instanceId: "inst-busy",
           model: "slow2",
           priority: 10,
-          state: "busy",
+          state: "ready",
           activeRequests: 1,
           draws: [{ poolId: "gpu0", bytes: 40 }],
         }),
@@ -637,7 +637,7 @@ test("planApiProxyRequest never preempts an equal-priority busy peer (memory)", 
           instanceId: "inst-peer",
           model: "slow",
           priority: 100,
-          state: "busy",
+          state: "ready",
           activeRequests: 1,
           draws: [{ poolId: "gpu0", bytes: 70 }],
         }),
@@ -675,7 +675,7 @@ test("planApiProxyRequest skips the memory axis when no draws are declared", () 
           instanceId: "inst-resident",
           model: "a",
           priority: 50,
-          state: "idle",
+          state: "ready",
           draws: [{ poolId: "gpu0", bytes: 999 }],
         }),
         target({

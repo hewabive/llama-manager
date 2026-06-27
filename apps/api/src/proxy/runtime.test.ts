@@ -213,7 +213,7 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
     healthByInstanceId: new Map([["instance-a", health()]]),
   });
 
-  assert.equal(first.targets[0]?.state, "idle");
+  assert.equal(first.targets[0]?.state, "ready");
   assert.equal(first.targets[0]?.activeRequests, 0);
   assert.equal(first.targets[0]?.idleSince, "2026-05-30T10:00:00.000Z");
 
@@ -235,7 +235,7 @@ test("buildApiProxyRuntimeSnapshot derives model runtime and tracks idle state",
     healthByInstanceId: new Map([["instance-a", health({ processing: true })]]),
   });
 
-  assert.equal(busy.targets[0]?.state, "busy");
+  assert.equal(busy.targets[0]?.state, "ready");
   assert.equal(busy.targets[0]?.activeRequests, 1);
   assert.equal(busy.targets[0]?.idleSince, null);
   assert.equal(busy.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
@@ -252,7 +252,7 @@ test("buildApiProxyRuntimeSnapshot pins lastRequestAt while a request stays acti
     healthByInstanceId: new Map([["instance-a", health({ processing: true })]]),
   });
 
-  assert.equal(first.targets[0]?.state, "busy");
+  assert.equal(first.targets[0]?.state, "ready");
   assert.equal(first.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
 
   const later = buildApiProxyRuntimeSnapshot({
@@ -263,7 +263,7 @@ test("buildApiProxyRuntimeSnapshot pins lastRequestAt while a request stays acti
     healthByInstanceId: new Map([["instance-a", health({ processing: true })]]),
   });
 
-  assert.equal(later.targets[0]?.state, "busy");
+  assert.equal(later.targets[0]?.state, "ready");
   assert.equal(later.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
 });
 
@@ -281,7 +281,7 @@ test("buildApiProxyRuntimeSnapshot marks an in-flight lease busy during prefill"
     busyTargetIds: new Set(["target-a"]),
   });
 
-  assert.equal(snapshot.targets[0]?.state, "busy");
+  assert.equal(snapshot.targets[0]?.state, "ready");
   assert.equal(snapshot.targets[0]?.activeRequests, 1);
   assert.equal(snapshot.targets[0]?.idleSince, null);
   assert.equal(snapshot.targets[0]?.lastRequestAt, "2026-05-30T10:00:10.000Z");
@@ -323,7 +323,7 @@ test("buildApiProxyRuntimeSnapshot treats listed models without status as idle",
     ]),
   });
 
-  assert.equal(snapshot.targets[0]?.state, "idle");
+  assert.equal(snapshot.targets[0]?.state, "ready");
 });
 
 test("buildApiProxyRuntimeSnapshot carries saved slot ids for scheduler planning", () => {
@@ -404,7 +404,7 @@ test("buildApiProxyRuntimeSnapshot reports a ready remote target as idle", () =>
     remoteHealthByTargetId: new Map([["target-a", health()]]),
   });
 
-  assert.equal(snapshot.targets[0]?.state, "idle");
+  assert.equal(snapshot.targets[0]?.state, "ready");
 });
 
 test("buildApiProxyRuntimeSnapshot reports an unreachable remote target as unknown", () => {
@@ -465,7 +465,7 @@ test("buildApiProxyRuntimeSnapshot treats external endpoint as external API", ()
     healthByInstanceId: new Map(),
   });
 
-  assert.equal(snapshot.targets[0]?.state, "idle");
+  assert.equal(snapshot.targets[0]?.state, "ready");
   assert.equal(snapshot.targets[0]?.kind, "external-api");
 });
 
@@ -581,6 +581,6 @@ test("buildApiProxyRuntimeSnapshot treats reachable stale process targets as idl
     ]),
   });
 
-  assert.equal(snapshot.targets[0]?.state, "idle");
+  assert.equal(snapshot.targets[0]?.state, "ready");
   assert.equal(snapshot.targets[0]?.idleSince, "2026-05-30T10:00:00.000Z");
 });

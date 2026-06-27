@@ -57,8 +57,8 @@ function toPublicInstance(health: InstanceHealthSummary): PublicInstanceStatus {
   };
 }
 
-function isBusyState(state: PublicProxyTarget["state"]) {
-  return state === "busy" || state === "loading" || state === "starting";
+function isBusyState(target: PublicProxyTarget) {
+  return target.activeRequests > 0 || target.state === "loading";
 }
 
 async function getPublicProxyAndModels(): Promise<{
@@ -98,7 +98,7 @@ async function getPublicProxyAndModels(): Promise<{
   return {
     proxy: {
       total: targetItems.length,
-      busy: targetItems.filter((item) => isBusyState(item.state)).length,
+      busy: targetItems.filter((item) => isBusyState(item)).length,
       activeRequests: targetItems.reduce(
         (sum, item) => sum + item.activeRequests,
         0,

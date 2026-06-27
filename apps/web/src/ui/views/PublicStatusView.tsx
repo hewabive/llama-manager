@@ -17,7 +17,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { getPublicStatus } from "../../api/client";
 import { SystemResourcesPanel } from "../components/SystemResourcesPanel";
-import { runtimeStateColor } from "../proxy/display";
+import { runtimeStateColor, runtimeStateLabel } from "../proxy/display";
 import { formatLocalDateTime } from "../utils/time";
 
 function statusColor(status: PublicInstanceStatus["status"]) {
@@ -95,7 +95,7 @@ function ProxyModelCard(props: { model: PublicProxyModel }) {
 
 function ProxyTargetCard(props: { target: PublicProxyTarget }) {
   const { target } = props;
-  const color = runtimeStateColor(target.state);
+  const color = runtimeStateColor(target.state, target.activeRequests);
   return (
     <Paper withBorder p="sm" radius="sm" w={260}>
       <Stack gap={6}>
@@ -108,7 +108,7 @@ function ProxyTargetCard(props: { target: PublicProxyTarget }) {
             variant={target.activeRequests > 0 ? "filled" : "light"}
             style={{ flexShrink: 0 }}
           >
-            {target.state}
+            {runtimeStateLabel(target.state, target.activeRequests)}
           </Badge>
         </Group>
         <Stack gap={2}>

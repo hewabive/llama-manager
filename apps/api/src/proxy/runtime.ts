@@ -84,13 +84,7 @@ function modelScopedSlots(
   return health?.llama.modelDiagnostics[model]?.slots ?? health?.llama.slots;
 }
 
-function modelRuntimeState(
-  modelStatus: string | null,
-  activeRequests: number,
-): ApiProxyModelState {
-  if (activeRequests > 0) {
-    return "busy";
-  }
+function modelRuntimeState(modelStatus: string | null): ApiProxyModelState {
   if (modelStatus === "failed") {
     return "error";
   }
@@ -106,33 +100,26 @@ function modelRuntimeState(
     modelStatus === "ready" ||
     modelStatus === "running"
   ) {
-    return "idle";
+    return "ready";
   }
   return "unknown";
 }
 
 function processRuntimeState(
   health: InstanceHealthSummary,
-  activeRequests: number,
 ): ApiProxyModelState {
-  if (activeRequests > 0) {
-    return "busy";
-  }
   if (health.status === "invalid") {
     return "error";
   }
   if (health.status === "error") {
     return health.actions.canStart ? "stopped" : "error";
   }
-  if (health.status === "starting") {
-    return "starting";
-  }
-  if (health.status === "loading") {
+  if (health.status === "starting" || health.status === "loading") {
     return "loading";
   }
   if (health.status === "stale") {
     if (health.llama.health.ok) {
-      return "idle";
+      return "ready";
     }
     if (health.llama.health.status === 503) {
       return "loading";
@@ -143,7 +130,7 @@ function processRuntimeState(
     return "stopped";
   }
   if (health.status === "ready" || health.status === "degraded") {
-    return "idle";
+    return "ready";
   }
   return "unknown";
 }
@@ -178,7 +165,6 @@ function stateFromHealth(
     const activeRequests = activeRequestsFromSlots(slots);
     const state = modelRuntimeState(
       modelStatusFromProbe(health.llama.models, target.model),
-      activeRequests,
     );
     return {
       state,
@@ -188,7 +174,7 @@ function stateFromHealth(
   }
 
   const activeRequests = activeRequestsFromSlots(health.llama.slots);
-  const state = processRuntimeState(health, activeRequests);
+  const state = processRuntimeState(health);
   return {
     state,
     activeRequests,
@@ -203,7 +189,7 @@ function baseState(input: {
   health: InstanceHealthSummary | undefined;
 }): DerivedState {
   if (!input.instanceId) {
-    return { state: "idle", activeRequests: 0, detail: null };
+    return { state: "ready", activeRequests: 0, detail: null };
   }
   if (!input.instance) {
     return {
@@ -236,7 +222,7 @@ function remoteDerivedState(
   const base = stateFromHealth(target, health);
   if (inFlight && stateIsIdle(base.state)) {
     return {
-      state: "busy",
+      state: base.state,
       activeRequests: Math.max(base.activeRequests, 1),
       detail: null,
     };
@@ -254,7 +240,7 @@ function deriveState(input: {
   const base = baseState(input);
   if (input.inFlight && stateIsIdle(base.state)) {
     return {
-      state: "busy",
+      state: base.state,
       activeRequests: Math.max(base.activeRequests, 1),
       detail: null,
     };
@@ -278,7 +264,7 @@ function trackerFor(targetId: string) {
 }
 
 function stateIsIdle(state: ApiProxyModelState) {
-  return state === "idle" || state === "loaded";
+  return state === "ready";
 }
 
 function updateTracker(input: {
@@ -293,7 +279,7 @@ function updateTracker(input: {
     tracker.savedSlotIds = input.metadata.savedSlotIds;
   }
 
-  if (input.activeRequests > 0 || input.state === "busy") {
+  if (input.activeRequests > 0) {
     if (tracker.idleSince !== null || tracker.lastRequestAt === null) {
       tracker.lastRequestAt = input.checkedAt;
     }

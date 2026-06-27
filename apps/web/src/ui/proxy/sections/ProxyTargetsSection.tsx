@@ -45,6 +45,7 @@ import {
   inflightTimings,
   runtimeDetails,
   runtimeStateColor,
+  runtimeStateLabel,
 } from "../display";
 import type { SelectOption } from "./types";
 import { DetailBadge } from "./DetailBadge";
@@ -386,8 +387,14 @@ export function ProxyTargetsSection(props: ProxyTargetsSectionProps) {
                       <Stack gap={2}>
                         <Group gap={6} wrap="wrap">
                           <DetailBadge
-                            color={runtimeStateColor(runtime?.state)}
-                            label={runtime?.state ?? "unknown"}
+                            color={runtimeStateColor(
+                              runtime?.state,
+                              runtime?.activeRequests,
+                            )}
+                            label={runtimeStateLabel(
+                              runtime?.state,
+                              runtime?.activeRequests,
+                            )}
                             detail={runtime?.stateDetail}
                           />
                         </Group>

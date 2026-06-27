@@ -627,12 +627,9 @@ export const ApiProxyRouteToKindSchema = z.enum(["target", "pipeline"]);
 export const ApiProxyModelStateSchema = z.enum([
   "unknown",
   "stopped",
-  "starting",
   "unloaded",
   "loading",
-  "loaded",
-  "idle",
-  "busy",
+  "ready",
   "error",
 ]);
 

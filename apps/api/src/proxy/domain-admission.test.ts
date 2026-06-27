@@ -12,9 +12,10 @@ function target(input: {
   id: string;
   instanceId: string;
   priority: number;
-  state: "unloaded" | "idle" | "busy";
+  state: "unloaded" | "ready";
   bytes: number;
   preemptible?: boolean;
+  activeRequests?: number;
 }) {
   return {
     id: input.id,
@@ -37,7 +38,7 @@ function target(input: {
       instanceId: input.instanceId,
       model: input.id,
       state: input.state,
-      activeRequests: input.state === "busy" ? 1 : 0,
+      activeRequests: input.activeRequests ?? 0,
       idleSince: null,
       lastRequestAt: null,
       savedSlotIds: [],
@@ -106,7 +107,7 @@ test("holds behind a strictly-higher-priority running holder", () => {
       requestedTargetId: "cand",
       targets: [
         target({ id: "cand", instanceId: "ic", priority: 100, state: "unloaded", bytes: 50 }),
-        target({ id: "peer", instanceId: "ip", priority: 500, state: "busy", bytes: 50 }),
+        target({ id: "peer", instanceId: "ip", priority: 500, state: "ready", activeRequests: 1, bytes: 50 }),
       ],
     }),
   });
@@ -128,7 +129,7 @@ test("preempts a busy lower-priority holder that blocks the fit", () => {
       requestedTargetId: "cand",
       targets: [
         target({ id: "cand", instanceId: "ic", priority: 100, state: "unloaded", bytes: 50 }),
-        target({ id: "peer", instanceId: "ip", priority: 10, state: "busy", bytes: 70 }),
+        target({ id: "peer", instanceId: "ip", priority: 10, state: "ready", activeRequests: 1, bytes: 70 }),
       ],
     }),
   });
@@ -150,7 +151,7 @@ test("admits once the preempted holder is suspended (memory freed)", () => {
       requestedTargetId: "cand",
       targets: [
         target({ id: "cand", instanceId: "ic", priority: 100, state: "unloaded", bytes: 50 }),
-        target({ id: "peer", instanceId: "ip", priority: 10, state: "busy", bytes: 70 }),
+        target({ id: "peer", instanceId: "ip", priority: 10, state: "ready", activeRequests: 1, bytes: 70 }),
       ],
     }),
   });
@@ -190,7 +191,7 @@ test("waits when the busy obstacle is not a holder this coordinator controls", (
       requestedTargetId: "cand",
       targets: [
         target({ id: "cand", instanceId: "ic", priority: 100, state: "unloaded", bytes: 50 }),
-        target({ id: "peer", instanceId: "ip", priority: 10, state: "busy", bytes: 70 }),
+        target({ id: "peer", instanceId: "ip", priority: 10, state: "ready", activeRequests: 1, bytes: 70 }),
       ],
     }),
   });
