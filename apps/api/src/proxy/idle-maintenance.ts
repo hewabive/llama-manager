@@ -1,5 +1,6 @@
 import {
   ApiProxyPlanPreviewSchema,
+  type ApiProxyPlanPreview,
   type ApiProxySchedulerPlanRequest,
   type ApiProxyTargetRecord,
 } from "@llama-manager/core";
@@ -75,23 +76,37 @@ export async function buildApiProxyPlanRequest(input: {
   return { request, runtime };
 }
 
-export async function getApiProxyPlanPreview(input: {
+export async function buildApiProxyPlanContext(input: {
   mode: "request" | "idle";
   requestedTargetId?: string | undefined;
   preferredTargetId?: string | undefined;
   extraTarget?: ApiProxyTargetRecord | undefined;
-}) {
+}): Promise<{
+  request: ApiProxySchedulerPlanRequest;
+  runtime: Awaited<ReturnType<typeof getApiProxyRuntimeSnapshot>>;
+  preview: ApiProxyPlanPreview;
+}> {
   const { request, runtime } = await buildApiProxyPlanRequest(input);
   const plan =
     input.mode === "request"
       ? planApiProxyRequest(request)
       : planApiProxyIdleMaintenance(request);
 
-  return ApiProxyPlanPreviewSchema.parse({
+  const preview = ApiProxyPlanPreviewSchema.parse({
     checkedAt: runtime.snapshot.checkedAt,
     runtime: runtime.snapshot,
     plan,
   });
+  return { request, runtime, preview };
+}
+
+export async function getApiProxyPlanPreview(input: {
+  mode: "request" | "idle";
+  requestedTargetId?: string | undefined;
+  preferredTargetId?: string | undefined;
+  extraTarget?: ApiProxyTargetRecord | undefined;
+}) {
+  return (await buildApiProxyPlanContext(input)).preview;
 }
 
 async function runApiProxyIdleMaintenancePass() {

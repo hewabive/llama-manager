@@ -27,7 +27,7 @@ import {
 import { apiProxyInflight, type ApiProxyInflightHandle } from "./inflight.js";
 import { prepareApiProxyProtocolGatewayRequest } from "./gateway.js";
 import {
-  buildApiProxyPlanRequest,
+  buildApiProxyPlanContext,
   getApiProxyPlanPreview,
 } from "./idle-maintenance.js";
 import { openAiResponsesUsageCodec } from "./openai.js";
@@ -607,11 +607,17 @@ export async function serveResolvedTarget(input: {
       ...(extraTarget ? { extraTarget } : {}),
     });
 
+  const planContext = await buildApiProxyPlanContext({
+    mode: "request",
+    requestedTargetId: route.targetId,
+    ...(extraTarget ? { extraTarget } : {}),
+  });
+
   const decision = await prepareApiProxyProtocolGatewayRequest({
     adapter,
     request: route.request,
     getTarget,
-    getPlanPreview: planPreviewFor,
+    getPlanPreview: () => Promise.resolve(planContext.preview),
     allowReadinessActions: true,
     targetIdOverride: route.targetId,
   });
@@ -632,11 +638,7 @@ export async function serveResolvedTarget(input: {
       trace.queueMs = Math.round(performance.now() - queueStart);
     }
   };
-  const { request: planRequest } = await buildApiProxyPlanRequest({
-    mode: "request",
-    requestedTargetId: decision.target.id,
-    ...(extraTarget ? { extraTarget } : {}),
-  });
+  const planRequest = planContext.request;
   const candidatePlanTarget = planRequest.targets.find(
     (item) => item.id === decision.target.id,
   );
@@ -1084,9 +1086,14 @@ export async function serveResolvedTarget(input: {
         : withModel;
     };
 
+    let readyFromPlanContext = true;
     const final = await runResumableForward({
       makeReady: async () => {
-        const execution = await makeTargetReady(await freshRequestPreview());
+        const initialPreview = readyFromPlanContext
+          ? planContext.preview
+          : await freshRequestPreview();
+        readyFromPlanContext = false;
+        const execution = await makeTargetReady(initialPreview);
         if (execution.ok) {
           return { ok: true };
         }
