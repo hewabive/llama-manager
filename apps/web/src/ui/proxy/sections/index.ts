@@ -4,6 +4,7 @@ export * from "./ExternalModelsSection";
 export * from "./UsedByCell";
 export * from "./DetailBadge";
 export * from "./PipelinesSection";
+export * from "./InflightRequests";
 export * from "./ProxyTargetsSection";
 export * from "./ProxyLoadSection";
 export * from "./SchedulerSection";

@@ -2,45 +2,78 @@ import type {
   ApiProxyTargetRecord,
   ApiProxyTargetRuntime,
 } from "@llama-manager/core";
-import { Badge, Group, Loader, Paper, Stack, Text } from "@mantine/core";
+import {
+  Badge,
+  Box,
+  Code,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Text,
+} from "@mantine/core";
 
 import {
   runtimeDetails,
   runtimeStateColor,
   runtimeStateLabel,
 } from "../display";
+import { DetailBadge } from "./DetailBadge";
+import { InflightRequests } from "./InflightRequests";
 
 function isBusy(runtime: ApiProxyTargetRuntime) {
   return runtime.activeRequests > 0 || runtime.state === "loading";
 }
 
+function targetKindLabel(runtime: ApiProxyTargetRuntime) {
+  if (runtime.kind === "managed-instance") {
+    return `managed: ${runtime.instanceId ?? "unresolved"}`;
+  }
+  return "external API";
+}
+
 function TargetCard(props: { name: string; runtime: ApiProxyTargetRuntime }) {
   const { name, runtime } = props;
   return (
-    <Paper withBorder p="sm" radius="sm" w={260}>
+    <Paper withBorder p="sm" radius="sm" w={280}>
       <Stack gap={6}>
         <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Text fw={700} style={{ wordBreak: "break-word" }}>
-            {name}
+          <Stack gap={0} style={{ minWidth: 0 }}>
+            <Text fw={700} style={{ wordBreak: "break-word" }}>
+              {name}
+            </Text>
+            <Text c="dimmed" size="xs">
+              {targetKindLabel(runtime)}
+            </Text>
+          </Stack>
+          <Box style={{ flexShrink: 0 }}>
+            <DetailBadge
+              color={runtimeStateColor(runtime.state, runtime.activeRequests)}
+              label={runtimeStateLabel(runtime.state, runtime.activeRequests)}
+              detail={runtime.stateDetail}
+            />
+          </Box>
+        </Group>
+        <Group gap={4} wrap="nowrap" align="center">
+          <Text c="dimmed" size="xs">
+            model
           </Text>
-          <Badge
-            color={runtimeStateColor(runtime.state, runtime.activeRequests)}
-            variant={runtime.activeRequests > 0 ? "filled" : "light"}
-            style={{ flexShrink: 0 }}
-          >
-            {runtimeStateLabel(runtime.state, runtime.activeRequests)}
-          </Badge>
+          {runtime.model ? (
+            <Code>{runtime.model}</Code>
+          ) : (
+            <Text c="dimmed" size="xs" fs="italic">
+              process default
+            </Text>
+          )}
         </Group>
         <Stack gap={2}>
-          <Text c="dimmed" size="xs">
-            model {runtime.model ?? "not loaded"}
-          </Text>
           {runtimeDetails(runtime).map((detail) => (
             <Text key={detail} c="dimmed" size="xs">
               {detail}
             </Text>
           ))}
         </Stack>
+        <InflightRequests inflight={runtime.inflight} />
       </Stack>
     </Paper>
   );
@@ -72,7 +105,7 @@ export function ProxyLoadSection(props: {
               {props.refreshing && <Loader size={12} />}
             </Group>
             <Text c="dimmed" size="sm">
-              Live per-target state — color reflects load
+              Live per-target state, current stage and in-flight output
             </Text>
           </div>
           <Group gap="xs">
