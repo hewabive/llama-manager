@@ -257,16 +257,18 @@ function LayersCell(props: { model: GgufModel }) {
 
 function DetailRows(props: { rows: DetailRow[] }) {
   return (
-    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs" verticalSpacing={4}>
+    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xl" verticalSpacing={4}>
       {props.rows.map(([label, value]) => (
-        <Group key={label} gap="xs" wrap="nowrap" justify="space-between">
-          <Text c="dimmed" size="xs">
+        <Group key={label} gap={6} wrap="nowrap" align="baseline">
+          <Text c="dimmed" size="xs" style={{ flexShrink: 0 }}>
             {label}
           </Text>
           <Text
             size="xs"
-            ta="right"
-            style={{ fontVariantNumeric: "tabular-nums" }}
+            style={{
+              fontVariantNumeric: "tabular-nums",
+              wordBreak: "break-word",
+            }}
           >
             {value}
           </Text>
