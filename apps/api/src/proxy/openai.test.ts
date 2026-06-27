@@ -117,6 +117,15 @@ test("openAiProtocolAdapter forwards only upstream-compatible endpoints", () => 
   assert.equal(
     openAiProtocolAdapter.upstreamPath({
       protocol: "openai",
+      endpoint: "rerank",
+      routePath: "/v1/rerank",
+      transport: "http-json",
+    }),
+    "/v1/rerank",
+  );
+  assert.equal(
+    openAiProtocolAdapter.upstreamPath({
+      protocol: "openai",
       endpoint: "unknown",
       routePath: "/v1/unknown",
       transport: "http-json",

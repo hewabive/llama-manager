@@ -80,6 +80,7 @@ const upstreamPaths: Record<string, string> = {
   "chat.completions": "/v1/chat/completions",
   completions: "/v1/completions",
   embeddings: "/v1/embeddings",
+  rerank: "/v1/rerank",
   responses: "/v1/responses",
 };
 

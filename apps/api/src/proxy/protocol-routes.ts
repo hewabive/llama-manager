@@ -63,6 +63,28 @@ export function registerOpenAiProxyRoutes(app: Hono, prefix: string) {
       }),
     ),
   );
+  app.post(`${prefix}/rerank`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "rerank",
+        routePath: `${prefix}/rerank`,
+      }),
+    ),
+  );
+  app.post(`${prefix}/reranking`, (c) =>
+    proxyProtocolEndpoint(
+      c,
+      openAiProtocolAdapter,
+      protocolOperation({
+        protocol: "openai",
+        endpoint: "rerank",
+        routePath: `${prefix}/reranking`,
+      }),
+    ),
+  );
   app.post(`${prefix}/responses`, (c) =>
     proxyProtocolEndpoint(
       c,
