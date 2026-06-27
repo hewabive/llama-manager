@@ -7,11 +7,11 @@ import {
   Button,
   Collapse,
   Divider,
+  Flex,
   Group,
   Modal,
   NumberInput,
   Paper,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -257,9 +257,9 @@ function LayersCell(props: { model: GgufModel }) {
 
 function DetailRows(props: { rows: DetailRow[] }) {
   return (
-    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xl" verticalSpacing={4}>
+    <Flex wrap="wrap" rowGap={6} columnGap={24} maw="56rem">
       {props.rows.map(([label, value]) => (
-        <Group key={label} gap={6} wrap="nowrap" align="baseline">
+        <Group key={label} gap={6} wrap="nowrap" align="baseline" maw="100%">
           <Text c="dimmed" size="xs" style={{ flexShrink: 0 }}>
             {label}
           </Text>
@@ -274,7 +274,7 @@ function DetailRows(props: { rows: DetailRow[] }) {
           </Text>
         </Group>
       ))}
-    </SimpleGrid>
+    </Flex>
   );
 }
 
