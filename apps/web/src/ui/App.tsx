@@ -41,6 +41,7 @@ import { type LaunchMonitor, isLaunchTerminalStatus } from "./utils/launch";
 import { ApiLabView } from "./views/ApiLabView";
 import { ArgumentsView } from "./views/ArgumentsView";
 import { BuildView } from "./views/BuildView";
+import { DashboardView } from "./views/DashboardView";
 import { DiagnosticsView } from "./views/DiagnosticsView";
 import { InstancesView } from "./views/InstancesView";
 import { LoginView } from "./views/LoginView";
@@ -52,6 +53,7 @@ import { ProcessesView } from "./views/ProcessesView";
 import { ProxySection } from "./views/ProxySection";
 import { PublicStatusView } from "./views/PublicStatusView";
 import { SourceSyncView } from "./views/SourceSyncView";
+import { SystemResourcesView } from "./views/SystemResourcesView";
 import { UpdateView } from "./views/UpdateView";
 
 export function App() {
@@ -317,6 +319,17 @@ export function App() {
             </>
           )}
 
+          {canUseAdmin && route === "dashboard" && (
+            <DashboardView
+              instances={instances}
+              healthByInstanceId={healthByInstanceId}
+              onOpenDiagnostics={(instance) => {
+                setSelectedId(instance.name);
+                setRoute("diagnostics");
+              }}
+            />
+          )}
+
           {canUseAdmin && route === "instances" && (
             <InstancesView
               instances={instances}
@@ -383,6 +396,8 @@ export function App() {
           {canUseAdmin && route === "source-sync" && <SourceSyncView />}
 
           {canUseAdmin && route === "processes" && <ProcessesView />}
+
+          {canUseAdmin && route === "system" && <SystemResourcesView />}
         </Stack>
       </AppShell.Main>
 

@@ -2142,24 +2142,6 @@ export const AdminLoginSchema = z.object({
   password: z.string().min(1),
 });
 
-export const PublicInstanceStatusSchema = z.object({
-  name: z.string(),
-  status: InstanceHealthSummaryStatusSchema,
-  healthOk: z.boolean(),
-  checkedAt: z.string(),
-  summary: z.string(),
-});
-
-export const PublicProxyTargetSchema = z.object({
-  name: z.string(),
-  state: ApiProxyModelStateSchema,
-  activeRequests: z.number().int().nonnegative(),
-  model: z.string().nullable(),
-  idleSince: z.string().nullable(),
-  lastRequestAt: z.string().nullable(),
-  savedSlots: z.number().int().nonnegative(),
-});
-
 export const PublicProxyModelSchema = z.object({
   modelId: z.string(),
   status: ApiProxyPublicModelStatusSchema,
@@ -2170,21 +2152,6 @@ export const PublicStatusSchema = z.object({
     ok: z.boolean(),
     authRequired: z.boolean(),
     checkedAt: z.string(),
-  }),
-  resources: SystemResourcesSchema,
-  instances: z.object({
-    total: z.number().int().nonnegative(),
-    running: z.number().int().nonnegative(),
-    stale: z.number().int().nonnegative(),
-    error: z.number().int().nonnegative(),
-    stopped: z.number().int().nonnegative(),
-    items: z.array(PublicInstanceStatusSchema),
-  }),
-  proxy: z.object({
-    total: z.number().int().nonnegative(),
-    busy: z.number().int().nonnegative(),
-    activeRequests: z.number().int().nonnegative(),
-    targets: z.array(PublicProxyTargetSchema),
   }),
   models: z.object({
     total: z.number().int().nonnegative(),
@@ -2686,8 +2653,6 @@ export type InstanceNuma = z.infer<typeof InstanceNumaSchema>;
 export type SystemResources = z.infer<typeof SystemResourcesSchema>;
 export type AuthState = z.infer<typeof AuthStateSchema>;
 export type AdminLogin = z.infer<typeof AdminLoginSchema>;
-export type PublicInstanceStatus = z.infer<typeof PublicInstanceStatusSchema>;
-export type PublicProxyTarget = z.infer<typeof PublicProxyTargetSchema>;
 export type PublicProxyModel = z.infer<typeof PublicProxyModelSchema>;
 export type PublicStatus = z.infer<typeof PublicStatusSchema>;
 export type ExternalLlamaProcess = z.infer<typeof ExternalLlamaProcessSchema>;

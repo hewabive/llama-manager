@@ -5,5 +5,6 @@ export * from "./UsedByCell";
 export * from "./DetailBadge";
 export * from "./PipelinesSection";
 export * from "./ProxyTargetsSection";
+export * from "./ProxyLoadSection";
 export * from "./SchedulerSection";
 export * from "./StatsSection";

@@ -5,12 +5,17 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import {
+  getApiProxyRuntime,
   getApiProxyStats,
   getApiProxyTraces,
   previewApiProxyPlan,
 } from "../../api/client";
 import { useProxyConfig } from "../proxy/data";
-import { SchedulerSection, StatsSection } from "../proxy/sections/index";
+import {
+  ProxyLoadSection,
+  SchedulerSection,
+  StatsSection,
+} from "../proxy/sections/index";
 import { Topology } from "../proxy/Topology";
 import { navigateProxy } from "../routing";
 
@@ -27,6 +32,11 @@ export function ProxyDashboardView() {
     queryKey: ["api-proxy-traces"],
     queryFn: () => getApiProxyTraces(50),
     refetchInterval: 10_000,
+  });
+  const runtimeQuery = useQuery({
+    queryKey: ["api-proxy-runtime"],
+    queryFn: getApiProxyRuntime,
+    refetchInterval: 5_000,
   });
 
   const targetOptions = targets.map((target) => ({
@@ -73,6 +83,12 @@ export function ProxyDashboardView() {
         pipelines={pipelines}
         targets={targets}
         onOpenPipeline={(id) => navigateProxy(`pipelines/${id}`)}
+      />
+
+      <ProxyLoadSection
+        runtime={runtimeQuery.data?.data.targets ?? []}
+        targetById={targetById}
+        refreshing={runtimeQuery.isFetching}
       />
 
       <SchedulerSection

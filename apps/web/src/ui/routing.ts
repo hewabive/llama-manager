@@ -4,6 +4,7 @@ export type AppRoute =
   | "status"
   | "nodes"
   | "update"
+  | "dashboard"
   | "instances"
   | "diagnostics"
   | "processes"
@@ -14,6 +15,7 @@ export type AppRoute =
   | "args"
   | "build"
   | "source-sync"
+  | "system"
   | "api-lab";
 
 export type NavLeaf = {
@@ -59,6 +61,12 @@ export const navSections: NavSection[] = [
     id: "instances",
     label: "Instances",
     items: [
+      {
+        route: "dashboard",
+        label: "Dashboard",
+        title: "Dashboard",
+        description: "At-a-glance health of every configured instance",
+      },
       {
         route: "instances",
         label: "Instances",
@@ -184,6 +192,12 @@ export const navSections: NavSection[] = [
     id: "tools",
     label: "Tools",
     items: [
+      {
+        route: "system",
+        label: "System",
+        title: "System resources",
+        description: "Live RAM, accelerator, and disk activity for this node",
+      },
       {
         route: "api-lab",
         label: "API Lab",
