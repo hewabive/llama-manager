@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Collapse,
+  Divider,
   Group,
   Modal,
   NumberInput,
@@ -66,48 +67,60 @@ function formatSampler(value: number) {
   return String(Math.round(value * 1000) / 1000);
 }
 
-function metaRows(model: GgufModel): Array<[string, string]> {
+type DetailRow = [string, string];
+type DetailSection = { title: string; rows: DetailRow[] };
+
+function metaSections(model: GgufModel): DetailSection[] {
   const m = model.metadata;
-  const rows: Array<[string, string]> = [];
-  const push = (label: string, value: string | number | null | undefined) => {
-    if (value !== null && value !== undefined && value !== "") {
-      rows.push([label, String(value)]);
-    }
+  const section = (title: string) => {
+    const rows: DetailRow[] = [];
+    const push = (label: string, value: string | number | null | undefined) => {
+      if (value !== null && value !== undefined && value !== "") {
+        rows.push([label, String(value)]);
+      }
+    };
+    return { title, rows, push };
   };
 
-  push("Architecture", m.architecture);
+  const overview = section("Overview");
+  overview.push("Architecture", m.architecture);
   const role = ggufModelRole(m);
-  push("Role", role !== "generative" ? role : null);
-  push("Model type", m.modelType && m.modelType !== "model" ? m.modelType : null);
-  push("Parameters", formatParameterCount(m.parameterCount));
-  push("Size label", m.sizeLabel);
+  overview.push("Role", role !== "generative" ? role : null);
+  overview.push(
+    "Model type",
+    m.modelType && m.modelType !== "model" ? m.modelType : null,
+  );
+  overview.push("Parameters", formatParameterCount(m.parameterCount));
+  overview.push("Size label", m.sizeLabel);
   const bpw = bitsPerWeight(model);
-  push("Bits per weight", bpw ? bpw.toFixed(2) : null);
-  push(
+  overview.push("Bits per weight", bpw ? bpw.toFixed(2) : null);
+  overview.push(
     "Quantization",
     m.quantization
       ? `${m.quantization}${m.quantizationVersion ? ` (v${m.quantizationVersion})` : ""}`
       : null,
   );
+  overview.push("File size", formatBytes(model.sizeBytes));
 
+  const arch = section("Architecture");
   const layers = modelLayerInfo(model);
-  push("Layers", layers.total);
+  arch.push("Layers", layers.total);
   if (layers.isMoe) {
-    push("Dense layers", layers.dense);
-    push("MoE layers", layers.moe);
-    push(
+    arch.push("Dense layers", layers.dense);
+    arch.push("MoE layers", layers.moe);
+    arch.push(
       "Experts (used/total)",
       m.expertCount !== null
         ? `${m.expertUsedCount ?? "?"}/${m.expertCount}`
         : null,
     );
-    push("Shared experts", m.expertSharedCount);
-    push("Expert FFN", m.expertFeedForwardLength);
+    arch.push("Shared experts", m.expertSharedCount);
+    arch.push("Expert FFN", m.expertFeedForwardLength);
   }
-  push("FFN length", m.feedForwardLength);
-  push("Embedding length", m.embeddingLength);
-  push("Pooling", ggufPoolingTypeLabel(m.poolingType));
-  push(
+  arch.push("FFN length", m.feedForwardLength);
+  arch.push("Embedding length", m.embeddingLength);
+  arch.push("Pooling", ggufPoolingTypeLabel(m.poolingType));
+  arch.push(
     "Attention",
     m.causalAttention === null
       ? null
@@ -115,34 +128,46 @@ function metaRows(model: GgufModel): Array<[string, string]> {
         ? "causal"
         : "bidirectional",
   );
-  push("Attention heads", m.headCount);
+  arch.push("Attention heads", m.headCount);
   if (m.headCountKv !== null && m.headCount) {
-    push(
+    arch.push(
       "KV heads (GQA)",
       `${m.headCountKv} (${Math.round(m.headCount / m.headCountKv)}:1)`,
     );
   } else {
-    push("KV heads", m.headCountKv);
+    arch.push("KV heads", m.headCountKv);
   }
-  push("Context (train)", m.contextLength);
-  push("Sliding window", m.slidingWindow);
-  push("RoPE freq base", m.ropeFreqBase);
+  arch.push("Context (train)", m.contextLength);
+  arch.push("Sliding window", m.slidingWindow);
+  arch.push("RoPE freq base", m.ropeFreqBase);
   if (m.ropeScalingType) {
-    push(
+    arch.push(
       "RoPE scaling",
       `${m.ropeScalingType}${m.ropeScalingFactor ? ` ×${m.ropeScalingFactor}` : ""}`,
     );
   }
-  push("RoPE orig ctx", m.ropeScalingOrigCtxLen);
-  push("Vocab size", m.vocabularySize);
-  push("Tokenizer", m.tokenizerModel);
-  push("Chat template", m.hasChatTemplate ? "yes" : null);
-  push("Basename", m.basename);
-  push("Finetune", m.finetune);
-  push("License", m.license);
-  push("Version", m.version);
-  push("Quantized by", m.quantizedBy);
-  push("Repo", m.repoUrl);
+  arch.push("RoPE orig ctx", m.ropeScalingOrigCtxLen);
+
+  const tokenizer = section("Tokenizer");
+  tokenizer.push("Vocab size", m.vocabularySize);
+  tokenizer.push("Tokenizer", m.tokenizerModel);
+  tokenizer.push("Pretokenizer", m.tokenizerPre);
+  const addTokens = [
+    m.addBosToken === null ? null : `bos ${m.addBosToken ? "yes" : "no"}`,
+    m.addEosToken === null ? null : `eos ${m.addEosToken ? "yes" : "no"}`,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  tokenizer.push("Add tokens", addTokens || null);
+  tokenizer.push("Chat template", m.hasChatTemplate ? "yes" : null);
+
+  const provenance = section("Provenance");
+  provenance.push("Basename", m.basename);
+  provenance.push("Finetune", m.finetune);
+  provenance.push("License", m.license);
+  provenance.push("Version", m.version);
+  provenance.push("Quantized by", m.quantizedBy);
+  provenance.push("Repo", m.repoUrl);
   const sampling = [
     m.samplingTemp !== null ? `temp ${formatSampler(m.samplingTemp)}` : null,
     m.samplingTopK !== null ? `top_k ${m.samplingTopK}` : null,
@@ -150,7 +175,7 @@ function metaRows(model: GgufModel): Array<[string, string]> {
   ]
     .filter(Boolean)
     .join(", ");
-  push("Rec. sampling", sampling || null);
+  provenance.push("Rec. sampling", sampling || null);
   if (m.imatrixDataset || m.imatrixEntries !== null) {
     const counts = [
       m.imatrixEntries !== null ? `${m.imatrixEntries} entries` : null,
@@ -158,23 +183,18 @@ function metaRows(model: GgufModel): Array<[string, string]> {
     ]
       .filter(Boolean)
       .join(", ");
-    push(
+    provenance.push(
       "imatrix",
       [m.imatrixDataset, counts ? `(${counts})` : null]
         .filter(Boolean)
         .join(" "),
     );
   }
-  push("Pretokenizer", m.tokenizerPre);
-  const addTokens = [
-    m.addBosToken === null ? null : `bos ${m.addBosToken ? "yes" : "no"}`,
-    m.addEosToken === null ? null : `eos ${m.addEosToken ? "yes" : "no"}`,
-  ]
-    .filter(Boolean)
-    .join(" / ");
-  push("Add tokens", addTokens || null);
-  push("File size", formatBytes(model.sizeBytes));
-  return rows;
+
+  return [overview, arch, tokenizer, provenance].map(({ title, rows }) => ({
+    title,
+    rows,
+  }));
 }
 
 function RoleBadge(props: { model: GgufModel }) {
@@ -234,68 +254,83 @@ function LayersCell(props: { model: GgufModel }) {
   );
 }
 
+function DetailRows(props: { rows: DetailRow[] }) {
+  return (
+    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs" verticalSpacing={4}>
+      {props.rows.map(([label, value]) => (
+        <Group key={label} gap="xs" wrap="nowrap" justify="space-between">
+          <Text c="dimmed" size="xs">
+            {label}
+          </Text>
+          <Text
+            size="xs"
+            ta="right"
+            style={{ fontVariantNumeric: "tabular-nums" }}
+          >
+            {value}
+          </Text>
+        </Group>
+      ))}
+    </SimpleGrid>
+  );
+}
+
 function ModelDetailPanel(props: { model: GgufModel }) {
-  const rows = metaRows(props.model);
+  const sections = metaSections(props.model);
   const m = props.model.metadata;
   const tags = [...new Set(m.tags)];
+  const hasBaseModels = m.baseModels.length > 0;
   return (
-    <Stack gap="xs">
-      <SimpleGrid
-        cols={{ base: 1, sm: 2, lg: 3 }}
-        spacing="xs"
-        verticalSpacing={4}
-      >
-        {rows.map(([label, value]) => (
-          <Group key={label} gap="xs" wrap="nowrap" justify="space-between">
-            <Text c="dimmed" size="xs">
-              {label}
-            </Text>
-            <Text
-              size="xs"
-              ta="right"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {value}
-            </Text>
-          </Group>
-        ))}
-      </SimpleGrid>
-      {tags.length > 0 && (
-        <Group gap={4}>
-          {tags.map((tag) => (
-            <Badge key={tag} size="xs" variant="outline" color="gray">
-              {tag}
-            </Badge>
-          ))}
-        </Group>
-      )}
-      {m.baseModels.length > 0 && (
-        <Stack gap={2}>
-          <Text c="dimmed" size="xs">
-            Base {m.baseModels.length > 1 ? "models" : "model"}
-          </Text>
-          {m.baseModels.map((base, index) => {
-            const label = [base.name, base.organization]
-              .filter(Boolean)
-              .join(" · ");
-            return base.repoUrl ? (
-              <Anchor
-                key={base.repoUrl}
-                href={base.repoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                size="xs"
-              >
-                {label || base.repoUrl}
-              </Anchor>
-            ) : (
-              <Text key={base.name ?? String(index)} size="xs">
-                {label}
-              </Text>
-            );
-          })}
-        </Stack>
-      )}
+    <Stack gap="sm">
+      {sections.map((section) => {
+        const isProvenance = section.title === "Provenance";
+        const showExtras = isProvenance && (tags.length > 0 || hasBaseModels);
+        if (section.rows.length === 0 && !showExtras) {
+          return null;
+        }
+        return (
+          <Stack key={section.title} gap={6}>
+            <Divider label={section.title} labelPosition="left" />
+            {section.rows.length > 0 && <DetailRows rows={section.rows} />}
+            {isProvenance && tags.length > 0 && (
+              <Group gap={4}>
+                {tags.map((tag) => (
+                  <Badge key={tag} size="xs" variant="outline" color="gray">
+                    {tag}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+            {isProvenance && hasBaseModels && (
+              <Stack gap={2}>
+                <Text c="dimmed" size="xs">
+                  Base {m.baseModels.length > 1 ? "models" : "model"}
+                </Text>
+                {m.baseModels.map((base, index) => {
+                  const label = [base.name, base.organization]
+                    .filter(Boolean)
+                    .join(" · ");
+                  return base.repoUrl ? (
+                    <Anchor
+                      key={base.repoUrl}
+                      href={base.repoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="xs"
+                    >
+                      {label || base.repoUrl}
+                    </Anchor>
+                  ) : (
+                    <Text key={base.name ?? String(index)} size="xs">
+                      {label}
+                    </Text>
+                  );
+                })}
+              </Stack>
+            )}
+          </Stack>
+        );
+      })}
       <Text c="dimmed" size="xs" className="text-wrap">
         {props.model.path}
       </Text>
