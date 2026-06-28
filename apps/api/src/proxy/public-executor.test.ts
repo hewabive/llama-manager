@@ -74,6 +74,21 @@ function preview(actions: ApiProxySchedulerAction[]): ApiProxyPlanPreview {
 
 const readyPreview = preview([action("route-request")]);
 
+function blockedPreview(): ApiProxyPlanPreview {
+  return {
+    checkedAt: "2026-05-30T10:00:00.000Z",
+    runtime: { checkedAt: "2026-05-30T10:00:00.000Z", targets: [] },
+    plan: {
+      ok: false,
+      mode: "request",
+      requestedTargetId: target.id,
+      blockingReason: "no preemptible models available to evict",
+      preemptTargetIds: [],
+      actions: [],
+    },
+  };
+}
+
 function executorDefaults(
   update: {
     initialPreview?: ApiProxyPlanPreview | undefined;
@@ -395,4 +410,30 @@ test("executeApiProxyPublicMvpPlan surfaces a 502 when restore fails and no drop
   if (!result.ok) {
     assert.equal(result.diagnostic.code, "llama_manager_proxy_upstream_error");
   }
+});
+
+test("executeApiProxyPublicMvpPlan waits out a transient block then routes", async () => {
+  const result = await executeApiProxyPublicMvpPlan(
+    executorDefaults({
+      initialPreview: blockedPreview(),
+      previews: [blockedPreview(), readyPreview],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+});
+
+test("executeApiProxyPublicMvpPlan stops waiting on a blocked plan when the client aborts", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const result = await executeApiProxyPublicMvpPlan({
+    ...executorDefaults({ initialPreview: blockedPreview() }),
+    signal: controller.signal,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.ok ? null : result.diagnostic.code,
+    "llama_manager_proxy_plan_blocked",
+  );
 });

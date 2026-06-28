@@ -1,6 +1,7 @@
 import type {
   ApiProxySchedulerPlanRequest,
   ApiProxyTargetPlanInput,
+  Instance,
 } from "@llama-manager/core";
 
 import type {
@@ -33,14 +34,38 @@ function overlayHolderState(
   };
 }
 
+export function parseInstanceParallelLimit(
+  args: Instance["args"],
+): number | undefined {
+  const raw = args["--parallel"] ?? args["-np"];
+  const value =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number(raw)
+        : Number.NaN;
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 export function buildDomainAdmissionDecider(input: {
   candidateTargetId: string;
   candidatePriority: number;
   planRequest: ApiProxySchedulerPlanRequest;
+  parallelLimit?: number | undefined;
 }): (context: DomainAdmissionContext) => DomainAdmissionDecision {
-  const { candidateTargetId, candidatePriority, planRequest } = input;
+  const { candidateTargetId, candidatePriority, planRequest, parallelLimit } =
+    input;
 
   return (context) => {
+    if (parallelLimit !== undefined) {
+      const sameTargetHolders = context.holders.filter(
+        (holder) => holder.running && holder.targetId === candidateTargetId,
+      ).length;
+      if (sameTargetHolders >= parallelLimit) {
+        return { type: "wait" };
+      }
+    }
+
     if (
       context.holders.some(
         (holder) => holder.running && holder.priority > candidatePriority,

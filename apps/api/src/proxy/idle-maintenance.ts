@@ -69,6 +69,7 @@ export async function buildApiProxyPlanRequest(input: {
     now: runtime.snapshot.checkedAt,
     targets,
     pools: schedulerPoolInputs(targetInstanceIds),
+    protectedTargetIds: [...computeDomainCoordinator.wantedTargetIds()],
   };
   if (input.requestedTargetId) {
     request.requestedTargetId = input.requestedTargetId;

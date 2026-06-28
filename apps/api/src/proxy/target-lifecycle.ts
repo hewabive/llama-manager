@@ -13,6 +13,7 @@ import {
   startOrRecoverManagedInstance,
   stopManagedInstance,
 } from "../process/managed-lifecycle.js";
+import { domainSwapCoordinator } from "./domain-swap-coordinator.js";
 import { getApiProxyPlanPreview } from "./idle-maintenance.js";
 import {
   executeApiProxyPublicMvpPlan,
@@ -24,14 +25,49 @@ import {
   removeApiProxySavedSlotId,
 } from "./repository.js";
 
+function requiresSwap(
+  preview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
+): boolean {
+  return (
+    preview.plan.ok &&
+    preview.plan.actions.some((action) => action.type !== "route-request")
+  );
+}
+
 export function executeApiProxyTargetReadiness(
   target: ApiProxyTargetRecord,
   initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
+  domains: string[],
   extraTarget?: ApiProxyTargetRecord | undefined,
+  signal?: AbortSignal | undefined,
+): Promise<ApiProxyPublicExecutorResult> {
+  const runWith = (preview: typeof initialPreview) =>
+    runReadinessExecutor(target, preview, extraTarget, signal);
+
+  if (domains.length === 0 || !requiresSwap(initialPreview)) {
+    return runWith(initialPreview);
+  }
+
+  return domainSwapCoordinator.run(domains, async () => {
+    const fresh = await getApiProxyPlanPreview({
+      mode: "request",
+      requestedTargetId: target.id,
+      ...(extraTarget !== undefined ? { extraTarget } : {}),
+    });
+    return runWith(fresh);
+  });
+}
+
+function runReadinessExecutor(
+  target: ApiProxyTargetRecord,
+  initialPreview: Awaited<ReturnType<typeof getApiProxyPlanPreview>>,
+  extraTarget?: ApiProxyTargetRecord | undefined,
+  signal?: AbortSignal | undefined,
 ): Promise<ApiProxyPublicExecutorResult> {
   return executeApiProxyPublicMvpPlan({
     target,
     initialPreview,
+    ...(signal !== undefined ? { signal } : {}),
     getInstance,
     startInstance: async (instance) => {
       try {

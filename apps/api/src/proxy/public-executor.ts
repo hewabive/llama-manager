@@ -32,6 +32,7 @@ const defaultOptions = {
   maxPasses: 16,
   instanceReadyTimeoutMs: 120_000,
   modelReadyTimeoutMs: 15 * 60_000,
+  blockedClearTimeoutMs: 15 * 60_000,
   pollIntervalMs: 1_000,
 };
 
@@ -75,6 +76,7 @@ export type ApiProxyPublicExecutorInput = {
     | undefined;
   getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
   sleep?: ((ms: number) => Promise<void>) | undefined;
+  signal?: AbortSignal | undefined;
   options?: Partial<typeof defaultOptions> | undefined;
 };
 
@@ -196,6 +198,28 @@ async function waitForPlanChange(input: {
   };
 }
 
+async function waitForPlanUnblock(input: {
+  preview: ApiProxyPlanPreview;
+  targetId: string;
+  timeoutMs: number;
+  pollIntervalMs: number;
+  sleep: (ms: number) => Promise<void>;
+  signal: AbortSignal | undefined;
+  getPlanPreview: (targetId: string) => Promise<ApiProxyPlanPreview>;
+}): Promise<ApiProxyPlanPreview> {
+  let current = input.preview;
+  const startedAt = Date.now();
+  while (
+    !current.plan.ok &&
+    !input.signal?.aborted &&
+    Date.now() - startedAt <= input.timeoutMs
+  ) {
+    await input.sleep(input.pollIntervalMs);
+    current = await input.getPlanPreview(input.targetId);
+  }
+  return current;
+}
+
 export async function executeApiProxyPublicMvpPlan(
   input: ApiProxyPublicExecutorInput,
 ): Promise<ApiProxyPublicExecutorResult> {
@@ -209,7 +233,18 @@ export async function executeApiProxyPublicMvpPlan(
 
   for (let pass = 0; pass < options.maxPasses; pass += 1) {
     if (!preview.plan.ok) {
-      return { ok: false, diagnostic: blockedDiagnostic(preview) };
+      preview = await waitForPlanUnblock({
+        preview,
+        targetId: input.target.id,
+        timeoutMs: options.blockedClearTimeoutMs,
+        pollIntervalMs: options.pollIntervalMs,
+        sleep,
+        signal: input.signal,
+        getPlanPreview: input.getPlanPreview,
+      });
+      if (!preview.plan.ok) {
+        return { ok: false, diagnostic: blockedDiagnostic(preview) };
+      }
     }
 
     const action = firstReadinessAction(preview);

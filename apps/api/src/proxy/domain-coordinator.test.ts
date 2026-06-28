@@ -294,3 +294,68 @@ test("tryAcquireMaintenance succeeds only when the domains are idle and blocks a
   await flush();
   assert.equal(waiterState.done, true);
 });
+
+const admitIfUnderTwo = (
+  context: DomainAdmissionContext,
+): DomainAdmissionDecision =>
+  context.holders.filter((holder) => holder.running).length < 2
+    ? { type: "admit" }
+    : { type: "wait" };
+
+test("prefers a resident (affine) waiter over a swap waiter at equal priority", async () => {
+  const coord = new ComputeDomainCoordinator();
+  const resident = await coord.acquire(
+    req({ targetId: "x", priority: 100, decide: admitIfUnderTwo }),
+  );
+  const filler = await coord.acquire(
+    req({ targetId: "z", priority: 100, decide: admitIfUnderTwo }),
+  );
+
+  const swap = track(
+    coord.acquire(req({ targetId: "y", priority: 100, decide: admitIfUnderTwo })),
+  );
+  const affine = track(
+    coord.acquire(req({ targetId: "x", priority: 100, decide: admitIfUnderTwo })),
+  );
+  await flush();
+  assert.equal(swap.done, false);
+  assert.equal(affine.done, false);
+
+  filler.release();
+  await flush();
+  assert.equal(affine.done, true);
+  assert.equal(swap.done, false);
+
+  resident.release();
+  (affine.value as DomainLease | undefined)?.release();
+  await flush();
+  assert.equal(swap.done, true);
+});
+
+test("a starved swap waiter overrides affinity once past the fairness window", async () => {
+  const coord = new ComputeDomainCoordinator(0);
+  const resident = await coord.acquire(
+    req({ targetId: "x", priority: 100, decide: admitIfUnderTwo }),
+  );
+  const filler = await coord.acquire(
+    req({ targetId: "z", priority: 100, decide: admitIfUnderTwo }),
+  );
+
+  const swap = track(
+    coord.acquire(req({ targetId: "y", priority: 100, decide: admitIfUnderTwo })),
+  );
+  const affine = track(
+    coord.acquire(req({ targetId: "x", priority: 100, decide: admitIfUnderTwo })),
+  );
+  await flush();
+
+  filler.release();
+  await flush();
+  assert.equal(swap.done, true);
+  assert.equal(affine.done, false);
+
+  resident.release();
+  (swap.value as DomainLease | undefined)?.release();
+  await flush();
+  assert.equal(affine.done, true);
+});

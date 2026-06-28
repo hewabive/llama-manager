@@ -6,14 +6,17 @@ import {
 } from "@llama-manager/core";
 import type { Context } from "hono";
 
-import { listInstances } from "../instances/repository.js";
+import { getInstance, listInstances } from "../instances/repository.js";
 import { getNode } from "../nodes/repository.js";
 import { observeBodyCompletion } from "./body-completion.js";
 import { delegateApiProxyServe } from "./delegate.js";
 import { getApiEndpointById } from "./endpoints.js";
 import { externalEndpointTarget } from "./external-target.js";
 import { resolvePassthroughModel } from "./passthrough.js";
-import { buildDomainAdmissionDecider } from "./domain-admission.js";
+import {
+  buildDomainAdmissionDecider,
+  parseInstanceParallelLimit,
+} from "./domain-admission.js";
 import {
   attachLeaseRelease,
   computeDomainCoordinator,
@@ -678,6 +681,10 @@ export async function serveResolvedTarget(input: {
     candidatePlanTarget?.draws ?? [],
     planRequest.pools,
   );
+  const candidateInstanceId = candidatePlanTarget?.instanceId ?? null;
+  const parallelLimit = candidateInstanceId
+    ? parseInstanceParallelLimit(getInstance(candidateInstanceId)?.args ?? {})
+    : undefined;
   let lease: DomainLease | null = null;
   if (domains.length > 0) {
     try {
@@ -691,6 +698,7 @@ export async function serveResolvedTarget(input: {
           candidateTargetId: decision.target.id,
           candidatePriority: decision.target.priority,
           planRequest,
+          ...(parallelLimit !== undefined ? { parallelLimit } : {}),
         }),
       });
     } catch {
@@ -746,7 +754,9 @@ export async function serveResolvedTarget(input: {
     executeApiProxyTargetReadiness(
       decision.target,
       initialPreview,
+      domains,
       extraTarget ?? undefined,
+      c.req.raw.signal,
     );
 
   const freshRequestPreview = () => planPreviewFor(decision.target.id);

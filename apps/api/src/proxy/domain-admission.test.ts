@@ -5,8 +5,20 @@ import {
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildDomainAdmissionDecider } from "./domain-admission.js";
+import {
+  buildDomainAdmissionDecider,
+  parseInstanceParallelLimit,
+} from "./domain-admission.js";
 import type { DomainHolderView } from "./domain-coordinator.js";
+
+test("parseInstanceParallelLimit reads --parallel/-np and rejects invalid values", () => {
+  assert.equal(parseInstanceParallelLimit({ "--parallel": 4 }), 4);
+  assert.equal(parseInstanceParallelLimit({ "--parallel": "8" }), 8);
+  assert.equal(parseInstanceParallelLimit({ "-np": 2 }), 2);
+  assert.equal(parseInstanceParallelLimit({}), undefined);
+  assert.equal(parseInstanceParallelLimit({ "--parallel": 0 }), undefined);
+  assert.equal(parseInstanceParallelLimit({ "--parallel": "nope" }), undefined);
+});
 
 function target(input: {
   id: string;
@@ -199,4 +211,48 @@ test("waits when the busy obstacle is not a holder this coordinator controls", (
   assert.deepEqual(decide({ domains: ["gpu0"], holders: [] }), {
     type: "wait",
   });
+});
+
+test("waits when the candidate is at its --parallel concurrency cap", () => {
+  const decide = buildDomainAdmissionDecider({
+    candidateTargetId: "cand",
+    candidatePriority: 100,
+    parallelLimit: 1,
+    planRequest: planRequest({
+      requestedTargetId: "cand",
+      targets: [
+        target({ id: "cand", instanceId: "i", priority: 100, state: "ready", bytes: 50 }),
+      ],
+    }),
+  });
+
+  assert.deepEqual(
+    decide({
+      domains: ["gpu0"],
+      holders: [holder({ targetId: "cand", priority: 100, running: true })],
+    }),
+    { type: "wait" },
+  );
+});
+
+test("admits a same-target request below the --parallel concurrency cap", () => {
+  const decide = buildDomainAdmissionDecider({
+    candidateTargetId: "cand",
+    candidatePriority: 100,
+    parallelLimit: 2,
+    planRequest: planRequest({
+      requestedTargetId: "cand",
+      targets: [
+        target({ id: "cand", instanceId: "i", priority: 100, state: "ready", bytes: 50 }),
+      ],
+    }),
+  });
+
+  assert.deepEqual(
+    decide({
+      domains: ["gpu0"],
+      holders: [holder({ targetId: "cand", priority: 100, running: true })],
+    }),
+    { type: "admit" },
+  );
 });

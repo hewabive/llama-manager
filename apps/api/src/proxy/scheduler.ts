@@ -220,6 +220,7 @@ function planMemoryEvictions(
   const poolById = new Map<string, ApiProxySchedulerPoolInput>(
     request.pools.map((pool) => [pool.poolId, pool]),
   );
+  const protectedTargetIds = new Set(request.protectedTargetIds ?? []);
   const kept = collectMemoryPeerInstances(request, target, freedInstanceIds);
 
   const freeFor = (poolId: string): number => {
@@ -274,6 +275,8 @@ function planMemoryEvictions(
     }
     tier.sort(
       (left, right) =>
+        Number(protectedTargetIds.has(left.target.id)) -
+          Number(protectedTargetIds.has(right.target.id)) ||
         left.priority - right.priority ||
         (right.idleForMs ?? 0) - (left.idleForMs ?? 0) ||
         drawOnPools(right, deficitSet) - drawOnPools(left, deficitSet),

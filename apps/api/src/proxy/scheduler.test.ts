@@ -696,3 +696,82 @@ test("planApiProxyRequest skips the memory axis when no draws are declared", () 
     ["load-model", "wait-model-ready", "route-request"],
   );
 });
+
+function threeWayContention(protectedTargetIds?: string[]) {
+  return planRequest({
+    mode: "request",
+    requestedTargetId: "m3",
+    now: "2026-05-30T10:00:10.000Z",
+    pools: [
+      { poolId: "gpu0", kind: "gpu", budgetBytes: 100, usedByOthersBytes: 0 },
+    ],
+    ...(protectedTargetIds ? { protectedTargetIds } : {}),
+    targets: [
+      target({
+        id: "m1",
+        name: "Model one",
+        instanceId: "inst-1",
+        model: "one",
+        priority: 50,
+        state: "ready",
+        idleSince: "2026-05-30T10:00:05.000Z",
+        draws: [{ poolId: "gpu0", bytes: 40 }],
+      }),
+      target({
+        id: "m2",
+        name: "Model two",
+        instanceId: "inst-2",
+        model: "two",
+        priority: 50,
+        state: "ready",
+        idleSince: "2026-05-30T10:00:00.000Z",
+        draws: [{ poolId: "gpu0", bytes: 40 }],
+      }),
+      target({
+        id: "m3",
+        name: "Model three",
+        instanceId: "inst-3",
+        model: "three",
+        priority: 50,
+        state: "unloaded",
+        draws: [{ poolId: "gpu0", bytes: 40 }],
+      }),
+    ],
+  });
+}
+
+test("planApiProxyRequest without demand signal can evict a still-wanted idle peer", () => {
+  const plan = planApiProxyRequest(threeWayContention(), {
+    allowBusyEviction: true,
+  });
+
+  assert.equal(plan.ok, true);
+  const unload = plan.actions.find((item) => item.type === "unload-model");
+  assert.equal(unload?.targetId, "m2");
+});
+
+test("planApiProxyRequest spares a wanted peer and evicts the unwanted idle one", () => {
+  const plan = planApiProxyRequest(threeWayContention(["m2"]), {
+    allowBusyEviction: true,
+  });
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(
+    plan.actions
+      .filter((item) => item.type === "unload-model")
+      .map((item) => item.targetId),
+    ["m1"],
+  );
+});
+
+test("planApiProxyRequest evicts a wanted peer only when every peer is wanted", () => {
+  const plan = planApiProxyRequest(threeWayContention(["m1", "m2"]), {
+    allowBusyEviction: true,
+  });
+
+  assert.equal(plan.ok, true);
+  assert.equal(
+    plan.actions.filter((item) => item.type === "unload-model").length,
+    1,
+  );
+});

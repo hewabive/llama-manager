@@ -136,7 +136,13 @@ export async function executeApiProxyModelSubRequest(input: {
       mode: "request",
       requestedTargetId: target.id,
     });
-    const ready = await executeApiProxyTargetReadiness(target, preview);
+    const ready = await executeApiProxyTargetReadiness(
+      target,
+      preview,
+      domains,
+      undefined,
+      input.signal,
+    );
     if (!ready.ok) {
       return fail(ready.diagnostic);
     }

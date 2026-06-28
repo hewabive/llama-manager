@@ -47,6 +47,8 @@ export class ResourceLeaseAbortedError extends Error {
 
 const MAINTENANCE_TARGET = "__maintenance__";
 
+const SWAP_FAIRNESS_MS = 2000;
+
 type DomainLeaseStatus = "waiting" | "holding" | "suspended" | "settled";
 
 type InternalDomainLease = {
@@ -57,6 +59,7 @@ type InternalDomainLease = {
   domains: string[];
   decide: (context: DomainAdmissionContext) => DomainAdmissionDecision;
   seq: number;
+  enqueuedAt: number;
   status: DomainLeaseStatus;
   preemptController: AbortController;
   preemptFired: boolean;
@@ -75,6 +78,8 @@ export class ComputeDomainCoordinator {
   private holders: InternalDomainLease[] = [];
   private waiters: InternalDomainLease[] = [];
   private seq = 0;
+
+  constructor(private readonly swapFairnessMs: number = SWAP_FAIRNESS_MS) {}
 
   acquire(request: DomainLeaseRequest): Promise<DomainLease> {
     const internal = this.createLease(request);
@@ -98,6 +103,16 @@ export class ComputeDomainCoordinator {
         holder.targetId !== MAINTENANCE_TARGET
       ) {
         ids.add(holder.targetId);
+      }
+    }
+    return ids;
+  }
+
+  wantedTargetIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const lease of [...this.holders, ...this.waiters]) {
+      if (lease.targetId !== MAINTENANCE_TARGET) {
+        ids.add(lease.targetId);
       }
     }
     return ids;
@@ -131,6 +146,7 @@ export class ComputeDomainCoordinator {
       domains: [...request.domains],
       decide: request.decide,
       seq: this.seq++,
+      enqueuedAt: Date.now(),
       status: "waiting",
       preemptController: new AbortController(),
       preemptFired: false,
@@ -168,15 +184,30 @@ export class ComputeDomainCoordinator {
     let progressed = true;
     while (progressed) {
       progressed = false;
-      const candidates = this.waiters
-        .filter(
-          (lease) =>
-            lease.status === "waiting" || lease.status === "suspended",
-        )
-        .sort(
-          (left, right) =>
-            right.priority - left.priority || left.seq - right.seq,
+      const now = Date.now();
+      const isAffine = (lease: InternalDomainLease) =>
+        this.holders.some(
+          (holder) =>
+            holder.status === "holding" &&
+            holder.targetId !== MAINTENANCE_TARGET &&
+            holder.targetId === lease.targetId &&
+            domainsOverlap(holder.domains, lease.domains),
         );
+      const pending = this.waiters.filter(
+        (lease) => lease.status === "waiting" || lease.status === "suspended",
+      );
+      const starvedSwapWaiting = pending.some(
+        (lease) =>
+          !isAffine(lease) && now - lease.enqueuedAt >= this.swapFairnessMs,
+      );
+      const candidates = pending.sort(
+        (left, right) =>
+          right.priority - left.priority ||
+          (starvedSwapWaiting
+            ? 0
+            : Number(isAffine(right)) - Number(isAffine(left))) ||
+          left.seq - right.seq,
+      );
 
       for (const candidate of candidates) {
         const overlapping = this.holdersOnDomains(candidate.domains);
