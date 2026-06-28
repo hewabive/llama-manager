@@ -272,7 +272,7 @@ function readQuantization(metadata: Map<string, GgufValue>) {
   return null;
 }
 
-export const GGUF_PARSER_VERSION = 7;
+export const GGUF_PARSER_VERSION = 8;
 
 function readHeader(reader: FileReader) {
   if (reader.read(4).toString("utf8") !== "GGUF") {
@@ -294,25 +294,30 @@ function readKv(reader: FileReader, kvCount: number) {
   return metadata;
 }
 
-function readTensorParameterCount(reader: FileReader, tensorCount: number) {
-  let total = 0;
+function readTensorTable(reader: FileReader, tensorCount: number) {
+  let parameterCount = 0;
+  let hasClassifierHead = false;
   for (let index = 0; index < tensorCount; index += 1) {
-    reader.string(); // tensor name
+    const name = reader.string();
+    if (name === "cls.output.weight" || name.startsWith("cls.output.")) {
+      hasClassifierHead = true;
+    }
     const dimensions = reader.u32();
     let elements = 1;
     for (let dim = 0; dim < dimensions; dim += 1) {
       elements *= reader.u64Number();
     }
-    reader.u32(); // ggml type
-    reader.u64Number(); // data offset
-    total += elements;
+    reader.u32();
+    reader.u64Number();
+    parameterCount += elements;
   }
-  return total;
+  return { parameterCount, hasClassifierHead };
 }
 
 function extractMetadata(
   metadata: Map<string, GgufValue>,
   parameterCount: number | null,
+  hasClassifierHead: boolean,
 ): GgufMetadata {
   const contextLength =
     numberMetadata(metadata, [
@@ -335,6 +340,7 @@ function extractMetadata(
     modelType: stringMetadata(metadata, ["general.type"]),
     poolingType: findNumberBySuffix(metadata, ".pooling_type"),
     causalAttention: findBooleanBySuffix(metadata, ".attention.causal"),
+    hasClassifierHead,
     quantization: readQuantization(metadata),
     quantizationVersion: numberMetadata(metadata, [
       "general.quantization_version",
@@ -402,12 +408,15 @@ export function readGgufMetadata(path: string): GgufMetadata {
     const { tensorCount, kvCount } = readHeader(reader);
     const metadata = readKv(reader, kvCount);
     let parameterCount: number | null = null;
+    let hasClassifierHead = false;
     try {
-      parameterCount = readTensorParameterCount(reader, tensorCount);
+      const table = readTensorTable(reader, tensorCount);
+      parameterCount = table.parameterCount;
+      hasClassifierHead = table.hasClassifierHead;
     } catch {
       parameterCount = null;
     }
-    return extractMetadata(metadata, parameterCount);
+    return extractMetadata(metadata, parameterCount, hasClassifierHead);
   } finally {
     closeSync(fd);
   }
@@ -419,7 +428,7 @@ export function readGgufParameterCount(path: string): number {
     const reader = new FileReader(fd);
     const { tensorCount, kvCount } = readHeader(reader);
     readKv(reader, kvCount);
-    return readTensorParameterCount(reader, tensorCount);
+    return readTensorTable(reader, tensorCount).parameterCount;
   } finally {
     closeSync(fd);
   }

@@ -199,13 +199,14 @@ function kvStringArray(key: string, values: string[]) {
   ]);
 }
 
-function metadataFile(kvs: Buffer[]) {
+function metadataFile(kvs: Buffer[], tensors: Buffer[] = []) {
   return Buffer.concat([
     Buffer.from("GGUF", "utf8"),
     u32(3),
-    u64(0),
+    u64(tensors.length),
     u64(kvs.length),
     ...kvs,
+    ...tensors,
   ]);
 }
 
@@ -231,7 +232,39 @@ test("readGgufMetadata captures embedding role signals", () => {
     assert.equal(metadata.poolingType, 2);
     assert.equal(metadata.causalAttention, false);
     assert.equal(metadata.embeddingLength, 1024);
+    assert.equal(metadata.hasClassifierHead, false);
     assert.equal(ggufModelRole(metadata), "embedding");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readGgufMetadata detects reranker via classifier head tensor", () => {
+  const dir = mkdtempSync(join(tmpdir(), "llama-manager-gguf-rerank-"));
+  const path = join(dir, "reranker.gguf");
+  try {
+    writeFileSync(
+      path,
+      metadataFile(
+        [
+          kvString("general.architecture", "bert"),
+          kvString("general.type", "model"),
+          kvU32("bert.embedding_length", 1024),
+          kvBool("bert.attention.causal", false),
+        ],
+        [
+          tensorInfo("token_embd.weight", [4, 8], 1),
+          tensorInfo("cls.weight", [4, 4], 1),
+          tensorInfo("cls.output.weight", [4, 1], 1),
+        ],
+      ),
+    );
+
+    const metadata = readGgufMetadata(path);
+    assert.equal(metadata.poolingType, null);
+    assert.equal(metadata.causalAttention, false);
+    assert.equal(metadata.hasClassifierHead, true);
+    assert.equal(ggufModelRole(metadata), "reranker");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -261,27 +294,59 @@ test("readGgufMetadata leaves generative models without pooling signals", () => 
 
 test("ggufModelRole classifies pooling and attention combinations", () => {
   assert.equal(
-    ggufModelRole({ poolingType: 4, causalAttention: false }),
+    ggufModelRole({
+      poolingType: 4,
+      causalAttention: false,
+      hasClassifierHead: false,
+    }),
     "reranker",
   );
   assert.equal(
-    ggufModelRole({ poolingType: 2, causalAttention: false }),
+    ggufModelRole({
+      poolingType: null,
+      causalAttention: false,
+      hasClassifierHead: true,
+    }),
+    "reranker",
+  );
+  assert.equal(
+    ggufModelRole({
+      poolingType: 2,
+      causalAttention: false,
+      hasClassifierHead: false,
+    }),
     "embedding",
   );
   assert.equal(
-    ggufModelRole({ poolingType: 3, causalAttention: true }),
+    ggufModelRole({
+      poolingType: 3,
+      causalAttention: true,
+      hasClassifierHead: false,
+    }),
     "embedding",
   );
   assert.equal(
-    ggufModelRole({ poolingType: null, causalAttention: false }),
+    ggufModelRole({
+      poolingType: null,
+      causalAttention: false,
+      hasClassifierHead: false,
+    }),
     "embedding",
   );
   assert.equal(
-    ggufModelRole({ poolingType: 0, causalAttention: null }),
+    ggufModelRole({
+      poolingType: 0,
+      causalAttention: null,
+      hasClassifierHead: false,
+    }),
     "generative",
   );
   assert.equal(
-    ggufModelRole({ poolingType: null, causalAttention: null }),
+    ggufModelRole({
+      poolingType: null,
+      causalAttention: null,
+      hasClassifierHead: false,
+    }),
     "generative",
   );
 });

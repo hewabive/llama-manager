@@ -2239,6 +2239,7 @@ export const GgufMetadataSchema = z.object({
   modelType: z.string().nullable(),
   poolingType: z.number().nullable(),
   causalAttention: z.boolean().nullable(),
+  hasClassifierHead: z.boolean(),
   quantization: z.string().nullable(),
   quantizationVersion: z.number().nullable(),
   sizeLabel: z.string().nullable(),
@@ -2777,9 +2778,12 @@ export function ggufPoolingTypeLabel(
 }
 
 export function ggufModelRole(
-  metadata: Pick<GgufMetadata, "poolingType" | "causalAttention">,
+  metadata: Pick<
+    GgufMetadata,
+    "poolingType" | "causalAttention" | "hasClassifierHead"
+  >,
 ): GgufModelRole {
-  if (metadata.poolingType === 4) {
+  if (metadata.poolingType === 4 || metadata.hasClassifierHead) {
     return "reranker";
   }
   if (metadata.causalAttention === false) {

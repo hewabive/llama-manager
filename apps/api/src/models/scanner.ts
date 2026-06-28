@@ -98,6 +98,7 @@ function emptyMetadata(): GgufMetadata {
     modelType: null,
     poolingType: null,
     causalAttention: null,
+    hasClassifierHead: false,
     quantization: null,
     quantizationVersion: null,
     sizeLabel: null,
