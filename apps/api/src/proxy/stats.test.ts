@@ -25,6 +25,7 @@ function trace(
     routeTrace: [],
     files: [],
     schedulerActions: [],
+    displacedTargetIds: [],
     usage: null,
     status: 200,
     ok: true,

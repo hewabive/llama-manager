@@ -121,6 +121,56 @@ individually-preemptible, priority-gated domain gate that lets fitting models
 coexist, holds low priority behind high, and preempts a busy resident to reclaim
 memory — uniformly across GPU and CPU domains.
 
+## Contention hardening (GPU context-switch thrash)
+
+Symptom (real): three instances share one GPU that fits two; a client needs models
+B and C concurrently while A sits idle. A naive per-request greedy plan evicted B
+(still needed) to load C, then failed to reload B with `target_not_ready`. Four
+layers — each a separate seam — fix it; `proxy/contention.test.ts` drives the whole
+scheduler + coordinator + swap-lock stack on this scenario.
+
+1. **Demand-aware eviction (scheduler).** `ApiProxySchedulerPlanRequest.protectedTargetIds`
+   = the coordinator's `wantedTargetIds()` (holders ∪ waiters), populated once in
+   `buildApiProxyPlanRequest`. `planMemoryEvictions` sorts victims **unprotected-first**
+   (leading key), so a model with an in-flight or queued request is never evicted while
+   an unwanted idle peer exists; it falls back to a wanted peer only when every
+   candidate is wanted (graceful, no deadlock under saturation).
+2. **Exclusive swap per domain (executor).** `domain-swap-coordinator.ts` serializes
+   swaps on a compute domain: `executeApiProxyTargetReadiness` takes the per-domain
+   lock and **re-previews fresh state under it** before mutating, so two executors
+   never overlap a load/unload (no transient over-subscription, no stale plan) and the
+   re-preview re-reads the wanted-set (a swap won't evict a target that just became
+   in-flight). Resident-model requests (no readiness actions) skip the lock and stay
+   parallel — the fast path adds no latency.
+3. **Queue, don't 503 (executor).** A plan blocked at execution time is almost always
+   transient (a peer mid-preemption, a sibling swap holding the lock): the executor
+   waits and re-previews (`public-executor.ts:waitForPlanUnblock`, decoupled from the
+   pass counter, abortable via the client signal) and returns `plan_blocked` only on a
+   genuine timeout or client abort — so "evict A, then reload B in its place" happens
+   transparently instead of erroring.
+4. **Affinity batching + `--parallel` cap (coordinator).** `scheduleAdmission` admits
+   resident (affine — target already a holder on an overlapping domain) waiters ahead
+   of swap-needing waiters at equal priority, draining a model's queue before paying a
+   swap; a fairness window (`swapFairnessMs`, default 2 s) lifts the preference once a
+   swap waiter has starved. `decide()` caps concurrent same-target holders at the
+   instance's `--parallel`/`-np` (`parseInstanceParallelLimit`), so excess queues in
+   the proxy (priority-ordered, observable) instead of blindly inside `llama-server`.
+
+**Observability.** Each request trace carries `displacedTargetIds` — the targets it
+unloaded/stopped to fit (idle eviction or busy preemption) — beside `schedulerActions`
+and `queueMs`, surfaced in the Stats traces tooltip, so a failed battle is diagnosable
+(which request displaced which model, and whether it queued). Captured from the
+admission plan, so it reflects the *planned* displacement.
+
+**Deferred (await a real signal, not intuition):**
+- The gateway 503s pre-lease on a blocked initial preview (`gateway.ts`), computed
+  without `allowBusyEviction`; a busy-saturation request the coordinator *could* resolve
+  by preemption never reaches the queue. Idle eviction (the symptom above) passes the
+  gate, so this only bites when every resident is busy.
+- True time-slicing across N>capacity hot models: the affinity-fairness ordering exists,
+  but a starved swap waiter still can't evict a wanted resident (layer 1 protects it),
+  so genuine over-subscription does not round-robin yet.
+
 ## Phasing
 
 - **Phase 0 (done):** core schemas (`MemoryPool`, `InstanceMemoryDraw`), pure ledger,

@@ -1226,6 +1226,7 @@ export const ApiProxyRequestTraceSchema = z.object({
   routeTrace: z.array(ApiProxyRouteTraceStepSchema).default([]),
   files: z.array(ApiProxyTraceFileSchema).default([]),
   schedulerActions: z.array(z.string()).default([]),
+  displacedTargetIds: z.array(ApiProxyIdSchema).default([]),
   usage: ApiProxyTraceUsageSchema.nullable().default(null),
   status: z.number().int().min(0).default(0),
   ok: z.boolean().default(false),

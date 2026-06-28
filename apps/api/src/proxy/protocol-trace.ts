@@ -27,6 +27,7 @@ export type ProxyTraceAccumulator = {
   routeTrace: ApiProxyRouteTraceStep[];
   files: ApiProxyTraceFile[];
   schedulerActions: string[];
+  displacedTargetIds: string[];
   usage: {
     promptTokens: number | null;
     cacheReadTokens: number | null;
@@ -74,6 +75,7 @@ export function createProxyTrace(
     routeTrace: [],
     files: [],
     schedulerActions: [],
+    displacedTargetIds: [],
     usage: null,
     status: 0,
     ok: false,

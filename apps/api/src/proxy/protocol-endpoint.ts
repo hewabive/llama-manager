@@ -665,6 +665,18 @@ export async function serveResolvedTarget(input: {
   trace.schedulerActions = decision.preview.plan.actions.map(
     (action) => action.type,
   );
+  trace.displacedTargetIds = [
+    ...new Set(
+      decision.preview.plan.actions
+        .filter(
+          (action) =>
+            (action.type === "unload-model" ||
+              action.type === "stop-instance") &&
+            action.targetId !== decision.target.id,
+        )
+        .map((action) => action.targetId),
+    ),
+  ];
   inflight.setTarget(decision.target.id);
 
   const queueStart = performance.now();

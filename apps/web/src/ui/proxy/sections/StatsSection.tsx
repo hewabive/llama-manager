@@ -453,7 +453,18 @@ export function StatsSection(props: StatsSectionProps) {
                       </Table.Td>
                       <Table.Td>
                         {trace.schedulerActions.length > 0 ? (
-                          <Tooltip label={trace.schedulerActions.join(", ")}>
+                          <Tooltip
+                            multiline
+                            label={
+                              trace.displacedTargetIds.length > 0
+                                ? `${trace.schedulerActions.join(
+                                    ", ",
+                                  )} — displaced: ${trace.displacedTargetIds.join(
+                                    ", ",
+                                  )}`
+                                : trace.schedulerActions.join(", ")
+                            }
+                          >
                             <Text size="xs">
                               {trace.schedulerActions.length}
                             </Text>
