@@ -164,9 +164,29 @@ test("usageFromNonStreamBody sums Anthropic cache input tokens", () => {
   });
 });
 
+test("usageFromNonStreamBody meters rerank/embedding usage without completion tokens", () => {
+  const usage = usageFromNonStreamBody(
+    "openai",
+    JSON.stringify({
+      object: "list",
+      usage: { prompt_tokens: 49, total_tokens: 49 },
+    }),
+  );
+  assert.deepEqual(usage, {
+    promptTokens: 49,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
+    completionTokens: 0,
+    genMs: 0,
+    prefillMs: null,
+    promptPerSecond: null,
+  });
+});
+
 test("usageFromNonStreamBody returns null without usage", () => {
   assert.equal(usageFromNonStreamBody("openai", "{}"), null);
   assert.equal(usageFromNonStreamBody("openai", "not json"), null);
+  assert.equal(usageFromNonStreamBody("openai", JSON.stringify({ usage: {} })), null);
 });
 
 test("includeUsageRequested / withIncludeUsage", () => {

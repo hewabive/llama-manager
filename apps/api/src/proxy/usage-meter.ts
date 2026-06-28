@@ -96,15 +96,16 @@ export function usageFromNonStreamBody(
   }
   const completionTokens =
     numberOrNull(usage.completion_tokens) ?? numberOrNull(usage.output_tokens);
-  if (completionTokens === null) {
+  const promptTokens =
+    numberOrNull(usage.prompt_tokens) ?? numberOrNull(usage.input_tokens);
+  if (completionTokens === null && promptTokens === null) {
     return null;
   }
   return {
-    promptTokens:
-      numberOrNull(usage.prompt_tokens) ?? numberOrNull(usage.input_tokens),
+    promptTokens,
     cacheReadTokens: openaiCachedTokens(usage),
     cacheCreationTokens: null,
-    completionTokens,
+    completionTokens: completionTokens ?? 0,
     genMs: Math.round(predictedMs),
     prefillMs,
     promptPerSecond,
