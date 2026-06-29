@@ -11,12 +11,12 @@ into one another, and which differences are intentional so they are not
 
 Everything here decomposes into **two orthogonal axes**:
 
-|          | Residency / lifecycle                          | Activity                                  |
-| -------- | ---------------------------------------------- | ----------------------------------------- |
-| Nature   | a ladder of states                             | counters                                  |
+|  | Residency / lifecycle | Activity |
+| --- | --- | --- |
+| Nature | a ladder of states | counters |
 | Question | "is it up? is the model in memory? can it serve?" | "how many requests is it doing right now?" |
-| Values   | not-running → process up → loading → ready / error / stale … | `activeRequests`, `queuedRequests`        |
-| Changes  | seconds (load/unload is expensive)             | per-request                               |
+| Values | not-running → process up → loading → ready / error / stale … | `activeRequests`, `queuedRequests` |
+| Changes | seconds (load/unload is expensive) | per-request |
 
 Folding activity **into** the residency ladder (a single `busy` state that
 shadows `loaded`) was the original design mistake at the proxy layer — see the
@@ -26,12 +26,12 @@ stored state.
 
 ## The four layers
 
-| Layer | Type (`core`)                       | Scope                              | Produced by                                  | Consumed for                                              |
-| ----- | ----------------------------------- | ---------------------------------- | -------------------------------------------- | --------------------------------------------------------- |
-| L1    | `Instance["status"]`                | the OS child process               | `process/supervisor.ts` (+ reconcile/stale)  | lifecycle actions, run bookkeeping                        |
-| L2    | `InstanceHealthSummary["status"]`   | the instance's readiness to serve  | `deriveStatus()` in `process/health-summary.ts` | UI health badge, action gating, feeds L3                  |
-| L3    | `ApiProxyModelState`                | a proxy target in the runtime snapshot | `processRuntimeState`/`modelRuntimeState` in `proxy/runtime.ts` | scheduler decisions, feeds L4, admin dashboard            |
-| L4    | `ApiProxyPublicModelLoadState`      | a public model in `GET /v1/models` | `proxy/model-status.ts` (aggregate over leaves) | **external API consumers**                                |
+| Layer | Type (`core`) | Scope | Produced by | Consumed for |
+| --- | --- | --- | --- | --- |
+| L1 | `Instance["status"]` | the OS child process | `process/supervisor.ts` (+ reconcile/stale) | lifecycle actions, run bookkeeping |
+| L2 | `InstanceHealthSummary["status"]` | the instance's readiness to serve | `deriveStatus()` in `process/health-summary.ts` | UI health badge, action gating, feeds L3 |
+| L3 | `ApiProxyModelState` | a proxy target in the runtime snapshot | `processRuntimeState`/`modelRuntimeState` in `proxy/runtime.ts` | scheduler decisions, feeds L4, admin dashboard |
+| L4 | `ApiProxyPublicModelLoadState` | a public model in `GET /v1/models` | `proxy/model-status.ts` (aggregate over leaves) | **external API consumers** |
 
 ### L1 — process lifecycle
 

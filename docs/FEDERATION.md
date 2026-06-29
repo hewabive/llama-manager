@@ -80,13 +80,13 @@ Each page is exactly one of four classes. The UX contract the operator keeps in
 their head is a per-page badge: **`Node: B`** (switchable) or **`Network`**
 (aggregated).
 
-| Page                                                   | Class       | Behaviour                                                                 |
-| ------------------------------------------------------ | ----------- | ------------------------------------------------------------------------- |
-| Instances (edit), Model files, Build, Presets, Path catalog | **Node**    | Global switcher → transmits the selected node, exactly one node at a time |
-| System (this machine's CPU/RAM/NUMA)                   | **Node**    | Switcher (optional network overview later)                                |
-| Resources                                              | **Dual**    | Aggregated namespaced read (`nodeB:gpu0`) + node-scoped pool edit         |
-| Public Status, Proxy stats / dashboard                 | **Network** | Aggregated, read-only                                                     |
-| Proxy config (targets / pipelines / models / endpoints / sources) | **Fleet**   | Single fleet proxy on the entry node; **not** governed by the switcher    |
+| Page | Class | Behaviour |
+| --- | --- | --- |
+| Instances (edit), Model files, Build, Presets, Path catalog | **Node** | Global switcher → transmits the selected node, exactly one node at a time |
+| System (this machine's CPU/RAM/NUMA) | **Node** | Switcher (optional network overview later) |
+| Resources | **Dual** | Aggregated namespaced read (`nodeB:gpu0`) + node-scoped pool edit |
+| Public Status, Proxy stats / dashboard | **Network** | Aggregated, read-only |
+| Proxy config (targets / pipelines / models / endpoints / sources) | **Fleet** | Single fleet proxy on the entry node; **not** governed by the switcher |
 
 Rules that fall out of this and are easy to get wrong:
 

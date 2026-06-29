@@ -5,13 +5,13 @@ orthogonal axes** — conflating them was the original design mistake (the old
 `resourceGroupId` treated "won't fit together" and "only one at a time" as the
 same thing).
 
-|           | Memory axis (residency)                    | Compute axis (contention)                          |
-| --------- | ------------------------------------------ | -------------------------------------------------- |
-| Nature    | quantitative capacity                      | competition for time among already-resident models |
-| Question  | "does it fit? who do we evict?"            | "who computes now, who waits?"                     |
-| Levers    | start/stop/load/unload + slot save/restore | hold back dispatch / abort+retry                   |
-| Timescale | seconds (load/unload is expensive)         | per-request (cheap)                                |
-| Owner     | the manager (proxy is one consumer)        | the proxy                                          |
+|  | Memory axis (residency) | Compute axis (contention) |
+| --- | --- | --- |
+| Nature | quantitative capacity | competition for time among already-resident models |
+| Question | "does it fit? who do we evict?" | "who computes now, who waits?" |
+| Levers | start/stop/load/unload + slot save/restore | hold back dispatch / abort+retry |
+| Timescale | seconds (load/unload is expensive) | per-request (cheap) |
+| Owner | the manager (proxy is one consumer) | the proxy |
 
 The memory axis is a manager-level concern so it also guards **manual** instance
 starts, not only proxy-driven autostart. The compute axis is purely a proxy

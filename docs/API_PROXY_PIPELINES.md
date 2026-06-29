@@ -57,16 +57,28 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 
 ## Node types
 
-| type              | config                                                                                                                                                                                                                                                                                                                                               | ports                         |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| `replace-text`    | `rules: [{enabled, find, replace}]` — literal substring rules over decoded string values of the parsed body (stored text is matched as-is, no escape interpretation; the routing `model` field is never rewritten). The web editor offers a display toggle that shows/accepts rules in `\n`-escaped form and converts to literal text before saving. | `next`                        |
-| `capture-request` | `request: bool` (default `true`) + `response: bool` (default `false`) — persist the request body at this node and/or the upstream response for this request (legacy `{}` upgrades to request-only)                                                                                                                                                     | `next`                        |
-| `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request body: `tools` array operations and field operations by path (see below)                                                                                                                                                                                                         | `next`                        |
-| `reasoning`       | `effort: off\|low\|medium\|high\|max\|custom` + `customBudgetTokens` — controls the model's thinking channel (see below)                                                                                                                                                                                                                              | `next`                        |
-| `output-limit`    | `maxTokens` + `mode: cap\|set` — bounds `max_tokens` on the request (see below)                                                                                                                                                                                                                                                                       | `next`                        |
-| `condition`       | `predicate` (see below)                                                                                                                                                                                                                                                                                                                              | `true`, `false`               |
-| `call`            | `pipelineId`                                                                                                                                                                                                                                                                                                                                         | one port per callee exit name |
-| `exit`            | `exitName` (default `done`)                                                                                                                                                                                                                                                                                                                          | —                             |
+Each entry is **`type`** — `config` (output `ports`). Richer configs are detailed
+in the sub-sections below.
+
+- **`replace-text`** — `rules: [{enabled, find, replace}]`: literal substring
+  rules over decoded string values of the parsed body (stored text is matched
+  as-is, no escape interpretation; the routing `model` field is never
+  rewritten). The web editor offers a display toggle that shows/accepts rules in
+  `\n`-escaped form and converts to literal text before saving. (`next`)
+- **`capture-request`** — `request: bool` (default `true`) + `response: bool`
+  (default `false`): persist the request body at this node and/or the upstream
+  response for this request (legacy `{}` upgrades to request-only). (`next`)
+- **`edit-request`** — `operations: [{kind, enabled, …}]`: structural edits of
+  the request body — `tools` array operations and field operations by path (see
+  below). (`next`)
+- **`reasoning`** — `effort: off|low|medium|high|max|custom` +
+  `customBudgetTokens`: controls the model's thinking channel (see below).
+  (`next`)
+- **`output-limit`** — `maxTokens` + `mode: cap|set`: bounds `max_tokens` on the
+  request (see below). (`next`)
+- **`condition`** — `predicate` (see below). (`true`, `false`)
+- **`call`** — `pipelineId`. (one port per callee exit name)
+- **`exit`** — `exitName` (default `done`). (no ports)
 
 ### Edit-request operations
 

@@ -75,20 +75,20 @@ server-side sanitizer makes the proxy robust regardless of client settings.
 
 ## Request mapping (`request.ts`)
 
-| Anthropic                                      | OpenAI                                                                                                                                                                             |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `system` (string or text blocks, concatenated) | leading `system` message                                                                                                                                                           |
-| text / image blocks                            | string content or content parts (`image_url`, base64 → data URL)                                                                                                                   |
-| assistant `thinking` blocks                    | `reasoning_content` (configurable: `reasoningField`)                                                                                                                               |
-| assistant `tool_use` blocks                    | `tool_calls` (`arguments` = JSON-stringified `input`)                                                                                                                              |
-| user `tool_result` blocks                      | `role: "tool"` messages emitted before remaining user content                                                                                                                      |
-| images inside `tool_result`                    | hoisted into the user message (`toolResultImages: "hoist"`, default) or dropped with a warning                                                                                     |
-| `tools[].input_schema`                         | `function.parameters`                                                                                                                                                              |
-| `tool_choice` auto / any / none                | `"auto"` / `"required"` / `"none"`; `disable_parallel_tool_use` → `parallel_tool_calls: false`                                                                                     |
-| `tool_choice {type:"tool", name}`              | `namedToolChoice: "native"` → `{type:"function",function:{name}}`; `"filter"` (used for llama-server, which rejects named choice) → tools narrowed to the named one + `"required"` |
-| `stop_sequences`                               | `stop`                                                                                                                                                                             |
-| `thinking {type:"enabled", budget_tokens}`     | `thinking_budget_tokens` (llama.cpp dialect; `thinkingBudgetField` option); `adaptive` is dropped with a warning                                                                   |
-| `metadata.user_id`                             | `user`                                                                                                                                                                             |
+| Anthropic | OpenAI |
+| --- | --- |
+| `system` (string or text blocks, concatenated) | leading `system` message |
+| text / image blocks | string content or content parts (`image_url`, base64 → data URL) |
+| assistant `thinking` blocks | `reasoning_content` (configurable: `reasoningField`) |
+| assistant `tool_use` blocks | `tool_calls` (`arguments` = JSON-stringified `input`) |
+| user `tool_result` blocks | `role: "tool"` messages emitted before remaining user content |
+| images inside `tool_result` | hoisted into the user message (`toolResultImages: "hoist"`, default) or dropped with a warning |
+| `tools[].input_schema` | `function.parameters` |
+| `tool_choice` auto / any / none | `"auto"` / `"required"` / `"none"`; `disable_parallel_tool_use` → `parallel_tool_calls: false` |
+| `tool_choice {type:"tool", name}` | `namedToolChoice: "native"` → `{type:"function",function:{name}}`; `"filter"` (used for llama-server, which rejects named choice) → tools narrowed to the named one + `"required"` |
+| `stop_sequences` | `stop` |
+| `thinking {type:"enabled", budget_tokens}` | `thinking_budget_tokens` (llama.cpp dialect; `thinkingBudgetField` option); `adaptive` is dropped with a warning |
+| `metadata.user_id` | `user` |
 
 Passthrough keys: `model`, `temperature`, `top_p`, `top_k`, `stream`, `seed`,
 `chat_template_kwargs` (+ `passthroughKeys` option). Unknown top-level keys are

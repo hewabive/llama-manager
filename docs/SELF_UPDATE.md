@@ -32,11 +32,11 @@ Self-restart needs an external supervisor, because a process cannot rebuild its
 own running code and re-exec cleanly. The endpoint detects the run mode and
 **refuses outside the supervised `serve` deployment**:
 
-| Run mode                                  | `mode`  | `canUpdate`              | Behaviour                                                                                                                           |
-| ----------------------------------------- | ------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev` (tsx watch + vite)             | `dev`   | `false`                  | Refused. tsx/vite already hot-reload; `git pull` by hand (rebuild `core` if it changed). A `git pull` mid-job would race tsx watch. |
-| `node dist/index.js` under systemd        | `serve` | `true`, `supervised`     | Full self-update incl. auto-restart.                                                                                                |
-| `node dist/index.js` without a supervisor | `serve` | `true`, not `supervised` | Updates + builds, but does **not** auto-restart; restart manually.                                                                  |
+| Run mode | `mode` | `canUpdate` | Behaviour |
+| --- | --- | --- | --- |
+| `pnpm dev` (tsx watch + vite) | `dev` | `false` | Refused. tsx/vite already hot-reload; `git pull` by hand (rebuild `core` if it changed). A `git pull` mid-job would race tsx watch. |
+| `node dist/index.js` under systemd | `serve` | `true`, `supervised` | Full self-update incl. auto-restart. |
+| `node dist/index.js` without a supervisor | `serve` | `true`, not `supervised` | Updates + builds, but does **not** auto-restart; restart manually. |
 
 Detection: `serve` when the entrypoint is `…/dist/index.js`, `dev` when it is a
 `.ts` file (tsx). `supervised` is `process.env.INVOCATION_ID` (set by systemd).

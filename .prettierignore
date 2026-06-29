@@ -1,2 +1,3 @@
-content/llama-args/source/server-help.generated.md
+# Markdown is hand-formatted (prettier pads tables to unreadable widths).
+*.md
 pnpm-lock.yaml
