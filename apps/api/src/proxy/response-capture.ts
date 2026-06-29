@@ -5,6 +5,10 @@ import type {
 } from "./pipeline.js";
 import type { ApiProxyProtocolOperation } from "./protocol.js";
 import { safeJsonParse, type ProxyTraceAccumulator } from "./protocol-trace.js";
+import {
+  finishApiProxyBroadcast,
+  pushApiProxyBroadcast,
+} from "./response-broadcast.js";
 import { settleApiProxyInFlight } from "./response-coalesce.js";
 
 export type ApiProxyResponseCacheWriter = (input: {
@@ -81,10 +85,34 @@ export function createApiProxyResponseCaptureSink(input: {
     if (input.cacheWrites.length === 0) {
       return;
     }
+
+    if (tapped) {
+      const sse =
+        streamedText.length > 0 && !input.trace.errorMessage
+          ? streamedText
+          : null;
+      for (const write of input.cacheWrites) {
+        if (sse !== null) {
+          input.putCache({
+            key: write.key,
+            modelId: input.trace.modelId,
+            status: 200,
+            contentType: "text/event-stream",
+            isSse: true,
+            body: sse,
+            ttlSeconds: write.ttlSeconds,
+          });
+        }
+        finishApiProxyBroadcast(write.key);
+      }
+      if (sse !== null) {
+        input.trace.cache = "store";
+      }
+      return;
+    }
+
     const body =
-      explicitText !== null && !tapped && !looksLikeErrorBody(data)
-        ? explicitText
-        : null;
+      explicitText !== null && !looksLikeErrorBody(data) ? explicitText : null;
     for (const write of input.cacheWrites) {
       if (body !== null) {
         input.putCache({
@@ -105,6 +133,7 @@ export function createApiProxyResponseCaptureSink(input: {
       } else {
         settleApiProxyInFlight(write.key, null);
       }
+      finishApiProxyBroadcast(write.key);
     }
     if (body !== null) {
       input.trace.cache = "store";
@@ -118,6 +147,9 @@ export function createApiProxyResponseCaptureSink(input: {
       const transform = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
           streamedText += decoder.decode(chunk, { stream: true });
+          for (const write of input.cacheWrites) {
+            pushApiProxyBroadcast(write.key, chunk);
+          }
           controller.enqueue(chunk);
         },
         flush() {

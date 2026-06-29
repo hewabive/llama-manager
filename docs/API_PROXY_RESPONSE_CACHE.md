@@ -194,7 +194,7 @@ key = sha256( namespace ‖ modelId ‖ canonicalJson(body \ volatile) )
 | 1 | `strip-attribution` node | core schema + `pipeline.ts` handler + validation + web; remove hardcoded sanitize from `translation.ts`; tests | small | done |
 | 2 | `cache` node, Phase 1 (embed/rerank + non-stream) | core schema; `kind:"response"` + short-circuit; key util; `response-cache.ts` + SQLite table + TTL/LRU; non-stream write/replay; trace marker; tests | medium | done |
 | 3 | single-flight coalescing (non-stream) | in-flight map; `hot` subscribe; subscribers skip lease; owner-lifetime decoupling; `coalesced` telemetry; tests | medium | done |
-| 4 | stream fan-out (chat) | broadcaster + replay buffer; per-subscriber queues; stream/non-stream re-framing; telemetry; tests | high | todo |
+| 4 | stream fan-out (chat) | broadcaster + replay buffer; per-subscriber queues; stream/non-stream re-framing; telemetry; tests | high | done |
 | 5 | UI + ops polish | cache admin view + clear/list endpoint; stats hit-rate; docs finalize | small/medium | todo |
 
 ### PR2 implementation notes (as built)
@@ -231,6 +231,48 @@ key = sha256( namespace ‖ modelId ‖ canonicalJson(body \ volatile) )
   owner's client aborts, its upstream is aborted too (no cache write ⇒ waiters
   fall back). Driving the owner to completion independent of its client is
   deferred (rides on the PR4 streaming work).
+
+### PR4 implementation notes (as built)
+
+Streaming requests now participate in the cache node (they were skipped in PR2).
+
+- **Framing-matched, no re-framing.** One store slot per key (stream still
+  excluded from the key), but a read only hits when the entry's framing matches
+  the client: a stream client hits an `isSse` entry, a non-stream client hits a
+  non-SSE entry; a mismatch is treated as a miss and re-generates (last writer
+  wins the framing). Consistent per-pipeline usage never thrashes; this avoids
+  all SSE↔JSON re-framing code.
+- **Broadcaster** (`response-broadcast.ts`): per-key chunk buffer + subscriber
+  set. A stream miss registers a broadcast (owner); a concurrent stream request
+  subscribes (`source:"coalesced"`, `kind:"response"` with a `ReadableStream`
+  body = replay buffer + live tail). The route-chain `response` body is now
+  `string | ReadableStream<Uint8Array>`.
+- **Two serve paths, two fan-out modes** (chosen: full live fan-out, owner
+  outlives client):
+  - Live `respond()` path (non-preemptible managed, external, translated):
+    `finishStreamResponse` subscribes the owner's own client to the broadcast
+    and **pumps** the metered stream to completion in the background
+    (`drainApiProxyStream`), decoupled from the client. The capture sink's `tap`
+    feeds the broadcast per chunk and stores the accumulated SSE on flush. If the
+    owner's client disconnects, the pump still finishes → subscribers + cache are
+    complete. ✅ option A fully honored here.
+  - Buffered resumable path (preemptible managed chat): the response is built
+    all-at-once, so it does **completed fan-out** — on success it stores the
+    final SSE, pushes it to the broadcast as one chunk, and finishes; subscribers
+    that were waiting get the whole result. **Limitation:** this path is *not*
+    decoupled — if the owner's client aborts mid-generation the upstream aborts,
+    no cache write, and the broadcast finishes empty (subscribers get nothing).
+    Managed-chat streaming via resumable is already buffered (the client gets the
+    reply at the end), so this only affects the rare owner-abort case.
+- **No broadcast leak:** the sink finishes the broadcast for every cache-write
+  key on flush (both branches), and the resumable path finishes explicitly on
+  success/abort, so subscribers never hang regardless of serve path.
+- **Telemetry:** subscribers report `trace.cache:"coalesced"`; only the owner is
+  metered (subscription bodies skip `usageFromNonStreamBody`).
+- **Not unit-tested:** the live pump + client-disconnect integration (hard to
+  exercise without a real streaming upstream). The broadcaster, the streaming
+  cache-node routing, and the sink's SSE store/feed/finish are unit-tested;
+  recommend a manual live verification of multi-client fan-out + disconnect.
 
 ## Risks & future
 

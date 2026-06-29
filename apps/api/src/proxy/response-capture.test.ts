@@ -3,6 +3,11 @@ import { test } from "node:test";
 
 import { createProxyTrace } from "./protocol-trace.js";
 import { readApiProxyRequestFile } from "./request-files.js";
+import {
+  clearApiProxyBroadcasts,
+  registerApiProxyBroadcast,
+  subscribeApiProxyBroadcast,
+} from "./response-broadcast.js";
 import { createApiProxyResponseCaptureSink } from "./response-capture.js";
 
 function trace() {
@@ -118,6 +123,69 @@ test("response sink does not cache an error body or a streamed response", async 
   sink.flush();
   assert.equal(writes.length, 0);
   assert.equal(value.cache, null);
+});
+
+test("a streaming owner stores SSE, feeds the broadcast, and finishes it", async () => {
+  clearApiProxyBroadcasts();
+  const value = trace();
+  const writes: Array<{ isSse: boolean; contentType: string; body: string }> =
+    [];
+  registerApiProxyBroadcast("bkey");
+  const subscriber = subscribeApiProxyBroadcast("bkey");
+  assert.ok(subscriber);
+
+  const sink = createApiProxyResponseCaptureSink({
+    captures: [],
+    cacheWrites: [{ key: "bkey", ttlSeconds: 600 }],
+    putCache: (input) =>
+      writes.push({
+        isSse: input.isSse,
+        contentType: input.contentType,
+        body: input.body,
+      }),
+    trace: value,
+    operation,
+  });
+  assert.ok(sink);
+
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode("data: a\n\n"));
+      controller.enqueue(encoder.encode("data: b\n\n"));
+      controller.close();
+    },
+  });
+  const reader = sink.tap(source).getReader();
+  for (;;) {
+    const { done } = await reader.read();
+    if (done) {
+      break;
+    }
+  }
+  sink.flush();
+
+  assert.deepEqual(writes, [
+    {
+      isSse: true,
+      contentType: "text/event-stream",
+      body: "data: a\n\ndata: b\n\n",
+    },
+  ]);
+  assert.equal(value.cache, "store");
+
+  const decoder = new TextDecoder();
+  let received = "";
+  const subReader = subscriber.body.getReader();
+  for (;;) {
+    const { done, value: chunk } = await subReader.read();
+    if (done) {
+      break;
+    }
+    received += decoder.decode(chunk, { stream: true });
+  }
+  assert.equal(received, "data: a\n\ndata: b\n\n");
+  assert.equal(subscribeApiProxyBroadcast("bkey"), null);
 });
 
 test("response sink streams through tapped chunks and captures the raw text", async () => {

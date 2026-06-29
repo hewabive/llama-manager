@@ -48,6 +48,17 @@ export type ApiProxyCachedResponsePayload = {
   body: string;
 };
 
+export type ApiProxyResponseResult = {
+  status: number;
+  contentType: string;
+  body: string | ReadableStream<Uint8Array>;
+};
+
+export type ApiProxyBroadcastSubscription = {
+  contentType: string;
+  body: ReadableStream<Uint8Array>;
+};
+
 export type ApiProxyCacheLookup = (
   key: string,
 ) =>
@@ -98,7 +109,7 @@ export type ApiProxyRouteChainResult =
       kind: "response";
       source: "store" | "coalesced";
       request: ApiProxyProtocolModelRequest;
-      response: ApiProxyCachedResponsePayload;
+      response: ApiProxyResponseResult;
       cacheKey: string;
       cacheWrites: ApiProxyCacheWriteTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
@@ -270,6 +281,10 @@ export async function resolveApiProxyRouteChain(input: {
     | ((key: string) => Promise<ApiProxyCachedResponsePayload | null> | null)
     | undefined;
   registerOwner?: ((key: string) => void) | undefined;
+  findBroadcast?:
+    | ((key: string) => ApiProxyBroadcastSubscription | null)
+    | undefined;
+  registerBroadcast?: ((key: string) => void) | undefined;
   maxVisitedNodes?: number | undefined;
   maxCallDepth?: number | undefined;
 }): Promise<ApiProxyRouteChainResult> {
@@ -530,23 +545,73 @@ export async function resolveApiProxyRouteChain(input: {
         break;
       }
       case "cache": {
-        if (state.request.stream) {
-          state.routeTrace.push(
-            nodeStep(pipeline, node, {
-              port: "next",
-              detail: "streaming (cache skipped)",
-            }),
-          );
-          ref = node.ports.next;
-          break;
-        }
         const key = apiProxyResponseCacheKey({
           namespace: node.config.namespace,
           modelId: input.request.modelId,
           body: state.request.body,
         });
         const cached = input.lookupCache ? await input.lookupCache(key) : null;
-        if (cached) {
+
+        if (state.request.stream) {
+          if (cached && cached.isSse) {
+            state.routeTrace.push(
+              nodeStep(pipeline, node, { port: "hit", detail: "cache hit" }),
+            );
+            return {
+              ok: true,
+              kind: "response",
+              source: "store",
+              request: state.request,
+              response: {
+                status: cached.status,
+                contentType: cached.contentType,
+                body: cached.body,
+              },
+              cacheKey: key,
+              cacheWrites: state.cacheWrites,
+              routeTrace: state.routeTrace,
+            };
+          }
+          const subscription = input.findBroadcast
+            ? input.findBroadcast(key)
+            : null;
+          if (subscription) {
+            state.routeTrace.push(
+              nodeStep(pipeline, node, {
+                port: "hit",
+                detail: "stream fan-out",
+              }),
+            );
+            return {
+              ok: true,
+              kind: "response",
+              source: "coalesced",
+              request: state.request,
+              response: {
+                status: 200,
+                contentType: subscription.contentType,
+                body: subscription.body,
+              },
+              cacheKey: key,
+              cacheWrites: state.cacheWrites,
+              routeTrace: state.routeTrace,
+            };
+          }
+          if (input.registerBroadcast) {
+            input.registerBroadcast(key);
+          }
+          state.cacheWrites.push({ key, ttlSeconds: node.config.ttlSeconds });
+          state.routeTrace.push(
+            nodeStep(pipeline, node, {
+              port: "next",
+              detail: "stream cache miss (owner)",
+            }),
+          );
+          ref = node.ports.next;
+          break;
+        }
+
+        if (cached && !cached.isSse) {
           state.routeTrace.push(
             nodeStep(pipeline, node, { port: "hit", detail: "cache hit" }),
           );
@@ -555,7 +620,11 @@ export async function resolveApiProxyRouteChain(input: {
             kind: "response",
             source: "store",
             request: state.request,
-            response: cached,
+            response: {
+              status: cached.status,
+              contentType: cached.contentType,
+              body: cached.body,
+            },
             cacheKey: key,
             cacheWrites: state.cacheWrites,
             routeTrace: state.routeTrace,
@@ -576,7 +645,11 @@ export async function resolveApiProxyRouteChain(input: {
               kind: "response",
               source: "coalesced",
               request: state.request,
-              response: coalesced,
+              response: {
+                status: coalesced.status,
+                contentType: coalesced.contentType,
+                body: coalesced.body,
+              },
               cacheKey: key,
               cacheWrites: state.cacheWrites,
               routeTrace: state.routeTrace,

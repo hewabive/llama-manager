@@ -39,6 +39,7 @@ import { openAiResponsesUsageCodec } from "./openai.js";
 import { executeApiProxyFusion } from "./fusion.js";
 import {
   resolveApiProxyRouteChain,
+  type ApiProxyCacheWriteTarget,
   type ApiProxyRouteChainResult,
 } from "./pipeline.js";
 import {
@@ -74,6 +75,12 @@ import {
   registerApiProxyInFlight,
   settleApiProxyInFlight,
 } from "./response-coalesce.js";
+import {
+  finishApiProxyBroadcast,
+  pushApiProxyBroadcast,
+  registerApiProxyBroadcast,
+  subscribeApiProxyBroadcast,
+} from "./response-broadcast.js";
 import {
   createApiProxyResponseCaptureSink,
   type ApiProxyResponseCaptureSink,
@@ -149,6 +156,24 @@ function resolveStreamUsageMeter(
     return { codec: openAiResponsesUsageCodec, inject: false, strip: false };
   }
   return null;
+}
+
+async function drainApiProxyStream(
+  stream: ReadableStream<Uint8Array>,
+): Promise<void> {
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) {
+        break;
+      }
+    }
+  } catch {
+    /* upstream error — finalize/record already records the trace and flushes */
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export async function runWithProxyTrace(
@@ -282,6 +307,8 @@ async function proxyProtocolEndpointInner(
     lookupCache: getApiProxyCachedResponse,
     findInFlight: findApiProxyInFlight,
     registerOwner: registerApiProxyInFlight,
+    findBroadcast: subscribeApiProxyBroadcast,
+    registerBroadcast: registerApiProxyBroadcast,
     recordRequest: (request) => {
       trace.files.push(
         saveApiProxyRequestFile({
@@ -313,24 +340,24 @@ async function proxyProtocolEndpointInner(
       settleApiProxyInFlight(write.key, null);
     }
     trace.cache = routeResult.source === "coalesced" ? "coalesced" : "hit";
-    trace.stream = false;
-    const usage = usageFromNonStreamBody(
-      operation.protocol,
-      routeResult.response.body,
-    );
-    if (usage) {
-      trace.usage = {
-        promptTokens: usage.promptTokens,
-        cacheReadTokens: usage.cacheReadTokens,
-        cacheCreationTokens: usage.cacheCreationTokens,
-        completionTokens: usage.completionTokens,
-        genMs: usage.genMs,
-        ratePerSecond: ratePerSecondFromUsage(usage),
-        prefillMs: usage.prefillMs,
-        promptPerSecond: usage.promptPerSecond,
-      };
+    trace.stream = routeResult.request.stream;
+    const responseBody = routeResult.response.body;
+    if (typeof responseBody === "string") {
+      const usage = usageFromNonStreamBody(operation.protocol, responseBody);
+      if (usage) {
+        trace.usage = {
+          promptTokens: usage.promptTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          cacheCreationTokens: usage.cacheCreationTokens,
+          completionTokens: usage.completionTokens,
+          genMs: usage.genMs,
+          ratePerSecond: ratePerSecondFromUsage(usage),
+          prefillMs: usage.prefillMs,
+          promptPerSecond: usage.promptPerSecond,
+        };
+      }
     }
-    return new Response(routeResult.response.body, {
+    return new Response(responseBody, {
       status: routeResult.response.status,
       headers: { "content-type": routeResult.response.contentType },
     });
@@ -368,6 +395,7 @@ async function proxyProtocolEndpointInner(
       operation,
       targetId: target.id,
       request: routeResult.request,
+      cacheWrites: routeResult.cacheWrites,
       trace,
       recorder,
       inflight,
@@ -466,6 +494,7 @@ async function proxyProtocolEndpointInner(
     operation,
     targetId: route.targetId,
     request: route.request,
+    cacheWrites: route.cacheWrites,
     trace,
     recorder,
     inflight,
@@ -700,6 +729,7 @@ export async function serveResolvedTarget(input: {
   operation: ApiProxyProtocolOperation;
   targetId: string;
   request: ApiProxyProtocolModelRequest;
+  cacheWrites?: ApiProxyCacheWriteTarget[] | undefined;
   trace: ProxyTraceAccumulator;
   recorder: ProxyTraceRecorder;
   inflight: ApiProxyInflightHandle;
@@ -711,7 +741,11 @@ export async function serveResolvedTarget(input: {
   const responseSink = input.responseSink ?? null;
   const captureBody = (stream: ReadableStream<Uint8Array>) =>
     responseSink ? responseSink.tap(stream) : stream;
-  const route = { targetId: input.targetId, request: input.request };
+  const route = {
+    targetId: input.targetId,
+    request: input.request,
+    cacheWrites: input.cacheWrites ?? [],
+  };
   const getTarget = (id: string) =>
     extraTarget && id === extraTarget.id ? extraTarget : getApiProxyTarget(id);
   const planPreviewFor = (targetId: string) =>
@@ -1092,6 +1126,29 @@ export async function serveResolvedTarget(input: {
         });
       }
 
+      const streamOwnerKey =
+        route.cacheWrites.length > 0
+          ? (route.cacheWrites[0]?.key ?? null)
+          : null;
+      const finishStreamResponse = (
+        observed: ReadableStream<Uint8Array>,
+        status: number,
+        headers: Headers,
+        statusText?: string,
+      ): Response => {
+        const responseInit: ResponseInit = statusText
+          ? { status, headers, statusText }
+          : { status, headers };
+        if (streamOwnerKey) {
+          const subscription = subscribeApiProxyBroadcast(streamOwnerKey);
+          if (subscription) {
+            void drainApiProxyStream(observed);
+            return new Response(subscription.body, responseInit);
+          }
+        }
+        return new Response(observed, responseInit);
+      };
+
       let metered: Response | undefined;
       const onStreamComplete = (usage: ProxyUsageCounts) => {
         recorder.freezeDuration();
@@ -1122,30 +1179,26 @@ export async function serveResolvedTarget(input: {
           onComplete: onStreamComplete,
         });
         recorder.markDeferred();
-        metered = new Response(
+        metered = finishStreamResponse(
           observeBodyCompletion(
             captureBody(upstream.body.pipeThrough(translation.transform)),
             () => translation.finalize(),
           ),
-          {
-            status: upstream.status,
-            headers: upstream.headers,
-          },
+          upstream.status,
+          upstream.headers,
         );
         return metered;
       }
 
       if (!streamMeter) {
         recorder.markDeferred();
-        return new Response(
+        return finishStreamResponse(
           observeBodyCompletion(captureBody(upstream.body), () =>
             recorder.record(upstream),
           ),
-          {
-            status: upstream.status,
-            statusText: upstream.statusText,
-            headers: upstream.headers,
-          },
+          upstream.status,
+          upstream.headers,
+          upstream.statusText,
         );
       }
 
@@ -1163,15 +1216,13 @@ export async function serveResolvedTarget(input: {
         onComplete: onStreamComplete,
       });
       recorder.markDeferred();
-      metered = new Response(
+      metered = finishStreamResponse(
         observeBodyCompletion(
           captureBody(upstream.body.pipeThrough(meter.transform)),
           () => meter.finalize(),
         ),
-        {
-          status: upstream.status,
-          headers: upstream.headers,
-        },
+        upstream.status,
+        upstream.headers,
       );
       return metered;
     } catch (error) {
@@ -1325,8 +1376,33 @@ export async function serveResolvedTarget(input: {
       task = resolved.task;
     }
 
+    const streamWrite =
+      route.request.stream && route.cacheWrites.length > 0
+        ? (route.cacheWrites[0] ?? null)
+        : null;
     if (final.status === CLIENT_ABORT_STATUS) {
       markClientAbort();
+      if (streamWrite) {
+        finishApiProxyBroadcast(streamWrite.key);
+      }
+    } else if (streamWrite) {
+      if (typeof final.body === "string" && !trace.errorMessage) {
+        putApiProxyCachedResponse({
+          key: streamWrite.key,
+          modelId: trace.modelId,
+          status: 200,
+          contentType: "text/event-stream",
+          isSse: true,
+          body: final.body,
+          ttlSeconds: streamWrite.ttlSeconds,
+        });
+        trace.cache = "store";
+        pushApiProxyBroadcast(
+          streamWrite.key,
+          new TextEncoder().encode(final.body),
+        );
+      }
+      finishApiProxyBroadcast(streamWrite.key);
     } else if (responseSink) {
       const captured = finalFromState(effectiveCodec, state, false);
       if (typeof captured.body === "string") {

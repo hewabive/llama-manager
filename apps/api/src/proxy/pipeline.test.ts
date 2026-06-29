@@ -785,22 +785,84 @@ test("cache node falls through to a plain miss when the owner failed", async () 
   assert.deepEqual(owners, []);
 });
 
-test("cache node is skipped for streaming requests", async () => {
+test("non-stream request treats a stored SSE entry as a miss", async () => {
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: { model: "public-model", input: "x" } }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => ({
+      status: 200,
+      contentType: "text/event-stream",
+      isSse: true,
+      body: "data: x\n\n",
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.ok && result.kind, "target");
+});
+
+test("streaming request replays a stored SSE entry", async () => {
   const result = await resolveApiProxyRouteChain({
     request: request({
       body: { model: "public-model", messages: [], stream: true },
       stream: true,
     }),
     getPipeline: getPipelineFrom([cachePipeline()]),
-    lookupCache: () => {
-      throw new Error("lookup must not run for streaming requests");
-    },
+    lookupCache: () => ({
+      status: 200,
+      contentType: "text/event-stream",
+      isSse: true,
+      body: "data: hi\n\n",
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "response") {
+    assert.equal(result.source, "store");
+    assert.equal(result.response.body, "data: hi\n\n");
+    assert.equal(result.response.contentType, "text/event-stream");
+  }
+});
+
+test("streaming request fans out onto a live broadcast", async () => {
+  const stream = new ReadableStream<Uint8Array>();
+  const result = await resolveApiProxyRouteChain({
+    request: request({
+      body: { model: "public-model", messages: [], stream: true },
+      stream: true,
+    }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => null,
+    findBroadcast: () => ({ contentType: "text/event-stream", body: stream }),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "response") {
+    assert.equal(result.source, "coalesced");
+    assert.equal(result.response.body, stream);
+    assert.equal(result.routeTrace.at(-1)?.detail, "stream fan-out");
+  }
+});
+
+test("streaming request becomes the broadcast owner on a miss", async () => {
+  const owners: string[] = [];
+  const result = await resolveApiProxyRouteChain({
+    request: request({
+      body: { model: "public-model", messages: [], stream: true },
+      stream: true,
+    }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => null,
+    findBroadcast: () => null,
+    registerBroadcast: (key) => owners.push(key),
   });
 
   assert.equal(result.ok, true);
   if (result.ok && result.kind === "target") {
-    assert.equal(result.cacheWrites.length, 0);
-    assert.equal(result.routeTrace.at(-1)?.detail, "streaming (cache skipped)");
+    assert.equal(result.cacheWrites.length, 1);
+    assert.equal(owners.length, 1);
+    assert.equal(owners[0], result.cacheWrites[0]?.key);
+    assert.equal(result.routeTrace.at(-1)?.detail, "stream cache miss (owner)");
   }
 });
 
