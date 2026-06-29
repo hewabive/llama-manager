@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
 import {
+  apiProxyResponseCacheStats,
   clearApiProxyResponseCache,
   getApiProxyCachedResponse,
   putApiProxyCachedResponse,
@@ -74,4 +75,28 @@ test("clear removes all entries", () => {
   });
   clearApiProxyResponseCache();
   assert.equal(getApiProxyCachedResponse("k4"), null);
+});
+
+test("stats report entry count and total size", () => {
+  putApiProxyCachedResponse({
+    key: "s1",
+    modelId: "m",
+    status: 200,
+    contentType: "application/json",
+    isSse: false,
+    body: "abcd",
+    ttlSeconds: 3600,
+  });
+  putApiProxyCachedResponse({
+    key: "s2",
+    modelId: "m",
+    status: 200,
+    contentType: "application/json",
+    isSse: false,
+    body: "ab",
+    ttlSeconds: 3600,
+  });
+  const stats = apiProxyResponseCacheStats();
+  assert.equal(stats.entries, 2);
+  assert.equal(stats.totalBytes, 6);
 });

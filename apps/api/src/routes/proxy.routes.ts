@@ -18,6 +18,10 @@ import { getApiProxyPlanPreview } from "../proxy/idle-maintenance.js";
 import { explainApiProxyRoute } from "../proxy/route-explain.js";
 import { getApiProxyConfig } from "../proxy/repository.js";
 import { readApiProxyRequestFile } from "../proxy/request-files.js";
+import {
+  apiProxyResponseCacheStats,
+  clearApiProxyResponseCache,
+} from "../proxy/response-cache.js";
 import { getApiProxyRuntimeSnapshot } from "../proxy/runtime-snapshot.js";
 import {
   createApiProxySource,
@@ -90,6 +94,15 @@ export function registerProxyRoutes(app: Hono) {
     return c.json({
       data: apiProxyStats.recentTraces(Number.isFinite(limit) ? limit : 50),
     });
+  });
+
+  app.get("/api/proxy/cache", (c) => {
+    return c.json({ data: apiProxyResponseCacheStats() });
+  });
+
+  app.delete("/api/proxy/cache", (c) => {
+    clearApiProxyResponseCache();
+    return c.json({ data: { cleared: true } });
   });
 
   app.get("/api/proxy/sources", (c) => {

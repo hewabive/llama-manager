@@ -20,11 +20,15 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
-import { BarChart3, FileText } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BarChart3, Database, FileText, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { getApiProxyRequestFile } from "../../../api/client";
+import {
+  clearApiProxyCache,
+  getApiProxyCacheStats,
+  getApiProxyRequestFile,
+} from "../../../api/client";
 import { JsonTreeView } from "../../components/JsonTreeView";
 import { formatBytes } from "../../utils/models";
 import { formatLocalDateTime, formatLocalHour } from "../../utils/time";
@@ -291,6 +295,75 @@ function StatBlock(props: { label: string; value: string }) {
   );
 }
 
+const CACHE_BADGE_COLORS: Record<
+  NonNullable<ApiProxyRequestTrace["cache"]>,
+  string
+> = {
+  hit: "teal",
+  coalesced: "cyan",
+  store: "gray",
+};
+
+const CACHE_BADGE_HINTS: Record<
+  NonNullable<ApiProxyRequestTrace["cache"]>,
+  string
+> = {
+  hit: "served from the response cache (no upstream call)",
+  coalesced: "joined an in-flight identical request (no upstream call)",
+  store: "forwarded upstream and stored the response in the cache",
+};
+
+function CacheBadge(props: { trace: ApiProxyRequestTrace }) {
+  const cache = props.trace.cache;
+  if (!cache) {
+    return <>—</>;
+  }
+  return (
+    <Tooltip label={CACHE_BADGE_HINTS[cache]}>
+      <Badge size="xs" variant="light" color={CACHE_BADGE_COLORS[cache]}>
+        {cache}
+      </Badge>
+    </Tooltip>
+  );
+}
+
+function ResponseCacheCard() {
+  const queryClient = useQueryClient();
+  const statsQuery = useQuery({
+    queryKey: ["api-proxy-cache-stats"],
+    queryFn: getApiProxyCacheStats,
+  });
+  const clearMutation = useMutation({
+    mutationFn: clearApiProxyCache,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["api-proxy-cache-stats"] }),
+  });
+  const stats = statsQuery.data?.data;
+  return (
+    <Group gap="md" wrap="wrap" align="center">
+      <Group gap="xs">
+        <Database size={16} />
+        <Text fw={600} size="sm">
+          Response cache
+        </Text>
+      </Group>
+      <StatBlock label="Entries" value={String(stats?.entries ?? 0)} />
+      <StatBlock label="Size" value={formatBytes(stats?.totalBytes ?? 0)} />
+      <Button
+        size="compact-sm"
+        variant="light"
+        color="red"
+        leftSection={<Trash2 size={14} />}
+        loading={clearMutation.isPending}
+        disabled={(stats?.entries ?? 0) === 0}
+        onClick={() => clearMutation.mutate()}
+      >
+        Clear
+      </Button>
+    </Group>
+  );
+}
+
 export function StatsSection(props: StatsSectionProps) {
   const snapshot = props.snapshot;
   const totals = snapshot?.totals;
@@ -309,6 +382,8 @@ export function StatsSection(props: StatsSectionProps) {
             Last {snapshot?.hours ?? 24}h, in-memory (resets on restart).
           </Text>
         </Group>
+
+        <ResponseCacheCard />
 
         {!hasData && (
           <Text c="dimmed" size="sm">
@@ -332,6 +407,7 @@ export function StatsSection(props: StatsSectionProps) {
                 label="With tokens"
                 value={`${totals.requestsWithTokens}/${totals.requests}`}
               />
+              <StatBlock label="Cache hits" value={String(totals.cacheHits)} />
               <StatBlock label="Errors" value={String(totals.errors)} />
             </Group>
 
@@ -341,6 +417,7 @@ export function StatsSection(props: StatsSectionProps) {
                   <Table.Th>Hour</Table.Th>
                   <Table.Th>Requests</Table.Th>
                   <Table.Th>Errors</Table.Th>
+                  <Table.Th>Cache hits</Table.Th>
                   <Table.Th>Tokens</Table.Th>
                   <Table.Th>Rate</Table.Th>
                 </Table.Tr>
@@ -351,6 +428,7 @@ export function StatsSection(props: StatsSectionProps) {
                     <Table.Td>{formatLocalHour(bucket.hour)}</Table.Td>
                     <Table.Td>{bucket.requests}</Table.Td>
                     <Table.Td>{bucket.errors}</Table.Td>
+                    <Table.Td>{bucket.cacheHits}</Table.Td>
                     <Table.Td>{bucket.completionTokens}</Table.Td>
                     <Table.Td>{formatRate(bucket.ratePerSecond)}</Table.Td>
                   </Table.Tr>
@@ -379,6 +457,7 @@ export function StatsSection(props: StatsSectionProps) {
                     <Table.Th>API</Table.Th>
                     <Table.Th>Type</Table.Th>
                     <Table.Th>Stream</Table.Th>
+                    <Table.Th>Cache</Table.Th>
                     <Table.Th>Model</Table.Th>
                     <Table.Th>Target</Table.Th>
                     <Table.Th>Route</Table.Th>
@@ -439,6 +518,9 @@ export function StatsSection(props: StatsSectionProps) {
                             {trace.stream ? "stream" : "single"}
                           </Badge>
                         )}
+                      </Table.Td>
+                      <Table.Td>
+                        <CacheBadge trace={trace} />
                       </Table.Td>
                       <Table.Td>{trace.modelId || "—"}</Table.Td>
                       <Table.Td>{trace.targetName ?? "—"}</Table.Td>

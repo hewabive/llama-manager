@@ -1270,6 +1270,7 @@ export const ApiProxyStatsModelEntrySchema = z.object({
   modelId: z.string(),
   requests: z.number().int().min(0),
   errors: z.number().int().min(0),
+  cacheHits: z.number().int().min(0).default(0),
   completionTokens: z.number().int().min(0),
   promptTokens: z.number().int().min(0),
   genMs: z.number().int().min(0),
@@ -1280,6 +1281,7 @@ export const ApiProxyStatsModelEntrySchema = z.object({
 export const ApiProxyStatsTotalsSchema = z.object({
   requests: z.number().int().min(0),
   errors: z.number().int().min(0),
+  cacheHits: z.number().int().min(0).default(0),
   completionTokens: z.number().int().min(0),
   promptTokens: z.number().int().min(0),
   genMs: z.number().int().min(0),

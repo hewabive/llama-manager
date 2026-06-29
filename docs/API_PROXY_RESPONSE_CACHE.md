@@ -195,7 +195,7 @@ key = sha256( namespace ‖ modelId ‖ canonicalJson(body \ volatile) )
 | 2 | `cache` node, Phase 1 (embed/rerank + non-stream) | core schema; `kind:"response"` + short-circuit; key util; `response-cache.ts` + SQLite table + TTL/LRU; non-stream write/replay; trace marker; tests | medium | done |
 | 3 | single-flight coalescing (non-stream) | in-flight map; `hot` subscribe; subscribers skip lease; owner-lifetime decoupling; `coalesced` telemetry; tests | medium | done |
 | 4 | stream fan-out (chat) | broadcaster + replay buffer; per-subscriber queues; stream/non-stream re-framing; telemetry; tests | high | done |
-| 5 | UI + ops polish | cache admin view + clear/list endpoint; stats hit-rate; docs finalize | small/medium | todo |
+| 5 | UI + ops polish | cache admin view + clear/list endpoint; stats hit-rate; docs finalize | small/medium | done |
 
 ### PR2 implementation notes (as built)
 
@@ -273,6 +273,25 @@ Streaming requests now participate in the cache node (they were skipped in PR2).
   exercise without a real streaming upstream). The broadcaster, the streaming
   cache-node routing, and the sink's SSE store/feed/finish are unit-tested;
   recommend a manual live verification of multi-client fan-out + disconnect.
+
+### PR5 implementation notes (as built)
+
+- Ops endpoints: `GET /api/proxy/cache` → `{ entries, totalBytes }`,
+  `DELETE /api/proxy/cache` → clears the store (`apiProxyResponseCacheStats` /
+  `clearApiProxyResponseCache`).
+- Stats: `ApiProxyStatsTotals`/`ApiProxyStatsModelEntry` gain `cacheHits` (counts
+  traces with `trace.cache` ∈ {`hit`,`coalesced`} — i.e. requests served without
+  an upstream call; `store` is a forward-that-cached, not a hit). Surfaced in the
+  proxy Statistics section (totals block + per-hour column + a per-request
+  `cache` badge) alongside a Response-cache card (entries/size + Clear).
+
+## Status: all five PRs landed
+
+The feature is complete per this plan. Remaining backlog (not scheduled):
+owner-lifetime decoupling for the buffered resumable path; bounded per-subscriber
+queues / laggard disconnect; a target "generation" component in the key for
+invalidation on model/binary/args change; optional SSE↔JSON re-framing to let
+stream and non-stream requests share one entry.
 
 ## Risks & future
 

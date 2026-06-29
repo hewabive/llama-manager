@@ -146,6 +146,18 @@ export async function getApiProxyTraces(limit = 50) {
   );
 }
 
+export async function getApiProxyCacheStats() {
+  return request<{ data: { entries: number; totalBytes: number } }>(
+    "/api/proxy/cache",
+  );
+}
+
+export async function clearApiProxyCache() {
+  return request<{ data: { cleared: boolean } }>("/api/proxy/cache", {
+    method: "DELETE",
+  });
+}
+
 export async function getApiProxyRequestFile(path: string) {
   const params = new URLSearchParams({ path });
   return request<{ data: ApiProxyRequestFileRecord }>(

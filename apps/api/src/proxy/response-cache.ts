@@ -119,3 +119,15 @@ export function evictApiProxyResponseCache(): void {
 export function clearApiProxyResponseCache(): void {
   clearStatement.run();
 }
+
+const statsStatement = sqlite.prepare(
+  `SELECT COUNT(*) AS entries, COALESCE(SUM(size_bytes), 0) AS totalBytes FROM proxy_response_cache`,
+);
+
+export function apiProxyResponseCacheStats(): {
+  entries: number;
+  totalBytes: number;
+} {
+  const row = statsStatement.get() as { entries: number; totalBytes: number };
+  return { entries: row.entries, totalBytes: row.totalBytes };
+}
