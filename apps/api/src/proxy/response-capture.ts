@@ -5,6 +5,7 @@ import type {
 } from "./pipeline.js";
 import type { ApiProxyProtocolOperation } from "./protocol.js";
 import { safeJsonParse, type ProxyTraceAccumulator } from "./protocol-trace.js";
+import { settleApiProxyInFlight } from "./response-coalesce.js";
 
 export type ApiProxyResponseCacheWriter = (input: {
   key: string;
@@ -77,23 +78,35 @@ export function createApiProxyResponseCaptureSink(input: {
         }),
       );
     }
-    if (
-      input.cacheWrites.length > 0 &&
-      explicitText !== null &&
-      !tapped &&
-      !looksLikeErrorBody(data)
-    ) {
-      for (const write of input.cacheWrites) {
+    if (input.cacheWrites.length === 0) {
+      return;
+    }
+    const body =
+      explicitText !== null && !tapped && !looksLikeErrorBody(data)
+        ? explicitText
+        : null;
+    for (const write of input.cacheWrites) {
+      if (body !== null) {
         input.putCache({
           key: write.key,
           modelId: input.trace.modelId,
           status: 200,
           contentType: "application/json",
           isSse: false,
-          body: explicitText,
+          body,
           ttlSeconds: write.ttlSeconds,
         });
+        settleApiProxyInFlight(write.key, {
+          status: 200,
+          contentType: "application/json",
+          isSse: false,
+          body,
+        });
+      } else {
+        settleApiProxyInFlight(write.key, null);
       }
+    }
+    if (body !== null) {
       input.trace.cache = "store";
     }
   };

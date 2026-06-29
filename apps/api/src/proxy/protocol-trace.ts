@@ -23,7 +23,7 @@ export type ProxyTraceAccumulator = {
   targetName: string | null;
   slotId: number | null;
   cacheOrigin: "live" | "restored" | "fresh" | null;
-  cache: "hit" | "store" | null;
+  cache: "hit" | "store" | "coalesced" | null;
   textReplacementCount: number;
   routeTrace: ApiProxyRouteTraceStep[];
   files: ApiProxyTraceFile[];

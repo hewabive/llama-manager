@@ -721,6 +721,70 @@ test("cache node misses to the target and records a cache write", async () => {
   }
 });
 
+test("cache node coalesces onto an in-flight owner instead of forwarding", async () => {
+  const owners: string[] = [];
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: { model: "public-model", input: "x" } }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => null,
+    findInFlight: () =>
+      Promise.resolve({
+        status: 200,
+        contentType: "application/json",
+        isSse: false,
+        body: '{"coalesced":true}',
+      }),
+    registerOwner: (key) => owners.push(key),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "response") {
+    assert.equal(result.source, "coalesced");
+    assert.equal(result.response.body, '{"coalesced":true}');
+    assert.equal(result.routeTrace.at(-1)?.detail, "cache coalesced");
+  }
+  assert.deepEqual(owners, []);
+});
+
+test("cache node registers as owner when no request is in flight", async () => {
+  const owners: string[] = [];
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: { model: "public-model", input: "x" } }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => null,
+    findInFlight: () => null,
+    registerOwner: (key) => owners.push(key),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.equal(result.cacheWrites.length, 1);
+    assert.equal(owners.length, 1);
+    assert.equal(owners[0], result.cacheWrites[0]?.key);
+  }
+});
+
+test("cache node falls through to a plain miss when the owner failed", async () => {
+  const owners: string[] = [];
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: { model: "public-model", input: "x" } }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => null,
+    findInFlight: () => Promise.resolve(null),
+    registerOwner: (key) => owners.push(key),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.equal(result.cacheWrites.length, 1);
+    assert.equal(
+      result.routeTrace.at(-1)?.detail,
+      "cache miss (coalesce fallthrough)",
+    );
+  }
+  assert.deepEqual(owners, []);
+});
+
 test("cache node is skipped for streaming requests", async () => {
   const result = await resolveApiProxyRouteChain({
     request: request({

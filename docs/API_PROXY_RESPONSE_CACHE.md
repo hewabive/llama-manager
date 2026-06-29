@@ -193,7 +193,7 @@ key = sha256( namespace ‖ modelId ‖ canonicalJson(body \ volatile) )
 |----|-------|---------|--------|--------|
 | 1 | `strip-attribution` node | core schema + `pipeline.ts` handler + validation + web; remove hardcoded sanitize from `translation.ts`; tests | small | done |
 | 2 | `cache` node, Phase 1 (embed/rerank + non-stream) | core schema; `kind:"response"` + short-circuit; key util; `response-cache.ts` + SQLite table + TTL/LRU; non-stream write/replay; trace marker; tests | medium | done |
-| 3 | single-flight coalescing (non-stream) | in-flight map; `hot` subscribe; subscribers skip lease; owner-lifetime decoupling; `coalesced` telemetry; tests | medium | todo |
+| 3 | single-flight coalescing (non-stream) | in-flight map; `hot` subscribe; subscribers skip lease; owner-lifetime decoupling; `coalesced` telemetry; tests | medium | done |
 | 4 | stream fan-out (chat) | broadcaster + replay buffer; per-subscriber queues; stream/non-stream re-framing; telemetry; tests | high | todo |
 | 5 | UI + ops polish | cache admin view + clear/list endpoint; stats hit-rate; docs finalize | small/medium | todo |
 
@@ -209,6 +209,28 @@ key = sha256( namespace ‖ modelId ‖ canonicalJson(body \ volatile) )
   non-stream (`setText`) bodies that are not error-shaped; content-type stored
   as `application/json`, status `200`.
 - Streaming requests skip the node entirely in this phase (PR4 adds fan-out).
+
+### PR3 implementation notes (as built)
+
+- In-flight registry `response-coalesce.ts`: `register/find/settle` over a
+  `Map<key, deferred>`. The cache node, after a store miss, checks for an
+  in-flight owner: present ⇒ `await` it (`kind:"response"`, `source:"coalesced"`,
+  waiters do no compute and skip the lease since routing short-circuits);
+  absent ⇒ register as owner and continue to the target.
+- Settlement is driven by the response-capture sink on flush: each cache-write
+  key is settled with the stored payload (success) or `null` (error/no body) —
+  this releases waiters and removes the map entry, so an owner always settles
+  its own key. The `kind:"response"` endpoint path also settles any owner keys
+  it carries (owner-then-downstream-hit). A 120s timeout in `findInFlight` is the
+  backstop for exotic never-settle paths (e.g. route resolution failing after
+  the owner registered); a timed-out waiter falls back to forwarding and cleans
+  the leaked entry.
+- On owner failure, waiters resolve to `null` and fall through to a plain miss
+  (forward + their own cache write), so a failed owner never poisons the herd.
+- **Not yet done:** owner-lifetime decoupling from the originating client. If the
+  owner's client aborts, its upstream is aborted too (no cache write ⇒ waiters
+  fall back). Driving the owner to completion independent of its client is
+  deferred (rides on the PR4 streaming work).
 
 ## Risks & future
 

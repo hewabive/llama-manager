@@ -70,6 +70,11 @@ import {
   putApiProxyCachedResponse,
 } from "./response-cache.js";
 import {
+  findApiProxyInFlight,
+  registerApiProxyInFlight,
+  settleApiProxyInFlight,
+} from "./response-coalesce.js";
+import {
   createApiProxyResponseCaptureSink,
   type ApiProxyResponseCaptureSink,
 } from "./response-capture.js";
@@ -275,6 +280,8 @@ async function proxyProtocolEndpointInner(
     getPipeline: getApiProxyPipeline,
     sourceId: trace.sourceId,
     lookupCache: getApiProxyCachedResponse,
+    findInFlight: findApiProxyInFlight,
+    registerOwner: registerApiProxyInFlight,
     recordRequest: (request) => {
       trace.files.push(
         saveApiProxyRequestFile({
@@ -302,7 +309,10 @@ async function proxyProtocolEndpointInner(
   }
 
   if (routeResult.kind === "response") {
-    trace.cache = "hit";
+    for (const write of routeResult.cacheWrites) {
+      settleApiProxyInFlight(write.key, null);
+    }
+    trace.cache = routeResult.source === "coalesced" ? "coalesced" : "hit";
     trace.stream = false;
     const usage = usageFromNonStreamBody(
       operation.protocol,

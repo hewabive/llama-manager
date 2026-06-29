@@ -96,9 +96,11 @@ export type ApiProxyRouteChainResult =
   | {
       ok: true;
       kind: "response";
+      source: "store" | "coalesced";
       request: ApiProxyProtocolModelRequest;
       response: ApiProxyCachedResponsePayload;
       cacheKey: string;
+      cacheWrites: ApiProxyCacheWriteTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -264,6 +266,10 @@ export async function resolveApiProxyRouteChain(input: {
     request: ApiProxyPipelineRecordRequestInput,
   ) => void | Promise<void>;
   lookupCache?: ApiProxyCacheLookup | undefined;
+  findInFlight?:
+    | ((key: string) => Promise<ApiProxyCachedResponsePayload | null> | null)
+    | undefined;
+  registerOwner?: ((key: string) => void) | undefined;
   maxVisitedNodes?: number | undefined;
   maxCallDepth?: number | undefined;
 }): Promise<ApiProxyRouteChainResult> {
@@ -547,11 +553,47 @@ export async function resolveApiProxyRouteChain(input: {
           return {
             ok: true,
             kind: "response",
+            source: "store",
             request: state.request,
             response: cached,
             cacheKey: key,
+            cacheWrites: state.cacheWrites,
             routeTrace: state.routeTrace,
           };
+        }
+        const pending = input.findInFlight ? input.findInFlight(key) : null;
+        if (pending) {
+          const coalesced = await pending;
+          if (coalesced) {
+            state.routeTrace.push(
+              nodeStep(pipeline, node, {
+                port: "hit",
+                detail: "cache coalesced",
+              }),
+            );
+            return {
+              ok: true,
+              kind: "response",
+              source: "coalesced",
+              request: state.request,
+              response: coalesced,
+              cacheKey: key,
+              cacheWrites: state.cacheWrites,
+              routeTrace: state.routeTrace,
+            };
+          }
+          state.cacheWrites.push({ key, ttlSeconds: node.config.ttlSeconds });
+          state.routeTrace.push(
+            nodeStep(pipeline, node, {
+              port: "next",
+              detail: "cache miss (coalesce fallthrough)",
+            }),
+          );
+          ref = node.ports.next;
+          break;
+        }
+        if (input.registerOwner) {
+          input.registerOwner(key);
         }
         state.cacheWrites.push({ key, ttlSeconds: node.config.ttlSeconds });
         state.routeTrace.push(
