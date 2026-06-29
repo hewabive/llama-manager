@@ -749,6 +749,14 @@ export async function serveResolvedTarget(input: {
   const markAnswerDelta = (text: string) => {
     inflight.appendAnswer(text);
   };
+  const markToolCall = (delta: {
+    index: number;
+    id?: string | undefined;
+    name?: string | undefined;
+    arguments?: string | undefined;
+  }) => {
+    inflight.appendToolCall(delta);
+  };
   const markProgress = (completionTokens: number) => {
     inflight.setCompletionTokens(completionTokens);
   };
@@ -927,6 +935,7 @@ export async function serveResolvedTarget(input: {
             onReasoning: markReasoning,
             onReasoningDelta: markReasoningDelta,
             onAnswerDelta: markAnswerDelta,
+            onToolCall: markToolCall,
             onProgress: markProgress,
             onPrefillProgress: markPrefillProgress,
           });
@@ -1062,6 +1071,7 @@ export async function serveResolvedTarget(input: {
         onReasoning: markReasoning,
         onReasoningDelta: markReasoningDelta,
         onAnswerDelta: markAnswerDelta,
+        onToolCall: markToolCall,
         onProgress: markProgress,
         onPrefillProgress: markPrefillProgress,
         onComplete: onStreamComplete,
@@ -1193,6 +1203,7 @@ export async function serveResolvedTarget(input: {
           onReasoning: markReasoning,
           onReasoningDelta: markReasoningDelta,
           onAnswerDelta: markAnswerDelta,
+          onToolCall: markToolCall,
           onProgress: markProgress,
           onPrefillProgress: markPrefillProgress,
         });

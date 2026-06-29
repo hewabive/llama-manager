@@ -1,5 +1,9 @@
 import { asObject, numberOrNull } from "./json.js";
-import type { ApiProxyProtocolId, ApiProxyResumableCodec } from "./protocol.js";
+import type {
+  ApiProxyProtocolId,
+  ApiProxyResumableCodec,
+  ApiProxyResumableToolCallDelta,
+} from "./protocol.js";
 import { createSseFrameBuffer, sseDataPayloads } from "./sse.js";
 
 export type ProxyUsageCounts = {
@@ -184,6 +188,7 @@ export function createUsageMeterStream(input: {
   onReasoning?: () => void;
   onReasoningDelta?: (text: string) => void;
   onAnswerDelta?: (text: string) => void;
+  onToolCall?: (delta: ApiProxyResumableToolCallDelta) => void;
   onProgress?: (completionTokens: number) => void;
   onPrefillProgress?: (progress: ProxyPrefillProgress) => void;
 }): UsageMeterStream {
@@ -196,6 +201,7 @@ export function createUsageMeterStream(input: {
     onReasoning,
     onReasoningDelta,
     onAnswerDelta,
+    onToolCall,
     onProgress,
     onPrefillProgress,
   } = input;
@@ -278,6 +284,9 @@ export function createUsageMeterStream(input: {
         onFirstToken?.(promptTokens);
       }
       onProgress?.(completionTokens);
+      if (chunk.toolCall) {
+        onToolCall?.(chunk.toolCall);
+      }
     }
     return keep;
   };

@@ -238,6 +238,36 @@ test("force-answer interrupt is gated by support and the thinking phase", () => 
   handle.end();
 });
 
+test("tracks tool calls and switches to the tool phase", () => {
+  apiProxyInflight.reset();
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "tt",
+    stream: true,
+  });
+  handle.firstToken(10);
+  assert.equal(only("tt").phase, "generating");
+
+  handle.appendToolCall({ index: 0, id: "call_1", name: "get_weather" });
+  handle.appendToolCall({ index: 0, arguments: '{"city":' });
+  handle.appendToolCall({ index: 0, arguments: '"Paris"}' });
+  handle.appendToolCall({ index: 1, name: "get_time", arguments: "{}" });
+
+  const view = only("tt");
+  assert.equal(view.phase, "tool");
+  assert.equal(view.toolCalls, 2);
+
+  const detail = apiProxyInflight.getDetail(handle.id);
+  assert.ok(detail);
+  assert.equal(detail.phase, "tool");
+  assert.deepEqual(detail.toolCalls, [
+    { name: "get_weather", arguments: '{"city":"Paris"}' },
+    { name: "get_time", arguments: "{}" },
+  ]);
+  handle.end();
+});
+
 test("finish and cancel abort their signals in any phase", () => {
   apiProxyInflight.reset();
   assert.equal(apiProxyInflight.requestFinish("nope"), "not-found");

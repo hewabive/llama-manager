@@ -1281,7 +1281,13 @@ export const ApiProxyInflightPhaseSchema = z.enum([
   "prefilling",
   "thinking",
   "generating",
+  "tool",
 ]);
+
+export const ApiProxyInflightToolCallSchema = z.object({
+  name: z.string().nullable(),
+  arguments: z.string(),
+});
 
 export const ApiProxyInflightRequestSchema = z.object({
   id: z.string(),
@@ -1300,6 +1306,7 @@ export const ApiProxyInflightRequestSchema = z.object({
   prefillCachedTokens: z.number().int().min(0).nullable().default(null),
   reasoningChars: z.number().int().min(0).default(0),
   answerChars: z.number().int().min(0).default(0),
+  toolCalls: z.number().int().min(0).default(0),
   interruptible: z.boolean().default(false),
 });
 
@@ -1314,6 +1321,7 @@ export const ApiProxyInflightDetailSchema = z.object({
   answerText: z.string(),
   answerChars: z.number().int().min(0),
   answerTruncated: z.boolean(),
+  toolCalls: z.array(ApiProxyInflightToolCallSchema).default([]),
   completionTokens: z.number().int().min(0),
   interruptible: z.boolean(),
 });
@@ -2594,6 +2602,9 @@ export type ApiProxyInflightRequest = z.infer<
 >;
 export type ApiProxyInflightDetail = z.infer<
   typeof ApiProxyInflightDetailSchema
+>;
+export type ApiProxyInflightToolCall = z.infer<
+  typeof ApiProxyInflightToolCallSchema
 >;
 export type ApiProxyInflightInterruptResult = z.infer<
   typeof ApiProxyInflightInterruptResultSchema

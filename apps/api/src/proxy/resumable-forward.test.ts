@@ -555,6 +555,33 @@ test("runResumableUpstreamAttempt defers preemption during a tool call", async (
   ]);
 });
 
+test("runResumableUpstreamAttempt forwards tool-call deltas via onToolCall", async () => {
+  const deltas: Array<{
+    index: number;
+    id?: string | undefined;
+    name?: string | undefined;
+    arguments?: string | undefined;
+  }> = [];
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state: createResumableBufferState(),
+    preemptSignal: new AbortController().signal,
+    onToolCall: (delta) => deltas.push(delta),
+    fetchImpl: makeFetch([
+      toolFrame({ id: "call_1", name: "get_weather" }),
+      toolFrame({ arguments: '{"city":"Moscow"}' }),
+    ]),
+  });
+  assert.equal(outcome.type, "completed");
+  assert.equal(deltas.length, 2);
+  assert.equal(deltas[0]?.name, "get_weather");
+  assert.equal(deltas[1]?.arguments, '{"city":"Moscow"}');
+});
+
 test("runResumableForward regenerates from scratch when preempted before any text", async () => {
   const state = createResumableBufferState();
   const tails: Array<string | null> = [];

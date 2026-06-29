@@ -269,7 +269,8 @@ function InflightDetailModal({
               Request finished — showing last captured output.
             </Text>
           )}
-          {(detail.reasoningText || !detail.answerText) && (
+          {(detail.reasoningText ||
+            (!detail.answerText && detail.toolCalls.length === 0)) && (
             <Stack gap={2}>
               <Text size="xs" fw={600} c="violet">
                 Reasoning
@@ -292,6 +293,27 @@ function InflightDetailModal({
                 <Code block style={{ whiteSpace: "pre-wrap" }}>
                   {detail.answerText}
                 </Code>
+              </ScrollArea.Autosize>
+            </Stack>
+          )}
+          {detail.toolCalls.length > 0 && (
+            <Stack gap={2}>
+              <Text size="xs" fw={600} c="grape">
+                Tool calls ({detail.toolCalls.length})
+              </Text>
+              <ScrollArea.Autosize mah="35vh">
+                <Stack gap={6}>
+                  {detail.toolCalls.map((call, index) => (
+                    <Stack key={index} gap={2}>
+                      <Text size="xs" fw={600} ff="monospace">
+                        {call.name ?? "(unnamed)"}
+                      </Text>
+                      <Code block style={{ whiteSpace: "pre-wrap" }}>
+                        {call.arguments || "—"}
+                      </Code>
+                    </Stack>
+                  ))}
+                </Stack>
               </ScrollArea.Autosize>
             </Stack>
           )}
@@ -332,7 +354,9 @@ export function InflightRequests({
                     {label}
                   </Text>
                 )}
-                {(req.reasoningChars > 0 || req.answerChars > 0) && (
+                {(req.reasoningChars > 0 ||
+                  req.answerChars > 0 ||
+                  req.toolCalls > 0) && (
                   <Tooltip label="View output">
                     <ActionIcon
                       size="xs"

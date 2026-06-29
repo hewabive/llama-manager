@@ -58,7 +58,9 @@ function model(overrides: Partial<ApiProxyModelRecord>): ApiProxyModelRecord {
   };
 }
 
-function inflight(phase: ApiProxyInflightRequest["phase"]): ApiProxyInflightRequest {
+function inflight(
+  phase: ApiProxyInflightRequest["phase"],
+): ApiProxyInflightRequest {
   return {
     id: "request",
     modelId: "public",
@@ -76,6 +78,7 @@ function inflight(phase: ApiProxyInflightRequest["phase"]): ApiProxyInflightRequ
     prefillCachedTokens: null,
     reasoningChars: 0,
     answerChars: 0,
+    toolCalls: 0,
     interruptible: false,
   };
 }
@@ -147,7 +150,11 @@ test("deriveApiProxyModelStatus splits active vs queued and maps the target load
     model: model({ routeTo: { type: "target", id: "t1" } }),
     snapshot: snapshot([targetRuntime("t1", "ready")]),
     pipelinesById: new Map(),
-    inflight: [inflight("queued"), inflight("prefilling"), inflight("generating")],
+    inflight: [
+      inflight("queued"),
+      inflight("prefilling"),
+      inflight("generating"),
+    ],
   });
 
   assert.equal(status.value, "loaded");

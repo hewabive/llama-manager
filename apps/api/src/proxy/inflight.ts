@@ -29,6 +29,7 @@ type InflightEntry = {
   reasoningCharsTotal: number;
   answerText: string;
   answerCharsTotal: number;
+  toolCalls: { id: string | null; name: string | null; arguments: string }[];
   interruptible: boolean;
   interruptController: AbortController | null;
   finishController: AbortController | null;
@@ -38,6 +39,7 @@ type InflightEntry = {
 const DEFAULT_INFLIGHT_STALE_AFTER_MS = 90 * 60 * 1000;
 const REASONING_BUFFER_CAP = 256 * 1024;
 const ANSWER_BUFFER_CAP = 64 * 1024;
+const TOOL_ARGS_BUFFER_CAP = 16 * 1024;
 
 function appendCapped(buffer: string, addition: string, cap: number): string {
   if (addition.length === 0) {
@@ -73,6 +75,12 @@ export type ApiProxyInflightHandle = {
   }): void;
   appendReasoning(text: string): void;
   appendAnswer(text: string): void;
+  appendToolCall(delta: {
+    index: number;
+    id?: string | undefined;
+    name?: string | undefined;
+    arguments?: string | undefined;
+  }): void;
   setInterruptible(value: boolean): void;
   interruptSignal(): AbortSignal;
   finishSignal(): AbortSignal;
@@ -118,6 +126,7 @@ function toView(entry: InflightEntry, at: number): ApiProxyInflightRequest {
     prefillCachedTokens: entry.prefillCachedTokens,
     reasoningChars: entry.reasoningCharsTotal,
     answerChars: entry.answerCharsTotal,
+    toolCalls: entry.toolCalls.filter(Boolean).length,
     interruptible: entryInterruptible(entry),
   };
 }
@@ -160,6 +169,7 @@ export class ApiProxyInflightRegistry {
       reasoningCharsTotal: 0,
       answerText: "",
       answerCharsTotal: 0,
+      toolCalls: [],
       interruptible: false,
       interruptController: null,
       finishController: null,
@@ -256,6 +266,26 @@ export class ApiProxyInflightRegistry {
         );
         touch();
       },
+      appendToolCall: (delta) => {
+        const existing = entry.toolCalls[delta.index] ?? {
+          id: null,
+          name: null,
+          arguments: "",
+        };
+        entry.toolCalls[delta.index] = {
+          id: delta.id ?? existing.id,
+          name: delta.name ?? existing.name,
+          arguments: appendCapped(
+            existing.arguments,
+            delta.arguments ?? "",
+            TOOL_ARGS_BUFFER_CAP,
+          ),
+        };
+        if (entry.phase !== "queued" && entry.phase !== "prefilling") {
+          entry.phase = "tool";
+        }
+        touch();
+      },
       setInterruptible: (value) => {
         entry.interruptible = value;
       },
@@ -349,6 +379,9 @@ export class ApiProxyInflightRegistry {
       answerText: entry.answerText,
       answerChars: entry.answerCharsTotal,
       answerTruncated: entry.answerCharsTotal > entry.answerText.length,
+      toolCalls: entry.toolCalls
+        .filter(Boolean)
+        .map((call) => ({ name: call.name, arguments: call.arguments })),
       completionTokens: entry.completionTokens,
       interruptible: entryInterruptible(entry),
     };

@@ -20,6 +20,8 @@ export function inflightPhaseColor(phase: ApiProxyInflightRequest["phase"]) {
       return "violet";
     case "generating":
       return "teal";
+    case "tool":
+      return "grape";
     default:
       return "gray";
   }
@@ -57,6 +59,13 @@ export function inflightLabel(req: ApiProxyInflightRequest): string {
       );
     }
     return parts.join(" · ");
+  }
+  if (req.phase === "tool") {
+    const calls =
+      req.toolCalls > 0
+        ? `${req.toolCalls} tool call${req.toolCalls === 1 ? "" : "s"}`
+        : "tool call";
+    return `${calls} · ${req.completionTokens} tok`;
   }
   return "";
 }

@@ -7,6 +7,7 @@ import type {
   ApiProxyResumableCodec,
   ApiProxyResumableFinalResponse,
   ApiProxyResumableToolCall,
+  ApiProxyResumableToolCallDelta,
 } from "./protocol.js";
 import { createSseFrameBuffer, sseDataPayloads } from "./sse.js";
 
@@ -59,6 +60,7 @@ type FrameMeta = {
   onReasoning?: (() => void) | undefined;
   onReasoningDelta?: ((text: string) => void) | undefined;
   onAnswerDelta?: ((text: string) => void) | undefined;
+  onToolCall?: ((delta: ApiProxyResumableToolCallDelta) => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
@@ -150,6 +152,9 @@ function applyFrame(
       meta.onFirstToken?.(state.promptTokens);
     }
     meta.onProgress?.(state.completionTokens);
+    if (chunk.toolCall) {
+      meta.onToolCall?.(chunk.toolCall);
+    }
   }
   return null;
 }
@@ -196,6 +201,7 @@ export async function runResumableUpstreamAttempt(input: {
   onReasoning?: (() => void) | undefined;
   onReasoningDelta?: ((text: string) => void) | undefined;
   onAnswerDelta?: ((text: string) => void) | undefined;
+  onToolCall?: ((delta: ApiProxyResumableToolCallDelta) => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
@@ -233,6 +239,7 @@ export async function runResumableUpstreamAttempt(input: {
     onReasoning: input.onReasoning,
     onReasoningDelta: input.onReasoningDelta,
     onAnswerDelta: input.onAnswerDelta,
+    onToolCall: input.onToolCall,
     onProgress: input.onProgress,
     onPrefillProgress: input.onPrefillProgress,
   };
@@ -330,6 +337,7 @@ export async function consumeResumableSse(input: {
   onReasoning?: (() => void) | undefined;
   onReasoningDelta?: ((text: string) => void) | undefined;
   onAnswerDelta?: ((text: string) => void) | undefined;
+  onToolCall?: ((delta: ApiProxyResumableToolCallDelta) => void) | undefined;
   onProgress?: ((completionTokens: number) => void) | undefined;
   onPrefillProgress?:
     | ((progress: { total: number; processed: number; cache: number }) => void)
@@ -343,6 +351,7 @@ export async function consumeResumableSse(input: {
     onReasoning: input.onReasoning,
     onReasoningDelta: input.onReasoningDelta,
     onAnswerDelta: input.onAnswerDelta,
+    onToolCall: input.onToolCall,
     onProgress: input.onProgress,
     onPrefillProgress: input.onPrefillProgress,
   };
