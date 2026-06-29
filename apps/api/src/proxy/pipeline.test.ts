@@ -593,6 +593,76 @@ test("edit-request node edits the body mid-route and traces operation outcomes",
   }
 });
 
+function stripAttributionPipeline(): ApiProxyPipelineRecord {
+  return pipelineRecord({
+    id: "pipeline-a",
+    entry: { type: "node", id: "strip" },
+    nodes: [
+      {
+        id: "strip",
+        name: "",
+        type: "strip-attribution",
+        config: {},
+        ports: { next: { type: "target", id: "target-a" } },
+      },
+    ],
+  });
+}
+
+test("strip-attribution removes the claude code attribution block mid-route", async () => {
+  const result = await resolveApiProxyRouteChain({
+    request: request({
+      operation: {
+        protocol: "anthropic",
+        endpoint: "messages",
+        routePath: "/v1/messages",
+        transport: "http-json",
+      },
+      body: {
+        model: "public-model",
+        system: [
+          {
+            type: "text",
+            text: "x-anthropic-billing-header: cc_version=2.1.37; cc_entrypoint=cli; cch=14f72;",
+          },
+          { type: "text", text: "You are X." },
+        ],
+        messages: [{ role: "user", content: "hi" }],
+      },
+    }),
+    getPipeline: getPipelineFrom([stripAttributionPipeline()]),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.equal(result.targetId, "target-a");
+    assert.deepEqual(result.request.body, {
+      model: "public-model",
+      system: [{ type: "text", text: "You are X." }],
+      messages: [{ role: "user", content: "hi" }],
+    });
+    assert.equal(result.routeTrace[1]?.kind, "strip-attribution");
+    assert.equal(result.routeTrace[1]?.detail, "attribution stripped");
+  }
+});
+
+test("strip-attribution leaves a clean body untouched and reports no-op", async () => {
+  const clean = {
+    model: "public-model",
+    messages: [{ role: "user", content: "hi" }],
+  };
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: clean }),
+    getPipeline: getPipelineFrom([stripAttributionPipeline()]),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.deepEqual(result.request.body, clean);
+    assert.equal(result.routeTrace[1]?.detail, "no attribution found");
+  }
+});
+
 function conditionPipeline(
   predicate: Extract<
     ApiProxyPipelineNode,

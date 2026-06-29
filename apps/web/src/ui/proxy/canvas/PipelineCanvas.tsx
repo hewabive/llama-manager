@@ -77,6 +77,7 @@ function portPatch(
     case "edit-request":
     case "reasoning":
     case "output-limit":
+    case "strip-attribution":
       return port === "next" ? { portNext: value } : null;
     case "condition":
       if (port === "true") {

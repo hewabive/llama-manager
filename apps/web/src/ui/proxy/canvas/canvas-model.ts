@@ -174,6 +174,7 @@ export function draftNodePorts(
     case "edit-request":
     case "reasoning":
     case "output-limit":
+    case "strip-attribution":
       return [{ port: "next", value: node.portNext }];
     case "condition":
       return [
@@ -229,6 +230,8 @@ export function nodeSummary(
       return reasoningSummary(node);
     case "output-limit":
       return `${node.outputLimitMode} max_tokens ${node.outputLimitMax || "?"}`;
+    case "strip-attribution":
+      return "strip Claude Code attribution";
     case "condition": {
       if (node.predicateType === "token-estimate") {
         return `≥ ${node.minTokens || "?"} tokens (est.)`;

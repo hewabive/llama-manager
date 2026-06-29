@@ -814,6 +814,12 @@ export type ApiProxyOutputLimitConfig = z.infer<
   typeof ApiProxyOutputLimitConfigSchema
 >;
 
+export const ApiProxyStripAttributionConfigSchema = z.object({}).default({});
+
+export type ApiProxyStripAttributionConfig = z.infer<
+  typeof ApiProxyStripAttributionConfigSchema
+>;
+
 export const ApiProxyConditionScopeSchema = z.enum([
   "last-user-message",
   "any-message",
@@ -898,6 +904,11 @@ export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
   ApiProxyPipelineNodeBaseSchema.extend({
     type: z.literal("output-limit"),
     config: ApiProxyOutputLimitConfigSchema,
+    ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
+  }),
+  ApiProxyPipelineNodeBaseSchema.extend({
+    type: z.literal("strip-attribution"),
+    config: ApiProxyStripAttributionConfigSchema,
     ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
   }),
   ApiProxyPipelineNodeBaseSchema.extend({
@@ -1172,6 +1183,7 @@ export const ApiProxyRouteTraceStepSchema = z.object({
     "edit-request",
     "reasoning",
     "output-limit",
+    "strip-attribution",
     "condition",
     "call",
     "exit",

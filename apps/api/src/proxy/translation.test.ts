@@ -67,7 +67,7 @@ test("forward body uses llama-server dialect with filtered named tool_choice", (
   assert.equal((body.tools as unknown[]).length, 1);
 });
 
-test("forward body drops the claude code attribution system block", () => {
+test("forward body no longer strips attribution (moved to strip-attribution node)", () => {
   const body = translateAnthropicForwardBody({
     model: "m",
     max_tokens: 16,
@@ -81,7 +81,8 @@ test("forward body drops the claude code attribution system block", () => {
     messages: [{ role: "user", content: "hi" }],
   }) as Record<string, unknown>;
   const messages = body.messages as Record<string, unknown>[];
-  assert.deepEqual(messages[0], { role: "system", content: "You are X." });
+  assert.equal(messages[0]?.role, "system");
+  assert.match(messages[0]?.content as string, /x-anthropic-billing-header/);
 });
 
 test("anthropic headers are stripped from forwarded requests", () => {

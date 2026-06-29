@@ -24,6 +24,7 @@ const nodeTypeLabels: Record<ApiProxyPipelineNode["type"], string> = {
   "edit-request": "Edit request",
   reasoning: "Reasoning",
   "output-limit": "Limit output",
+  "strip-attribution": "Strip CC attribution",
   condition: "Condition",
   call: "Pipeline",
   exit: "Exit",
@@ -39,6 +40,10 @@ export const pipelineNodeTypeOptions: Array<{
   { value: "edit-request", label: nodeTypeLabels["edit-request"] },
   { value: "reasoning", label: nodeTypeLabels.reasoning },
   { value: "output-limit", label: nodeTypeLabels["output-limit"] },
+  {
+    value: "strip-attribution",
+    label: nodeTypeLabels["strip-attribution"],
+  },
   { value: "condition", label: nodeTypeLabels.condition },
   { value: "fusion", label: nodeTypeLabels.fusion },
   { value: "exit", label: nodeTypeLabels.exit },

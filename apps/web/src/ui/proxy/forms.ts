@@ -403,6 +403,9 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       draft.outputLimitMode = node.config.mode;
       draft.portNext = portRefToValue(node.ports.next);
       break;
+    case "strip-attribution":
+      draft.portNext = portRefToValue(node.ports.next);
+      break;
     case "condition": {
       const predicate = node.config.predicate;
       draft.predicateType = predicate.type;
@@ -684,6 +687,13 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
         ...base,
         type: "output-limit",
         config: outputLimitConfigFromDraft(draft),
+        ports: { next: portRefFromValue(draft.portNext) },
+      };
+    case "strip-attribution":
+      return {
+        ...base,
+        type: "strip-attribution",
+        config: {},
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "condition":

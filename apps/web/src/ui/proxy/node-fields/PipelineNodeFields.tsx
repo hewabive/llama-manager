@@ -99,6 +99,25 @@ export function PipelineNodeFields(props: {
     );
   }
 
+  if (node.type === "strip-attribution") {
+    return (
+      <>
+        <Text c="dimmed" size="sm">
+          Removes Claude Code&apos;s per-request billing/attribution block and
+          pins volatile cch hashes, keeping the upstream KV-cache prefix and any
+          downstream cache key stable. No configuration.
+        </Text>
+        <PortSelect
+          label="Next"
+          ctx={ctx}
+          excludeNodeId={node.id}
+          value={node.portNext}
+          onChange={(portNext) => update({ portNext })}
+        />
+      </>
+    );
+  }
+
   if (node.type === "condition") {
     return <ConditionFields node={node} ctx={ctx} update={update} />;
   }

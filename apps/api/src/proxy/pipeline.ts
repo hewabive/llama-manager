@@ -12,6 +12,7 @@ import {
   type ApiProxyTextReplacementRule,
 } from "@llama-manager/core";
 
+import { sanitizeClaudeCodeAttribution } from "./attribution.js";
 import { evaluateApiProxyCondition } from "./condition.js";
 import {
   bodyRequestsStreaming,
@@ -466,6 +467,26 @@ export async function resolveApiProxyRouteChain(input: {
         ref = node.ports.next;
         break;
       }
+      case "strip-attribution": {
+        const sanitized = sanitizeClaudeCodeAttribution(state.request.body);
+        const changed = sanitized !== state.request.body;
+        if (changed) {
+          state.request = {
+            ...state.request,
+            body: sanitized,
+            stream: bodyRequestsStreaming(sanitized),
+          };
+          tokenEstimate = null;
+        }
+        state.routeTrace.push(
+          nodeStep(pipeline, node, {
+            port: "next",
+            detail: changed ? "attribution stripped" : "no attribution found",
+          }),
+        );
+        ref = node.ports.next;
+        break;
+      }
       case "capture-request": {
         const details: string[] = [];
         if (node.config.request) {
@@ -491,7 +512,8 @@ export async function resolveApiProxyRouteChain(input: {
         state.routeTrace.push(
           nodeStep(pipeline, node, {
             port: "next",
-            detail: details.length > 0 ? details.join(" · ") : "nothing to save",
+            detail:
+              details.length > 0 ? details.join(" · ") : "nothing to save",
           }),
         );
         ref = node.ports.next;

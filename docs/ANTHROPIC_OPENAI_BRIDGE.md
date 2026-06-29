@@ -52,9 +52,13 @@ CLI additionally find-and-replaces the session's previous `cch` hash across
 historical message content (anthropics/claude-code#40652), so tool results
 that captured the header keep mutating between requests.
 
-`sanitizeClaudeCodeAttribution` runs inside `translateAnthropicForwardBody`,
-i.e. only on the translate path — anthropic-profile pass-through stays
-verbatim (the header is Anthropic's own billing mechanism). Two transforms:
+`sanitizeClaudeCodeAttribution` is exposed as the placeable `strip-attribution`
+pipeline node (`docs/API_PROXY_PIPELINES.md`) — **not** automatic in
+translation anymore. Insert it in a pipeline wherever the cleanup is wanted
+(typically before a managed llama target, or before a cache node so the cache
+key is computed over an attribution-free body). It operates on the
+client-protocol (pre-translation) body, so for Claude Code's Anthropic requests
+it sees the native `system`/`tool_result` shape. Two transforms:
 
 - `system` (string or blocks): lines containing `x-anthropic-billing-header:`
   are removed; a block (or the whole `system` key) left empty is dropped.

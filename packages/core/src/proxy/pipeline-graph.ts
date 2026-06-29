@@ -83,6 +83,7 @@ export function apiProxyPipelineNodePorts(
     case "edit-request":
     case "reasoning":
     case "output-limit":
+    case "strip-attribution":
       return node.ports.next ? [{ port: "next", ref: node.ports.next }] : [];
     case "condition": {
       const refs: Array<{
@@ -210,6 +211,7 @@ export function collectApiProxyRouteHoles(
       case "edit-request":
       case "reasoning":
       case "output-limit":
+      case "strip-attribution":
         visit(node.ports.next, pipeline, stack, {
           nodeId: node.id,
           where: `port "next" of node ${label(node)}`,

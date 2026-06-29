@@ -76,6 +76,12 @@ in the sub-sections below.
   (`next`)
 - **`output-limit`** — `maxTokens` + `mode: cap|set`: bounds `max_tokens` on the
   request (see below). (`next`)
+- **`strip-attribution`** — no config: runs `sanitizeClaudeCodeAttribution` on
+  the body in place, dropping Claude Code's `x-anthropic-billing-header`/`cch`
+  attribution and pinning in-content `cch` hashes. Keeps the llama.cpp KV prefix
+  cache (and any downstream cache key) stable. Decoupled from translation — must
+  be placed in the pipeline where wanted; a no-op when no attribution is found.
+  See `docs/ANTHROPIC_OPENAI_BRIDGE.md`. (`next`)
 - **`condition`** — `predicate` (see below). (`true`, `false`)
 - **`call`** — `pipelineId`. (one port per callee exit name)
 - **`exit`** — `exitName` (default `done`). (no ports)
