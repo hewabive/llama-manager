@@ -1,4 +1,4 @@
-import { Checkbox, Text, TextInput } from "@mantine/core";
+import { Checkbox, NumberInput, Text, TextInput } from "@mantine/core";
 
 import { EditRequestFields } from "../edit-request-fields";
 import type { PipelineNodeDraft } from "../forms";
@@ -109,6 +109,48 @@ export function PipelineNodeFields(props: {
         </Text>
         <PortSelect
           label="Next"
+          ctx={ctx}
+          excludeNodeId={node.id}
+          value={node.portNext}
+          onChange={(portNext) => update({ portNext })}
+        />
+      </>
+    );
+  }
+
+  if (node.type === "cache") {
+    return (
+      <>
+        <Text c="dimmed" size="sm">
+          Serves an identical request from a saved response instead of the
+          upstream — a hit short-circuits routing, lease and the model entirely.
+          The key hashes the request body at this node (excluding stream flags),
+          the model id and the namespace. Non-streaming only (embeddings,
+          rerank, non-stream chat); place a Strip CC attribution node before it
+          for a stable key.
+        </Text>
+        <NumberInput
+          label="TTL (seconds)"
+          description="0 = never expires (until evicted)."
+          min={0}
+          value={node.cacheTtlSeconds}
+          onChange={(value) =>
+            update({
+              cacheTtlSeconds: typeof value === "number" ? value : "",
+            })
+          }
+        />
+        <TextInput
+          label="Namespace"
+          description="Optional. Separates entries when one model id is routed to different upstreams."
+          value={node.cacheNamespace}
+          onChange={(event) => {
+            const cacheNamespace = event.currentTarget.value;
+            update({ cacheNamespace });
+          }}
+        />
+        <PortSelect
+          label="Next (on miss)"
           ctx={ctx}
           excludeNodeId={node.id}
           value={node.portNext}

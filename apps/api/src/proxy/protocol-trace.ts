@@ -23,6 +23,7 @@ export type ProxyTraceAccumulator = {
   targetName: string | null;
   slotId: number | null;
   cacheOrigin: "live" | "restored" | "fresh" | null;
+  cache: "hit" | "store" | null;
   textReplacementCount: number;
   routeTrace: ApiProxyRouteTraceStep[];
   files: ApiProxyTraceFile[];
@@ -72,6 +73,7 @@ export function createProxyTrace(
     targetName: null,
     slotId: null,
     cacheOrigin: null,
+    cache: null,
     textReplacementCount: 0,
     routeTrace: [],
     files: [],

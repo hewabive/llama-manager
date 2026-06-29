@@ -14,6 +14,7 @@ import {
 
 import { sanitizeClaudeCodeAttribution } from "./attribution.js";
 import { evaluateApiProxyCondition } from "./condition.js";
+import { apiProxyResponseCacheKey } from "./response-cache-key.js";
 import {
   bodyRequestsStreaming,
   type ApiProxyProtocolDiagnostic,
@@ -35,6 +36,25 @@ export type ApiProxyResponseCaptureTarget = {
   nodeName: string | null;
 };
 
+export type ApiProxyCacheWriteTarget = {
+  key: string;
+  ttlSeconds: number;
+};
+
+export type ApiProxyCachedResponsePayload = {
+  status: number;
+  contentType: string;
+  isSse: boolean;
+  body: string;
+};
+
+export type ApiProxyCacheLookup = (
+  key: string,
+) =>
+  | ApiProxyCachedResponsePayload
+  | null
+  | Promise<ApiProxyCachedResponsePayload | null>;
+
 export type ApiProxyFusionNode = Extract<
   ApiProxyPipelineNode,
   { type: "fusion" }
@@ -48,6 +68,7 @@ export type ApiProxyRouteChainResult =
       targetId: string;
       textReplacementCount: number;
       responseCaptures: ApiProxyResponseCaptureTarget[];
+      cacheWrites: ApiProxyCacheWriteTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -58,6 +79,7 @@ export type ApiProxyRouteChainResult =
       pipeline: ApiProxyPipelineRecord;
       textReplacementCount: number;
       responseCaptures: ApiProxyResponseCaptureTarget[];
+      cacheWrites: ApiProxyCacheWriteTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -68,6 +90,15 @@ export type ApiProxyRouteChainResult =
       upstreamModel: string | null;
       textReplacementCount: number;
       responseCaptures: ApiProxyResponseCaptureTarget[];
+      cacheWrites: ApiProxyCacheWriteTarget[];
+      routeTrace: ApiProxyRouteTraceStep[];
+    }
+  | {
+      ok: true;
+      kind: "response";
+      request: ApiProxyProtocolModelRequest;
+      response: ApiProxyCachedResponsePayload;
+      cacheKey: string;
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -167,6 +198,7 @@ type RouteWalkState = {
   request: ApiProxyProtocolModelRequest;
   textReplacementCount: number;
   responseCaptures: ApiProxyResponseCaptureTarget[];
+  cacheWrites: ApiProxyCacheWriteTarget[];
   routeTrace: ApiProxyRouteTraceStep[];
 };
 
@@ -231,6 +263,7 @@ export async function resolveApiProxyRouteChain(input: {
   recordRequest?: (
     request: ApiProxyPipelineRecordRequestInput,
   ) => void | Promise<void>;
+  lookupCache?: ApiProxyCacheLookup | undefined;
   maxVisitedNodes?: number | undefined;
   maxCallDepth?: number | undefined;
 }): Promise<ApiProxyRouteChainResult> {
@@ -242,6 +275,7 @@ export async function resolveApiProxyRouteChain(input: {
     request: input.request,
     textReplacementCount: 0,
     responseCaptures: [],
+    cacheWrites: [],
     routeTrace: [],
   };
 
@@ -284,6 +318,7 @@ export async function resolveApiProxyRouteChain(input: {
         targetId: ref.id,
         textReplacementCount: state.textReplacementCount,
         responseCaptures: state.responseCaptures,
+        cacheWrites: state.cacheWrites,
         routeTrace: state.routeTrace,
       };
     }
@@ -297,6 +332,7 @@ export async function resolveApiProxyRouteChain(input: {
         upstreamModel: ref.upstreamModel,
         textReplacementCount: state.textReplacementCount,
         responseCaptures: state.responseCaptures,
+        cacheWrites: state.cacheWrites,
         routeTrace: state.routeTrace,
       };
     }
@@ -487,6 +523,43 @@ export async function resolveApiProxyRouteChain(input: {
         ref = node.ports.next;
         break;
       }
+      case "cache": {
+        if (state.request.stream) {
+          state.routeTrace.push(
+            nodeStep(pipeline, node, {
+              port: "next",
+              detail: "streaming (cache skipped)",
+            }),
+          );
+          ref = node.ports.next;
+          break;
+        }
+        const key = apiProxyResponseCacheKey({
+          namespace: node.config.namespace,
+          modelId: input.request.modelId,
+          body: state.request.body,
+        });
+        const cached = input.lookupCache ? await input.lookupCache(key) : null;
+        if (cached) {
+          state.routeTrace.push(
+            nodeStep(pipeline, node, { port: "hit", detail: "cache hit" }),
+          );
+          return {
+            ok: true,
+            kind: "response",
+            request: state.request,
+            response: cached,
+            cacheKey: key,
+            routeTrace: state.routeTrace,
+          };
+        }
+        state.cacheWrites.push({ key, ttlSeconds: node.config.ttlSeconds });
+        state.routeTrace.push(
+          nodeStep(pipeline, node, { port: "next", detail: "cache miss" }),
+        );
+        ref = node.ports.next;
+        break;
+      }
       case "capture-request": {
         const details: string[] = [];
         if (node.config.request) {
@@ -647,6 +720,7 @@ export async function resolveApiProxyRouteChain(input: {
           pipeline,
           textReplacementCount: state.textReplacementCount,
           responseCaptures: state.responseCaptures,
+          cacheWrites: state.cacheWrites,
           routeTrace: state.routeTrace,
         };
       }

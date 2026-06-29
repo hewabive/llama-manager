@@ -82,6 +82,14 @@ in the sub-sections below.
   cache (and any downstream cache key) stable. Decoupled from translation — must
   be placed in the pipeline where wanted; a no-op when no attribution is found.
   See `docs/ANTHROPIC_OPENAI_BRIDGE.md`. (`next`)
+- **`cache`** — `ttlSeconds` (0 = no expiry) + `namespace`: on a hit, serves a
+  saved response and **short-circuits routing/lease/forward** (route-chain
+  terminal `kind:"response"`); on a miss, follows `next` and registers a write
+  that the response-capture sink commits on non-stream completion. Key =
+  sha256(namespace ⊕ modelId ⊕ body-at-node), excluding `stream`/`stream_options`.
+  Non-streaming only (embeddings, rerank, non-stream chat); streaming requests
+  pass through untouched in this phase. Place a `strip-attribution` node before
+  it for a stable key. See `docs/API_PROXY_RESPONSE_CACHE.md`. (`next` = miss)
 - **`condition`** — `predicate` (see below). (`true`, `false`)
 - **`call`** — `pipelineId`. (one port per callee exit name)
 - **`exit`** — `exitName` (default `done`). (no ports)

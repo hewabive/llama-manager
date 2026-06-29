@@ -26,6 +26,8 @@ const operation = {
 test("response sink returns null when no captures are requested", () => {
   const sink = createApiProxyResponseCaptureSink({
     captures: [],
+    cacheWrites: [],
+    putCache: () => {},
     trace: trace(),
     operation,
   });
@@ -36,6 +38,8 @@ test("response sink writes one capture-response file per target and is idempoten
   const value = trace();
   const sink = createApiProxyResponseCaptureSink({
     captures: [{ nodeName: "Audit" }, { nodeName: null }],
+    cacheWrites: [],
+    putCache: () => {},
     trace: value,
     operation,
   });
@@ -63,6 +67,8 @@ test("response sink writes nothing when no body was seen", () => {
   const value = trace();
   const sink = createApiProxyResponseCaptureSink({
     captures: [{ nodeName: null }],
+    cacheWrites: [],
+    putCache: () => {},
     trace: value,
     operation,
   });
@@ -71,10 +77,55 @@ test("response sink writes nothing when no body was seen", () => {
   assert.equal(value.files.length, 0);
 });
 
+test("response sink writes non-stream bodies to the cache and marks the trace", () => {
+  const value = trace();
+  const writes: Array<{ key: string; body: string; ttlSeconds: number }> = [];
+  const sink = createApiProxyResponseCaptureSink({
+    captures: [],
+    cacheWrites: [{ key: "key-1", ttlSeconds: 600 }],
+    putCache: (input) =>
+      writes.push({
+        key: input.key,
+        body: input.body,
+        ttlSeconds: input.ttlSeconds,
+      }),
+    trace: value,
+    operation,
+  });
+  assert.ok(sink);
+
+  sink.setText('{"object":"list","data":[]}');
+  sink.flush();
+
+  assert.deepEqual(writes, [
+    { key: "key-1", body: '{"object":"list","data":[]}', ttlSeconds: 600 },
+  ]);
+  assert.equal(value.cache, "store");
+});
+
+test("response sink does not cache an error body or a streamed response", async () => {
+  const value = trace();
+  const writes: string[] = [];
+  const sink = createApiProxyResponseCaptureSink({
+    captures: [],
+    cacheWrites: [{ key: "key-err", ttlSeconds: 600 }],
+    putCache: (input) => writes.push(input.key),
+    trace: value,
+    operation,
+  });
+  assert.ok(sink);
+  sink.setText('{"error":{"message":"nope"}}');
+  sink.flush();
+  assert.equal(writes.length, 0);
+  assert.equal(value.cache, null);
+});
+
 test("response sink streams through tapped chunks and captures the raw text", async () => {
   const value = trace();
   const sink = createApiProxyResponseCaptureSink({
     captures: [{ nodeName: null }],
+    cacheWrites: [],
+    putCache: () => {},
     trace: value,
     operation,
   });

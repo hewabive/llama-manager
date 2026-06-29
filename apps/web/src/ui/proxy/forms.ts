@@ -92,6 +92,8 @@ export type PipelineNodeDraft = {
   reasoningCustomBudget: number | "";
   outputLimitMax: number | "";
   outputLimitMode: ApiProxyOutputLimitMode;
+  cacheTtlSeconds: number | "";
+  cacheNamespace: string;
   predicateType: ApiProxyConditionPredicate["type"];
   scope: ApiProxyConditionScope;
   pattern: string;
@@ -179,6 +181,8 @@ export function emptyPipelineNodeDraft(
     reasoningCustomBudget: 2048,
     outputLimitMax: 4096,
     outputLimitMode: "cap",
+    cacheTtlSeconds: 3600,
+    cacheNamespace: "",
     predicateType: "text-match",
     scope: "any-message",
     pattern: "",
@@ -404,6 +408,11 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "strip-attribution":
+      draft.portNext = portRefToValue(node.ports.next);
+      break;
+    case "cache":
+      draft.cacheTtlSeconds = node.config.ttlSeconds;
+      draft.cacheNamespace = node.config.namespace;
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "condition": {
@@ -694,6 +703,16 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
         ...base,
         type: "strip-attribution",
         config: {},
+        ports: { next: portRefFromValue(draft.portNext) },
+      };
+    case "cache":
+      return {
+        ...base,
+        type: "cache",
+        config: {
+          ttlSeconds: draft.cacheTtlSeconds === "" ? 0 : draft.cacheTtlSeconds,
+          namespace: draft.cacheNamespace.trim(),
+        },
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "condition":

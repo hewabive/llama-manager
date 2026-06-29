@@ -663,6 +663,83 @@ test("strip-attribution leaves a clean body untouched and reports no-op", async 
   }
 });
 
+function cachePipeline(): ApiProxyPipelineRecord {
+  return pipelineRecord({
+    id: "pipeline-a",
+    entry: { type: "node", id: "cache" },
+    nodes: [
+      {
+        id: "cache",
+        name: "",
+        type: "cache",
+        config: { ttlSeconds: 600, namespace: "" },
+        ports: { next: { type: "target", id: "target-a" } },
+      },
+    ],
+  });
+}
+
+test("cache node short-circuits to a response on a hit", async () => {
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: { model: "public-model", input: "x" } }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => ({
+      status: 200,
+      contentType: "application/json",
+      isSse: false,
+      body: '{"object":"list"}',
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.ok && result.kind, "response");
+  if (result.ok && result.kind === "response") {
+    assert.equal(result.response.body, '{"object":"list"}');
+    assert.ok(result.cacheKey.length > 0);
+    assert.equal(result.routeTrace.at(-1)?.detail, "cache hit");
+  }
+});
+
+test("cache node misses to the target and records a cache write", async () => {
+  let seenKey: string | null = null;
+  const result = await resolveApiProxyRouteChain({
+    request: request({ body: { model: "public-model", input: "x" } }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: (key) => {
+      seenKey = key;
+      return null;
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.equal(result.targetId, "target-a");
+    assert.equal(result.cacheWrites.length, 1);
+    assert.equal(result.cacheWrites[0]?.key, seenKey);
+    assert.equal(result.cacheWrites[0]?.ttlSeconds, 600);
+    assert.equal(result.routeTrace.at(-1)?.detail, "cache miss");
+  }
+});
+
+test("cache node is skipped for streaming requests", async () => {
+  const result = await resolveApiProxyRouteChain({
+    request: request({
+      body: { model: "public-model", messages: [], stream: true },
+      stream: true,
+    }),
+    getPipeline: getPipelineFrom([cachePipeline()]),
+    lookupCache: () => {
+      throw new Error("lookup must not run for streaming requests");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.equal(result.cacheWrites.length, 0);
+    assert.equal(result.routeTrace.at(-1)?.detail, "streaming (cache skipped)");
+  }
+});
+
 function conditionPipeline(
   predicate: Extract<
     ApiProxyPipelineNode,

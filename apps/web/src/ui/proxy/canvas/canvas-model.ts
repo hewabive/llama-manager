@@ -175,6 +175,7 @@ export function draftNodePorts(
     case "reasoning":
     case "output-limit":
     case "strip-attribution":
+    case "cache":
       return [{ port: "next", value: node.portNext }];
     case "condition":
       return [
@@ -232,6 +233,11 @@ export function nodeSummary(
       return `${node.outputLimitMode} max_tokens ${node.outputLimitMax || "?"}`;
     case "strip-attribution":
       return "strip Claude Code attribution";
+    case "cache": {
+      const ttl = node.cacheTtlSeconds === "" ? 0 : node.cacheTtlSeconds;
+      const ns = node.cacheNamespace ? `${node.cacheNamespace} · ` : "";
+      return `${ns}${ttl > 0 ? `ttl ${ttl}s` : "no expiry"}`;
+    }
     case "condition": {
       if (node.predicateType === "token-estimate") {
         return `≥ ${node.minTokens || "?"} tokens (est.)`;

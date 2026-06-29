@@ -820,6 +820,13 @@ export type ApiProxyStripAttributionConfig = z.infer<
   typeof ApiProxyStripAttributionConfigSchema
 >;
 
+export const ApiProxyCacheConfigSchema = z.object({
+  ttlSeconds: z.number().int().min(0).max(2_592_000).default(3600),
+  namespace: z.string().trim().max(80).default(""),
+});
+
+export type ApiProxyCacheConfig = z.infer<typeof ApiProxyCacheConfigSchema>;
+
 export const ApiProxyConditionScopeSchema = z.enum([
   "last-user-message",
   "any-message",
@@ -909,6 +916,11 @@ export const ApiProxyPipelineNodeSchema = z.discriminatedUnion("type", [
   ApiProxyPipelineNodeBaseSchema.extend({
     type: z.literal("strip-attribution"),
     config: ApiProxyStripAttributionConfigSchema,
+    ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
+  }),
+  ApiProxyPipelineNodeBaseSchema.extend({
+    type: z.literal("cache"),
+    config: ApiProxyCacheConfigSchema,
     ports: z.object({ next: ApiProxyNodePortSchema }).default({ next: null }),
   }),
   ApiProxyPipelineNodeBaseSchema.extend({
@@ -1184,6 +1196,7 @@ export const ApiProxyRouteTraceStepSchema = z.object({
     "reasoning",
     "output-limit",
     "strip-attribution",
+    "cache",
     "condition",
     "call",
     "exit",
@@ -1237,6 +1250,7 @@ export const ApiProxyRequestTraceSchema = z.object({
   targetName: z.string().nullable().default(null),
   slotId: z.number().int().min(0).nullable().default(null),
   cacheOrigin: z.enum(["live", "restored", "fresh"]).nullable().default(null),
+  cache: z.enum(["hit", "store"]).nullable().default(null),
   textReplacementCount: z.number().int().min(0).default(0),
   routeTrace: z.array(ApiProxyRouteTraceStepSchema).default([]),
   files: z.array(ApiProxyTraceFileSchema).default([]),

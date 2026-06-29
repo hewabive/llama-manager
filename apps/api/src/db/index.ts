@@ -70,5 +70,24 @@ export function migrate() {
     )
   `);
 
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS proxy_response_cache (
+      key TEXT PRIMARY KEY NOT NULL,
+      model_id TEXT NOT NULL,
+      status INTEGER NOT NULL,
+      content_type TEXT NOT NULL,
+      is_sse INTEGER NOT NULL,
+      body TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      last_access_at INTEGER NOT NULL,
+      hit_count INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  db.run(
+    sql`CREATE INDEX IF NOT EXISTS proxy_response_cache_lru ON proxy_response_cache (last_access_at)`,
+  );
+
   db.run(sql`DROP TABLE IF EXISTS llama_argument_help_overrides`);
 }

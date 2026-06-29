@@ -125,6 +125,17 @@ export async function explainApiProxyRoute(
     };
   }
 
+  if (route.kind === "response") {
+    return {
+      ...base,
+      ok: true,
+      targetId: null,
+      targetName: "cache hit",
+      routeTrace: route.routeTrace,
+      transformedBody: route.request.body,
+    };
+  }
+
   const target = getApiProxyTarget(route.targetId);
   return {
     ...base,

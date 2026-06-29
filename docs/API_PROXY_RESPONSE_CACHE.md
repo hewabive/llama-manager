@@ -189,13 +189,26 @@ key = sha256( namespace ‖ modelId ‖ canonicalJson(body \ volatile) )
 
 ## Phasing (PR breakdown)
 
-| PR | Title | Content | Weight |
-|----|-------|---------|--------|
-| 1 | `strip-attribution` node | core schema + `pipeline.ts` handler + validation + web; remove hardcoded sanitize from `translation.ts`; tests | small |
-| 2 | `cache` node, Phase 1 (embed/rerank + non-stream) | core schema; `kind:"response"` + short-circuit; key util; `response-cache.ts` + SQLite table + TTL/LRU; non-stream write/replay; trace marker; tests | medium |
-| 3 | single-flight coalescing (non-stream) | in-flight map; `hot` subscribe; subscribers skip lease; owner-lifetime decoupling; `coalesced` telemetry; tests | medium |
-| 4 | stream fan-out (chat) | broadcaster + replay buffer; per-subscriber queues; stream/non-stream re-framing; telemetry; tests | high |
-| 5 | UI + ops polish | cache admin view + clear/list endpoint; stats hit-rate; docs finalize | small/medium |
+| PR | Title | Content | Weight | Status |
+|----|-------|---------|--------|--------|
+| 1 | `strip-attribution` node | core schema + `pipeline.ts` handler + validation + web; remove hardcoded sanitize from `translation.ts`; tests | small | done |
+| 2 | `cache` node, Phase 1 (embed/rerank + non-stream) | core schema; `kind:"response"` + short-circuit; key util; `response-cache.ts` + SQLite table + TTL/LRU; non-stream write/replay; trace marker; tests | medium | done |
+| 3 | single-flight coalescing (non-stream) | in-flight map; `hot` subscribe; subscribers skip lease; owner-lifetime decoupling; `coalesced` telemetry; tests | medium | todo |
+| 4 | stream fan-out (chat) | broadcaster + replay buffer; per-subscriber queues; stream/non-stream re-framing; telemetry; tests | high | todo |
+| 5 | UI + ops polish | cache admin view + clear/list endpoint; stats hit-rate; docs finalize | small/medium | todo |
+
+### PR2 implementation notes (as built)
+
+- Cache node uses a single `next` port (= the miss/cold path); a hit is an
+  implicit terminal that returns `kind:"response"`. No separate `hit` port.
+- The route-chain gains injected `lookupCache` (provided by the protocol
+  endpoint; `route-explain` and `fusion` omit it, so the node always misses in
+  dry-run / fusion branches). The handler computes the key from the body at the
+  node's position and stores it in `state.cacheWrites` on a miss.
+- Writes are committed by `createApiProxyResponseCaptureSink` on flush, only for
+  non-stream (`setText`) bodies that are not error-shaped; content-type stored
+  as `application/json`, status `200`.
+- Streaming requests skip the node entirely in this phase (PR4 adds fan-out).
 
 ## Risks & future
 

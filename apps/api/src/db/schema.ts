@@ -37,3 +37,17 @@ export const llamaArgumentCatalogs = sqliteTable("llama_argument_catalogs", {
   optionsJson: text("options_json").notNull(),
   generatedAt: text("generated_at").notNull(),
 });
+
+export const apiProxyResponseCache = sqliteTable("proxy_response_cache", {
+  key: text("key").primaryKey(),
+  modelId: text("model_id").notNull(),
+  status: integer("status").notNull(),
+  contentType: text("content_type").notNull(),
+  isSse: integer("is_sse").notNull(),
+  body: text("body").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at"),
+  lastAccessAt: integer("last_access_at").notNull(),
+  hitCount: integer("hit_count").notNull().default(0),
+});

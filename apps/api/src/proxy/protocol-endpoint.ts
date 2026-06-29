@@ -66,6 +66,10 @@ import {
 } from "./repository.js";
 import { saveApiProxyRequestFile } from "./request-files.js";
 import {
+  getApiProxyCachedResponse,
+  putApiProxyCachedResponse,
+} from "./response-cache.js";
+import {
   createApiProxyResponseCaptureSink,
   type ApiProxyResponseCaptureSink,
 } from "./response-capture.js";
@@ -270,6 +274,7 @@ async function proxyProtocolEndpointInner(
     request: resolution.request,
     getPipeline: getApiProxyPipeline,
     sourceId: trace.sourceId,
+    lookupCache: getApiProxyCachedResponse,
     recordRequest: (request) => {
       trace.files.push(
         saveApiProxyRequestFile({
@@ -296,8 +301,35 @@ async function proxyProtocolEndpointInner(
     return c.json(response.body, response.status);
   }
 
+  if (routeResult.kind === "response") {
+    trace.cache = "hit";
+    trace.stream = false;
+    const usage = usageFromNonStreamBody(
+      operation.protocol,
+      routeResult.response.body,
+    );
+    if (usage) {
+      trace.usage = {
+        promptTokens: usage.promptTokens,
+        cacheReadTokens: usage.cacheReadTokens,
+        cacheCreationTokens: usage.cacheCreationTokens,
+        completionTokens: usage.completionTokens,
+        genMs: usage.genMs,
+        ratePerSecond: ratePerSecondFromUsage(usage),
+        prefillMs: usage.prefillMs,
+        promptPerSecond: usage.promptPerSecond,
+      };
+    }
+    return new Response(routeResult.response.body, {
+      status: routeResult.response.status,
+      headers: { "content-type": routeResult.response.contentType },
+    });
+  }
+
   const responseSink = createApiProxyResponseCaptureSink({
     captures: routeResult.responseCaptures,
+    cacheWrites: routeResult.cacheWrites,
+    putCache: putApiProxyCachedResponse,
     trace,
     operation,
   });
@@ -368,6 +400,7 @@ async function proxyProtocolEndpointInner(
       targetId: fusion.targetId,
       textReplacementCount: routeResult.textReplacementCount,
       responseCaptures: routeResult.responseCaptures,
+      cacheWrites: routeResult.cacheWrites,
       routeTrace: routeResult.routeTrace,
     };
   } else {

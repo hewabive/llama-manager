@@ -337,6 +337,12 @@ export async function executeApiProxyFusion(input: {
         error: "panel branch resolves to an external endpoint (unsupported)",
       };
     }
+    if (resolved.kind === "response") {
+      return {
+        ok: false,
+        error: "panel branch resolves to a cached response (unsupported)",
+      };
+    }
     const sub = await executeApiProxyModelSubRequest({
       targetId: resolved.targetId,
       operation,
@@ -418,6 +424,14 @@ export async function executeApiProxyFusion(input: {
       kind: "error",
       diagnostic: fusionDiagnostic(
         "fusion synthesizer resolves to an external endpoint (unsupported)",
+      ),
+    };
+  }
+  if (synthRoute.kind === "response") {
+    return {
+      kind: "error",
+      diagnostic: fusionDiagnostic(
+        "fusion synthesizer resolves to a cached response (unsupported)",
       ),
     };
   }
