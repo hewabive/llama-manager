@@ -20,7 +20,7 @@ export type PipelineEditorContext = {
 
 const nodeTypeLabels: Record<ApiProxyPipelineNode["type"], string> = {
   "replace-text": "Replace text",
-  "capture-request": "Save request",
+  "capture-request": "Save request / response",
   "edit-request": "Edit request",
   reasoning: "Reasoning",
   "output-limit": "Limit output",

@@ -30,6 +30,10 @@ export type ApiProxyPipelineRecordRequestInput = {
   requestBody: unknown;
 };
 
+export type ApiProxyResponseCaptureTarget = {
+  nodeName: string | null;
+};
+
 export type ApiProxyFusionNode = Extract<
   ApiProxyPipelineNode,
   { type: "fusion" }
@@ -42,6 +46,7 @@ export type ApiProxyRouteChainResult =
       request: ApiProxyProtocolModelRequest;
       targetId: string;
       textReplacementCount: number;
+      responseCaptures: ApiProxyResponseCaptureTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -51,6 +56,7 @@ export type ApiProxyRouteChainResult =
       node: ApiProxyFusionNode;
       pipeline: ApiProxyPipelineRecord;
       textReplacementCount: number;
+      responseCaptures: ApiProxyResponseCaptureTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -60,6 +66,7 @@ export type ApiProxyRouteChainResult =
       endpointId: string;
       upstreamModel: string | null;
       textReplacementCount: number;
+      responseCaptures: ApiProxyResponseCaptureTarget[];
       routeTrace: ApiProxyRouteTraceStep[];
     }
   | {
@@ -158,6 +165,7 @@ type CallFrame = {
 type RouteWalkState = {
   request: ApiProxyProtocolModelRequest;
   textReplacementCount: number;
+  responseCaptures: ApiProxyResponseCaptureTarget[];
   routeTrace: ApiProxyRouteTraceStep[];
 };
 
@@ -232,6 +240,7 @@ export async function resolveApiProxyRouteChain(input: {
   const state: RouteWalkState = {
     request: input.request,
     textReplacementCount: 0,
+    responseCaptures: [],
     routeTrace: [],
   };
 
@@ -273,6 +282,7 @@ export async function resolveApiProxyRouteChain(input: {
         request: state.request,
         targetId: ref.id,
         textReplacementCount: state.textReplacementCount,
+        responseCaptures: state.responseCaptures,
         routeTrace: state.routeTrace,
       };
     }
@@ -285,6 +295,7 @@ export async function resolveApiProxyRouteChain(input: {
         endpointId: ref.endpointId,
         upstreamModel: ref.upstreamModel,
         textReplacementCount: state.textReplacementCount,
+        responseCaptures: state.responseCaptures,
         routeTrace: state.routeTrace,
       };
     }
@@ -456,21 +467,31 @@ export async function resolveApiProxyRouteChain(input: {
         break;
       }
       case "capture-request": {
-        if (input.recordRequest) {
-          await input.recordRequest({
-            kind: node.type,
-            nodeName: node.name || null,
-            protocol: input.request.operation.protocol,
-            endpoint: input.request.operation.endpoint,
-            routePath: input.request.operation.routePath,
-            modelId: input.request.modelId,
-            requestBody: state.request.body,
-          });
+        const details: string[] = [];
+        if (node.config.request) {
+          if (input.recordRequest) {
+            await input.recordRequest({
+              kind: "capture-request",
+              nodeName: node.name || null,
+              protocol: input.request.operation.protocol,
+              endpoint: input.request.operation.endpoint,
+              routePath: input.request.operation.routePath,
+              modelId: input.request.modelId,
+              requestBody: state.request.body,
+            });
+            details.push("request saved");
+          } else {
+            details.push("request (dry run)");
+          }
+        }
+        if (node.config.response) {
+          state.responseCaptures.push({ nodeName: node.name || null });
+          details.push("response at completion");
         }
         state.routeTrace.push(
           nodeStep(pipeline, node, {
             port: "next",
-            detail: input.recordRequest ? "saved" : "skipped (dry run)",
+            detail: details.length > 0 ? details.join(" · ") : "nothing to save",
           }),
         );
         ref = node.ports.next;
@@ -603,6 +624,7 @@ export async function resolveApiProxyRouteChain(input: {
           node,
           pipeline,
           textReplacementCount: state.textReplacementCount,
+          responseCaptures: state.responseCaptures,
           routeTrace: state.routeTrace,
         };
       }

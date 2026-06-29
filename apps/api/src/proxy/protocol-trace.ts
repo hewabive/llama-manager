@@ -51,6 +51,7 @@ export type ProxyTraceRecorder = {
   record: (response: Response | undefined) => void;
   markDeferred: () => void;
   freezeDuration: () => void;
+  beforeRecord: (hook: () => void) => void;
 };
 
 export function createProxyTrace(

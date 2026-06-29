@@ -703,7 +703,10 @@ const ApiProxyNodePortSchema = ApiProxyPortRefSchema.nullable().default(null);
 const ApiProxyNodeNameSchema = z.string().trim().max(80).default("");
 const ApiProxyExitNameSchema = z.string().trim().min(1).max(80);
 
-export const ApiProxyCaptureRequestConfigSchema = z.object({});
+export const ApiProxyCaptureRequestConfigSchema = z.object({
+  request: z.boolean().default(true),
+  response: z.boolean().default(false),
+});
 
 export const ApiProxyReplaceTextConfigSchema = z.object({
   rules: z.array(ApiProxyTextReplacementRuleSchema).max(50).default([]),

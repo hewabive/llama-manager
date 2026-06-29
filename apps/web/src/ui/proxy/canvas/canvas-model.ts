@@ -212,8 +212,13 @@ export function nodeSummary(
       ).length;
       return `${count} rule(s)`;
     }
-    case "capture-request":
-      return "saves request as-is";
+    case "capture-request": {
+      const saves = [
+        node.captureRequest ? "request" : null,
+        node.captureResponse ? "response" : null,
+      ].filter((part): part is string => part !== null);
+      return saves.length > 0 ? `saves ${saves.join(" + ")}` : "saves nothing";
+    }
     case "edit-request": {
       const count = node.editOperations.filter(
         (operation) => operation.enabled,

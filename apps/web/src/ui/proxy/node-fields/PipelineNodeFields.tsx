@@ -1,4 +1,4 @@
-import { Text, TextInput } from "@mantine/core";
+import { Checkbox, Text, TextInput } from "@mantine/core";
 
 import { EditRequestFields } from "../edit-request-fields";
 import type { PipelineNodeDraft } from "../forms";
@@ -27,10 +27,22 @@ export function PipelineNodeFields(props: {
   if (node.type === "capture-request") {
     return (
       <>
-        <Text c="dimmed" size="sm">
-          Saves the request exactly as it arrives at this node, including
-          changes made by earlier nodes.
-        </Text>
+        <Checkbox
+          label="Save request body"
+          description="The request exactly as it arrives at this node, including changes made by earlier nodes."
+          checked={node.captureRequest}
+          onChange={(event) =>
+            update({ captureRequest: event.currentTarget.checked })
+          }
+        />
+        <Checkbox
+          label="Save response body"
+          description="The upstream reply for this request, written once it completes."
+          checked={node.captureResponse}
+          onChange={(event) =>
+            update({ captureResponse: event.currentTarget.checked })
+          }
+        />
         <PortSelect
           label="Next"
           ctx={ctx}

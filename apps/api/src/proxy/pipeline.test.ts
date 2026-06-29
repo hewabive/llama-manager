@@ -138,7 +138,7 @@ test("capture-request saves the request as it arrives at the node", async () => 
           id: "capture-before",
           name: "",
           type: "capture-request",
-          config: {},
+          config: { request: true, response: false },
           ports: { next: { type: "node", id: "replace" } },
         },
         {
@@ -154,7 +154,7 @@ test("capture-request saves the request as it arrives at the node", async () => 
           id: "capture-after",
           name: "",
           type: "capture-request",
-          config: {},
+          config: { request: true, response: false },
           ports: { next: { type: "target", id: "target-a" } },
         },
       ],
@@ -191,6 +191,43 @@ test("capture-request saves the request as it arrives at the node", async () => 
     model: "public-model",
     messages: [{ role: "user", content: "hello good text" }],
   });
+});
+
+test("capture node response flag yields a deferred response capture", async () => {
+  const saved: ApiProxyPipelineRecordRequestInput[] = [];
+  const pipelines = [
+    pipelineRecord({
+      id: "pipeline-a",
+      entry: { type: "node", id: "capture" },
+      nodes: [
+        {
+          id: "capture",
+          name: "Audit",
+          type: "capture-request",
+          config: { request: false, response: true },
+          ports: { next: { type: "target", id: "target-a" } },
+        },
+      ],
+    }),
+  ];
+
+  const result = await resolveApiProxyRouteChain({
+    request: request(),
+    getPipeline: getPipelineFrom(pipelines),
+    recordRequest: async (log) => {
+      saved.push(log);
+    },
+  });
+
+  assert.equal(saved.length, 0);
+  assert.equal(result.ok, true);
+  if (result.ok && result.kind === "target") {
+    assert.deepEqual(result.responseCaptures, [{ nodeName: "Audit" }]);
+    assert.deepEqual(
+      result.routeTrace.map((step) => step.detail),
+      [null, "response at completion"],
+    );
+  }
 });
 
 test("replace-text does not touch the routing model field", async () => {

@@ -60,7 +60,7 @@ target is a pure alias). `null` anywhere means "unwired" and produces a
 | type              | config                                                                                                                                                                                                                                                                                                                                               | ports                         |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | `replace-text`    | `rules: [{enabled, find, replace}]` — literal substring rules over decoded string values of the parsed body (stored text is matched as-is, no escape interpretation; the routing `model` field is never rewritten). The web editor offers a display toggle that shows/accepts rules in `\n`-escaped form and converts to literal text before saving. | `next`                        |
-| `capture-request` | — (no options)                                                                                                                                                                                                                                                                                                                                       | `next`                        |
+| `capture-request` | `request: bool` (default `true`) + `response: bool` (default `false`) — persist the request body at this node and/or the upstream response for this request (legacy `{}` upgrades to request-only)                                                                                                                                                     | `next`                        |
 | `edit-request`    | `operations: [{kind, enabled, …}]` — structural edits of the request body: `tools` array operations and field operations by path (see below)                                                                                                                                                                                                         | `next`                        |
 | `reasoning`       | `effort: off\|low\|medium\|high\|max\|custom` + `customBudgetTokens` — controls the model's thinking channel (see below)                                                                                                                                                                                                                              | `next`                        |
 | `output-limit`    | `maxTokens` + `mode: cap\|set` — bounds `max_tokens` on the request (see below)                                                                                                                                                                                                                                                                       | `next`                        |
@@ -212,15 +212,32 @@ port named by `exitName`. This means:
 
 ## Capture semantics
 
-`capture-request` writes a file **at the moment the walk passes the node**,
-containing exactly the request body as it arrived there — changes made by
-earlier nodes are included, later changes are not. Each capture node visit
-writes its own file.
+With `request` enabled (the default), `capture-request` writes a file (kind
+`capture-request`) **at the moment the walk passes the node**, containing
+exactly the request body as it arrived there — changes made by earlier nodes
+are included, later changes are not. Each capture node visit writes its own
+request file.
+
+With `response` enabled the node instead declares a **deferred response
+capture**: the route walk is a pure pre-pass with no response yet, so the
+intent rides on the route result (`ApiProxyRouteChainResult.responseCaptures`)
+and a file (kind `capture-response`) is written once the upstream reply for
+that request finalizes — one per visited capture node that asked for it.
+Position in the pipeline only gates *whether* the response is captured (e.g.
+behind a `condition` branch), not *what* it contains: there is a single
+response. Non-streaming, buffered and resumable replies are saved as the
+assembled JSON body; genuine pass-through streams are saved as the raw SSE
+text the client received. Writing is wired through the trace recorder's
+pre-record hook (`proxy/response-capture.ts`) so the file lands in
+`trace.files` before the trace snapshot is frozen. Not yet covered: the
+single-survivor fusion bypass when it streams directly, and upstream error
+bodies.
 
 All files saved for one proxied request share a per-request directory
 `data/proxy-requests/<YYYY-MM-DD>/<timestamp>-<traceId>/`, named
-`<NN>-<node-kind>.json` in visit order; future nodes that persist other
-per-request artifacts write into the same directory. Each file is an
+`<NN>-<node-kind>.json` in visit order (response files land after the request
+files, in completion order); future nodes that persist other per-request
+artifacts write into the same directory. Each file is an
 `ApiProxyRequestFileRecord` envelope (`traceId`, `kind`, node `label`,
 protocol/endpoint/model context, `data` payload). The saving side appends
 file metadata (`ApiProxyTraceFile`: name, root-relative path, kind, label,

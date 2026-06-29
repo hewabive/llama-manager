@@ -66,6 +66,10 @@ import {
 } from "./repository.js";
 import { saveApiProxyRequestFile } from "./request-files.js";
 import {
+  createApiProxyResponseCaptureSink,
+  type ApiProxyResponseCaptureSink,
+} from "./response-capture.js";
+import {
   consumeResumableSse,
   createResumableBufferState,
   finalFromState,
@@ -155,11 +159,13 @@ export async function runWithProxyTrace(
   let recorded = false;
   let deferred = false;
   let frozenDurationMs: number | null = null;
+  let beforeRecordHook: (() => void) | null = null;
   const recorder: ProxyTraceRecorder = {
     record(response) {
       if (recorded) {
         return;
       }
+      beforeRecordHook?.();
       recorded = true;
       inflight.end();
       trace.durationMs =
@@ -173,6 +179,9 @@ export async function runWithProxyTrace(
     },
     freezeDuration() {
       frozenDurationMs ??= Math.round(performance.now() - started);
+    },
+    beforeRecord(hook) {
+      beforeRecordHook = hook;
     },
   };
   let response: Response | undefined;
@@ -287,6 +296,15 @@ async function proxyProtocolEndpointInner(
     return c.json(response.body, response.status);
   }
 
+  const responseSink = createApiProxyResponseCaptureSink({
+    captures: routeResult.responseCaptures,
+    trace,
+    operation,
+  });
+  if (responseSink) {
+    recorder.beforeRecord(() => responseSink.flush());
+  }
+
   if (routeResult.kind === "endpoint") {
     const upstreamModel =
       routeResult.upstreamModel ?? routeResult.request.modelId;
@@ -312,6 +330,7 @@ async function proxyProtocolEndpointInner(
       recorder,
       inflight,
       extraTarget: target,
+      responseSink,
     });
   }
 
@@ -334,6 +353,9 @@ async function proxyProtocolEndpointInner(
     }
     if (fusion.kind === "direct") {
       trace.stream = routeResult.request.stream;
+      if (responseSink && typeof fusion.response.body === "string") {
+        responseSink.setText(fusion.response.body);
+      }
       return new Response(fusion.response.body, {
         status: fusion.response.status,
         headers: fusion.response.headers,
@@ -345,6 +367,7 @@ async function proxyProtocolEndpointInner(
       request: fusion.request,
       targetId: fusion.targetId,
       textReplacementCount: routeResult.textReplacementCount,
+      responseCaptures: routeResult.responseCaptures,
       routeTrace: routeResult.routeTrace,
     };
   } else {
@@ -389,6 +412,7 @@ async function proxyProtocolEndpointInner(
         trace,
         recorder,
         inflight,
+        responseSink,
       });
     }
   }
@@ -402,6 +426,7 @@ async function proxyProtocolEndpointInner(
     trace,
     recorder,
     inflight,
+    responseSink,
   });
 }
 
@@ -438,10 +463,14 @@ async function delegateRemoteTarget(input: {
   trace: ProxyTraceAccumulator;
   recorder: ProxyTraceRecorder;
   inflight: ApiProxyInflightHandle;
+  responseSink?: ApiProxyResponseCaptureSink | null | undefined;
 }): Promise<Response> {
   const { c, adapter, operation, request, target, node, trace, recorder } =
     input;
   const inflight = input.inflight;
+  const responseSink = input.responseSink ?? null;
+  const captureBody = (stream: ReadableStream<Uint8Array>) =>
+    responseSink ? responseSink.tap(stream) : stream;
 
   const wantsPrefill =
     request.stream &&
@@ -511,13 +540,16 @@ async function delegateRemoteTarget(input: {
           promptPerSecond: usage.promptPerSecond,
         };
       }
+      responseSink?.setText(text);
       return new Response(text, { status: upstream.status, headers });
     }
 
     if (!streamMeter) {
       recorder.markDeferred();
       return new Response(
-        observeBodyCompletion(upstream.body, () => recorder.record(upstream)),
+        observeBodyCompletion(captureBody(upstream.body), () =>
+          recorder.record(upstream),
+        ),
         {
           status: upstream.status,
           statusText: upstream.statusText,
@@ -554,8 +586,9 @@ async function delegateRemoteTarget(input: {
     });
     recorder.markDeferred();
     metered = new Response(
-      observeBodyCompletion(upstream.body.pipeThrough(meter.transform), () =>
-        meter.finalize(),
+      observeBodyCompletion(
+        captureBody(upstream.body.pipeThrough(meter.transform)),
+        () => meter.finalize(),
       ),
       { status: upstream.status, headers },
     );
@@ -628,9 +661,13 @@ export async function serveResolvedTarget(input: {
   recorder: ProxyTraceRecorder;
   inflight: ApiProxyInflightHandle;
   extraTarget?: ApiProxyTargetRecord | undefined;
+  responseSink?: ApiProxyResponseCaptureSink | null | undefined;
 }): Promise<Response> {
   const { c, adapter, operation, trace, recorder, inflight } = input;
   const extraTarget = input.extraTarget ?? null;
+  const responseSink = input.responseSink ?? null;
+  const captureBody = (stream: ReadableStream<Uint8Array>) =>
+    responseSink ? responseSink.tap(stream) : stream;
   const route = { targetId: input.targetId, request: input.request };
   const getTarget = (id: string) =>
     extraTarget && id === extraTarget.id ? extraTarget : getApiProxyTarget(id);
@@ -960,6 +997,9 @@ export async function serveResolvedTarget(input: {
           trace.usage = resumableTraceUsage(state);
           const task = resolveSlot();
           const final = finalFromState(bufferCodec, state, false);
+          if (typeof final.body === "string") {
+            responseSink?.setText(final.body);
+          }
           return recordTraceWithDeferredTiming({
             recorder,
             trace,
@@ -989,6 +1029,7 @@ export async function serveResolvedTarget(input: {
         const translatedText = translateAnthropic
           ? translateOpenAiResponseText(text)
           : null;
+        responseSink?.setText(translatedText ?? text);
         const nonStreamResponse =
           translatedText !== null
             ? new Response(translatedText, {
@@ -1040,7 +1081,7 @@ export async function serveResolvedTarget(input: {
         recorder.markDeferred();
         metered = new Response(
           observeBodyCompletion(
-            upstream.body.pipeThrough(translation.transform),
+            captureBody(upstream.body.pipeThrough(translation.transform)),
             () => translation.finalize(),
           ),
           {
@@ -1054,7 +1095,9 @@ export async function serveResolvedTarget(input: {
       if (!streamMeter) {
         recorder.markDeferred();
         return new Response(
-          observeBodyCompletion(upstream.body, () => recorder.record(upstream)),
+          observeBodyCompletion(captureBody(upstream.body), () =>
+            recorder.record(upstream),
+          ),
           {
             status: upstream.status,
             statusText: upstream.statusText,
@@ -1078,8 +1121,9 @@ export async function serveResolvedTarget(input: {
       });
       recorder.markDeferred();
       metered = new Response(
-        observeBodyCompletion(upstream.body.pipeThrough(meter.transform), () =>
-          meter.finalize(),
+        observeBodyCompletion(
+          captureBody(upstream.body.pipeThrough(meter.transform)),
+          () => meter.finalize(),
         ),
         {
           status: upstream.status,
@@ -1240,6 +1284,11 @@ export async function serveResolvedTarget(input: {
 
     if (final.status === CLIENT_ABORT_STATUS) {
       markClientAbort();
+    } else if (responseSink) {
+      const captured = finalFromState(effectiveCodec, state, false);
+      if (typeof captured.body === "string") {
+        responseSink.setText(captured.body);
+      }
     }
     return recordTraceWithDeferredTiming({
       recorder,

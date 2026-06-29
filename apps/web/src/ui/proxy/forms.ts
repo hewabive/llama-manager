@@ -84,6 +84,8 @@ export type PipelineNodeDraft = {
   id: string;
   name: string;
   type: ApiProxyPipelineNode["type"];
+  captureRequest: boolean;
+  captureResponse: boolean;
   replacements: ReplacementRuleDraft[];
   editOperations: EditOperationDraft[];
   reasoningEffort: ApiProxyReasoningEffort;
@@ -169,6 +171,8 @@ export function emptyPipelineNodeDraft(
     id,
     name: "",
     type,
+    captureRequest: true,
+    captureResponse: false,
     replacements: [],
     editOperations: [],
     reasoningEffort: "medium",
@@ -374,6 +378,8 @@ function nodeDraftFromRecord(node: ApiProxyPipelineNode): PipelineNodeDraft {
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "capture-request":
+      draft.captureRequest = node.config.request;
+      draft.captureResponse = node.config.response;
       draft.portNext = portRefToValue(node.ports.next);
       break;
     case "edit-request":
@@ -653,7 +659,10 @@ function nodeFromDraft(draft: PipelineNodeDraft): ApiProxyPipelineNode {
       return {
         ...base,
         type: "capture-request",
-        config: {},
+        config: {
+          request: draft.captureRequest,
+          response: draft.captureResponse,
+        },
         ports: { next: portRefFromValue(draft.portNext) },
       };
     case "edit-request":
