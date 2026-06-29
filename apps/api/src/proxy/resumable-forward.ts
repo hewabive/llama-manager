@@ -29,6 +29,8 @@ export type ResumableUpstreamOutcome =
   | { type: "completed" }
   | { type: "preempted" }
   | { type: "interrupted" }
+  | { type: "finished" }
+  | { type: "cancelled" }
   | { type: "consumer-gone" }
   | { type: "error"; message: string };
 
@@ -187,6 +189,8 @@ export async function runResumableUpstreamAttempt(input: {
   preemptSignal: AbortSignal;
   consumerSignal?: AbortSignal | undefined;
   interruptSignal?: AbortSignal | undefined;
+  finishSignal?: AbortSignal | undefined;
+  cancelSignal?: AbortSignal | undefined;
   fetchImpl?: typeof fetch | undefined;
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
   onReasoning?: (() => void) | undefined;
@@ -197,9 +201,21 @@ export async function runResumableUpstreamAttempt(input: {
     | ((progress: { total: number; processed: number; cache: number }) => void)
     | undefined;
 }): Promise<ResumableUpstreamOutcome> {
-  const { preemptSignal, consumerSignal, interruptSignal } = input;
+  const {
+    preemptSignal,
+    consumerSignal,
+    interruptSignal,
+    finishSignal,
+    cancelSignal,
+  } = input;
   if (consumerSignal?.aborted) {
     return { type: "consumer-gone" };
+  }
+  if (cancelSignal?.aborted) {
+    return { type: "cancelled" };
+  }
+  if (finishSignal?.aborted) {
+    return { type: "finished" };
   }
   if (interruptSignal?.aborted) {
     return { type: "interrupted" };
@@ -228,9 +244,13 @@ export async function runResumableUpstreamAttempt(input: {
   };
   const onConsumerGone = () => controller.abort();
   const onInterrupt = () => controller.abort();
+  const onFinish = () => controller.abort();
+  const onCancel = () => controller.abort();
   preemptSignal.addEventListener("abort", onPreempt, { once: true });
   consumerSignal?.addEventListener("abort", onConsumerGone, { once: true });
   interruptSignal?.addEventListener("abort", onInterrupt, { once: true });
+  finishSignal?.addEventListener("abort", onFinish, { once: true });
+  cancelSignal?.addEventListener("abort", onCancel, { once: true });
 
   const settle = (
     outcome: ResumableUpstreamOutcome,
@@ -238,6 +258,8 @@ export async function runResumableUpstreamAttempt(input: {
     preemptSignal.removeEventListener("abort", onPreempt);
     consumerSignal?.removeEventListener("abort", onConsumerGone);
     interruptSignal?.removeEventListener("abort", onInterrupt);
+    finishSignal?.removeEventListener("abort", onFinish);
+    cancelSignal?.removeEventListener("abort", onCancel);
     if (meta.upstreamGenMs !== null) {
       input.state.genMs += Math.max(0, meta.upstreamGenMs);
     }
@@ -247,6 +269,12 @@ export async function runResumableUpstreamAttempt(input: {
   const classifyAbort = (error: unknown): ResumableUpstreamOutcome => {
     if (consumerSignal?.aborted) {
       return { type: "consumer-gone" };
+    }
+    if (cancelSignal?.aborted) {
+      return { type: "cancelled" };
+    }
+    if (finishSignal?.aborted) {
+      return { type: "finished" };
     }
     if (interruptSignal?.aborted) {
       return { type: "interrupted" };
@@ -286,6 +314,8 @@ export async function runResumableUpstreamAttempt(input: {
 
 export type ConsumeResumableSseOutcome =
   | { type: "completed" }
+  | { type: "finished" }
+  | { type: "cancelled" }
   | { type: "consumer-gone" }
   | { type: "error"; message: string };
 
@@ -294,6 +324,8 @@ export async function consumeResumableSse(input: {
   codec: ApiProxyResumableCodec;
   state: ResumableBufferState;
   consumerSignal?: AbortSignal | undefined;
+  finishSignal?: AbortSignal | undefined;
+  cancelSignal?: AbortSignal | undefined;
   onFirstToken?: ((promptTokens: number | null) => void) | undefined;
   onReasoning?: (() => void) | undefined;
   onReasoningDelta?: ((text: string) => void) | undefined;
@@ -314,8 +346,21 @@ export async function consumeResumableSse(input: {
     onProgress: input.onProgress,
     onPrefillProgress: input.onPrefillProgress,
   };
-  if (input.consumerSignal?.aborted) {
-    return { type: "consumer-gone" };
+  const classifyStop = (): ConsumeResumableSseOutcome | null => {
+    if (input.consumerSignal?.aborted) {
+      return { type: "consumer-gone" };
+    }
+    if (input.cancelSignal?.aborted) {
+      return { type: "cancelled" };
+    }
+    if (input.finishSignal?.aborted) {
+      return { type: "finished" };
+    }
+    return null;
+  };
+  const pending = classifyStop();
+  if (pending) {
+    return pending;
   }
   try {
     await pumpSseFrames(input.body, input.codec, input.state, meta);
@@ -324,10 +369,9 @@ export async function consumeResumableSse(input: {
     }
     return { type: "completed" };
   } catch (error) {
-    if (input.consumerSignal?.aborted) {
-      return { type: "consumer-gone" };
-    }
-    return { type: "error", message: describeFetchError(error) };
+    return (
+      classifyStop() ?? { type: "error", message: describeFetchError(error) }
+    );
   }
 }
 
@@ -395,10 +439,10 @@ export async function runResumableForward(input: {
     }
     const outcome = await input.attempt(tail);
 
-    if (outcome.type === "completed") {
+    if (outcome.type === "completed" || outcome.type === "finished") {
       return finalFromState(input.codec, input.state, input.wantsStream);
     }
-    if (outcome.type === "consumer-gone") {
+    if (outcome.type === "consumer-gone" || outcome.type === "cancelled") {
       return { status: CLIENT_ABORT_STATUS, headers: {}, body: "" };
     }
     if (outcome.type === "error") {

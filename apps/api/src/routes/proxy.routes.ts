@@ -155,6 +155,16 @@ export function registerProxyRoutes(app: Hono) {
     return c.json({ data: { status } });
   });
 
+  app.post("/api/proxy/inflight/:id/finish", (c) => {
+    const status = apiProxyInflight.requestFinish(c.req.param("id"));
+    return c.json({ data: { status } });
+  });
+
+  app.post("/api/proxy/inflight/:id/cancel", (c) => {
+    const status = apiProxyInflight.requestCancel(c.req.param("id"));
+    return c.json({ data: { status } });
+  });
+
   app.post("/api/proxy/route-explain", async (c) => {
     const parsed = ApiProxyRouteExplainRequestSchema.safeParse(
       await c.req.json(),

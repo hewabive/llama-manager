@@ -796,6 +796,11 @@ export async function serveResolvedTarget(input: {
   };
 
   const respond = async (): Promise<Response> => {
+    const stopSignal = AbortSignal.any([
+      c.req.raw.signal,
+      inflight.finishSignal(),
+      inflight.cancelSignal(),
+    ]);
     const upstreamPath = adapter.upstreamPath(operation);
     if (!upstreamPath) {
       const response = adapter.notImplemented(route.request);
@@ -887,7 +892,7 @@ export async function serveResolvedTarget(input: {
         body: forwardBody,
         upstreamHeaders: authHeaders,
         modelOverride: decision.target.model,
-        signal: c.req.raw.signal,
+        signal: stopSignal,
       });
 
       if (!upstream.ok || !upstream.body) {
@@ -916,6 +921,8 @@ export async function serveResolvedTarget(input: {
             codec: bufferCodec,
             state,
             consumerSignal: c.req.raw.signal,
+            finishSignal: inflight.finishSignal(),
+            cancelSignal: inflight.cancelSignal(),
             onFirstToken: markFirstToken,
             onReasoning: markReasoning,
             onReasoningDelta: markReasoningDelta,
@@ -923,7 +930,10 @@ export async function serveResolvedTarget(input: {
             onProgress: markProgress,
             onPrefillProgress: markPrefillProgress,
           });
-          if (outcome.type === "consumer-gone") {
+          if (
+            outcome.type === "consumer-gone" ||
+            outcome.type === "cancelled"
+          ) {
             markClientAbort();
             return new Response(null, { status: CLIENT_ABORT_STATUS });
           }
@@ -1177,6 +1187,8 @@ export async function serveResolvedTarget(input: {
           preemptSignal: heldLease.preemptSignal,
           consumerSignal: c.req.raw.signal,
           interruptSignal: inflight.interruptSignal(),
+          finishSignal: inflight.finishSignal(),
+          cancelSignal: inflight.cancelSignal(),
           onFirstToken: markFirstToken,
           onReasoning: markReasoning,
           onReasoningDelta: markReasoningDelta,

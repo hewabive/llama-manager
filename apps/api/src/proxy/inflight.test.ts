@@ -238,6 +238,34 @@ test("force-answer interrupt is gated by support and the thinking phase", () => 
   handle.end();
 });
 
+test("finish and cancel abort their signals in any phase", () => {
+  apiProxyInflight.reset();
+  assert.equal(apiProxyInflight.requestFinish("nope"), "not-found");
+  assert.equal(apiProxyInflight.requestCancel("nope"), "not-found");
+
+  const handle = apiProxyInflight.begin({
+    modelId: "m",
+    protocol: "openai",
+    targetId: "ti",
+    stream: true,
+  });
+  const finishSignal = handle.finishSignal();
+  const cancelSignal = handle.cancelSignal();
+  assert.equal(finishSignal.aborted, false);
+  assert.equal(cancelSignal.aborted, false);
+
+  assert.equal(apiProxyInflight.requestFinish(handle.id), "ok");
+  assert.equal(finishSignal.aborted, true);
+  assert.equal(cancelSignal.aborted, false);
+
+  assert.equal(apiProxyInflight.requestCancel(handle.id), "ok");
+  assert.equal(cancelSignal.aborted, true);
+
+  handle.end();
+  assert.equal(apiProxyInflight.requestFinish(handle.id), "not-found");
+  assert.equal(apiProxyInflight.requestCancel(handle.id), "not-found");
+});
+
 test("sweeps inflight entries with no progress past the stale threshold", () => {
   let clock = 0;
   const registry = new ApiProxyInflightRegistry({

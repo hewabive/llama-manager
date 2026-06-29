@@ -1,5 +1,6 @@
 import type {
   ApiProxyInflightInterruptResult,
+  ApiProxyInflightStopResult,
   ApiProxyTargetRuntime,
 } from "@llama-manager/core";
 import {
@@ -18,10 +19,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, FastForward } from "lucide-react";
+import { Ban, Eye, FastForward, Square } from "lucide-react";
 import { useState } from "react";
 
 import {
+  cancelApiProxyInflight,
+  finishApiProxyInflight,
   getApiProxyInflightDetail,
   interruptApiProxyInflight,
 } from "../../../api/client";
@@ -102,6 +105,110 @@ function InflightInterruptButton({ id, full }: { id: string; full?: boolean }) {
   );
 }
 
+type StopAction = "finish" | "cancel";
+
+const STOP_ACTION_META: Record<
+  StopAction,
+  {
+    color: string;
+    label: string;
+    tooltip: string;
+    Icon: typeof Square;
+    pending: string;
+  }
+> = {
+  finish: {
+    color: "teal",
+    label: "Finish",
+    tooltip: "Stop now, keep the answer generated so far",
+    Icon: Square,
+    pending: "Finishing — returning the answer generated so far…",
+  },
+  cancel: {
+    color: "red",
+    label: "Cancel",
+    tooltip: "Cancel the request, discard the response",
+    Icon: Ban,
+    pending: "Cancelling the request…",
+  },
+};
+
+function stopStatusMessage(
+  action: StopAction,
+  status: ApiProxyInflightStopResult["status"],
+): string {
+  if (status === "not-found") {
+    return "Request already finished.";
+  }
+  return STOP_ACTION_META[action].pending;
+}
+
+function InflightStopButton({
+  id,
+  action,
+  full,
+}: {
+  id: string;
+  action: StopAction;
+  full?: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const meta = STOP_ACTION_META[action];
+  const mutation = useMutation({
+    mutationFn: () =>
+      action === "finish"
+        ? finishApiProxyInflight(id)
+        : cancelApiProxyInflight(id),
+    onSuccess: async (result) => {
+      const status = result.data.status;
+      notifications.show({
+        color: status === "ok" ? meta.color : "yellow",
+        message: stopStatusMessage(action, status),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["api-proxy-runtime"] }),
+        queryClient.invalidateQueries({ queryKey: ["api-proxy-inflight", id] }),
+      ]);
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: `${meta.label} failed`,
+        message: (error as Error).message,
+      });
+    },
+  });
+  const Icon = meta.Icon;
+  if (full) {
+    return (
+      <Button
+        size="compact-xs"
+        variant="light"
+        color={meta.color}
+        leftSection={<Icon size={13} />}
+        loading={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        {meta.label}
+      </Button>
+    );
+  }
+  return (
+    <Tooltip label={meta.tooltip}>
+      <ActionIcon
+        size="xs"
+        variant="subtle"
+        color={meta.color}
+        aria-label={meta.tooltip}
+        loading={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        <Icon size={13} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
 function InflightDetailModal({
   id,
   onClose,
@@ -149,9 +256,13 @@ function InflightDetailModal({
                 {detail.completionTokens} answer tok
               </Text>
             </Group>
-            {detail.interruptible && (
-              <InflightInterruptButton id={detail.id} full />
-            )}
+            <Group gap="xs" wrap="wrap">
+              {detail.interruptible && (
+                <InflightInterruptButton id={detail.id} full />
+              )}
+              <InflightStopButton id={detail.id} action="finish" full />
+              <InflightStopButton id={detail.id} action="cancel" full />
+            </Group>
           </Group>
           {detailQuery.isError && (
             <Text size="xs" c="dimmed">
@@ -235,6 +346,8 @@ export function InflightRequests({
                   </Tooltip>
                 )}
                 {req.interruptible && <InflightInterruptButton id={req.id} />}
+                <InflightStopButton id={req.id} action="finish" />
+                <InflightStopButton id={req.id} action="cancel" />
               </Group>
               {timings && (
                 <Text size="xs" c="dimmed">

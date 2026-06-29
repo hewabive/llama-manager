@@ -1322,6 +1322,10 @@ export const ApiProxyInflightInterruptResultSchema = z.object({
   status: z.enum(["ok", "not-found", "not-supported", "not-ready", "too-late"]),
 });
 
+export const ApiProxyInflightStopResultSchema = z.object({
+  status: z.enum(["ok", "not-found"]),
+});
+
 export const ApiProxyTargetRuntimeSchema = z.object({
   targetId: ApiProxyIdSchema,
   kind: ApiProxyTargetKindSchema,
@@ -2593,6 +2597,9 @@ export type ApiProxyInflightDetail = z.infer<
 >;
 export type ApiProxyInflightInterruptResult = z.infer<
   typeof ApiProxyInflightInterruptResultSchema
+>;
+export type ApiProxyInflightStopResult = z.infer<
+  typeof ApiProxyInflightStopResultSchema
 >;
 export type ApiProxyTargetRuntime = z.infer<typeof ApiProxyTargetRuntimeSchema>;
 export type ApiProxyTargetPlanInput = z.infer<

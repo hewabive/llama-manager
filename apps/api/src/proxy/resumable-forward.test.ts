@@ -638,6 +638,72 @@ test("runResumableUpstreamAttempt returns interrupted when its signal aborts", a
   assert.equal(outcome.type, "interrupted");
 });
 
+test("runResumableUpstreamAttempt returns finished when its signal aborts", async () => {
+  const finish = new AbortController();
+  finish.abort();
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state: createResumableBufferState(),
+    preemptSignal: new AbortController().signal,
+    finishSignal: finish.signal,
+    fetchImpl: makeFetch([]),
+  });
+  assert.equal(outcome.type, "finished");
+});
+
+test("runResumableUpstreamAttempt returns cancelled when its signal aborts", async () => {
+  const cancel = new AbortController();
+  cancel.abort();
+  const outcome = await runResumableUpstreamAttempt({
+    url: "http://upstream",
+    method: "POST",
+    headers: {},
+    body: {},
+    codec,
+    state: createResumableBufferState(),
+    preemptSignal: new AbortController().signal,
+    cancelSignal: cancel.signal,
+    fetchImpl: makeFetch([]),
+  });
+  assert.equal(outcome.type, "cancelled");
+});
+
+test("runResumableForward returns the buffered answer when finished", async () => {
+  const state = createResumableBufferState();
+  state.text = "partial-answer";
+  const final = await runResumableForward({
+    makeReady: async () => ({ ok: true }),
+    attempt: async () => ({ type: "finished" }),
+    state,
+    codec,
+    yieldLease: async () => undefined,
+    wantsStream: false,
+    onError: (message) => ({ status: 502, headers: {}, body: message }),
+  });
+
+  assert.equal(final.status, 200);
+  assert.match(final.body, /partial-answer/);
+});
+
+test("runResumableForward returns the client-abort status when cancelled", async () => {
+  const final = await runResumableForward({
+    makeReady: async () => ({ ok: true }),
+    attempt: async () => ({ type: "cancelled" }),
+    state: createResumableBufferState(),
+    codec,
+    yieldLease: async () => undefined,
+    wantsStream: false,
+    onError: (message) => ({ status: 502, headers: {}, body: message }),
+  });
+
+  assert.equal(final.status, 499);
+  assert.equal(final.body, "");
+});
+
 test("runResumableForward returns the readiness failure response", async () => {
   const final = await runResumableForward({
     makeReady: async () => ({

@@ -196,7 +196,12 @@ export async function executeApiProxyModelSubRequest(input: {
         message: `fusion branch target ${target.name} was aborted by the client`,
       });
     }
-    if (outcome.type === "preempted" || outcome.type === "interrupted") {
+    if (
+      outcome.type === "preempted" ||
+      outcome.type === "interrupted" ||
+      outcome.type === "finished" ||
+      outcome.type === "cancelled"
+    ) {
       return fail({
         status: 503,
         code: "llama_manager_proxy_upstream_error",

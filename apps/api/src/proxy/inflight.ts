@@ -3,6 +3,7 @@ import type {
   ApiProxyInflightInterruptResult,
   ApiProxyInflightPhase,
   ApiProxyInflightRequest,
+  ApiProxyInflightStopResult,
 } from "@llama-manager/core";
 
 import { newId } from "../utils/id.js";
@@ -30,6 +31,8 @@ type InflightEntry = {
   answerCharsTotal: number;
   interruptible: boolean;
   interruptController: AbortController | null;
+  finishController: AbortController | null;
+  cancelController: AbortController | null;
 };
 
 const DEFAULT_INFLIGHT_STALE_AFTER_MS = 90 * 60 * 1000;
@@ -72,6 +75,8 @@ export type ApiProxyInflightHandle = {
   appendAnswer(text: string): void;
   setInterruptible(value: boolean): void;
   interruptSignal(): AbortSignal;
+  finishSignal(): AbortSignal;
+  cancelSignal(): AbortSignal;
   end(): void;
 };
 
@@ -157,6 +162,8 @@ export class ApiProxyInflightRegistry {
       answerCharsTotal: 0,
       interruptible: false,
       interruptController: null,
+      finishController: null,
+      cancelController: null,
     };
     this.entries.set(entry.id, entry);
     const touch = () => {
@@ -261,6 +268,18 @@ export class ApiProxyInflightRegistry {
         }
         return entry.interruptController.signal;
       },
+      finishSignal: () => {
+        if (entry.finishController === null) {
+          entry.finishController = new AbortController();
+        }
+        return entry.finishController.signal;
+      },
+      cancelSignal: () => {
+        if (entry.cancelController === null) {
+          entry.cancelController = new AbortController();
+        }
+        return entry.cancelController.signal;
+      },
       end: () => {
         this.entries.delete(entry.id);
       },
@@ -350,6 +369,30 @@ export class ApiProxyInflightRegistry {
       entry.interruptController = new AbortController();
     }
     entry.interruptController.abort();
+    return "ok";
+  }
+
+  requestFinish(id: string): ApiProxyInflightStopResult["status"] {
+    const entry = this.entries.get(id);
+    if (!entry) {
+      return "not-found";
+    }
+    if (entry.finishController === null) {
+      entry.finishController = new AbortController();
+    }
+    entry.finishController.abort();
+    return "ok";
+  }
+
+  requestCancel(id: string): ApiProxyInflightStopResult["status"] {
+    const entry = this.entries.get(id);
+    if (!entry) {
+      return "not-found";
+    }
+    if (entry.cancelController === null) {
+      entry.cancelController = new AbortController();
+    }
+    entry.cancelController.abort();
     return "ok";
   }
 
